@@ -1,0 +1,6 @@
+timestamp,place_id,name,address,raw_phone,wa_number,sent,reason
+2025-09-28 03:41:46,ChIJYQfomz9a4joRc_LHJRMMpsw,Nugegoda Business Centre,"80 Nawala Rd, Nugegoda 10250, Sri Lanka",076 323 7677,94763237677,True,sent_method_4
+2025-09-28 03:44:00,ChIJ9yT7AgBb4joRmgtybC-nEK8,CDCI Business Suites,"8 St. Joshep's Road, Nugegoda 10250, Sri Lanka",070 475 3000,94704753000,False,"error: HTTPConnectionPool(host='localhost', port=18155): "
+2025-09-28 03:45:41,ChIJ04KaofNR4joRnN5-Jw3SOwI,Bizadvisor,"272B, 2/1 High Level Rd, Maharagama 10280, Sri Lanka",077 700 4448,94777004448,False,"error: HTTPConnectionPool(host='localhost', port=18155): "
+2025-09-28 03:47:30,ChIJR5526GJR4joRWf_BbEV1oKo,Cerebrozone (Pvt) Ltd,"172 C Pannipitiya Rd, Ruhunupura 10116, Sri Lanka",070 333 6655,94703336655,False,"error: HTTPConnectionPool(host='localhost', port=18155): "
+2025-09-28 03:49:19,ChIJ5a7xdwJb4joRQrumWYbp-hQ,Business Academy,"No 50 C 1, 1 Perera Mawatha, Sri Jayawardenepura Kotte 10100, Sri Lanka",077 298 6433,94772986433,False,"error: HTTPConnectionPool(host='localhost', port=18155): "
