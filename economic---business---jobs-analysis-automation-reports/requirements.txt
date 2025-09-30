@@ -1,0 +1,11 @@
+langchain-groq 
+langchain-core 
+langgraph 
+requests 
+yfinance 
+pandas
+python-dotenv
+langchain-community
+faiss-cpu
+ollama
+aiohttp

@@ -1,0 +1,49 @@
+{
+  "company_name": "Your Company Name",
+  "industry": "Your Industry (e.g., Technology, Manufacturing, Healthcare, Retail)",
+  "business_units": [
+    "Business Unit 1 (e.g., Sales)",
+    "Business Unit 2 (e.g., Operations)",
+    "Business Unit 3 (e.g., Customer Service)",
+    "Business Unit 4 (e.g., Finance)"
+  ],
+  "headquarters": "Your Location (City, State/Province, Country)",
+  "primary_services": [
+    "Primary Service 1",
+    "Primary Service 2",
+    "Primary Service 3",
+    "Primary Service 4"
+  ],
+  "customer_service_hours": "Your service hours (e.g., 9 AM - 5 PM EST, Monday-Friday)",
+  "knowledge_base_path": "your_company_knowledge_base/",
+  "key_policies": {
+    "customer_service": "Your customer service policy and response times",
+    "quality_standards": "Your quality standards and certifications",
+    "return_policy": "Your return/refund policy",
+    "privacy_policy": "Your privacy and data protection policy",
+    "warranty": "Your warranty terms and conditions",
+    "delivery": "Your delivery and shipping policy"
+  },
+  "contact_info": {
+    "main_phone": "Your main phone number",
+    "customer_email": "Your customer service email",
+    "sales_email": "Your sales email",
+    "support_email": "Your technical support email",
+    "website": "Your website URL",
+    "address": "Your business address"
+  },
+  "brand_voice": "professional/friendly/authoritative/casual/technical",
+  "_template_info": {
+    "description": "Universal Business Workflow Configuration Template",
+    "version": "1.0",
+    "instructions": [
+      "1. Replace all placeholder values with your actual business information",
+      "2. Add or remove business units as needed for your organization",
+      "3. Customize primary services to match what your business offers",
+      "4. Update policies to reflect your actual business policies",
+      "5. Ensure contact information is accurate and up-to-date",
+      "6. Choose appropriate brand voice that matches your communication style",
+      "7. Save this file and use create_business_config_from_json() to load it"
+    ]
+  }
+}

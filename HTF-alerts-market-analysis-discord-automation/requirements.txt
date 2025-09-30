@@ -1,0 +1,10 @@
+yfinance
+pandas
+pyyaml
+aiohttp
+prometheus_client
+structlog
+python-dotenv
+pytz
+resend
+yaml

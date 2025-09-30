@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  market-monitor:
+    build: .
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    restart: always
+    environment:
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}

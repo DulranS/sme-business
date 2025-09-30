@@ -1,0 +1,29 @@
+# Configuration for Market Structure Monitor Service
+
+# Assets to monitor, grouped by category
+assets:
+  crypto:  # Cryptocurrency assets
+    - BTC-USD  # Bitcoin vs USD
+  stocks:  # Stock indices
+    - ^IXIC  # NASDAQ Composite Index
+  forex:  # Foreign exchange pairs
+    - EURUSD=X  # Euro vs USD
+    - GBPUSD=X  # British Pound vs USD
+    - GBPJPY=X  # British Pound vs Japanese Yen
+    - USDJPY=X  # USD vs Japanese Yen
+    - USDCAD=X  # USD vs Canadian Dollar
+    - AUDCAD=X  # Australian Dollar vs Canadian Dollar
+  commodities:  # Commodities
+    - GC=F  # Gold Futures
+# Notification settings
+notification:
+  discord:
+    enabled: true  # Enable Discord notifications
+  logging:
+    enabled: true  # Enable logging
+    level: INFO  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+# Additional settings (optional)
+settings:
+  timezone: "America/New_York"  # Default timezone for timestamps
+  interval_minutes: 15  # Monitoring interval in minutes
