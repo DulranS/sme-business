@@ -1,0 +1,8 @@
+{
+  "extends": ["next", "next/core-web-vitals"],
+  "rules": {
+    "react/no-unescaped-entities": "off", // Disable unescaped entities warning
+    "next/no-html-link-for-pages": "off", // Disable the warning for using <a> for navigation
+    "@next/next/no-img-element": "off" // Disable the warning for using <img> instead of <Image>
+  }
+}
