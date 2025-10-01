@@ -1,0 +1,1 @@
+SME based business tools that - soon to be classified as whether useful or useless. Regardless, here they are and maybe one of us can build an innovative solution out of dumb ideas that will eventually pay of. Whatever said , these are micro apps that will help our businesses (at least in tiny ways)
