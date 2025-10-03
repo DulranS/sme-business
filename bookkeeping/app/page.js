@@ -791,6 +791,7 @@ const totals = filteredRecords.reduce((acc, r) => {
             </div>
 
             {/* Recent Records Preview */}
+{/* Recent Records Preview */}
 <div className="bg-white rounded-lg shadow-md p-6">
   <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
   <div className="overflow-x-auto">
