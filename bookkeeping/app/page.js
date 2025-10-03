@@ -22,8 +22,7 @@ const [formData, setFormData] = useState({
   description: '',
   category: 'Inflow',
   amount: '',
-  quantity: '',        // ADD THIS
-  unitPrice: '',       // ADD THIS
+  quantity: '',  // ADD THIS
   notes: '',
   customer: '',
   project: '',
@@ -97,8 +96,8 @@ const [formData, setFormData] = useState({
     await loadBudgets();
     setSyncing(false);
   };
+// Remove this useEffect entirely
 useEffect(() => {
-  // Auto-calculate amount when quantity and unitPrice are provided
   if (formData.quantity && formData.unitPrice) {
     const calculatedAmount = parseFloat(formData.quantity) * parseFloat(formData.unitPrice);
     setFormData(prev => ({ ...prev, amount: calculatedAmount.toString() }));
@@ -140,8 +139,7 @@ const recordData = {
   description: formData.description,
   category: formData.category,
   amount: parseFloat(formData.amount),
-  quantity: formData.quantity ? parseFloat(formData.quantity) : null,     // ADD THIS
-  unitPrice: formData.unitPrice ? parseFloat(formData.unitPrice) : null,  // ADD THIS
+  quantity: formData.quantity ? parseFloat(formData.quantity) : 1,  // ADD THIS LINE
   notes: formData.notes,
   customer: formData.customer || null,
   project: formData.project || null,
@@ -168,16 +166,17 @@ const recordData = {
         setRecords([data[0], ...records]);
       }
 
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        category: 'Inflow',
-        amount: '',
-        notes: '',
-        customer: '',
-        project: '',
-        tags: ''
-      });
+setFormData({
+  date: new Date().toISOString().split('T')[0],
+  description: '',
+  category: 'Inflow',
+  amount: '',
+  quantity: '',  // ADD THIS
+  notes: '',
+  customer: '',
+  project: '',
+  tags: ''
+});
     } catch (error) {
       console.error('Error saving record:', error);
       alert('Failed to save record. Please check your Supabase configuration.');
@@ -191,8 +190,7 @@ const handleEdit = (index) => {
     description: record.description,
     category: record.category,
     amount: record.amount.toString(),
-    quantity: record.quantity ? record.quantity.toString() : '',      // ADD THIS
-    unitPrice: record.unitPrice ? record.unitPrice.toString() : '',   // ADD THIS
+    quantity: record.quantity ? record.quantity.toString() : '',  // ADD THIS
     notes: record.notes || '',
     customer: record.customer || '',
     project: record.project || '',
@@ -226,8 +224,7 @@ const handleCancel = () => {
     description: '',
     category: 'Inflow',
     amount: '',
-    quantity: '',      // ADD THIS
-    unitPrice: '',     // ADD THIS
+    quantity: '',  // ADD THIS
     notes: '',
     customer: '',
     project: '',
@@ -295,16 +292,19 @@ const handleCancel = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  const totals = filteredRecords.reduce((acc, r) => {
-    const amount = parseFloat(r.amount) || 0;
-    if (r.category === 'Inflow') acc.inflow += amount;
-    if (r.category === 'Outflow') acc.outflow += amount;
-    if (r.category === 'Reinvestment') acc.reinvestment += amount;
-    if (r.category === 'Overhead') acc.overhead += amount;
-    if (r.category === 'Loan Payment') acc.loanPayment += amount;
-    if (r.category === 'Loan Received') acc.loanReceived += amount;
-    return acc;
-  }, { inflow: 0, outflow: 0, reinvestment: 0, overhead: 0, loanPayment: 0, loanReceived: 0 });
+const totals = filteredRecords.reduce((acc, r) => {
+  const amount = parseFloat(r.amount) || 0;
+  const quantity = parseFloat(r.quantity) || 1;  // ADD THIS
+  const total = amount * quantity;  // ADD THIS
+  
+  if (r.category === 'Inflow') acc.inflow += total;
+  if (r.category === 'Outflow') acc.outflow += total;
+  if (r.category === 'Reinvestment') acc.reinvestment += total;
+  if (r.category === 'Overhead') acc.overhead += total;
+  if (r.category === 'Loan Payment') acc.loanPayment += total;
+  if (r.category === 'Loan Received') acc.loanReceived += total;
+  return acc;
+}, { inflow: 0, outflow: 0, reinvestment: 0, overhead: 0, loanPayment: 0, loanReceived: 0 });
 
   const grossProfit = totals.inflow - totals.outflow;
   const grossMarginPercent = totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
@@ -708,19 +708,27 @@ const handleCancel = () => {
   </select>
   <input
     type="number"
-    placeholder="Quantity"
-    value={formData.quantity}
-    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+    placeholder="Unit Price (LKR) *"
+    value={formData.amount}
+    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
     className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
   />
   <input
     type="number"
-    placeholder="Unit Price (LKR)"
-    value={formData.unitPrice}
-    onChange={(e) => setFormData({ ...formData, unitPrice: e.target.value })}
+    placeholder="Quantity (default: 1)"
+    value={formData.quantity}
+    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
     className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
   />
 </div>
+{formData.quantity && formData.amount && (
+  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+    <p className="text-sm text-blue-800">
+      <strong>Total:</strong> {formData.quantity} × LKR {formatLKR(parseFloat(formData.amount))} = 
+      <span className="font-bold"> LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.amount))}</span>
+    </p>
+  </div>
+)}
 <div className="mb-4">
   <input
     type="number"
@@ -783,60 +791,62 @@ const handleCancel = () => {
             </div>
 
             {/* Recent Records Preview */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Amount</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
-<th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredRecords.slice(0, 10).map((record, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
-                            record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
-                            'bg-blue-100 text-blue-800'
-                          }`}>
-                            {record.category}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{record.customer || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold">LKR {formatLKR(record.amount)}</td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => handleEdit(index)}
-                            className="text-blue-600 hover:text-blue-800 mx-1"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(index)}
-                            className="text-red-600 hover:text-red-800 mx-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-600">{record.quantity || '-'}</td>
-<td className="px-4 py-3 text-sm text-right text-gray-600">{record.unitPrice ? `LKR ${formatLKR(record.unitPrice)}` : '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+<div className="bg-white rounded-lg shadow-md p-6">
+  <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
+  <div className="overflow-x-auto">
+    <table className="w-full">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
+          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
+          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
+          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
+          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-200">
+        {filteredRecords.slice(0, 10).map((record, index) => (
+          <tr key={index} className="hover:bg-gray-50">
+            <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
+            <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
+            <td className="px-4 py-3">
+              <span className={`px-2 py-1 text-xs rounded-full ${
+                record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
+                record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
+                'bg-blue-100 text-blue-800'
+              }`}>
+                {record.category}
+              </span>
+            </td>
+            <td className="px-4 py-3 text-sm text-gray-600">{record.customer || '-'}</td>
+            <td className="px-4 py-3 text-sm text-right text-gray-600">{record.quantity || '1'}</td>
+            <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(record.amount)}</td>
+            <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+              LKR {formatLKR((record.quantity || 1) * record.amount)}
+            </td>
+            <td className="px-4 py-3 text-center">
+              <button
+                onClick={() => handleEdit(index)}
+                className="text-blue-600 hover:text-blue-800 mx-1"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleDelete(index)}
+                className="text-red-600 hover:text-red-800 mx-1"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
           </>
         )}
 
