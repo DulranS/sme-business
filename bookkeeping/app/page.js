@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, C
 import { createClient } from '@supabase/supabase-js';
 import { FinancialStrategyMap } from '@/components/FinancialStrategyMap';
 import FinancialChartDashboard from '@/components/FinancialChartDashboard';
+import { storage } from "@/utils/storage";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -27,7 +28,7 @@ export default function BookkeepingApp() {
   });
   const [showInsights, setShowInsights] = useState(true);
   const [targetRevenue, setTargetRevenue] = useState(() => {
-    const saved = localStorage.getItem('targetRevenue');
+    const saved = storage.getItem('targetRevenue');
     return saved ? parseFloat(saved) : 100000;
   });
   const [showTargetModal, setShowTargetModal] = useState(false);
@@ -63,7 +64,7 @@ export default function BookkeepingApp() {
       setRecords(data || []);
     } catch (error) {
       console.error('Error loading records:', error);
-      const localRecords = localStorage.getItem('bookkeeping_records');
+      const localRecords = storage.getItem('bookkeeping_records');
       if (localRecords) setRecords(JSON.parse(localRecords));
     } finally {
       setLoading(false);
@@ -82,7 +83,7 @@ export default function BookkeepingApp() {
         setBudgets(budgetMap);
       }
     } catch (error) {
-      const saved = localStorage.getItem('categoryBudgets');
+      const saved = storage.getItem('categoryBudgets');
       if (saved) setBudgets(JSON.parse(saved));
     }
   };
@@ -95,11 +96,11 @@ export default function BookkeepingApp() {
   };
 
   useEffect(() => {
-    localStorage.setItem('targetRevenue', targetRevenue.toString());
+    storage.setItem('targetRevenue', targetRevenue.toString());
   }, [targetRevenue]);
 
   useEffect(() => {
-    localStorage.setItem('categoryBudgets', JSON.stringify(budgets));
+    storage.setItem('categoryBudgets', JSON.stringify(budgets));
   }, [budgets]);
 
   const filteredRecords = useMemo(() => {
