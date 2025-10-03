@@ -6,6 +6,7 @@ import { FinancialStrategyMap } from '@/components/FinancialStrategyMap';
 import FinancialChartDashboard from '@/components/FinancialChartDashboard';
 import { storage } from "@/utils/storage";
 
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
