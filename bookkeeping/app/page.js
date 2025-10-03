@@ -881,7 +881,13 @@ const totals = filteredRecords.reduce((acc, r) => {
                       {customerAnalysis.map((customer, idx) => (
                         <tr key={idx} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">LKR {formatLKR(customer.revenue)}</td>
+<td className={`px-4 py-3 text-sm text-right font-semibold ${
+  ['Inflow', 'Loan Received'].includes(customer.category) 
+    ? 'text-green-600' 
+    : 'text-red-600'
+}`}>
+  {['Inflow', 'Loan Received'].includes(customer.category) ? '+' : '−'} LKR {formatLKR((customer.quantity || 1) * customer.amount)}
+</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.projectCount}</td>
