@@ -623,16 +623,16 @@ export default function BookkeepingApp() {
               <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <TrendingUp className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Inflow</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded" style={{color:"black"}}>Inflow</span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflow)}</h3>
+                <h3 className="text-2xl font-bold mb-1" >LKR {formatLKR(totals.inflow)}</h3>
                 <p className="text-sm opacity-90">Total Revenue</p>
               </div>
 
               <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <TrendingDown className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Outflow</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded" style={{color:"black"}}>Outflow</span>
                 </div>
                 <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.outflow)}</h3>
                 <p className="text-sm opacity-90">Direct Costs</p>
@@ -641,7 +641,7 @@ export default function BookkeepingApp() {
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <Award className="w-8 h-8 opacity-80" />
-                  <span className={`text-xs px-2 py-1 rounded ${grossProfit >= 0 ? 'bg-white bg-opacity-20' : 'bg-red-500'}`}>
+                  <span className={`text-xs px-2 py-1 rounded ${grossProfit >= 0 ? 'bg-white bg-opacity-20' : 'bg-red-500'}`} style={{color:"black"}}>
                     {grossMarginPercent.toFixed(1)}%
                   </span>
                 </div>
@@ -649,10 +649,10 @@ export default function BookkeepingApp() {
                 <p className="text-sm opacity-90">Gross Profit</p>
               </div>
 
-              <div className={`bg-gradient-to-br ${netProfit >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white rounded-lg shadow-lg p-5`}>
+              <div className={`bg-gradient-to-br ${netProfit >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white rounded-lg shadow-lg p-5`} >
                 <div className="flex justify-between items-start mb-2">
                   <DollarSign className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Net</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded" style={{color:"black"}}>Net</span>
                 </div>
                 <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(netProfit)}</h3>
                 <p className="text-sm opacity-90">Net Profit</p>
