@@ -493,7 +493,7 @@ export default function BookkeepingApp() {
               <div className="flex items-center gap-3 mt-2">
                 <div className="flex items-center gap-1 text-sm">
                   <Database className="w-4 h-4" />
-                  <span>Cloud Synced</span>
+                  <span>To ensure $1 of payroll reliably turns into $3 of value</span>
                 </div>
                 <button
                   onClick={syncRecords}
