@@ -15,7 +15,7 @@ export const storage = {
   set(key, value) {
     if (!isBrowser) return;
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      localStorage.set(key, JSON.stringify(value));
     } catch (err) {
       console.error("localStorage set error:", err);
     }

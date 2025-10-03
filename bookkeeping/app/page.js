@@ -97,11 +97,11 @@ export default function BookkeepingApp() {
   };
 
   useEffect(() => {
-    storage.setItem('targetRevenue', targetRevenue.toString());
+    storage.set('targetRevenue', targetRevenue.toString());
   }, [targetRevenue]);
 
   useEffect(() => {
-    storage.setItem('categoryBudgets', JSON.stringify(budgets));
+    storage.set('categoryBudgets', JSON.stringify(budgets));
   }, [budgets]);
 
   const filteredRecords = useMemo(() => {
