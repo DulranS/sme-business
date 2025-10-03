@@ -366,6 +366,32 @@ const totals = filteredRecords.reduce((acc, r) => {
       .sort((a, b) => b.profit - a.profit);
   }, [filteredRecords]);
 
+
+const monthlyChartData = useMemo(() => {
+  const monthlyData = {};
+  filteredRecords.forEach(r => {
+    const month = r.date.substring(0, 7); // "2024-01"
+    if (!monthlyData[month]) {
+      monthlyData[month] = { inflow: 0, outflow: 0 };
+    }
+    const amount = parseFloat(r.amount) || 0;
+    const quantity = parseFloat(r.quantity) || 1;
+    const total = amount * quantity;
+    
+    if (r.category === 'Inflow') monthlyData[month].inflow += total;
+    if (['Outflow', 'Overhead', 'Reinvestment'].includes(r.category)) monthlyData[month].outflow += total;
+  });
+  
+  return Object.keys(monthlyData)
+    .sort()
+    .map(month => ({
+      month,
+      inflow: monthlyData[month].inflow,
+      outflow: monthlyData[month].outflow,
+      netCashFlow: monthlyData[month].inflow - monthlyData[month].outflow
+    }));
+}, [filteredRecords]);
+
   // Cash Flow Forecast (Simple Linear Regression)
   const cashFlowForecast = useMemo(() => {
     if (filteredRecords.length < 30) return null;
@@ -1251,11 +1277,12 @@ const totals = filteredRecords.reduce((acc, r) => {
   />
 )}
 
-        {activeTab === 'forecast (diagram)' && (
-<FinancialChartDashboard     totals={totals}
+{activeTab === 'forecast (diagram)' && (
+  <FinancialChartDashboard 
+    financialData={monthlyChartData}
     grossProfit={grossProfit}
     netProfit={netProfit}
-    grossMarginPercent={grossMarginPercent}/>
+  />
 )}
         {/* Modals */}
         {showTargetModal && (
