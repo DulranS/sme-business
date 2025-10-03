@@ -1,6 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import 'reactflow/dist/style.css'; // ✅ Import here, JS can handle it
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
