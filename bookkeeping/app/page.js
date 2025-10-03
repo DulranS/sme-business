@@ -1,6 +1,8 @@
+'use client';
 import { useState, useMemo, useEffect } from 'react';
 import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, PieChart, BarChart3, AlertCircle, Target, Zap, Activity, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Shield, Layers, Filter, Tag, Bell, Calculator, TrendingUp as Growth, BarChart2 } from 'lucide-react';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
+import { FinancialStrategyMap } from '@/components/FinancialStrategyMap';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -30,7 +32,7 @@ export default function BookkeepingApp() {
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showScenarioModal, setShowScenarioModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('overview','strategy');
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState('Overhead');
   const [budgetAmount, setBudgetAmount] = useState('');
@@ -477,7 +479,7 @@ export default function BookkeepingApp() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white" style={{color:"white"}}>
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
@@ -572,8 +574,12 @@ export default function BookkeepingApp() {
                   <Icon className="w-4 h-4" />
                   {tab.label}
                 </button>
+
               );
             })}
+                            <button onClick={() => setActiveTab('strategy')} variant={activeTab === 'strategy' ? 'default' : 'outline'}>
+  <Lightbulb className="mr-2 h-4 w-4" /> Strategy Map
+</button>
           </div>
         </div>
 
@@ -791,6 +797,16 @@ export default function BookkeepingApp() {
             </div>
           </>
         )}
+
+        {activeTab === 'strategy' && (
+  <FinancialStrategyMap
+    totals={totals}
+    grossProfit={grossProfit}
+    netProfit={netProfit}
+    grossMarginPercent={grossMarginPercent}
+  />
+)}
+
 
         {/* Customers Tab */}
         {activeTab === 'customers' && (
