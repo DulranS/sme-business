@@ -17,16 +17,18 @@ export default function BookkeepingApp() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-    category: 'Inflow',
-    amount: '',
-    notes: '',
-    customer: '',
-    project: '',
-    tags: ''
-  });
+const [formData, setFormData] = useState({
+  date: new Date().toISOString().split('T')[0],
+  description: '',
+  category: 'Inflow',
+  amount: '',
+  quantity: '',        // ADD THIS
+  unitPrice: '',       // ADD THIS
+  notes: '',
+  customer: '',
+  project: '',
+  tags: ''
+});
   const [showInsights, setShowInsights] = useState(true);
   const [targetRevenue, setTargetRevenue] = useState(() => {
     const saved = storage.get('targetRevenue');
@@ -95,7 +97,13 @@ export default function BookkeepingApp() {
     await loadBudgets();
     setSyncing(false);
   };
-
+useEffect(() => {
+  // Auto-calculate amount when quantity and unitPrice are provided
+  if (formData.quantity && formData.unitPrice) {
+    const calculatedAmount = parseFloat(formData.quantity) * parseFloat(formData.unitPrice);
+    setFormData(prev => ({ ...prev, amount: calculatedAmount.toString() }));
+  }
+}, [formData.quantity, formData.unitPrice]);
   useEffect(() => {
     storage.set('targetRevenue', targetRevenue.toString());
   }, [targetRevenue]);
@@ -127,16 +135,18 @@ export default function BookkeepingApp() {
     if (!formData.description || !formData.amount) return;
 
     try {
-      const recordData = {
-        date: formData.date,
-        description: formData.description,
-        category: formData.category,
-        amount: parseFloat(formData.amount),
-        notes: formData.notes,
-        customer: formData.customer || null,
-        project: formData.project || null,
-        tags: formData.tags || null
-      };
+const recordData = {
+  date: formData.date,
+  description: formData.description,
+  category: formData.category,
+  amount: parseFloat(formData.amount),
+  quantity: formData.quantity ? parseFloat(formData.quantity) : null,     // ADD THIS
+  unitPrice: formData.unitPrice ? parseFloat(formData.unitPrice) : null,  // ADD THIS
+  notes: formData.notes,
+  customer: formData.customer || null,
+  project: formData.project || null,
+  tags: formData.tags || null
+};
 
       if (isEditing !== null) {
         const recordToUpdate = records[isEditing];
@@ -174,20 +184,22 @@ export default function BookkeepingApp() {
     }
   };
 
-  const handleEdit = (index) => {
-    const record = records[index];
-    setFormData({
-      date: record.date,
-      description: record.description,
-      category: record.category,
-      amount: record.amount.toString(),
-      notes: record.notes || '',
-      customer: record.customer || '',
-      project: record.project || '',
-      tags: record.tags || ''
-    });
-    setIsEditing(index);
-  };
+const handleEdit = (index) => {
+  const record = records[index];
+  setFormData({
+    date: record.date,
+    description: record.description,
+    category: record.category,
+    amount: record.amount.toString(),
+    quantity: record.quantity ? record.quantity.toString() : '',      // ADD THIS
+    unitPrice: record.unitPrice ? record.unitPrice.toString() : '',   // ADD THIS
+    notes: record.notes || '',
+    customer: record.customer || '',
+    project: record.project || '',
+    tags: record.tags || ''
+  });
+  setIsEditing(index);
+};
 
   const handleDelete = async (index) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
@@ -207,20 +219,21 @@ export default function BookkeepingApp() {
     }
   };
 
-  const handleCancel = () => {
-    setIsEditing(null);
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      description: '',
-      category: 'Inflow',
-      amount: '',
-      notes: '',
-      customer: '',
-      project: '',
-      tags: ''
-    });
-  };
-
+const handleCancel = () => {
+  setIsEditing(null);
+  setFormData({
+    date: new Date().toISOString().split('T')[0],
+    description: '',
+    category: 'Inflow',
+    amount: '',
+    quantity: '',      // ADD THIS
+    unitPrice: '',     // ADD THIS
+    notes: '',
+    customer: '',
+    project: '',
+    tags: ''
+  });
+};
   const saveBudget = async () => {
     if (!budgetAmount) return;
     
@@ -670,37 +683,57 @@ export default function BookkeepingApp() {
                 <Plus className="w-5 h-5" />
                 {isEditing !== null ? 'Edit Record' : 'Add New Record'}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Description *"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  placeholder="Amount (LKR) *"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+  <input
+    type="date"
+    value={formData.date}
+    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+  />
+  <input
+    type="text"
+    placeholder="Description *"
+    value={formData.description}
+    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+  />
+  <select
+    value={formData.category}
+    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+  >
+    {categories.map(cat => (
+      <option key={cat} value={cat}>{cat}</option>
+    ))}
+  </select>
+  <input
+    type="number"
+    placeholder="Quantity"
+    value={formData.quantity}
+    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+  />
+  <input
+    type="number"
+    placeholder="Unit Price (LKR)"
+    value={formData.unitPrice}
+    onChange={(e) => setFormData({ ...formData, unitPrice: e.target.value })}
+    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+  />
+</div>
+<div className="mb-4">
+  <input
+    type="number"
+    placeholder="Total Amount (LKR) *"
+    value={formData.amount}
+    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+    disabled={formData.quantity && formData.unitPrice}
+  />
+  {formData.quantity && formData.unitPrice && (
+    <p className="text-sm text-blue-600 mt-1">Auto-calculated: {formData.quantity} × {formData.unitPrice} = {formData.amount}</p>
+  )}
+</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <input
                   type="text"
@@ -762,6 +795,8 @@ export default function BookkeepingApp() {
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
                       <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Amount</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
+<th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -794,6 +829,8 @@ export default function BookkeepingApp() {
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-600">{record.quantity || '-'}</td>
+<td className="px-4 py-3 text-sm text-right text-gray-600">{record.unitPrice ? `LKR ${formatLKR(record.unitPrice)}` : '-'}</td>
                       </tr>
                     ))}
                   </tbody>
