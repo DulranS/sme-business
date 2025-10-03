@@ -1,1 +1,7 @@
-SME based business tools/micro-apps for personal business use (for our own SMEs) - soon to be classified as whether truly useful or not in terms of business value. Regardless, here they are and maybe one of us can build an innovative solution out of dumb ideas that will eventually pay off as a SAAS (0.00001% chance realistically). Whatever said , these are micro apps that will help our businesses (at least in tiny ways). Trying to do this for the whole supply chain common to most SMEs , run as individual micro apps so we don't spend too long building something with too many features that really gets us nowhere
+SME Micro-Apps
+
+Tiny, focused tools for small and medium businesses. Each micro-app solves a specific problem in your SME supply chain—fast to build, easy to use, and low on feature bloat.
+
+Think of this as a sandbox for practical business tools—maybe one day, something here becomes a full SaaS.
+
+Small tools, real impact (or at least, less headache).
