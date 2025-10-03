@@ -881,96 +881,95 @@ const monthlyChartData = useMemo(() => {
 
 
         {/* Customers Tab */}
-        {activeTab === 'customers' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <Users className="w-6 h-6" />
-                Customer Profitability Analysis
-              </h2>
-              {customerAnalysis.length === 0 ? (
-                <p className="text-gray-500">No customer data available. Add customer names to your inflow records to see analysis.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total Revenue</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Transaction</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Projects</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {customerAnalysis.map((customer, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
-<td className={`px-4 py-3 text-sm text-right font-semibold ${
-  ['Inflow', 'Loan Received'].includes(customer.category) 
-    ? 'text-green-600' 
-    : 'text-red-600'
-}`}>
-  {['Inflow', 'Loan Received'].includes(customer.category) ? '+' : '−'} LKR {formatLKR((customer.quantity || 1) * customer.amount)}
-</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.projectCount}</td>
-                          <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
-                            {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+{activeTab === 'customers' && (
+  <div className="space-y-6">
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        <Users className="w-6 h-6" />
+        Customer Profitability Analysis
+      </h2>
+      {customerAnalysis.length === 0 ? (
+        <p className="text-gray-500">No customer data available. Add customer names to your inflow records to see analysis.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total Revenue</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Transaction</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Projects</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {customerAnalysis.map((customer, idx) => (
+                <tr key={idx} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
+                  <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                    + LKR {formatLKR(customer.revenue)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.projectCount}</td>
+                  <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
+                    {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <Layers className="w-6 h-6" />
-                Project Profitability Analysis
-              </h2>
-              {projectAnalysis.length === 0 ? (
-                <p className="text-gray-500">No project data available. Add project names to your records to see analysis.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Project</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Costs</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {projectAnalysis.map((project, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{project.name}</td>
-                          <td className="px-4 py-3 text-sm text-right text-green-600">LKR {formatLKR(project.revenue)}</td>
-                          <td className="px-4 py-3 text-sm text-right text-red-600">LKR {formatLKR(project.costs)}</td>
-                          <td className={`px-4 py-3 text-sm text-right font-semibold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            LKR {formatLKR(project.profit)}
-                          </td>
-                          <td className={`px-4 py-3 text-sm text-right font-medium ${project.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {project.margin.toFixed(1)}%
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">{project.transactions}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        <Layers className="w-6 h-6" />
+        Project Profitability Analysis
+      </h2>
+      {projectAnalysis.length === 0 ? (
+        <p className="text-gray-500">No project data available. Add project names to your records to see analysis.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Project</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Costs</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {projectAnalysis.map((project, idx) => (
+                <tr key={idx} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{project.name}</td>
+                  <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                    + LKR {formatLKR(project.revenue)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
+                    − LKR {formatLKR(project.costs)}
+                  </td>
+                  <td className={`px-4 py-3 text-sm text-right font-semibold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {project.profit >= 0 ? '+' : '−'} LKR {formatLKR(Math.abs(project.profit))}
+                  </td>
+                  <td className={`px-4 py-3 text-sm text-right font-medium ${project.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {project.margin.toFixed(1)}%
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-600">{project.transactions}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </div>
+)}
         {/* Forecast Tab */}
         {activeTab === 'forecast' && (
           <div className="space-y-6">
