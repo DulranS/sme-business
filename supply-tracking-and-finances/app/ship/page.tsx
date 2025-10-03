@@ -1,9 +1,10 @@
+// app/ship/page.tsx
 "use client";
 import React, { useEffect, useState } from "react";
 import { CheckCircle } from "lucide-react";
 
 // ------------------------
-// Order Interface (updated to include "ship")
+// Extended Order Interface (with "ship" status)
 // ------------------------
 interface Order {
   id: number;
@@ -14,7 +15,7 @@ interface Order {
   description: string;
   moq: string;
   urgency: "low" | "medium" | "high";
-  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship"; // ← added "ship"
+  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship";
   images: string;
   created_at: string;
   supplier_price?: string;
@@ -34,7 +35,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 // ------------------------
-// Custom Supabase Client (with update support)
+// Custom Supabase Client (same as before)
 // ------------------------
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
@@ -64,90 +65,43 @@ class SupabaseClient {
         }),
         execute: async (): Promise<Order[]> => this.request<Order[]>(`${table}?select=${columns}`),
       }),
-      // 👇 New update method for PATCH requests
-      update: (data: Partial<Order>) => ({
-        eq: (column: string, value: string | number) => ({
-          execute: async (): Promise<void> => {
-            const response = await fetch(`${this.url}/rest/v1/${table}?${column}=eq.${value}`, {
-              method: "PATCH",
-              headers: {
-                apikey: this.key,
-                Authorization: `Bearer ${this.key}`,
-                "Content-Type": "application/json",
-                Prefer: "return=minimal",
-              },
-              body: JSON.stringify(data),
-            });
-
-            if (!response.ok) {
-              throw new Error(`Update failed: ${response.status}`);
-            }
-          },
-        }),
-      }),
     };
   }
 }
 
-// ------------------------
-// Initialize Supabase Client
-// ------------------------
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
-// CompletedOrdersPage Component
+// ShipOrdersPage Component
 // ------------------------
-const CompletedOrdersPage: React.FC = () => {
+const ShipOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch completed orders
   useEffect(() => {
-    const fetchCompletedOrders = async () => {
+    const fetchShipOrders = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const completedOrders: Order[] = await supabase
+        const shipOrders: Order[] = await supabase
           .from("orders")
           .select("*")
-          .eq("status", "completed")
+          .eq("status", "ship")
           .execute();
 
-        setOrders(completedOrders);
+        setOrders(shipOrders);
       } catch (err) {
         console.error(err);
-        setError("Failed to load completed orders.");
+        setError("Failed to load shipping orders.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCompletedOrders();
+    fetchShipOrders();
   }, []);
-
-  // ------------------------
-  // Mark order as shipping
-  // ------------------------
-  const markAsShipping = async (orderId: number) => {
-    if (!confirm("Are you sure you want to mark this order as shipping?")) return;
-
-    try {
-      // Update in Supabase
-      await supabase
-        .from("orders")
-        .update({ status: "ship" })
-        .eq("id", orderId)
-        .execute();
-
-      // Optimistically remove from UI (since it's no longer "completed")
-      setOrders((prev) => prev.filter((order) => order.id !== orderId));
-    } catch (err) {
-      console.error("Failed to update order status:", err);
-      alert("Failed to mark order as shipping. Please try again.");
-    }
-  };
 
   const parseImages = (imagesJson: string): OrderImage[] => {
     try {
@@ -160,7 +114,7 @@ const CompletedOrdersPage: React.FC = () => {
   const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
     const openImage = (url: string) =>
       window.open(url, "_blank", "noopener,noreferrer");
-  
+
     if (images.length === 0) {
       return (
         <div>
@@ -169,7 +123,7 @@ const CompletedOrdersPage: React.FC = () => {
         </div>
       );
     }
-  
+
     return (
       <div>
         <h3 className="font-semibold text-gray-900 mb-4">
@@ -208,20 +162,16 @@ const CompletedOrdersPage: React.FC = () => {
     );
   };
 
-  // ------------------------
-  // Export to CSV
-  // ------------------------
   const exportToCSV = () => {
     if (orders.length === 0) return;
 
     const headers = Object.keys(orders[0]);
     const csvRows = [
-      headers.join(","), // header row
+      headers.join(","),
       ...orders.map((order) =>
         headers
           .map((field) => {
             const value = (order as any)[field] ?? "";
-            // escape double quotes and wrap in quotes
             return `"${String(value).replace(/"/g, '""')}"`;
           })
           .join(",")
@@ -234,26 +184,20 @@ const CompletedOrdersPage: React.FC = () => {
 
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "completed_orders.csv");
+    link.setAttribute("download", "shipping_orders.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // ------------------------
-  // Loading State
-  // ------------------------
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <p className="text-gray-500">Loading completed orders...</p>
+        <p className="text-gray-500">Loading shipping orders...</p>
       </div>
     );
   }
 
-  // ------------------------
-  // Error State
-  // ------------------------
   if (error) {
     return (
       <div className="flex items-center justify-center h-screen text-center">
@@ -262,25 +206,19 @@ const CompletedOrdersPage: React.FC = () => {
     );
   }
 
-  // ------------------------
-  // No Completed Orders
-  // ------------------------
   if (orders.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen text-center">
-        <p className="text-gray-500 font-medium">No completed orders available.</p>
+        <p className="text-gray-500 font-medium">No shipping orders available.</p>
       </div>
     );
   }
 
-  // ------------------------
-  // Completed Orders List
-  // ------------------------
   return (
-    <div className="p-4 space-y-2 bg-green-50 min-h-screen">
+    <div className="p-4 space-y-2 bg-blue-50 min-h-screen">
       <button
         onClick={exportToCSV}
-        className="mb-3 px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition"
+        className="mb-3 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
       >
         Export to CSV
       </button>
@@ -290,12 +228,12 @@ const CompletedOrdersPage: React.FC = () => {
         return (
           <div
             key={order.id}
-            className="bg-white p-3 rounded shadow border border-green-200 hover:shadow-md transition"
+            className="bg-white p-3 rounded shadow border border-blue-200 hover:shadow-md transition"
           >
             <div className="flex items-start gap-3">
-              <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+              <CheckCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-bold text-green-800 mb-1">
+                <h2 className="text-sm font-bold text-blue-800 mb-1">
                   Order #{order.id} - {order.customer_name}
                 </h2>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
@@ -330,16 +268,6 @@ const CompletedOrdersPage: React.FC = () => {
                 </div>
               )}
             </div>
-
-            {/* 👇 Mark as Shipping Button */}
-            <div className="mt-3 flex justify-end">
-              <button
-                onClick={() => markAsShipping(order.id)}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              >
-                Mark as Shipping
-              </button>
-            </div>
           </div>
         );
       })}
@@ -347,4 +275,4 @@ const CompletedOrdersPage: React.FC = () => {
   );
 };
 
-export default CompletedOrdersPage;
+export default ShipOrdersPage;
