@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { FinancialStrategyMap } from '@/components/FinancialStrategyMap';
 import FinancialChartDashboard from '@/components/FinancialChartDashboard';
 import { storage } from "@/utils/storage";
-
+import 'reactflow/dist/style.css'; // ✅ Import here, JS can handle it
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
