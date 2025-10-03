@@ -16,16 +16,18 @@ import {
 import { LineChart as ChartIcon, BarChart2, Database } from "lucide-react";
 
 export default function FinancialChartDashboard({
-  financialData = [], // array of { month, inflow, outflow }
+  financialData = [], // array of { month, inflow, outflow, netCashFlow }
   grossProfit = 0,
   netProfit = 0,
 }) {
   const [activeTab, setActiveTab] = useState("trend");
 
-  // Derived values: compute net profit for each month
+  // Map data to ensure netCashFlow exists for LineChart
   const chartData = financialData.map((d) => ({
-    ...d,
-    netProfit: d.inflow - d.outflow,
+    month: typeof d.month === "number" ? `Month ${d.month}` : d.month,
+    inflow: d.inflow || 0,
+    outflow: d.outflow || 0,
+    netCashFlow: d.netCashFlow || d.inflow - d.outflow || 0,
   }));
 
   return (
@@ -76,34 +78,41 @@ export default function FinancialChartDashboard({
       {activeTab === "trend" && (
         <div className="p-6 bg-white rounded-2xl shadow">
           <h2 className="font-semibold text-lg mb-3 text-gray-700">
-            Inflow vs Outflow vs Net Profit
+            Cash Flow Trends
           </h2>
+
           <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="inflow"
-                stroke="#10B981"
-                strokeWidth={2}
-              />
-              <Line
-                type="monotone"
-                dataKey="outflow"
-                stroke="#EF4444"
-                strokeWidth={2}
-              />
-              <Line
-                type="monotone"
-                dataKey="netProfit"
-                stroke="#3B82F6"
-                strokeWidth={2}
-              />
-            </LineChart>
+            {chartData.length > 0 ? (
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="inflow"
+                  stroke="#10B981"
+                  strokeWidth={2}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="outflow"
+                  stroke="#EF4444"
+                  strokeWidth={2}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="netCashFlow"
+                  stroke="#3B82F6"
+                  strokeWidth={2}
+                />
+              </LineChart>
+            ) : (
+              <div className="flex items-center justify-center h-[400px] text-gray-400">
+                Not enough data to display trends
+              </div>
+            )}
           </ResponsiveContainer>
         </div>
       )}
@@ -131,15 +140,19 @@ export default function FinancialChartDashboard({
         <div className="p-6 bg-white rounded-2xl shadow text-gray-600">
           <h2 className="font-semibold text-lg mb-3">Financial Summary</h2>
           <p>
-            📈 Total inflow (6 months): LKR{" "}
-            {chartData.reduce((a, b) => a + b.inflow, 0).toLocaleString()}
+            📈 Total inflow: LKR{" "}
+            {chartData.reduce((a, b) => a + (b.inflow || 0), 0).toLocaleString()}
           </p>
           <p>
-            📉 Total outflow (6 months): LKR{" "}
-            {chartData.reduce((a, b) => a + b.outflow, 0).toLocaleString()}
+            📉 Total outflow: LKR{" "}
+            {chartData.reduce((a, b) => a + (b.outflow || 0), 0).toLocaleString()}
           </p>
-          <p>💰 Gross Profit: LKR {grossProfit.toLocaleString()}</p>
-          <p>🏦 Net Profit: LKR {netProfit.toLocaleString()}</p>
+          <p>
+            💰 Gross Profit: LKR {grossProfit.toLocaleString()}
+          </p>
+          <p>
+            🏦 Net Profit: LKR {netProfit.toLocaleString()}
+          </p>
         </div>
       )}
     </div>
