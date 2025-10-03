@@ -851,9 +851,15 @@ const monthlyChartData = useMemo(() => {
             <td className="px-4 py-3 text-sm text-gray-600">{record.customer || '-'}</td>
             <td className="px-4 py-3 text-sm text-right text-gray-600">{record.quantity || '1'}</td>
             <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(record.amount)}</td>
-            <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
-              LKR {formatLKR((record.quantity || 1) * record.amount)}
-            </td>
+<td
+  className={`px-4 py-3 text-sm text-right font-semibold ${
+    record.category === 'Inflow' ? 'text-green-600' : 'text-red-600'
+  }`}
+>
+  {record.category === 'Inflow' ? '+' : '-'} LKR{" "}
+  {formatLKR((record.quantity || 1) * record.amount)}
+</td>
+
             <td className="px-4 py-3 text-center">
               <button
                 onClick={() => handleEdit(index)}
