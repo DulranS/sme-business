@@ -28,7 +28,7 @@ export default function BookkeepingApp() {
   });
   const [showInsights, setShowInsights] = useState(true);
   const [targetRevenue, setTargetRevenue] = useState(() => {
-    const saved = storage.getItem('targetRevenue');
+    const saved = storage.get('targetRevenue');
     return saved ? parseFloat(saved) : 100000;
   });
   const [showTargetModal, setShowTargetModal] = useState(false);
@@ -64,7 +64,7 @@ export default function BookkeepingApp() {
       setRecords(data || []);
     } catch (error) {
       console.error('Error loading records:', error);
-      const localRecords = storage.getItem('bookkeeping_records');
+      const localRecords = storage.get('bookkeeping_records');
       if (localRecords) setRecords(JSON.parse(localRecords));
     } finally {
       setLoading(false);
@@ -83,7 +83,7 @@ export default function BookkeepingApp() {
         setBudgets(budgetMap);
       }
     } catch (error) {
-      const saved = storage.getItem('categoryBudgets');
+      const saved = storage.get('categoryBudgets');
       if (saved) setBudgets(JSON.parse(saved));
     }
   };
