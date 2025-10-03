@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
-    "reactflow": "^11.11.4"
+    "react-is": "^19.2.0",
+    "reactflow": "^11.11.4",
+    "recharts": "^3.2.1"
   }
 }

@@ -3,9 +3,10 @@ import { useState, useMemo, useEffect } from 'react';
 import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, PieChart, BarChart3, AlertCircle, Target, Zap, Activity, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Shield, Layers, Filter, Tag, Bell, Calculator, TrendingUp as Growth, BarChart2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { FinancialStrategyMap } from '@/components/FinancialStrategyMap';
+import FinancialChartDashboard from '@/components/FinancialChartDashboard';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function BookkeepingApp() {
@@ -32,7 +33,7 @@ export default function BookkeepingApp() {
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showScenarioModal, setShowScenarioModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview','strategy');
+  const [activeTab, setActiveTab] = useState('overview','strategy',"forecast (diagram)");
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState('Overhead');
   const [budgetAmount, setBudgetAmount] = useState('');
@@ -558,7 +559,11 @@ export default function BookkeepingApp() {
               { id: 'forecast', label: 'Forecast', icon: TrendingUp },
               { id: 'benchmark', label: 'Benchmarks', icon: Target },
               { id: 'tax', label: 'Tax Planning', icon: Calculator },
-              { id: 'records', label: 'All Records', icon: FileText }
+              { id: 'records', label: 'All Records', icon: FileText },
+              { id: 'strategy', label: 'Strategy Map', icon: Lightbulb },
+              { id: 'forecast (diagram)', label: 'Forecast (Diagram)', icon: Lightbulb },
+              //
+
             ].map(tab => {
               const Icon = tab.icon;
               return (
@@ -577,9 +582,7 @@ export default function BookkeepingApp() {
 
               );
             })}
-                            <button onClick={() => setActiveTab('strategy')} variant={activeTab === 'strategy' ? 'default' : 'outline'}>
-  <Lightbulb className="mr-2 h-4 w-4" /> Strategy Map
-</button>
+                         
           </div>
         </div>
 
@@ -798,14 +801,7 @@ export default function BookkeepingApp() {
           </>
         )}
 
-        {activeTab === 'strategy' && (
-  <FinancialStrategyMap
-    totals={totals}
-    grossProfit={grossProfit}
-    netProfit={netProfit}
-    grossMarginPercent={grossMarginPercent}
-  />
-)}
+
 
 
         {/* Customers Tab */}
@@ -1190,7 +1186,21 @@ export default function BookkeepingApp() {
             </div>
           </div>
         )}
+        {activeTab === 'strategy' && (
+  <FinancialStrategyMap
+    totals={totals}
+    grossProfit={grossProfit}
+    netProfit={netProfit}
+    grossMarginPercent={grossMarginPercent}
+  />
+)}
 
+        {activeTab === 'forecast (diagram)' && (
+<FinancialChartDashboard     totals={totals}
+    grossProfit={grossProfit}
+    netProfit={netProfit}
+    grossMarginPercent={grossMarginPercent}/>
+)}
         {/* Modals */}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
