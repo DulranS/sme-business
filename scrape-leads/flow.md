@@ -1,0 +1,1 @@
+Works folder -> scrape -> validate -> automate
