@@ -39,7 +39,7 @@ interface Order {
   description: string;
   moq: string;
   urgency: "low" | "medium" | "high";
-  status: "pending" | "in-progress" | "completed" | "cancelled";
+  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship";
   images: string;
   created_at: string;
   supplier_price?: string;
@@ -150,6 +150,7 @@ const getStatusColor = (status: Order["status"]) => {
     "in-progress": "bg-blue-100 text-blue-800 border-blue-300",
     completed: "bg-green-100 text-green-800 border-green-300",
     cancelled: "bg-red-100 text-red-800 border-red-300",
+      ship: "bg-purple-100 text-purple-800 border-purple-300", // Add this
   };
   return colors[status] || "bg-gray-100 text-gray-800 border-gray-300";
 };
@@ -160,6 +161,7 @@ const getStatusIcon = (status: Order["status"]) => {
     "in-progress": <Loader className="w-4 h-4" />,
     completed: <CheckCircle className="w-4 h-4" />,
     cancelled: <XCircle className="w-4 h-4" />,
+      ship: <Package className="w-4 h-4" />, // Add this
   };
   return icons[status] || <AlertCircle className="w-4 h-4" />;
 };
@@ -1126,14 +1128,18 @@ const downloadCSVTemplate = () => {
   // ------------------------
   // Load Orders
   // ------------------------
-  const loadOrders = async () => {
+const loadOrders = async () => {
     setLoading(true);
     try {
       const data = await supabase.from("orders").select("*").execute();
-      const sorted = data.sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+      // Filter out orders with status "ship" and sort by urgency (high > medium > low), then by date
+      const filtered = data.filter((order) => order.status !== "ship");
+      const urgencyPriority = { high: 3, medium: 2, low: 1 };
+      const sorted = filtered.sort((a, b) => {
+        const urgencyDiff = urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
+        if (urgencyDiff !== 0) return urgencyDiff;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
       setOrders(sorted);
     } catch (error) {
       console.error(error);
