@@ -11,12 +11,12 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException
 import urllib.parse
-import validity
+import validate
 
 # === Prepare CSV ===
 print("\n⚙️ Preparing WhatsApp-formatted leads file...")
 try:
-    csv_path = validity.prepare_csv()  # outputs: output_business_leads.csv
+    csv_path = validate.prepare_csv()  # outputs: output_business_leads.csv
     print("✓ CSV file ready for WhatsApp sender!\n")
 except Exception as e:
     print(f"✗ Error preparing CSV: {str(e)}")
