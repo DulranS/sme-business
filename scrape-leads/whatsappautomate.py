@@ -23,7 +23,7 @@ def format_whatsapp_number(number):
     elif len(cleaned) == 9:  # Sri Lankan number
         cleaned = '94' + cleaned
     
-    return cleaned  # No + sign for WhatsApp Web URL
+    return '+' + cleaned  # Add + sign for WhatsApp Web URL
 
 def setup_driver(headless=True):
     """Setup Chrome driver with optimal settings for background operation"""
@@ -38,15 +38,18 @@ def setup_driver(headless=True):
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-blink-features=AutomationControlled')
     chrome_options.add_argument('--disable-extensions')
-    chrome_options.add_argument('--disable-images')  # Don't load images for speed
     chrome_options.add_argument('--disable-notifications')
+    chrome_options.add_argument('--remote-debugging-port=9222')  # Fix crash issue
     
-    # Keep user data to stay logged in
-    user_data_dir = os.path.join(os.getcwd(), 'chrome_profile')
+    # Keep user data to stay logged in (use a clean directory name)
+    user_data_dir = os.path.join(os.getcwd(), 'whatsapp_chrome_profile')
+    if not os.path.exists(user_data_dir):
+        os.makedirs(user_data_dir)
     chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
     
     # Suppress logs
     chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
     
     driver = webdriver.Chrome(options=chrome_options)
     driver.set_page_load_timeout(30)
@@ -132,7 +135,7 @@ def main():
     WAIT_TIME = int(os.getenv("WAIT_TIME", "3"))  # 3 seconds = ~20 msgs/min (safe rate)
     BATCH_SIZE = int(os.getenv("BATCH_SIZE", "50"))  # Rest after every 50 messages
     BATCH_REST = int(os.getenv("BATCH_REST", "60"))  # 1 minute rest between batches
-    HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
+    HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"  # Changed default to false
     
     # Debug: Print current directory and CSV path
     current_dir = os.getcwd()
