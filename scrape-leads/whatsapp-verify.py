@@ -39,7 +39,7 @@ def setup_driver(headless=False):
     chrome_options.add_argument('--remote-debugging-port=9223')  # Different port
     
     # Keep user data to stay logged in
-    user_data_dir = os.path.join(os.getcwd(), 'whatsapp_validator_profile')
+    user_data_dir = os.path.join(os.path.expanduser("~"), "whatsapp_whatsapp_profile")
     if not os.path.exists(user_data_dir):
         os.makedirs(user_data_dir)
     chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
