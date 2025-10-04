@@ -42,7 +42,7 @@ def setup_driver(headless=True):
     chrome_options.add_argument('--remote-debugging-port=9222')  # Fix crash issue
     
     # Keep user data to stay logged in (use a clean directory name)
-    user_data_dir = os.path.join(os.getcwd(), 'whatsapp_chrome_profile')
+    user_data_dir = os.path.join(os.path.expanduser("~"), "whatsapp_whatsapp_profile")
     if not os.path.exists(user_data_dir):
         os.makedirs(user_data_dir)
     chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
@@ -82,31 +82,44 @@ def send_message_fast(driver, phone_number, message, wait_time=3):
         url = f'https://web.whatsapp.com/send?phone={phone_number}&text={encoded_message}'
         driver.get(url)
         
-        # Wait for message box to load
+        # Quick check for invalid number alert (appears immediately)
+        time.sleep(1)
+        
+        # Check for invalid number message
         try:
-            message_box = WebDriverWait(driver, 10).until(
+            page_text = driver.find_element(By.TAG_NAME, 'body').text.lower()
+            if 'phone number shared via url is invalid' in page_text or 'número de teléfono' in page_text:
+                return False
+        except:
+            pass
+        
+        # Wait for message box to load (sign that number is valid)
+        try:
+            message_box = WebDriverWait(driver, 8).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'div[contenteditable="true"][data-tab="10"]'))
             )
-            time.sleep(0.5)  # Brief pause for stability
+            time.sleep(0.3)  # Brief pause for stability
         except TimeoutException:
             # Try alternative selector
-            message_box = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'))
-            )
+            try:
+                message_box = WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'))
+                )
+            except TimeoutException:
+                # No message box found = invalid number
+                return False
         
         # Send message (Enter key)
         message_box.send_keys(Keys.ENTER)
         
-        # Minimal wait for message to send
+        # Wait for message to send
         time.sleep(wait_time)
         
         return True
         
     except TimeoutException:
-        print(f"    ⚠️ Invalid number or number not on WhatsApp")
         return False
     except Exception as e:
-        print(f"    ✗ Error: {str(e)[:50]}")
         return False
 
 def save_progress(csv_file, processed_indices):
@@ -258,7 +271,9 @@ def main():
                     time.sleep(BATCH_REST)
                     print("▶️  Resuming...\n")
             else:
+                print("✗ Skipped (invalid)")
                 failed_count += 1
+                processed.add(idx)  # Mark as processed so we don't retry
         
         # Final save
         save_progress(CSV_FILE, processed)
