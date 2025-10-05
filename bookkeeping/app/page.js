@@ -1,6 +1,6 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, PieChart, BarChart3, AlertCircle, Target, Zap, Activity, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Shield, Layers, Filter, Tag, Bell, Calculator, BarChart2, Percent, ShoppingCart, Package, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, BarChart3, AlertCircle, Target, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Layers, Bell, Calculator, Percent, ShoppingCart, Package, Sparkles } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -25,7 +25,6 @@ export default function BookkeepingApp() {
     project: '',
     tags: ''
   });
-  const [showInsights, setShowInsights] = useState(true);
   const [targetRevenue, setTargetRevenue] = useState(100000);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
@@ -385,43 +384,6 @@ export default function BookkeepingApp() {
       .sort((a, b) => b.profit - a.profit);
   }, [filteredRecords]);
 
-  // Project Analysis
-  const projectAnalysis = useMemo(() => {
-    const projects = {};
-    filteredRecords.forEach(r => {
-      if (r.project) {
-        if (!projects[r.project]) {
-          projects[r.project] = { revenue: 0, directCost: 0, expenses: 0, transactions: 0 };
-        }
-        const qty = parseFloat(r.quantity) || 1;
-        const amount = parseFloat(r.amount) * qty;
-        
-        if (r.category === 'Inflow') {
-          projects[r.project].revenue += amount;
-          projects[r.project].directCost += parseFloat(r.cost_per_unit || 0) * qty;
-        } else if (['Outflow', 'Overhead', 'Reinvestment'].includes(r.category)) {
-          projects[r.project].expenses += amount;
-        }
-        projects[r.project].transactions += 1;
-      }
-    });
-    
-    return Object.entries(projects)
-      .map(([name, data]) => ({
-        name,
-        revenue: data.revenue,
-        directCost: data.directCost,
-        expenses: data.expenses,
-        totalCost: data.directCost + data.expenses,
-        grossProfit: data.revenue - data.directCost,
-        netProfit: data.revenue - data.directCost - data.expenses,
-        grossMargin: data.revenue > 0 ? ((data.revenue - data.directCost) / data.revenue * 100) : 0,
-        netMargin: data.revenue > 0 ? ((data.revenue - data.directCost - data.expenses) / data.revenue * 100) : 0,
-        transactions: data.transactions
-      }))
-      .sort((a, b) => b.netProfit - a.netProfit);
-  }, [filteredRecords]);
-
   // Budget Alerts
   const budgetAlerts = useMemo(() => {
     const alerts = [];
@@ -450,7 +412,7 @@ export default function BookkeepingApp() {
     return productMargins
       .filter(p => p.cost > 0)
       .map(p => {
-        const targetMargin = 50; // Target 50% margin
+        const targetMargin = 50;
         const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         const priceIncrease = recommendedPrice - p.avgPrice;
         const percentIncrease = (priceIncrease / p.avgPrice) * 100;
@@ -463,7 +425,7 @@ export default function BookkeepingApp() {
           priceIncrease,
           percentIncrease,
           potentialRevenue: priceIncrease * p.quantity,
-          needsAction: p.margin < 30 // Flag low-margin products
+          needsAction: p.margin < 30
         };
       })
       .filter(r => r.needsAction)
@@ -666,7 +628,6 @@ export default function BookkeepingApp() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <>
-            {/* Financial Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
@@ -966,7 +927,8 @@ export default function BookkeepingApp() {
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">COGS</h3>
                 <p className="text-3xl font-bold text-red-600">
-                  LKR {formatLKR(totals.inflowCost)}</p>
+                  LKR {formatLKR(totals.inflowCost)}
+                </p>
                 <p className="text-xs text-gray-500 mt-1">Cost of goods sold</p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-6">
@@ -1092,86 +1054,85 @@ export default function BookkeepingApp() {
                 <p className="text-yellow-800">No customer data available. Add customer names to your inflow records to see analysis.</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Order</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {customerAnalysis.map((customer, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
-                            LKR {formatLKR(customer.revenue)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
-                            LKR {formatLKR(customer.cost)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
-                            LKR {formatLKR(customer.profit)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right">
-                            <span className={`font-bold ${
-                              customer.margin >= 50 ? 'text-green-600' :
-                              customer.margin >= 30 ? 'text-blue-600' :
-                              'text-orange-600'
-                            }`}>
-                              {customer.margin.toFixed(1)}%
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
-                          <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
-                            {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
-                          </td>
+              <>
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Order</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {customerAnalysis.map((customer, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                              LKR {formatLKR(customer.revenue)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
+                              LKR {formatLKR(customer.cost)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
+                              LKR {formatLKR(customer.profit)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right">
+                              <span className={`font-bold ${
+                                customer.margin >= 50 ? 'text-green-600' :
+                                customer.margin >= 30 ? 'text-blue-600' :
+                                'text-orange-600'
+                              }`}>
+                                {customer.margin.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
+                            <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
+                            <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
+                              {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Top Customer Insights */}
-            {customerAnalysis.length > 0 && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="font-bold text-lg mb-4">Customer Insights</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <p className="text-sm text-green-800 font-medium mb-1">Most Profitable Customer</p>
-                    <p className="text-lg font-bold text-green-900">{customerAnalysis[0].name}</p>
-                    <p className="text-sm text-green-700">LKR {formatLKR(customerAnalysis[0].profit)} profit</p>
-                  </div>
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <p className="text-sm text-blue-800 font-medium mb-1">Best Margin Customer</p>
-                    <p className="text-lg font-bold text-blue-900">
-                      {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].name}
-                    </p>
-                    <p className="text-sm text-blue-700">
-                      {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].margin.toFixed(1)}% margin
-                    </p>
-                  </div>
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <p className="text-sm text-purple-800 font-medium mb-1">Highest Volume Customer</p>
-                    <p className="text-lg font-bold text-purple-900">
-                      {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].name}
-                    </p>
-                    <p className="text-sm text-purple-700">
-                      {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].transactions} transactions
-                    </p>
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="font-bold text-lg mb-4">Customer Insights</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <p className="text-sm text-green-800 font-medium mb-1">Most Profitable Customer</p>
+                      <p className="text-lg font-bold text-green-900">{customerAnalysis[0].name}</p>
+                      <p className="text-sm text-green-700">LKR {formatLKR(customerAnalysis[0].profit)} profit</p>
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <p className="text-sm text-blue-800 font-medium mb-1">Best Margin Customer</p>
+                      <p className="text-lg font-bold text-blue-900">
+                        {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].name}
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].margin.toFixed(1)}% margin
+                      </p>
+                    </div>
+                    <div className="bg-purple-50 p-4 rounded-lg">
+                      <p className="text-sm text-purple-800 font-medium mb-1">Highest Volume Customer</p>
+                      <p className="text-lg font-bold text-purple-900">
+                        {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].name}
+                      </p>
+                      <p className="text-sm text-purple-700">
+                        {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].transactions} transactions
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         )}
