@@ -1,11 +1,7 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, PieChart, BarChart3, AlertCircle, Target, Zap, Activity, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Shield, Layers, Filter, Tag, Bell, Calculator, TrendingUp as Growth, BarChart2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, PieChart, BarChart3, AlertCircle, Target, Zap, Activity, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Shield, Layers, Filter, Tag, Bell, Calculator, BarChart2, Percent, ShoppingCart, Package, Sparkles } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { FinancialStrategyMap } from '@/components/FinancialStrategyMap';
-import FinancialChartDashboard from '@/components/FinancialChartDashboard';
-import { storage } from "@/utils/storage";
-import 'reactflow/dist/style.css'; // ✅ Import here, JS can handle it
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -17,35 +13,26 @@ export default function BookkeepingApp() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
-const [formData, setFormData] = useState({
-  date: new Date().toISOString().split('T')[0],
-  description: '',
-  category: 'Inflow',
-  amount: '',
-  quantity: '',  // ADD THIS
-  notes: '',
-  customer: '',
-  project: '',
-  tags: ''
-});
-  const [showInsights, setShowInsights] = useState(true);
-  const [targetRevenue, setTargetRevenue] = useState(() => {
-    const saved = storage.get('targetRevenue');
-    return saved ? parseFloat(saved) : 100000;
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    description: '',
+    category: 'Inflow',
+    amount: '',
+    costPerUnit: '',
+    quantity: '',
+    notes: '',
+    customer: '',
+    project: '',
+    tags: ''
   });
+  const [showInsights, setShowInsights] = useState(true);
+  const [targetRevenue, setTargetRevenue] = useState(100000);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [showScenarioModal, setShowScenarioModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview','strategy',"forecast (diagram)");
+  const [activeTab, setActiveTab] = useState('overview');
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState('Overhead');
   const [budgetAmount, setBudgetAmount] = useState('');
-  const [scenarioForm, setScenarioForm] = useState({
-    name: '',
-    inflowChange: 0,
-    outflowChange: 0,
-    overheadChange: 0
-  });
 
   const categories = ['Inflow', 'Outflow', 'Reinvestment', 'Overhead', 'Loan Payment', 'Loan Received'];
 
@@ -66,8 +53,7 @@ const [formData, setFormData] = useState({
       setRecords(data || []);
     } catch (error) {
       console.error('Error loading records:', error);
-      const localRecords = storage.get('bookkeeping_records');
-      if (localRecords) setRecords(JSON.parse(localRecords));
+      setRecords([]);
     } finally {
       setLoading(false);
     }
@@ -85,8 +71,7 @@ const [formData, setFormData] = useState({
         setBudgets(budgetMap);
       }
     } catch (error) {
-      const saved = storage.get('categoryBudgets');
-      if (saved) setBudgets(JSON.parse(saved));
+      console.error('Error loading budgets:', error);
     }
   };
 
@@ -96,20 +81,6 @@ const [formData, setFormData] = useState({
     await loadBudgets();
     setSyncing(false);
   };
-// Remove this useEffect entirely
-useEffect(() => {
-  if (formData.quantity && formData.unitPrice) {
-    const calculatedAmount = parseFloat(formData.quantity) * parseFloat(formData.unitPrice);
-    setFormData(prev => ({ ...prev, amount: calculatedAmount.toString() }));
-  }
-}, [formData.quantity, formData.unitPrice]);
-  useEffect(() => {
-    storage.set('targetRevenue', targetRevenue.toString());
-  }, [targetRevenue]);
-
-  useEffect(() => {
-    storage.set('categoryBudgets', JSON.stringify(budgets));
-  }, [budgets]);
 
   const filteredRecords = useMemo(() => {
     if (!dateFilter.start && !dateFilter.end) return records;
@@ -134,17 +105,18 @@ useEffect(() => {
     if (!formData.description || !formData.amount) return;
 
     try {
-const recordData = {
-  date: formData.date,
-  description: formData.description,
-  category: formData.category,
-  amount: parseFloat(formData.amount),
-  quantity: formData.quantity ? parseFloat(formData.quantity) : 1,  // ADD THIS LINE
-  notes: formData.notes,
-  customer: formData.customer || null,
-  project: formData.project || null,
-  tags: formData.tags || null
-};
+      const recordData = {
+        date: formData.date,
+        description: formData.description,
+        category: formData.category,
+        amount: parseFloat(formData.amount),
+        cost_per_unit: formData.costPerUnit ? parseFloat(formData.costPerUnit) : null,
+        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+        notes: formData.notes,
+        customer: formData.customer || null,
+        project: formData.project || null,
+        tags: formData.tags || null
+      };
 
       if (isEditing !== null) {
         const recordToUpdate = records[isEditing];
@@ -166,38 +138,40 @@ const recordData = {
         setRecords([data[0], ...records]);
       }
 
-setFormData({
-  date: new Date().toISOString().split('T')[0],
-  description: '',
-  category: 'Inflow',
-  amount: '',
-  quantity: '',  // ADD THIS
-  notes: '',
-  customer: '',
-  project: '',
-  tags: ''
-});
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        description: '',
+        category: 'Inflow',
+        amount: '',
+        costPerUnit: '',
+        quantity: '',
+        notes: '',
+        customer: '',
+        project: '',
+        tags: ''
+      });
     } catch (error) {
       console.error('Error saving record:', error);
       alert('Failed to save record. Please check your Supabase configuration.');
     }
   };
 
-const handleEdit = (index) => {
-  const record = records[index];
-  setFormData({
-    date: record.date,
-    description: record.description,
-    category: record.category,
-    amount: record.amount.toString(),
-    quantity: record.quantity ? record.quantity.toString() : '',  // ADD THIS
-    notes: record.notes || '',
-    customer: record.customer || '',
-    project: record.project || '',
-    tags: record.tags || ''
-  });
-  setIsEditing(index);
-};
+  const handleEdit = (index) => {
+    const record = records[index];
+    setFormData({
+      date: record.date,
+      description: record.description,
+      category: record.category,
+      amount: record.amount.toString(),
+      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : '',
+      quantity: record.quantity ? record.quantity.toString() : '',
+      notes: record.notes || '',
+      customer: record.customer || '',
+      project: record.project || '',
+      tags: record.tags || ''
+    });
+    setIsEditing(index);
+  };
 
   const handleDelete = async (index) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
@@ -217,20 +191,22 @@ const handleEdit = (index) => {
     }
   };
 
-const handleCancel = () => {
-  setIsEditing(null);
-  setFormData({
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-    category: 'Inflow',
-    amount: '',
-    quantity: '',  // ADD THIS
-    notes: '',
-    customer: '',
-    project: '',
-    tags: ''
-  });
-};
+  const handleCancel = () => {
+    setIsEditing(null);
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      description: '',
+      category: 'Inflow',
+      amount: '',
+      costPerUnit: '',
+      quantity: '',
+      notes: '',
+      customer: '',
+      project: '',
+      tags: ''
+    });
+  };
+
   const saveBudget = async () => {
     if (!budgetAmount) return;
     
@@ -262,17 +238,33 @@ const handleCancel = () => {
       return;
     }
 
-    const headers = ['Date', 'Description', 'Category', 'Amount (LKR)', 'Customer', 'Project', 'Tags', 'Notes'];
-    const csvData = dataToExport.map(r => [
-      r.date,
-      `"${r.description}"`,
-      r.category,
-      r.amount,
-      `"${r.customer || ''}"`,
-      `"${r.project || ''}"`,
-      `"${r.tags || ''}"`,
-      `"${r.notes || ''}"`
-    ]);
+    const headers = ['Date', 'Description', 'Category', 'Unit Price (LKR)', 'Cost per Unit (LKR)', 'Quantity', 'Total Revenue', 'Total Cost', 'Profit', 'Margin %', 'Customer', 'Project', 'Tags', 'Notes'];
+    const csvData = dataToExport.map(r => {
+      const qty = r.quantity || 1;
+      const price = r.amount;
+      const cost = r.cost_per_unit || 0;
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : '0';
+      
+      return [
+        r.date,
+        `"${r.description}"`,
+        r.category,
+        price,
+        cost,
+        qty,
+        revenue.toFixed(2),
+        totalCost.toFixed(2),
+        profit.toFixed(2),
+        margin,
+        `"${r.customer || ''}"`,
+        `"${r.project || ''}"`,
+        `"${r.tags || ''}"`,
+        `"${r.notes || ''}"`
+      ];
+    });
 
     const dateRange = dateFilter.start || dateFilter.end 
       ? `_${dateFilter.start || 'start'}_to_${dateFilter.end || 'end'}`
@@ -287,40 +279,93 @@ const handleCancel = () => {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `bookkeeping${dateRange}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `profit_analysis${dateRange}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
   };
 
-const totals = filteredRecords.reduce((acc, r) => {
-  const amount = parseFloat(r.amount) || 0;
-  const quantity = parseFloat(r.quantity) || 1;  // ADD THIS
-  const total = amount * quantity;  // ADD THIS
-  
-  if (r.category === 'Inflow') acc.inflow += total;
-  if (r.category === 'Outflow') acc.outflow += total;
-  if (r.category === 'Reinvestment') acc.reinvestment += total;
-  if (r.category === 'Overhead') acc.overhead += total;
-  if (r.category === 'Loan Payment') acc.loanPayment += total;
-  if (r.category === 'Loan Received') acc.loanReceived += total;
-  return acc;
-}, { inflow: 0, outflow: 0, reinvestment: 0, overhead: 0, loanPayment: 0, loanReceived: 0 });
+  const totals = filteredRecords.reduce((acc, r) => {
+    const amount = parseFloat(r.amount) || 0;
+    const costPerUnit = parseFloat(r.cost_per_unit) || 0;
+    const quantity = parseFloat(r.quantity) || 1;
+    const revenue = amount * quantity;
+    const cost = costPerUnit * quantity;
+    
+    if (r.category === 'Inflow') {
+      acc.inflow += revenue;
+      acc.inflowCost += cost;
+      acc.inflowProfit += (revenue - cost);
+    }
+    if (r.category === 'Outflow') acc.outflow += revenue;
+    if (r.category === 'Reinvestment') acc.reinvestment += revenue;
+    if (r.category === 'Overhead') acc.overhead += revenue;
+    if (r.category === 'Loan Payment') acc.loanPayment += revenue;
+    if (r.category === 'Loan Received') acc.loanReceived += revenue;
+    return acc;
+  }, { inflow: 0, inflowCost: 0, inflowProfit: 0, outflow: 0, reinvestment: 0, overhead: 0, loanPayment: 0, loanReceived: 0 });
 
   const grossProfit = totals.inflow - totals.outflow;
   const grossMarginPercent = totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
+  const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
   const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
   const netLoanImpact = totals.loanReceived - totals.loanPayment;
   const netProfit = operatingProfit + netLoanImpact;
 
-  // Customer/Project Analysis
+  // Product/Service Margin Analysis
+  const productMargins = useMemo(() => {
+    const products = {};
+    
+    filteredRecords.filter(r => r.category === 'Inflow').forEach(r => {
+      const key = r.description;
+      if (!products[key]) {
+        products[key] = { 
+          revenue: 0, 
+          cost: 0, 
+          quantity: 0,
+          transactions: 0,
+          customers: new Set()
+        };
+      }
+      
+      const qty = parseFloat(r.quantity) || 1;
+      const revenue = parseFloat(r.amount) * qty;
+      const cost = parseFloat(r.cost_per_unit || 0) * qty;
+      
+      products[key].revenue += revenue;
+      products[key].cost += cost;
+      products[key].quantity += qty;
+      products[key].transactions += 1;
+      if (r.customer) products[key].customers.add(r.customer);
+    });
+    
+    return Object.entries(products)
+      .map(([name, data]) => ({
+        name,
+        revenue: data.revenue,
+        cost: data.cost,
+        quantity: data.quantity,
+        transactions: data.transactions,
+        customers: data.customers.size,
+        profit: data.revenue - data.cost,
+        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
+        avgPrice: data.revenue / data.quantity,
+        avgCost: data.cost / data.quantity,
+        avgProfit: (data.revenue - data.cost) / data.quantity
+      }))
+      .sort((a, b) => b.margin - a.margin);
+  }, [filteredRecords]);
+
+  // Customer Profitability
   const customerAnalysis = useMemo(() => {
     const customers = {};
     filteredRecords.forEach(r => {
       if (r.customer && r.category === 'Inflow') {
         if (!customers[r.customer]) {
-          customers[r.customer] = { revenue: 0, transactions: 0, projects: new Set() };
+          customers[r.customer] = { revenue: 0, cost: 0, transactions: 0, projects: new Set() };
         }
-        customers[r.customer].revenue += parseFloat(r.amount) || 0;
+        const qty = parseFloat(r.quantity) || 1;
+        customers[r.customer].revenue += parseFloat(r.amount) * qty;
+        customers[r.customer].cost += parseFloat(r.cost_per_unit || 0) * qty;
         customers[r.customer].transactions += 1;
         if (r.project) customers[r.customer].projects.add(r.project);
       }
@@ -330,25 +375,32 @@ const totals = filteredRecords.reduce((acc, r) => {
       .map(([name, data]) => ({
         name,
         revenue: data.revenue,
+        cost: data.cost,
+        profit: data.revenue - data.cost,
+        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
         transactions: data.transactions,
         projectCount: data.projects.size,
         avgTransaction: data.revenue / data.transactions
       }))
-      .sort((a, b) => b.revenue - a.revenue);
+      .sort((a, b) => b.profit - a.profit);
   }, [filteredRecords]);
 
+  // Project Analysis
   const projectAnalysis = useMemo(() => {
     const projects = {};
     filteredRecords.forEach(r => {
       if (r.project) {
         if (!projects[r.project]) {
-          projects[r.project] = { revenue: 0, costs: 0, transactions: 0 };
+          projects[r.project] = { revenue: 0, directCost: 0, expenses: 0, transactions: 0 };
         }
-        const amount = parseFloat(r.amount) || 0;
+        const qty = parseFloat(r.quantity) || 1;
+        const amount = parseFloat(r.amount) * qty;
+        
         if (r.category === 'Inflow') {
           projects[r.project].revenue += amount;
+          projects[r.project].directCost += parseFloat(r.cost_per_unit || 0) * qty;
         } else if (['Outflow', 'Overhead', 'Reinvestment'].includes(r.category)) {
-          projects[r.project].costs += amount;
+          projects[r.project].expenses += amount;
         }
         projects[r.project].transactions += 1;
       }
@@ -358,79 +410,16 @@ const totals = filteredRecords.reduce((acc, r) => {
       .map(([name, data]) => ({
         name,
         revenue: data.revenue,
-        costs: data.costs,
-        profit: data.revenue - data.costs,
-        margin: data.revenue > 0 ? ((data.revenue - data.costs) / data.revenue * 100) : 0,
+        directCost: data.directCost,
+        expenses: data.expenses,
+        totalCost: data.directCost + data.expenses,
+        grossProfit: data.revenue - data.directCost,
+        netProfit: data.revenue - data.directCost - data.expenses,
+        grossMargin: data.revenue > 0 ? ((data.revenue - data.directCost) / data.revenue * 100) : 0,
+        netMargin: data.revenue > 0 ? ((data.revenue - data.directCost - data.expenses) / data.revenue * 100) : 0,
         transactions: data.transactions
       }))
-      .sort((a, b) => b.profit - a.profit);
-  }, [filteredRecords]);
-
-
-const monthlyChartData = useMemo(() => {
-  const monthlyData = {};
-  filteredRecords.forEach(r => {
-    const month = r.date.substring(0, 7); // "2024-01"
-    if (!monthlyData[month]) {
-      monthlyData[month] = { inflow: 0, outflow: 0 };
-    }
-    const amount = parseFloat(r.amount) || 0;
-    const quantity = parseFloat(r.quantity) || 1;
-    const total = amount * quantity;
-    
-    if (r.category === 'Inflow') monthlyData[month].inflow += total;
-    if (['Outflow', 'Overhead', 'Reinvestment'].includes(r.category)) monthlyData[month].outflow += total;
-  });
-  
-  return Object.keys(monthlyData)
-    .sort()
-    .map(month => ({
-      month,
-      inflow: monthlyData[month].inflow,
-      outflow: monthlyData[month].outflow,
-      netCashFlow: monthlyData[month].inflow - monthlyData[month].outflow
-    }));
-}, [filteredRecords]);
-
-  // Cash Flow Forecast (Simple Linear Regression)
-  const cashFlowForecast = useMemo(() => {
-    if (filteredRecords.length < 30) return null;
-    
-    const monthlyData = {};
-    filteredRecords.forEach(r => {
-      const month = r.date.substring(0, 7);
-      if (!monthlyData[month]) {
-        monthlyData[month] = { inflow: 0, outflow: 0 };
-      }
-      const amount = parseFloat(r.amount) || 0;
-      if (r.category === 'Inflow') monthlyData[month].inflow += amount;
-      if (['Outflow', 'Overhead', 'Reinvestment'].includes(r.category)) monthlyData[month].outflow += amount;
-    });
-    
-    const sortedMonths = Object.keys(monthlyData).sort();
-    const recentMonths = sortedMonths.slice(-6);
-    
-    const avgInflowGrowth = recentMonths.slice(1).reduce((acc, month, i) => {
-      const prevMonth = recentMonths[i];
-      return acc + ((monthlyData[month].inflow - monthlyData[prevMonth].inflow) / monthlyData[prevMonth].inflow);
-    }, 0) / (recentMonths.length - 1);
-    
-    const lastMonthInflow = monthlyData[recentMonths[recentMonths.length - 1]].inflow;
-    const lastMonthOutflow = monthlyData[recentMonths[recentMonths.length - 1]].outflow;
-    
-    const forecast = [];
-    for (let i = 1; i <= 3; i++) {
-      const projectedInflow = lastMonthInflow * Math.pow(1 + avgInflowGrowth, i);
-      const projectedOutflow = lastMonthOutflow * 1.02; // Assuming 2% monthly cost increase
-      forecast.push({
-        month: i,
-        inflow: projectedInflow,
-        outflow: projectedOutflow,
-        netCashFlow: projectedInflow - projectedOutflow
-      });
-    }
-    
-    return forecast;
+      .sort((a, b) => b.netProfit - a.netProfit);
   }, [filteredRecords]);
 
   // Budget Alerts
@@ -439,7 +428,7 @@ const monthlyChartData = useMemo(() => {
     Object.entries(budgets).forEach(([category, budgetAmount]) => {
       const spent = filteredRecords
         .filter(r => r.category === category)
-        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1), 0);
       
       const percentUsed = (spent / budgetAmount) * 100;
       
@@ -456,34 +445,30 @@ const monthlyChartData = useMemo(() => {
     return alerts;
   }, [filteredRecords, budgets]);
 
-  // Tax Liability Estimator (Sri Lanka corporate tax ~30%)
-  const taxEstimate = useMemo(() => {
-    const taxableIncome = Math.max(0, operatingProfit);
-    const estimatedTax = taxableIncome * 0.30; // 30% corporate tax rate
-    const quarterlyTax = estimatedTax / 4;
-    
-    return {
-      taxableIncome,
-      annualTax: estimatedTax,
-      quarterlyTax,
-      effectiveRate: grossProfit > 0 ? (estimatedTax / grossProfit) * 100 : 0
-    };
-  }, [operatingProfit, grossProfit]);
-
-  // Benchmark Comparison (Industry averages for Sri Lankan SMEs)
-  const benchmarks = {
-    grossMargin: 45,
-    overheadRatio: 25,
-    reinvestmentRate: 15,
-    profitMargin: 12
-  };
-
-  const actualMetrics = {
-    grossMargin: grossMarginPercent,
-    overheadRatio: totals.inflow > 0 ? (totals.overhead / totals.inflow) * 100 : 0,
-    reinvestmentRate: totals.inflow > 0 ? (totals.reinvestment / totals.inflow) * 100 : 0,
-    profitMargin: totals.inflow > 0 ? (netProfit / totals.inflow) * 100 : 0
-  };
+  // Pricing Recommendations
+  const pricingRecommendations = useMemo(() => {
+    return productMargins
+      .filter(p => p.cost > 0)
+      .map(p => {
+        const targetMargin = 50; // Target 50% margin
+        const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
+        const priceIncrease = recommendedPrice - p.avgPrice;
+        const percentIncrease = (priceIncrease / p.avgPrice) * 100;
+        
+        return {
+          product: p.name,
+          currentMargin: p.margin,
+          currentPrice: p.avgPrice,
+          recommendedPrice,
+          priceIncrease,
+          percentIncrease,
+          potentialRevenue: priceIncrease * p.quantity,
+          needsAction: p.margin < 30 // Flag low-margin products
+        };
+      })
+      .filter(r => r.needsAction)
+      .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
+  }, [productMargins]);
 
   const formatLKR = (amount) => {
     return new Intl.NumberFormat('en-LK', {
@@ -521,18 +506,22 @@ const monthlyChartData = useMemo(() => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white" style={{color:"white"}}>
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white">
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
                 <Brain className="w-8 h-8" />
-                SME Financial Intelligence Platform
+                SME Profit Intelligence Platform
               </h1>
-              <p className="text-blue-100">AI-powered insights • Predictive analytics • Strategic decision support</p>
+              <p className="text-blue-100">AI-powered margin analysis • Pricing intelligence • Strategic profitability insights</p>
               <div className="flex items-center gap-3 mt-2">
                 <div className="flex items-center gap-1 text-sm">
+                  <Percent className="w-4 h-4" />
+                  <span>True Margin: {trueGrossMargin.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center gap-1 text-sm">
                   <Database className="w-4 h-4" />
-                  <span>To ensure $1 of payroll reliably turns into $3 of value</span>
+                  <span>{records.length} transactions</span>
                 </div>
                 <button
                   onClick={syncRecords}
@@ -570,24 +559,45 @@ const monthlyChartData = useMemo(() => {
           </div>
         </div>
 
-        {/* Budget Alerts */}
-        {budgetAlerts.length > 0 && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-yellow-900 mb-2">Budget Alerts</h3>
-                <div className="space-y-2">
-                  {budgetAlerts.map((alert, idx) => (
-                    <div key={idx} className="text-sm text-yellow-800">
-                      <strong>{alert.category}:</strong> {alert.percentUsed.toFixed(0)}% used 
-                      (LKR {formatLKR(alert.spent)} / {formatLKR(alert.budget)})
-                      {alert.severity === 'critical' && ' - OVER BUDGET!'}
+        {/* Strategic Alerts */}
+        {(budgetAlerts.length > 0 || pricingRecommendations.length > 0) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {budgetAlerts.length > 0 && (
+              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-yellow-900 mb-2">Budget Alerts</h3>
+                    <div className="space-y-2">
+                      {budgetAlerts.slice(0, 2).map((alert, idx) => (
+                        <div key={idx} className="text-sm text-yellow-800">
+                          <strong>{alert.category}:</strong> {alert.percentUsed.toFixed(0)}% used 
+                          {alert.severity === 'critical' && ' - OVER BUDGET!'}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+            
+            {pricingRecommendations.length > 0 && (
+              <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-lg">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-orange-900 mb-2">Pricing Opportunities</h3>
+                    <div className="space-y-2">
+                      {pricingRecommendations.slice(0, 2).map((rec, idx) => (
+                        <div key={idx} className="text-sm text-orange-800">
+                          <strong>{rec.product}:</strong> +{rec.percentIncrease.toFixed(0)}% price = +LKR {formatLKR(rec.potentialRevenue)} revenue
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -596,15 +606,11 @@ const monthlyChartData = useMemo(() => {
           <div className="flex overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 },
+              { id: 'margins', label: 'Profit Margins', icon: Percent },
+              { id: 'products', label: 'Products', icon: Package },
               { id: 'customers', label: 'Customers', icon: Users },
-              { id: 'forecast', label: 'Forecast', icon: TrendingUp },
-              { id: 'benchmark', label: 'Benchmarks', icon: Target },
-              { id: 'tax', label: 'Tax Planning', icon: Calculator },
-              { id: 'records', label: 'All Records', icon: FileText },
-              { id: 'strategy', label: 'Strategy Map', icon: Lightbulb },
-              { id: 'forecast (diagram)', label: 'Forecast (Diagram)', icon: Lightbulb },
-              //
-
+              { id: 'pricing', label: 'Pricing Intel', icon: Sparkles },
+              { id: 'records', label: 'All Records', icon: FileText }
             ].map(tab => {
               const Icon = tab.icon;
               return (
@@ -620,10 +626,8 @@ const monthlyChartData = useMemo(() => {
                   <Icon className="w-4 h-4" />
                   {tab.label}
                 </button>
-
               );
             })}
-                         
           </div>
         </div>
 
@@ -667,36 +671,36 @@ const monthlyChartData = useMemo(() => {
               <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <TrendingUp className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded" style={{color:"black"}}>Inflow</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">Revenue</span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1" >LKR {formatLKR(totals.inflow)}</h3>
-                <p className="text-sm opacity-90">Total Revenue</p>
+                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflow)}</h3>
+                <p className="text-sm opacity-90">Total Inflow</p>
               </div>
 
               <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
-                  <TrendingDown className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded" style={{color:"black"}}>Outflow</span>
+                  <ShoppingCart className="w-8 h-8 opacity-80" />
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">COGS</span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.outflow)}</h3>
-                <p className="text-sm opacity-90">Direct Costs</p>
+                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflowCost)}</h3>
+                <p className="text-sm opacity-90">Cost of Goods Sold</p>
               </div>
 
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <Award className="w-8 h-8 opacity-80" />
-                  <span className={`text-xs px-2 py-1 rounded ${grossProfit >= 0 ? 'bg-white bg-opacity-20' : 'bg-red-500'}`} style={{color:"black"}}>
-                    {grossMarginPercent.toFixed(1)}%
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">
+                    {trueGrossMargin.toFixed(1)}%
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(grossProfit)}</h3>
-                <p className="text-sm opacity-90">Gross Profit</p>
+                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflowProfit)}</h3>
+                <p className="text-sm opacity-90">Gross Profit (True)</p>
               </div>
 
-              <div className={`bg-gradient-to-br ${netProfit >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white rounded-lg shadow-lg p-5`} >
+              <div className={`bg-gradient-to-br ${netProfit >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white rounded-lg shadow-lg p-5`}>
                 <div className="flex justify-between items-start mb-2">
                   <DollarSign className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded" style={{color:"black"}}>Net</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">Net</span>
                 </div>
                 <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(netProfit)}</h3>
                 <p className="text-sm opacity-90">Net Profit</p>
@@ -709,65 +713,98 @@ const monthlyChartData = useMemo(() => {
                 <Plus className="w-5 h-5" />
                 {isEditing !== null ? 'Edit Record' : 'Add New Record'}
               </h2>
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-  <input
-    type="date"
-    value={formData.date}
-    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-  />
-  <input
-    type="text"
-    placeholder="Description *"
-    value={formData.description}
-    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-  />
-  <select
-    value={formData.category}
-    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-  >
-    {categories.map(cat => (
-      <option key={cat} value={cat}>{cat}</option>
-    ))}
-  </select>
-  <input
-    type="number"
-    placeholder="Unit Price (LKR) *"
-    value={formData.amount}
-    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-  />
-  <input
-    type="number"
-    placeholder="Quantity (default: 1)"
-    value={formData.quantity}
-    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-  />
-</div>
-{formData.quantity && formData.amount && (
-  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-    <p className="text-sm text-blue-800">
-      <strong>Total:</strong> {formData.quantity} × LKR {formatLKR(parseFloat(formData.amount))} = 
-      <span className="font-bold"> LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.amount))}</span>
-    </p>
-  </div>
-)}
-<div className="mb-4">
-  <input
-    type="number"
-    placeholder="Total Amount (LKR) *"
-    value={formData.amount}
-    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-    disabled={formData.quantity && formData.unitPrice}
-  />
-  {formData.quantity && formData.unitPrice && (
-    <p className="text-sm text-blue-600 mt-1">Auto-calculated: {formData.quantity} × {formData.unitPrice} = {formData.amount}</p>
-  )}
-</div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Description *"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  placeholder="Quantity (default: 1)"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Selling Price per Unit (LKR) *
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g., 100"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cost per Unit (LKR) {formData.category === 'Inflow' && '- for margin tracking'}
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g., 60"
+                    value={formData.costPerUnit}
+                    onChange={(e) => setFormData({ ...formData, costPerUnit: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Profit Preview */}
+              {formData.quantity && formData.amount && formData.costPerUnit && formData.category === 'Inflow' && (
+                <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
+                  <div className="grid grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-600 font-medium">Total Revenue</p>
+                      <p className="text-lg font-bold text-green-600">
+                        LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.amount))}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600 font-medium">Total Cost</p>
+                      <p className="text-lg font-bold text-red-600">
+                        LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.costPerUnit))}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600 font-medium">Gross Profit</p>
+                      <p className="text-lg font-bold text-blue-600">
+                        LKR {formatLKR(parseFloat(formData.quantity) * (parseFloat(formData.amount) - parseFloat(formData.costPerUnit)))}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600 font-medium">Margin</p>
+                      <p className="text-lg font-bold text-purple-600">
+                        {(((parseFloat(formData.amount) - parseFloat(formData.costPerUnit)) / parseFloat(formData.amount)) * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <input
                   type="text"
@@ -791,6 +828,7 @@ const monthlyChartData = useMemo(() => {
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              
               <textarea
                 placeholder="Notes (optional)"
                 value={formData.notes}
@@ -798,6 +836,7 @@ const monthlyChartData = useMemo(() => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 rows="2"
               />
+              
               <div className="flex gap-2">
                 <button
                   onClick={handleSubmit}
@@ -817,384 +856,416 @@ const monthlyChartData = useMemo(() => {
             </div>
 
             {/* Recent Records Preview */}
-{/* Recent Records Preview */}
-<div className="bg-white rounded-lg shadow-md p-6">
-  <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
-  <div className="overflow-x-auto">
-    <table className="w-full">
-      <thead className="bg-gray-50">
-        <tr>
-          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
-          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
-          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
-          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
-          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
-          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
-          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-gray-200">
-        {filteredRecords.slice(0, 10).map((record, index) => (
-          <tr key={index} className="hover:bg-gray-50">
-            <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
-            <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
-            <td className="px-4 py-3">
-              <span className={`px-2 py-1 text-xs rounded-full ${
-                record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
-                record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
-                'bg-blue-100 text-blue-800'
-              }`}>
-                {record.category}
-              </span>
-            </td>
-            <td className="px-4 py-3 text-sm text-gray-600">{record.customer || '-'}</td>
-            <td className="px-4 py-3 text-sm text-right text-gray-600">{record.quantity || '1'}</td>
-            <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(record.amount)}</td>
-<td
-  className={`px-4 py-3 text-sm text-right font-semibold ${
-    record.category === 'Inflow' ? 'text-green-600' : 'text-red-600'
-  }`}
->
-  {record.category === 'Inflow' ? '+' : '-'} LKR{" "}
-  {formatLKR((record.quantity || 1) * record.amount)}
-</td>
-
-            <td className="px-4 py-3 text-center">
-              <button
-                onClick={() => handleEdit(index)}
-                className="text-blue-600 hover:text-blue-800 mx-1"
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => handleDelete(index)}
-                className="text-red-600 hover:text-red-800 mx-1"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-</div>
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredRecords.slice(0, 10).map((record, index) => {
+                      const qty = record.quantity || 1;
+                      const price = record.amount;
+                      const cost = record.cost_per_unit || 0;
+                      const total = price * qty;
+                      const margin = price > 0 && cost > 0 ? (((price - cost) / price) * 100) : null;
+                      
+                      return (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
+                              record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
+                              'bg-blue-100 text-blue-800'
+                            }`}>
+                              {record.category}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{qty}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(price)}</td>
+                          <td className={`px-4 py-3 text-sm text-right font-semibold ${
+                            record.category === 'Inflow' ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {record.category === 'Inflow' ? '+' : '−'} LKR {formatLKR(total)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {margin !== null ? (
+                              <span className={`font-semibold ${
+                                margin >= 50 ? 'text-green-600' :
+                                margin >= 30 ? 'text-blue-600' :
+                                'text-orange-600'
+                              }`}>
+                                {margin.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleEdit(index)}
+                              className="text-blue-600 hover:text-blue-800 mx-1"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(index)}
+                              className="text-red-600 hover:text-red-800 mx-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </>
         )}
 
-
-
-
-        {/* Customers Tab */}
-{activeTab === 'customers' && (
-  <div className="space-y-6">
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-        <Users className="w-6 h-6" />
-        Customer Profitability Analysis
-      </h2>
-      {customerAnalysis.length === 0 ? (
-        <p className="text-gray-500">No customer data available. Add customer names to your inflow records to see analysis.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total Revenue</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Transaction</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Projects</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {customerAnalysis.map((customer, idx) => (
-                <tr key={idx} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
-                    + LKR {formatLKR(customer.revenue)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.projectCount}</td>
-                  <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
-                    {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-        <Layers className="w-6 h-6" />
-        Project Profitability Analysis
-      </h2>
-      {projectAnalysis.length === 0 ? (
-        <p className="text-gray-500">No project data available. Add project names to your records to see analysis.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Project</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Costs</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {projectAnalysis.map((project, idx) => (
-                <tr key={idx} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{project.name}</td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
-                    + LKR {formatLKR(project.revenue)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
-                    − LKR {formatLKR(project.costs)}
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right font-semibold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {project.profit >= 0 ? '+' : '−'} LKR {formatLKR(Math.abs(project.profit))}
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right font-medium ${project.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {project.margin.toFixed(1)}%
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-600">{project.transactions}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  </div>
-)}
-        {/* Forecast Tab */}
-        {activeTab === 'forecast' && (
+        {/* Profit Margins Tab */}
+        {activeTab === 'margins' && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Brain className="w-7 h-7" />
-                AI Cash Flow Forecast
+                <Percent className="w-7 h-7" />
+                Profit Margin Intelligence
               </h2>
-              <p className="text-purple-100">Predictive analytics based on historical trends</p>
+              <p className="text-purple-100">Deep dive into your product/service profitability</p>
             </div>
 
-            {!cashFlowForecast ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-sm text-gray-600 mb-2">Average Margin</h3>
+                <p className="text-3xl font-bold text-blue-600">
+                  {trueGrossMargin.toFixed(1)}%
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Across all products</p>
+              </div>
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-sm text-gray-600 mb-2">Total Markup</h3>
+                <p className="text-3xl font-bold text-green-600">
+                  LKR {formatLKR(totals.inflowProfit)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Gross profit from sales</p>
+              </div>
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-sm text-gray-600 mb-2">COGS</h3>
+                <p className="text-3xl font-bold text-red-600">
+                  LKR {formatLKR(totals.inflowCost)}</p>
+                <p className="text-xs text-gray-500 mt-1">Cost of goods sold</p>
+              </div>
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-sm text-gray-600 mb-2">Markup Ratio</h3>
+                <p className="text-3xl font-bold text-purple-600">
+                  {totals.inflowCost > 0 ? (totals.inflowProfit / totals.inflowCost).toFixed(2) : '0'}x
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Profit per cost dollar</p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
+              <div className="flex items-start gap-3">
+                <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+                <div>
+                  <h3 className="font-semibold text-blue-900 mb-2">Margin Health Check</h3>
+                  <div className="space-y-2 text-sm text-blue-800">
+                    {trueGrossMargin >= 50 && (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Excellent margins - you have strong pricing power</span>
+                      </div>
+                    )}
+                    {trueGrossMargin >= 30 && trueGrossMargin < 50 && (
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>Good margins - consider testing price increases on high-demand items</span>
+                      </div>
+                    )}
+                    {trueGrossMargin < 30 && trueGrossMargin > 0 && (
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Margins below target - review pricing strategy and cost optimization</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Products Tab */}
+        {activeTab === 'products' && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-teal-500 to-teal-600 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <Package className="w-7 h-7" />
+                Product/Service Performance
+              </h2>
+              <p className="text-teal-100">Identify your profit champions and underperformers</p>
+            </div>
+
+            {productMargins.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800">Need at least 30 days of data to generate accurate forecasts.</p>
+                <Package className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
+                <p className="text-yellow-800">No product data available. Add cost tracking to your inflow records to see detailed analysis.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Product/Service</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty Sold</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Price</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Cost</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Profit</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total Profit</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin %</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Customers</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {productMargins.map((product, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{product.name}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{product.quantity.toFixed(0)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgPrice)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgCost)}</td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                            LKR {formatLKR(product.avgProfit)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                            LKR {formatLKR(product.profit)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            <span className={`font-bold ${
+                              product.margin >= 50 ? 'text-green-600' :
+                              product.margin >= 30 ? 'text-blue-600' :
+                              product.margin >= 15 ? 'text-orange-600' :
+                              'text-red-600'
+                            }`}>
+                              {product.margin.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{product.customers}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Customers Tab */}
+        {activeTab === 'customers' && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <Users className="w-7 h-7" />
+                Customer Profitability Analysis
+              </h2>
+              <p className="text-indigo-100">Understand which customers drive the most profit</p>
+            </div>
+
+            {customerAnalysis.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                <Users className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
+                <p className="text-yellow-800">No customer data available. Add customer names to your inflow records to see analysis.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Order</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {customerAnalysis.map((customer, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                            LKR {formatLKR(customer.revenue)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
+                            LKR {formatLKR(customer.cost)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
+                            LKR {formatLKR(customer.profit)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            <span className={`font-bold ${
+                              customer.margin >= 50 ? 'text-green-600' :
+                              customer.margin >= 30 ? 'text-blue-600' :
+                              'text-orange-600'
+                            }`}>
+                              {customer.margin.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
+                            {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Top Customer Insights */}
+            {customerAnalysis.length > 0 && (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="font-bold text-lg mb-4">Customer Insights</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <p className="text-sm text-green-800 font-medium mb-1">Most Profitable Customer</p>
+                    <p className="text-lg font-bold text-green-900">{customerAnalysis[0].name}</p>
+                    <p className="text-sm text-green-700">LKR {formatLKR(customerAnalysis[0].profit)} profit</p>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <p className="text-sm text-blue-800 font-medium mb-1">Best Margin Customer</p>
+                    <p className="text-lg font-bold text-blue-900">
+                      {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].name}
+                    </p>
+                    <p className="text-sm text-blue-700">
+                      {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].margin.toFixed(1)}% margin
+                    </p>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <p className="text-sm text-purple-800 font-medium mb-1">Highest Volume Customer</p>
+                    <p className="text-lg font-bold text-purple-900">
+                      {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].name}
+                    </p>
+                    <p className="text-sm text-purple-700">
+                      {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].transactions} transactions
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Pricing Intelligence Tab */}
+        {activeTab === 'pricing' && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <Sparkles className="w-7 h-7" />
+                AI Pricing Recommendations
+              </h2>
+              <p className="text-orange-100">Data-driven strategies to optimize your pricing and margins</p>
+            </div>
+
+            {pricingRecommendations.length === 0 ? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+                <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
+                <p className="text-green-800 font-semibold">Your margins look healthy!</p>
+                <p className="text-green-700 text-sm mt-2">All products are performing above the 30% margin threshold.</p>
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {cashFlowForecast.map((forecast, idx) => (
-                    <div key={idx} className="bg-white rounded-lg shadow-md p-6">
-                      <div className="text-center mb-4">
-                        <h3 className="text-lg font-bold text-gray-700">Month +{forecast.month}</h3>
-                        <p className="text-sm text-gray-500">Projected</p>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm text-gray-600">Expected Inflow</p>
-                          <p className="text-xl font-bold text-green-600">LKR {formatLKR(forecast.inflow)}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Expected Outflow</p>
-                          <p className="text-xl font-bold text-red-600">LKR {formatLKR(forecast.outflow)}</p>
-                        </div>
-                        <div className="pt-3 border-t border-gray-200">
-                          <p className="text-sm text-gray-600">Net Cash Flow</p>
-                          <p className={`text-2xl font-bold ${forecast.netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            LKR {formatLKR(forecast.netCashFlow)}
-                          </p>
-                        </div>
-                      </div>
+                <div className="bg-orange-50 border-l-4 border-orange-400 p-5 rounded-r-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="font-semibold text-orange-900 mb-2">
+                        {pricingRecommendations.length} Products Need Pricing Review
+                      </h3>
+                      <p className="text-sm text-orange-800">
+                        These items are below the recommended 30% margin threshold. Consider the recommendations below.
+                      </p>
                     </div>
-                  ))}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Product/Service</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Margin</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Price</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Recommended Price</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Increase %</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Potential Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {pricingRecommendations.map((rec, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{rec.product}</td>
+                            <td className="px-4 py-3 text-sm text-right">
+                              <span className="font-semibold text-red-600">{rec.currentMargin.toFixed(1)}%</span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-gray-600">
+                              LKR {formatLKR(rec.currentPrice)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                              LKR {formatLKR(rec.recommendedPrice)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
+                              +{rec.percentIncrease.toFixed(1)}%
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-bold text-purple-600">
+                              +LKR {formatLKR(rec.potentialRevenue)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
                   <div className="flex items-start gap-3">
                     <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                     <div>
-                      <h3 className="font-semibold text-blue-900 mb-2">Forecast Insights</h3>
-                      <ul className="space-y-1 text-sm text-blue-800">
-                        <li>• Based on {filteredRecords.length} historical transactions</li>
-                        <li>• Assumes 2% monthly cost inflation</li>
-                        <li>• Revenue growth trend: {((cashFlowForecast[0].inflow / totals.inflow - 1) * 100).toFixed(1)}% per month</li>
-                        <li>• Use this for strategic planning and cash reserve management</li>
+                      <h3 className="font-semibold text-blue-900 mb-2">Pricing Strategy Tips</h3>
+                      <ul className="space-y-2 text-sm text-blue-800">
+                        <li>• Test price increases gradually (5-10% at a time) to gauge customer response</li>
+                        <li>• Focus first on products with high demand and low price sensitivity</li>
+                        <li>• Bundle low-margin items with high-margin products</li>
+                        <li>• Consider value-based pricing instead of cost-plus for premium offerings</li>
+                        <li>• Review competitor pricing before implementing major changes</li>
+                        <li>• Track customer retention after price adjustments</li>
                       </ul>
                     </div>
                   </div>
                 </div>
               </>
             )}
-          </div>
-        )}
-
-        {/* Benchmark Tab */}
-        {activeTab === 'benchmark' && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Target className="w-7 h-7" />
-                Industry Benchmark Comparison
-              </h2>
-              <p className="text-indigo-100">Compare your performance against Sri Lankan SME standards</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {[
-                { name: 'Gross Margin', actual: actualMetrics.grossMargin, benchmark: benchmarks.grossMargin, unit: '%' },
-                { name: 'Overhead Ratio', actual: actualMetrics.overheadRatio, benchmark: benchmarks.overheadRatio, unit: '%', inverse: true },
-                { name: 'Reinvestment Rate', actual: actualMetrics.reinvestmentRate, benchmark: benchmarks.reinvestmentRate, unit: '%' },
-                { name: 'Profit Margin', actual: actualMetrics.profitMargin, benchmark: benchmarks.profitMargin, unit: '%' }
-              ].map((metric, idx) => {
-                const difference = metric.actual - metric.benchmark;
-                const isGood = metric.inverse ? difference < 0 : difference > 0;
-                const percentDiff = ((difference / metric.benchmark) * 100);
-                
-                return (
-                  <div key={idx} className="bg-white rounded-lg shadow-md p-6">
-                    <h3 className="font-bold text-lg mb-4">{metric.name}</h3>
-                    <div className="flex items-end justify-between mb-4">
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Your Business</p>
-                        <p className="text-3xl font-bold text-blue-600">{metric.actual.toFixed(1)}{metric.unit}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600 mb-1">Industry Avg</p>
-                        <p className="text-2xl font-semibold text-gray-700">{metric.benchmark}{metric.unit}</p>
-                      </div>
-                    </div>
-                    <div className="bg-gray-200 rounded-full h-3 overflow-hidden mb-2">
-                      <div
-                        className={`h-full ${isGood ? 'bg-green-500' : 'bg-red-500'}`}
-                        style={{ width: `${Math.min(100, (metric.actual / metric.benchmark) * 100)}%` }}
-                      />
-                    </div>
-                    <div className={`flex items-center gap-2 text-sm font-medium ${isGood ? 'text-green-600' : 'text-red-600'}`}>
-                      {isGood ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                      <span>
-                        {isGood ? 'Above' : 'Below'} industry standard by {Math.abs(percentDiff).toFixed(0)}%
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4">Performance Summary</h3>
-              <div className="space-y-3">
-                {actualMetrics.grossMargin > benchmarks.grossMargin && (
-                  <div className="flex items-start gap-3 bg-green-50 p-3 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-green-800">Your gross margin is strong, indicating good pricing power and cost control.</p>
-                  </div>
-                )}
-                {actualMetrics.overheadRatio < benchmarks.overheadRatio && (
-                  <div className="flex items-start gap-3 bg-green-50 p-3 rounded-lg">
-                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-green-800">Overhead ratio is below industry average - efficient operations!</p>
-                  </div>
-                )}
-                {actualMetrics.profitMargin < benchmarks.profitMargin && (
-                  <div className="flex items-start gap-3 bg-yellow-50 p-3 rounded-lg">
-                    <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-yellow-800">Profit margin is below industry standard. Consider reviewing costs and pricing strategy.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tax Planning Tab */}
-        {activeTab === 'tax' && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Calculator className="w-7 h-7" />
-                Tax Liability Estimator
-              </h2>
-              <p className="text-emerald-100">Sri Lanka corporate tax planning based on current period</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="font-bold text-lg mb-4">Tax Calculation</h3>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Taxable Income (Operating Profit)</p>
-                    <p className="text-2xl font-bold text-gray-900">LKR {formatLKR(taxEstimate.taxableIncome)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Estimated Annual Tax (30%)</p>
-                    <p className="text-2xl font-bold text-red-600">LKR {formatLKR(taxEstimate.annualTax)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Quarterly Tax Payment</p>
-                    <p className="text-xl font-bold text-orange-600">LKR {formatLKR(taxEstimate.quarterlyTax)}</p>
-                  </div>
-                  <div className="pt-4 border-t border-gray-200">
-                    <p className="text-sm text-gray-600 mb-1">Effective Tax Rate</p>
-                    <p className="text-xl font-bold text-blue-600">{taxEstimate.effectiveRate.toFixed(2)}%</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="font-bold text-lg mb-4">Tax Planning Recommendations</h3>
-                <div className="space-y-3">
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <Lightbulb className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="font-semibold text-blue-900 mb-1">Set Aside Reserves</h4>
-                        <p className="text-sm text-blue-800">Reserve LKR {formatLKR(taxEstimate.quarterlyTax)} per quarter for tax payments.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="font-semibold text-green-900 mb-1">Optimize Deductions</h4>
-                        <p className="text-sm text-green-800">Track reinvestments (LKR {formatLKR(totals.reinvestment)}) for potential tax deductions.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <Target className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="font-semibold text-purple-900 mb-1">Timing Strategy</h4>
-                        <p className="text-sm text-purple-800">Consider timing major expenses near period end to optimize tax liability.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-1" />
-                <div>
-                  <h3 className="font-semibold text-yellow-900 mb-2">Important Disclaimer</h3>
-                  <p className="text-sm text-yellow-800">This is an estimate only. Actual tax liability may vary based on allowable deductions, tax incentives, and other factors. Consult with a qualified tax professional for accurate tax planning.</p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1209,59 +1280,83 @@ const monthlyChartData = useMemo(() => {
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Project</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Tags</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Amount</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Cost</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredRecords.map((record, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
-                          record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
-                          record.category === 'Overhead' ? 'bg-orange-100 text-orange-800' :
-                          record.category === 'Reinvestment' ? 'bg-blue-100 text-blue-800' :
-                          'bg-purple-100 text-purple-800'
+                  {filteredRecords.map((record, index) => {
+                    const qty = record.quantity || 1;
+                    const price = record.amount;
+                    const cost = record.cost_per_unit || 0;
+                    const total = price * qty;
+                    const totalCost = cost * qty;
+                    const profit = total - totalCost;
+                    const margin = price > 0 && cost > 0 ? (((price - cost) / price) * 100) : null;
+                    
+                    return (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
+                            record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
+                            record.category === 'Overhead' ? 'bg-orange-100 text-orange-800' :
+                            record.category === 'Reinvestment' ? 'bg-blue-100 text-blue-800' :
+                            'bg-purple-100 text-purple-800'
+                          }`}>
+                            {record.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-600">{qty}</td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(price)}</td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          {cost > 0 ? `LKR ${formatLKR(cost)}` : '-'}
+                        </td>
+                        <td className={`px-4 py-3 text-sm text-right font-semibold ${
+                          record.category === 'Inflow' ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {record.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.customer || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.project || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {record.tags ? (
-                          <div className="flex gap-1 flex-wrap">
-                            {record.tags.split(',').map((tag, i) => (
-                              <span key={i} className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                                {tag.trim()}
-                              </span>
-                            ))}
-                          </div>
-                        ) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right font-semibold">LKR {formatLKR(record.amount)}</td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => handleEdit(index)}
-                          className="text-blue-600 hover:text-blue-800 mx-1"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(index)}
-                          className="text-red-600 hover:text-red-800 mx-1"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          {record.category === 'Inflow' ? '+' : '−'} LKR {formatLKR(total)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
+                          {profit > 0 ? `+LKR ${formatLKR(profit)}` : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right">
+                          {margin !== null ? (
+                            <span className={`font-semibold ${
+                              margin >= 50 ? 'text-green-600' :
+                              margin >= 30 ? 'text-blue-600' :
+                              'text-orange-600'
+                            }`}>
+                              {margin.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => handleEdit(index)}
+                            className="text-blue-600 hover:text-blue-800 mx-1"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(index)}
+                            className="text-red-600 hover:text-red-800 mx-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {filteredRecords.length === 0 && (
@@ -1273,22 +1368,7 @@ const monthlyChartData = useMemo(() => {
             </div>
           </div>
         )}
-        {activeTab === 'strategy' && (
-  <FinancialStrategyMap
-    totals={totals}
-    grossProfit={grossProfit}
-    netProfit={netProfit}
-    grossMarginPercent={grossMarginPercent}
-  />
-)}
 
-{activeTab === 'forecast (diagram)' && (
-  <FinancialChartDashboard 
-    financialData={monthlyChartData}
-    grossProfit={grossProfit}
-    netProfit={netProfit}
-  />
-)}
         {/* Modals */}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
