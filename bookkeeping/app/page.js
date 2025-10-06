@@ -1,84 +1,98 @@
-'use client';
-import { useState, useMemo, useEffect } from 'react';
-import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, BarChart3, AlertCircle, Target, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Layers, Bell, Calculator, Percent, ShoppingCart, Package, Sparkles, ArrowRight, Zap, Clock, ChevronDown, ChevronUp } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+"use client";
+import { useState, useMemo, useEffect } from "react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  DollarSign,
+  Download,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  BarChart3,
+  AlertCircle,
+  Target,
+  Lightbulb,
+  Award,
+  AlertTriangle,
+  CheckCircle,
+  Database,
+  RefreshCw,
+  Brain,
+  Users,
+  FileText,
+  Layers,
+  Bell,
+  Calculator,
+  Percent,
+  ShoppingCart,
+  Package,
+  Sparkles,
+  ArrowRight,
+  Zap,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+} from "recharts";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function BookkeepingApp() {
-  const [records, setRecords] = useState([]);
-  const [isEditing, setIsEditing] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-    category: 'Inflow',
-    amount: '',
-    costPerUnit: '',
-    quantity: '',
-    notes: '',
-    customer: '',
-    project: '',
-    tags: ''
-  });
-  const [targetRevenue, setTargetRevenue] = useState(100000);
-  const [showTargetModal, setShowTargetModal] = useState(false);
-  const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [budgets, setBudgets] = useState({});
-  const [budgetCategory, setBudgetCategory] = useState('Overhead');
-  const [budgetAmount, setBudgetAmount] = useState('');
-  const [expandedSection, setExpandedSection] = useState(null);
-  const [showStrategyModal, setShowStrategyModal] = useState(false);
+const [records, setRecords] = useState([]);
+const [isEditing, setIsEditing] = useState(null);
+const [loading, setLoading] = useState(true);
+const [syncing, setSyncing] = useState(false);
+const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
+const [formData, setFormData] = useState({
+  date: new Date().toISOString().split("T")[0],
+  description: "",
+  category: "Inflow",
+  amount: "",
+  costPerUnit: "",
+  quantity: "",
+  notes: "",
+  customer: "",
+  project: "",
+  tags: "",
+});
+const [targetRevenue, setTargetRevenue] = useState(100000);
+const [showTargetModal, setShowTargetModal] = useState(false);
+const [showBudgetModal, setShowBudgetModal] = useState(false);
+const [activeTab, setActiveTab] = useState("overview");
+const [budgets, setBudgets] = useState({});
+const [budgetCategory, setBudgetCategory] = useState("Overhead");
+const [budgetAmount, setBudgetAmount] = useState("");
+const [expandedSection, setExpandedSection] = useState(null);
+const [showStrategyModal, setShowStrategyModal] = useState(false);
 
-  const categories = ['Inflow', 'Outflow', 'Reinvestment', 'Overhead', 'Loan Payment', 'Loan Received'];
-
-  useEffect(() => {
-    loadRecords();
-    loadBudgets();
-  }, []);
-
-  const loadRecords = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('bookkeeping_records')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      setRecords(data || []);
-    } catch (error) {
-      console.error('Error loading records:', error);
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadBudgets = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('category_budgets')
-        .select('*');
-
-      if (!error && data) {
-        const budgetMap = {};
-        data.forEach(b => budgetMap[b.category] = b.amount);
-        setBudgets(budgetMap);
-      }
-    } catch (error) {
-      console.error('Error loading budgets:', error);
-    }
-  };
-
-    // Monthly Aggregation
-
+const categories = [
+  "Inflow",
+  "Outflow",
+  "Reinvestment",
+  "Overhead",
+  "Loan Payment",
+  "Loan Received",
+];
 
   const syncRecords = async () => {
     setSyncing(true);
@@ -87,67 +101,98 @@ export default function BookkeepingApp() {
     setSyncing(false);
   };
 
-  const filteredRecords = useMemo(() => {
-    if (!dateFilter.start && !dateFilter.end) return records;
-    
-    return records.filter(r => {
-      const recordDate = new Date(r.date);
-      const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
-      const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
-      
-      if (startDate && endDate) {
-        return recordDate >= startDate && recordDate <= endDate;
-      } else if (startDate) {
-        return recordDate >= startDate;
-      } else if (endDate) {
-        return recordDate <= endDate;
-      }
-      return true;
-    });
-  }, [records, dateFilter]);
+useEffect(() => {
+  loadRecords();
+  loadBudgets();
+}, []);
 
-    const monthlyData = useMemo(() => {
-    if (!filteredRecords || filteredRecords.length === 0) return [];
+const loadRecords = async () => {
+  try {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("bookkeeping_records")
+      .select("*")
+      .order("date", { ascending: false });
 
-    const grouped = {};
+    if (error) throw error;
+    setRecords(data || []);
+  } catch (error) {
+    console.error("Error loading records:", error);
+    setRecords([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
-    filteredRecords.forEach(r => {
-      const date = new Date(r.date);
-      const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
-        .toString()
-        .padStart(2, '0')}`;
+const loadBudgets = async () => {
+  try {
+    const { data, error } = await supabase.from("category_budgets").select("*");
+    if (!error && data) {
+      const budgetMap = {};
+      data.forEach((b) => (budgetMap[b.category] = b.amount));
+      setBudgets(budgetMap);
+    }
+  } catch (error) {
+    console.error("Error loading budgets:", error);
+  }
+};
 
-      if (!grouped[monthKey]) {
-        grouped[monthKey] = { revenue: 0, cost: 0, profit: 0, margin: 0 };
-      }
+// --- Filtered Records ---
+const filteredRecords = useMemo(() => {
+  if (!dateFilter.start && !dateFilter.end) return records;
 
-      const qty = parseFloat(r.quantity) || 1;
-      const price = parseFloat(r.amount) || 0;
-      const cost = parseFloat(r.cost_per_unit) || 0;
-      const revenue = price * qty;
-      const totalCost = cost * qty;
-      const profit = revenue - totalCost;
+  return records.filter((r) => {
+    const recordDate = new Date(r.date);
+    const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
+    const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
 
-      if (r.category === 'Inflow') {
-        grouped[monthKey].revenue += revenue;
-        grouped[monthKey].cost += totalCost;
-        grouped[monthKey].profit += profit;
-      } else if (['Outflow', 'Overhead', 'Reinvestment'].includes(r.category)) {
-        // treat as expenses
-        grouped[monthKey].cost += revenue;
-        grouped[monthKey].profit -= revenue;
-      }
-    });
+    if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
+    if (startDate) return recordDate >= startDate;
+    if (endDate) return recordDate <= endDate;
+    return true;
+  });
+}, [records, dateFilter]);
 
-    return Object.entries(grouped)
-      .map(([month, vals]) => ({
-        month,
-        revenue: vals.revenue,
-        profit: vals.profit,
-        margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
-      }))
-      .sort((a, b) => new Date(a.month) - new Date(b.month));
-  }, [filteredRecords]);
+// --- Monthly Data Aggregation ---
+const monthlyData = useMemo(() => {
+  if (!filteredRecords || filteredRecords.length === 0) return [];
+
+  const grouped = {};
+
+  filteredRecords.forEach((r) => {
+    const date = new Date(r.date);
+    const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
+      .toString()
+      .padStart(2, "0")}`;
+
+    if (!grouped[monthKey]) grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
+
+    const qty = parseFloat(r.quantity) || 1;
+    const price = parseFloat(r.amount) || 0;
+    const cost = parseFloat(r.cost_per_unit) || 0;
+    const revenue = price * qty;
+    const totalCost = cost * qty;
+    const profit = revenue - totalCost;
+
+    if (r.category === "Inflow") {
+      grouped[monthKey].revenue += revenue;
+      grouped[monthKey].cost += totalCost;
+      grouped[monthKey].profit += profit;
+    } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+      grouped[monthKey].cost += revenue;
+      grouped[monthKey].profit -= revenue;
+    }
+  });
+
+  return Object.entries(grouped)
+    .map(([month, vals]) => ({
+      month,
+      revenue: vals.revenue,
+      profit: vals.profit,
+      margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
+    }))
+    .sort((a, b) => new Date(a.month) - new Date(b.month));
+}, [filteredRecords]);
 
   const handleSubmit = async () => {
     if (!formData.description || !formData.amount) return;
@@ -204,79 +249,60 @@ export default function BookkeepingApp() {
     }
   };
 
-  const handleEdit = (index) => {
-    const record = records[index];
-    setFormData({
-      date: record.date,
-      description: record.description,
-      category: record.category,
-      amount: record.amount.toString(),
-      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : '',
-      quantity: record.quantity ? record.quantity.toString() : '',
-      notes: record.notes || '',
-      customer: record.customer || '',
-      project: record.project || '',
-      tags: record.tags || ''
+// --- ROI Timeline & Calculations ---
+const roiTimeline = useMemo(() => {
+  const grouped = {};
+  filteredRecords.forEach((r) => {
+    if (!r.date) return;
+    const month = new Date(r.date).toLocaleString("default", {
+      month: "short",
+      year: "2-digit",
     });
-    setIsEditing(index);
-  };
+    if (!grouped[month]) grouped[month] = { month, investment: 0, return: 0, net: 0 };
 
-  const handleDelete = async (index) => {
-    if (!confirm('Are you sure you want to delete this record?')) return;
-
-    try {
-      const recordToDelete = records[index];
-      const { error } = await supabase
-        .from('bookkeeping_records')
-        .delete()
-        .eq('id', recordToDelete.id);
-
-      if (error) throw error;
-      setRecords(records.filter((_, i) => i !== index));
-    } catch (error) {
-      console.error('Error deleting record:', error);
-      alert('Failed to delete record.');
+    if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+      grouped[month].investment += parseFloat(r.amount) || 0;
+      grouped[month].net -= parseFloat(r.amount) || 0;
+    } else if (r.category === "Inflow") {
+      grouped[month].return += parseFloat(r.amount) || 0;
+      grouped[month].net += parseFloat(r.amount) || 0;
     }
-  };
+  });
 
-  const handleCancel = () => {
-    setIsEditing(null);
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      description: '',
-      category: 'Inflow',
-      amount: '',
-      costPerUnit: '',
-      quantity: '',
-      notes: '',
-      customer: '',
-      project: '',
-      tags: ''
-    });
-  };
+  return Object.values(grouped);
+}, [filteredRecords]);
 
-  const saveBudget = async () => {
-    if (!budgetAmount) return;
-    
-    try {
-      const { error } = await supabase
-        .from('category_budgets')
-        .upsert({
-          category: budgetCategory,
-          amount: parseFloat(budgetAmount)
-        }, { onConflict: 'category' });
+const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
+  let breakEvenMonth = null;
+  let paybackMonth = null;
+  let totalInvestment = 0;
+  let totalReturn = 0;
+  let cumulativeNet = 0;
 
-      if (error) throw error;
-      setBudgets({ ...budgets, [budgetCategory]: parseFloat(budgetAmount) });
-      setBudgetAmount('');
-      setShowBudgetModal(false);
-    } catch (error) {
-      console.error('Error saving budget:', error);
-      setBudgets({ ...budgets, [budgetCategory]: parseFloat(budgetAmount) });
-      setBudgetAmount('');
-      setShowBudgetModal(false);
+  roiTimeline.forEach((point) => {
+    totalInvestment += point.investment;
+    totalReturn += point.return;
+    cumulativeNet += point.net;
+
+    if (!breakEvenMonth && point.return >= point.investment) {
+      breakEvenMonth = point.month;
     }
+    if (!paybackMonth && cumulativeNet >= 0) {
+      paybackMonth = point.month;
+    }
+  });
+
+  return {
+    breakEvenMonth,
+    paybackMonth,
+    roiPercentage:
+      totalInvestment > 0
+        ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(0)
+        : 0,
   };
+}, [roiTimeline]);
+
+// --- Totals & Business Value Data ---
 
   const exportToCSV = () => {
     const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
@@ -331,35 +357,85 @@ export default function BookkeepingApp() {
     link.click();
     window.URL.revokeObjectURL(url);
   };
-
-  const totals = filteredRecords.reduce((acc, r) => {
+const totals = filteredRecords.reduce(
+  (acc, r) => {
     const amount = parseFloat(r.amount) || 0;
     const costPerUnit = parseFloat(r.cost_per_unit) || 0;
     const quantity = parseFloat(r.quantity) || 1;
     const revenue = amount * quantity;
     const cost = costPerUnit * quantity;
-    
-    if (r.category === 'Inflow') {
+
+    if (r.category === "Inflow") {
       acc.inflow += revenue;
       acc.inflowCost += cost;
-      acc.inflowProfit += (revenue - cost);
+      acc.inflowProfit += revenue - cost;
     }
-    if (r.category === 'Outflow') acc.outflow += revenue;
-    if (r.category === 'Reinvestment') acc.reinvestment += revenue;
-    if (r.category === 'Overhead') acc.overhead += revenue;
-    if (r.category === 'Loan Payment') acc.loanPayment += revenue;
-    if (r.category === 'Loan Received') acc.loanReceived += revenue;
+    if (r.category === "Outflow") acc.outflow += revenue;
+    if (r.category === "Reinvestment") acc.reinvestment += revenue;
+    if (r.category === "Overhead") acc.overhead += revenue;
+    if (r.category === "Loan Payment") acc.loanPayment += revenue;
+    if (r.category === "Loan Received") acc.loanReceived += revenue;
+
     return acc;
-  }, { inflow: 0, inflowCost: 0, inflowProfit: 0, outflow: 0, reinvestment: 0, overhead: 0, loanPayment: 0, loanReceived: 0 });
+  },
+  {
+    inflow: 0,
+    inflowCost: 0,
+    inflowProfit: 0,
+    outflow: 0,
+    reinvestment: 0,
+    overhead: 0,
+    loanPayment: 0,
+    loanReceived: 0,
+  }
+);
 
-  const grossProfit = totals.inflow - totals.outflow;
-  const grossMarginPercent = totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
-  const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-  const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
-  const netLoanImpact = totals.loanReceived - totals.loanPayment;
-  const netProfit = operatingProfit + netLoanImpact;
+const grossProfit = totals.inflow - totals.outflow;
+const grossMarginPercent = totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
+const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
+const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
+const netLoanImpact = totals.loanReceived - totals.loanPayment;
+const netProfit = operatingProfit + netLoanImpact;
 
-  // Product/Service Margin Analysis
+// --- Customer Profitability Analysis ---
+const customerAnalysis = useMemo(() => {
+  const customers = {};
+  filteredRecords.forEach((r) => {
+    if (r.customer && r.category === "Inflow") {
+      if (!customers[r.customer]) {
+        customers[r.customer] = {
+          revenue: 0,
+          cost: 0,
+          transactions: 0,
+          projects: new Set(),
+        };
+
+        
+      }
+      const qty = parseFloat(r.quantity) || 1;
+      customers[r.customer].revenue += parseFloat(r.amount) * qty;
+      customers[r.customer].cost += parseFloat(r.cost_per_unit || 0) * qty;
+      customers[r.customer].transactions += 1;
+      if (r.project) customers[r.customer].projects.add(r.project);
+    }
+  });
+
+  return Object.entries(customers)
+    .map(([name, data]) => ({
+      name,
+      revenue: data.revenue,
+      cost: data.cost,
+      profit: data.revenue - data.cost,
+      margin:
+        data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
+      transactions: data.transactions,
+      projectCount: data.projects.size,
+      avgTransaction: data.revenue / data.transactions,
+    }))
+    .sort((a, b) => b.profit - a.profit);
+}, [filteredRecords]);
+
+
   const productMargins = useMemo(() => {
     const products = {};
     
@@ -403,37 +479,6 @@ export default function BookkeepingApp() {
       .sort((a, b) => b.margin - a.margin);
   }, [filteredRecords]);
 
-  // Customer Profitability
-  const customerAnalysis = useMemo(() => {
-    const customers = {};
-    filteredRecords.forEach(r => {
-      if (r.customer && r.category === 'Inflow') {
-        if (!customers[r.customer]) {
-          customers[r.customer] = { revenue: 0, cost: 0, transactions: 0, projects: new Set() };
-        }
-        const qty = parseFloat(r.quantity) || 1;
-        customers[r.customer].revenue += parseFloat(r.amount) * qty;
-        customers[r.customer].cost += parseFloat(r.cost_per_unit || 0) * qty;
-        customers[r.customer].transactions += 1;
-        if (r.project) customers[r.customer].projects.add(r.project);
-      }
-    });
-    
-    return Object.entries(customers)
-      .map(([name, data]) => ({
-        name,
-        revenue: data.revenue,
-        cost: data.cost,
-        profit: data.revenue - data.cost,
-        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
-        transactions: data.transactions,
-        projectCount: data.projects.size,
-        avgTransaction: data.revenue / data.transactions
-      }))
-      .sort((a, b) => b.profit - a.profit);
-  }, [filteredRecords]);
-
-  // Budget Alerts
   const budgetAlerts = useMemo(() => {
     const alerts = [];
     Object.entries(budgets).forEach(([category, budgetAmount]) => {
@@ -456,8 +501,7 @@ export default function BookkeepingApp() {
     return alerts;
   }, [filteredRecords, budgets]);
 
-  // Pricing Recommendations
-  const pricingRecommendations = useMemo(() => {
+    const pricingRecommendations = useMemo(() => {
     return productMargins
       .filter(p => p.cost > 0)
       .map(p => {
@@ -480,128 +524,106 @@ export default function BookkeepingApp() {
       .filter(r => r.needsAction)
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   }, [productMargins]);
-
-    const roiTimeline = [
-    { month: 'M1-2', investment: -50, return: 5, net: -45 },
-    { month: 'M3-4', investment: -30, return: 35, net: 5 },
-    { month: 'M5-6', investment: -20, return: 75, net: 55 },
-    { month: 'M7-9', investment: -15, return: 120, net: 105 },
-    { month: 'M10-12', investment: -10, return: 180, net: 170 },
-  ];
-  
-  const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
-  let breakEvenMonth = null;
-  let paybackMonth = null;
-  let totalInvestment = 0;
-  let totalReturn = 0;
-  let cumulativeNet = 0;
-  
-
-  roiTimeline.forEach((point) => {
-    totalInvestment += point.investment;
-    totalReturn += point.return;
-    cumulativeNet += point.net;
-
-    if (!breakEvenMonth && point.return >= point.investment) {
-      breakEvenMonth = point.month;
-    }
-
-    if (!paybackMonth && cumulativeNet >= 0) {
-      paybackMonth = point.month;
-    }
-  });
-
-  return {
-    breakEvenMonth,
-    paybackMonth,
-    roiPercentage: totalInvestment > 0 
-      ? ((totalReturn - totalInvestment) / totalInvestment * 100).toFixed(0)
-      : 0
-  };
-}, [roiTimeline]);
-
-
-  // Strategic Analytics Data
-  const businessValueData = [
-    { metric: 'Revenue', current: (totals.inflow / targetRevenue) * 100, target: 100 },
-    { metric: 'Win Rate', current: 28, target: 45 },
-    { metric: 'Margin', current: trueGrossMargin, target: 50 },
-    { metric: 'Efficiency', current: 62, target: 92 },
-  ];
+const businessValueData = [
+  { metric: "Revenue", current: (totals.inflow / targetRevenue) * 100, target: 100 },
+  { metric: "Margin", current: trueGrossMargin, target: 50 },
+  { metric: "Cost Coverage", current: totals.inflow > 0 ? (totals.outflow / totals.inflow) * 100 : 0, target: 70 },
+  { metric: "Customer Coverage", current: (customerAnalysis.length / Math.max(filteredRecords.length, 1)) * 100, target: 100 },
+];
 
 
 
-  const maturityData = [
-    { stage: 'Reporting', score: records.length > 50 ? 85 : 45 },
-    { stage: 'Analysis', score: productMargins.length > 0 ? 70 : 30 },
-    { stage: 'Prediction', score: customerAnalysis.length > 5 ? 40 : 15 },
-    { stage: 'Automation', score: budgets && Object.keys(budgets).length > 0 ? 35 : 10 },
-  ];
+// --- Analytics Maturity ---
+const maturityData = [
+  { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
+  {
+    stage: "Cost Tracking",
+    score: (
+      (filteredRecords.filter(
+        (r) => r.category === "Inflow" && r.cost_per_unit
+      ).length /
+        Math.max(
+          filteredRecords.filter((r) => r.category === "Inflow").length,
+          1
+        )) *
+      100
+    ).toFixed(0),
+  },
+  {
+    stage: "Customer Tracking",
+    score: (
+      (filteredRecords.filter((r) => r.customer).length /
+        Math.max(filteredRecords.length, 1)) *
+      100
+    ).toFixed(0),
+  },
+  { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
+];
 
   const implementationPhases = [
     {
-      phase: 'Foundation',
-      duration: '6-8 weeks',
+      phase: "Foundation",
+      duration: "6-8 weeks",
       icon: Database,
-      color: 'bg-blue-500',
-      value: '$50K-100K',
+      color: "bg-blue-500",
+      value: "$50K-100K",
       tasks: [
-        'Data Infrastructure Setup',
-        'CRM Integration & Clean-up',
-        'Analytics Platform Selection',
-        'Baseline Metrics Definition'
-      ]
+        "Data Infrastructure Setup",
+        "CRM Integration & Clean-up",
+        "Analytics Platform Selection",
+        "Baseline Metrics Definition",
+      ],
     },
     {
-      phase: 'Quick Wins',
-      duration: '4-6 weeks',
+      phase: "Quick Wins",
+      duration: "4-6 weeks",
       icon: Zap,
-      color: 'bg-green-500',
-      value: '$75K-150K',
+      color: "bg-green-500",
+      value: "$75K-150K",
       tasks: [
-        'Sales Dashboard Deployment',
-        'Lead Scoring Model v1',
-        'Pipeline Health Reports',
-        'Sales Rep Training'
-      ]
+        "Sales Dashboard Deployment",
+        "Lead Scoring Model v1",
+        "Pipeline Health Reports",
+        "Sales Rep Training",
+      ],
     },
     {
-      phase: 'Advanced Analytics',
-      duration: '8-12 weeks',
+      phase: "Advanced Analytics",
+      duration: "8-12 weeks",
       icon: Brain,
-      color: 'bg-purple-500',
-      value: '$200K-400K',
+      color: "bg-purple-500",
+      value: "$200K-400K",
       tasks: [
-        'Predictive Win Probability',
-        'Customer Segmentation',
-        'Next-Best-Action AI',
-        'Churn Prediction'
-      ]
+        "Predictive Win Probability",
+        "Customer Segmentation",
+        "Next-Best-Action AI",
+        "Churn Prediction",
+      ],
     },
     {
-      phase: 'Optimization',
-      duration: 'Ongoing',
+      phase: "Optimization",
+      duration: "Ongoing",
       icon: TrendingUp,
-      color: 'bg-orange-500',
-      value: '$500K+',
+      color: "bg-orange-500",
+      value: "$500K+",
       tasks: [
-        'Model Performance Monitoring',
-        'Process Refinement',
-        'Advanced Experiments',
-        'AI Capability Expansion'
-      ]
+        "Model Performance Monitoring",
+        "Process Refinement",
+        "Advanced Experiments",
+        "AI Capability Expansion",
+      ],
     },
   ];
 
   const formatLKR = (amount) => {
-    return new Intl.NumberFormat('en-LK', {
+    return new Intl.NumberFormat("en-LK", {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     }).format(amount);
   };
 
   const clearDateFilter = () => {
-    setDateFilter({ start: '', end: '' });
+    setDateFilter({ start: "", end: "" });
   };
 
   const setQuickFilter = (days) => {
@@ -609,8 +631,8 @@ export default function BookkeepingApp() {
     const start = new Date();
     start.setDate(start.getDate() - days);
     setDateFilter({
-      start: start.toISOString().split('T')[0],
-      end: end.toISOString().split('T')[0]
+      start: start.toISOString().split("T")[0],
+      end: end.toISOString().split("T")[0],
     });
   };
 
@@ -619,7 +641,9 @@ export default function BookkeepingApp() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">Loading your financial data...</p>
+          <p className="text-gray-600 text-lg">
+            Loading your financial data...
+          </p>
         </div>
       </div>
     );
@@ -636,7 +660,10 @@ export default function BookkeepingApp() {
                 <Brain className="w-8 h-8" />
                 SME Profit Intelligence Platform
               </h1>
-              <p className="text-blue-100">AI-powered margin analysis • Pricing intelligence • Strategic profitability insights</p>
+              <p className="text-blue-100">
+                AI-powered margin analysis • Pricing intelligence • Strategic
+                profitability insights
+              </p>
               <div className="flex items-center gap-3 mt-2">
                 <div className="flex items-center gap-1 text-sm">
                   <Percent className="w-4 h-4" />
@@ -651,8 +678,10 @@ export default function BookkeepingApp() {
                   disabled={syncing}
                   className="flex items-center gap-1 text-sm bg-blue-500 px-2 py-1 rounded hover:bg-blue-400 transition-colors disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-                  {syncing ? 'Syncing...' : 'Sync'}
+                  <RefreshCw
+                    className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`}
+                  />
+                  {syncing ? "Syncing..." : "Sync"}
                 </button>
               </div>
             </div>
@@ -697,12 +726,15 @@ export default function BookkeepingApp() {
                 <div className="flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="font-semibold text-yellow-900 mb-2">Budget Alerts</h3>
+                    <h3 className="font-semibold text-yellow-900 mb-2">
+                      Budget Alerts
+                    </h3>
                     <div className="space-y-2">
                       {budgetAlerts.slice(0, 2).map((alert, idx) => (
                         <div key={idx} className="text-sm text-yellow-800">
-                          <strong>{alert.category}:</strong> {alert.percentUsed.toFixed(0)}% used 
-                          {alert.severity === 'critical' && ' - OVER BUDGET!'}
+                          <strong>{alert.category}:</strong>{" "}
+                          {alert.percentUsed.toFixed(0)}% used
+                          {alert.severity === "critical" && " - OVER BUDGET!"}
                         </div>
                       ))}
                     </div>
@@ -710,17 +742,21 @@ export default function BookkeepingApp() {
                 </div>
               </div>
             )}
-            
+
             {pricingRecommendations.length > 0 && (
               <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-lg">
                 <div className="flex items-start gap-3">
                   <Sparkles className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="font-semibold text-orange-900 mb-2">Pricing Opportunities</h3>
+                    <h3 className="font-semibold text-orange-900 mb-2">
+                      Pricing Opportunities
+                    </h3>
                     <div className="space-y-2">
                       {pricingRecommendations.slice(0, 2).map((rec, idx) => (
                         <div key={idx} className="text-sm text-orange-800">
-                          <strong>{rec.product}:</strong> +{rec.percentIncrease.toFixed(0)}% price = +LKR {formatLKR(rec.potentialRevenue)} revenue
+                          <strong>{rec.product}:</strong> +
+                          {rec.percentIncrease.toFixed(0)}% price = +LKR{" "}
+                          {formatLKR(rec.potentialRevenue)} revenue
                         </div>
                       ))}
                     </div>
@@ -735,14 +771,18 @@ export default function BookkeepingApp() {
         <div className="bg-white rounded-lg shadow-md mb-6 overflow-hidden">
           <div className="flex overflow-x-auto">
             {[
-              { id: 'overview', label: 'Overview', icon: BarChart3 },
-              { id: 'margins', label: 'Profit Margins', icon: Percent },
-              { id: 'products', label: 'Products', icon: Package },
-              { id: 'customers', label: 'Customers', icon: Users },
-              { id: 'pricing', label: 'Pricing Intel', icon: Sparkles },
-              { id: 'analytics', label: 'Strategic Analytics', icon: TrendingUp },
-              { id: 'records', label: 'All Records', icon: FileText }
-            ].map(tab => {
+              { id: "overview", label: "Overview", icon: BarChart3 },
+              { id: "margins", label: "Profit Margins", icon: Percent },
+              { id: "products", label: "Products", icon: Package },
+              { id: "customers", label: "Customers", icon: Users },
+              { id: "pricing", label: "Pricing Intel", icon: Sparkles },
+              {
+                id: "analytics",
+                label: "Strategic Analytics",
+                icon: TrendingUp,
+              },
+              { id: "records", label: "All Records", icon: FileText },
+            ].map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
@@ -750,8 +790,8 @@ export default function BookkeepingApp() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors whitespace-nowrap ${
                     activeTab === tab.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
+                      ? "bg-blue-600 text-white"
+                      : "text-gray-600 hover:bg-gray-100"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -769,14 +809,18 @@ export default function BookkeepingApp() {
             <input
               type="date"
               value={dateFilter.start}
-              onChange={(e) => setDateFilter({ ...dateFilter, start: e.target.value })}
+              onChange={(e) =>
+                setDateFilter({ ...dateFilter, start: e.target.value })
+              }
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <span className="text-gray-600">to</span>
             <input
               type="date"
               value={dateFilter.end}
-              onChange={(e) => setDateFilter({ ...dateFilter, end: e.target.value })}
+              onChange={(e) =>
+                setDateFilter({ ...dateFilter, end: e.target.value })
+              }
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
@@ -786,33 +830,61 @@ export default function BookkeepingApp() {
               Clear
             </button>
             <div className="flex gap-2 ml-auto">
-              <button onClick={() => setQuickFilter(30)} className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200">30D</button>
-              <button onClick={() => setQuickFilter(90)} className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200">90D</button>
-              <button onClick={() => setQuickFilter(180)} className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200">6M</button>
-              <button onClick={() => setQuickFilter(365)} className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200">1Y</button>
+              <button
+                onClick={() => setQuickFilter(30)}
+                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+              >
+                30D
+              </button>
+              <button
+                onClick={() => setQuickFilter(90)}
+                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+              >
+                90D
+              </button>
+              <button
+                onClick={() => setQuickFilter(180)}
+                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+              >
+                6M
+              </button>
+              <button
+                onClick={() => setQuickFilter(365)}
+                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+              >
+                1Y
+              </button>
             </div>
           </div>
         </div>
 
         {/* Overview Tab */}
-        {activeTab === 'overview' && (
+        {activeTab === "overview" && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <TrendingUp className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">Revenue</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">
+                    Revenue
+                  </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflow)}</h3>
+                <h3 className="text-2xl font-bold mb-1">
+                  LKR {formatLKR(totals.inflow)}
+                </h3>
                 <p className="text-sm opacity-90">Total Inflow</p>
               </div>
 
               <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <ShoppingCart className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">COGS</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">
+                    COGS
+                  </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflowCost)}</h3>
+                <h3 className="text-2xl font-bold mb-1">
+                  LKR {formatLKR(totals.inflowCost)}
+                </h3>
                 <p className="text-sm opacity-90">Cost of Goods Sold</p>
               </div>
 
@@ -823,16 +895,28 @@ export default function BookkeepingApp() {
                     {trueGrossMargin.toFixed(1)}%
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflowProfit)}</h3>
+                <h3 className="text-2xl font-bold mb-1">
+                  LKR {formatLKR(totals.inflowProfit)}
+                </h3>
                 <p className="text-sm opacity-90">Gross Profit (True)</p>
               </div>
 
-              <div className={`bg-gradient-to-br ${netProfit >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white rounded-lg shadow-lg p-5`}>
+              <div
+                className={`bg-gradient-to-br ${
+                  netProfit >= 0
+                    ? "from-purple-500 to-purple-600"
+                    : "from-orange-500 to-orange-600"
+                } text-white rounded-lg shadow-lg p-5`}
+              >
                 <div className="flex justify-between items-start mb-2">
                   <DollarSign className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">Net</span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">
+                    Net
+                  </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(netProfit)}</h3>
+                <h3 className="text-2xl font-bold mb-1">
+                  LKR {formatLKR(netProfit)}
+                </h3>
                 <p className="text-sm opacity-90">Net Profit</p>
               </div>
             </div>
@@ -841,37 +925,47 @@ export default function BookkeepingApp() {
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Plus className="w-5 h-5" />
-                {isEditing !== null ? 'Edit Record' : 'Add New Record'}
+                {isEditing !== null ? "Edit Record" : "Add New Record"}
               </h2>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <input
                   type="date"
                   value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, date: e.target.value })
+                  }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
                   placeholder="Description *"
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <select
                   value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
                   ))}
                 </select>
                 <input
                   type="number"
                   placeholder="Quantity (default: 1)"
                   value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, quantity: e.target.value })
+                  }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -885,94 +979,133 @@ export default function BookkeepingApp() {
                     type="number"
                     placeholder="e.g., 100"
                     value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, amount: e.target.value })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Cost per Unit (LKR) {formData.category === 'Inflow' && '- for margin tracking'}
+                    Cost per Unit (LKR){" "}
+                    {formData.category === "Inflow" && "- for margin tracking"}
                   </label>
                   <input
                     type="number"
                     placeholder="e.g., 60"
                     value={formData.costPerUnit}
-                    onChange={(e) => setFormData({ ...formData, costPerUnit: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, costPerUnit: e.target.value })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               {/* Profit Preview */}
-              {formData.quantity && formData.amount && formData.costPerUnit && formData.category === 'Inflow' && (
-                <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-600 font-medium">Total Revenue</p>
-                      <p className="text-lg font-bold text-green-600">
-                        LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.amount))}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 font-medium">Total Cost</p>
-                      <p className="text-lg font-bold text-red-600">
-                        LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.costPerUnit))}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 font-medium">Gross Profit</p>
-                      <p className="text-lg font-bold text-blue-600">
-                        LKR {formatLKR(parseFloat(formData.quantity) * (parseFloat(formData.amount) - parseFloat(formData.costPerUnit)))}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 font-medium">Margin</p>
-                      <p className="text-lg font-bold text-purple-600">
-                        {(((parseFloat(formData.amount) - parseFloat(formData.costPerUnit)) / parseFloat(formData.amount)) * 100).toFixed(1)}%
-                      </p>
+              {formData.quantity &&
+                formData.amount &&
+                formData.costPerUnit &&
+                formData.category === "Inflow" && (
+                  <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
+                    <div className="grid grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-600 font-medium">
+                          Total Revenue
+                        </p>
+                        <p className="text-lg font-bold text-green-600">
+                          LKR{" "}
+                          {formatLKR(
+                            parseFloat(formData.quantity) *
+                              parseFloat(formData.amount)
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-medium">Total Cost</p>
+                        <p className="text-lg font-bold text-red-600">
+                          LKR{" "}
+                          {formatLKR(
+                            parseFloat(formData.quantity) *
+                              parseFloat(formData.costPerUnit)
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-medium">
+                          Gross Profit
+                        </p>
+                        <p className="text-lg font-bold text-blue-600">
+                          LKR{" "}
+                          {formatLKR(
+                            parseFloat(formData.quantity) *
+                              (parseFloat(formData.amount) -
+                                parseFloat(formData.costPerUnit))
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-medium">Margin</p>
+                        <p className="text-lg font-bold text-purple-600">
+                          {(
+                            ((parseFloat(formData.amount) -
+                              parseFloat(formData.costPerUnit)) /
+                              parseFloat(formData.amount)) *
+                            100
+                          ).toFixed(1)}
+                          %
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <input
                   type="text"
                   placeholder="Customer (optional)"
                   value={formData.customer}
-                  onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, customer: e.target.value })
+                  }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
                   placeholder="Project (optional)"
                   value={formData.project}
-                  onChange={(e) => setFormData({ ...formData, project: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, project: e.target.value })
+                  }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
                   placeholder="Tags (comma-separated)"
                   value={formData.tags}
-                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, tags: e.target.value })
+                  }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <textarea
                 placeholder="Notes (optional)"
                 value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 rows="2"
               />
-              
+
               <div className="flex gap-2">
                 <button
                   onClick={handleSubmit}
                   className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors font-semibold"
                 >
-                  {isEditing !== null ? 'Update' : 'Add Record'}
+                  {isEditing !== null ? "Update" : "Add Record"}
                 </button>
                 {isEditing !== null && (
                   <button
@@ -992,14 +1125,30 @@ export default function BookkeepingApp() {
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        Date
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        Description
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        Category
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        Qty
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        Unit Price
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        Total
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        Margin
+                      </th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -1008,35 +1157,59 @@ export default function BookkeepingApp() {
                       const price = record.amount;
                       const cost = record.cost_per_unit || 0;
                       const total = price * qty;
-                      const margin = price > 0 && cost > 0 ? (((price - cost) / price) * 100) : null;
-                      
+                      const margin =
+                        price > 0 && cost > 0
+                          ? ((price - cost) / price) * 100
+                          : null;
+
                       return (
                         <tr key={index} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {record.date}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {record.description}
+                          </td>
                           <td className="px-4 py-3">
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
-                              record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
-                              'bg-blue-100 text-blue-800'
-                            }`}>
+                            <span
+                              className={`px-2 py-1 text-xs rounded-full ${
+                                record.category === "Inflow"
+                                  ? "bg-green-100 text-green-800"
+                                  : record.category === "Outflow"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}
+                            >
                               {record.category}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">{qty}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(price)}</td>
-                          <td className={`px-4 py-3 text-sm text-right font-semibold ${
-                            record.category === 'Inflow' ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {record.category === 'Inflow' ? '+' : '−'} LKR {formatLKR(total)}
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            {qty}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            LKR {formatLKR(price)}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-sm text-right font-semibold ${
+                              record.category === "Inflow"
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {record.category === "Inflow" ? "+" : "−"} LKR{" "}
+                            {formatLKR(total)}
                           </td>
                           <td className="px-4 py-3 text-sm text-right">
                             {margin !== null ? (
-                              <span className={`font-semibold ${
-                                margin >= 50 ? 'text-green-600' :
-                                margin >= 30 ? 'text-blue-600' :
-                                'text-orange-600'
-                              }`}>
+                              <span
+                                className={`font-semibold ${
+                                  margin >= 50
+                                    ? "text-green-600"
+                                    : margin >= 30
+                                    ? "text-blue-600"
+                                    : "text-orange-600"
+                                }`}
+                              >
                                 {margin.toFixed(1)}%
                               </span>
                             ) : (
@@ -1068,14 +1241,16 @@ export default function BookkeepingApp() {
         )}
 
         {/* Profit Margins Tab */}
-        {activeTab === 'margins' && (
+        {activeTab === "margins" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
                 <Percent className="w-7 h-7" />
                 Profit Margin Intelligence
               </h2>
-              <p className="text-purple-100">Deep dive into your product/service profitability</p>
+              <p className="text-purple-100">
+                Deep dive into your product/service profitability
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1084,14 +1259,18 @@ export default function BookkeepingApp() {
                 <p className="text-3xl font-bold text-blue-600">
                   {trueGrossMargin.toFixed(1)}%
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Across all products</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Across all products
+                </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">Total Markup</h3>
                 <p className="text-3xl font-bold text-green-600">
                   LKR {formatLKR(totals.inflowProfit)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Gross profit from sales</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Gross profit from sales
+                </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">COGS</h3>
@@ -1103,9 +1282,14 @@ export default function BookkeepingApp() {
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">Markup Ratio</h3>
                 <p className="text-3xl font-bold text-purple-600">
-                  {totals.inflowCost > 0 ? (totals.inflowProfit / totals.inflowCost).toFixed(2) : '0'}x
+                  {totals.inflowCost > 0
+                    ? (totals.inflowProfit / totals.inflowCost).toFixed(2)
+                    : "0"}
+                  x
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Profit per cost dollar</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Profit per cost dollar
+                </p>
               </div>
             </div>
 
@@ -1113,24 +1297,34 @@ export default function BookkeepingApp() {
               <div className="flex items-start gap-3">
                 <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                 <div>
-                  <h3 className="font-semibold text-blue-900 mb-2">Margin Health Check</h3>
+                  <h3 className="font-semibold text-blue-900 mb-2">
+                    Margin Health Check
+                  </h3>
                   <div className="space-y-2 text-sm text-blue-800">
                     {trueGrossMargin >= 50 && (
                       <div className="flex items-center gap-2">
                         <CheckCircle className="w-4 h-4" />
-                        <span>Excellent margins - you have strong pricing power</span>
+                        <span>
+                          Excellent margins - you have strong pricing power
+                        </span>
                       </div>
                     )}
                     {trueGrossMargin >= 30 && trueGrossMargin < 50 && (
                       <div className="flex items-center gap-2">
                         <AlertCircle className="w-4 h-4" />
-                        <span>Good margins - consider testing price increases on high-demand items</span>
+                        <span>
+                          Good margins - consider testing price increases on
+                          high-demand items
+                        </span>
                       </div>
                     )}
                     {trueGrossMargin < 30 && trueGrossMargin > 0 && (
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4" />
-                        <span>Margins below target - review pricing strategy and cost optimization</span>
+                        <span>
+                          Margins below target - review pricing strategy and
+                          cost optimization
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1141,20 +1335,25 @@ export default function BookkeepingApp() {
         )}
 
         {/* Products Tab */}
-        {activeTab === 'products' && (
+        {activeTab === "products" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-teal-500 to-teal-600 text-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
                 <Package className="w-7 h-7" />
                 Product/Service Performance
               </h2>
-              <p className="text-teal-100">Identify your profit champions and underperformers</p>
+              <p className="text-teal-100">
+                Identify your profit champions and underperformers
+              </p>
             </div>
 
             {productMargins.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                 <Package className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800">No product data available. Add cost tracking to your inflow records to see detailed analysis.</p>
+                <p className="text-yellow-800">
+                  No product data available. Add cost tracking to your inflow
+                  records to see detailed analysis.
+                </p>
               </div>
             ) : (
               <div className="bg-white rounded-lg shadow-md p-6">
@@ -1162,23 +1361,47 @@ export default function BookkeepingApp() {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Product/Service</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty Sold</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Price</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Cost</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Profit</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total Profit</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin %</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Customers</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                          Product/Service
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Qty Sold
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Avg Price
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Avg Cost
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Unit Profit
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Total Profit
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Margin %
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Customers
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {productMargins.map((product, idx) => (
                         <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{product.name}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">{product.quantity.toFixed(0)}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgPrice)}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgCost)}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {product.name}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            {product.quantity.toFixed(0)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            LKR {formatLKR(product.avgPrice)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            LKR {formatLKR(product.avgCost)}
+                          </td>
                           <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
                             LKR {formatLKR(product.avgProfit)}
                           </td>
@@ -1186,16 +1409,23 @@ export default function BookkeepingApp() {
                             LKR {formatLKR(product.profit)}
                           </td>
                           <td className="px-4 py-3 text-sm text-right">
-                            <span className={`font-bold ${
-                              product.margin >= 50 ? 'text-green-600' :
-                              product.margin >= 30 ? 'text-blue-600' :
-                              product.margin >= 15 ? 'text-orange-600' :
-                              'text-red-600'
-                            }`}>
+                            <span
+                              className={`font-bold ${
+                                product.margin >= 50
+                                  ? "text-green-600"
+                                  : product.margin >= 30
+                                  ? "text-blue-600"
+                                  : product.margin >= 15
+                                  ? "text-orange-600"
+                                  : "text-red-600"
+                              }`}
+                            >
                               {product.margin.toFixed(1)}%
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">{product.customers}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            {product.customers}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1207,20 +1437,25 @@ export default function BookkeepingApp() {
         )}
 
         {/* Customers Tab */}
-        {activeTab === 'customers' && (
+        {activeTab === "customers" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
                 <Users className="w-7 h-7" />
                 Customer Profitability Analysis
               </h2>
-              <p className="text-indigo-100">Understand which customers drive the most profit</p>
+              <p className="text-indigo-100">
+                Understand which customers drive the most profit
+              </p>
             </div>
 
             {customerAnalysis.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                 <Users className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800">No customer data available. Add customer names to your inflow records to see analysis.</p>
+                <p className="text-yellow-800">
+                  No customer data available. Add customer names to your inflow
+                  records to see analysis.
+                </p>
               </div>
             ) : (
               <>
@@ -1229,20 +1464,38 @@ export default function BookkeepingApp() {
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Order</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                            Customer
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Revenue
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Cost
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Profit
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Margin
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Transactions
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Avg Order
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            % of Revenue
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {customerAnalysis.map((customer, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                              {customer.name}
+                            </td>
                             <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
                               LKR {formatLKR(customer.revenue)}
                             </td>
@@ -1253,18 +1506,30 @@ export default function BookkeepingApp() {
                               LKR {formatLKR(customer.profit)}
                             </td>
                             <td className="px-4 py-3 text-sm text-right">
-                              <span className={`font-bold ${
-                                customer.margin >= 50 ? 'text-green-600' :
-                                customer.margin >= 30 ? 'text-blue-600' :
-                                'text-orange-600'
-                              }`}>
+                              <span
+                                className={`font-bold ${
+                                  customer.margin >= 50
+                                    ? "text-green-600"
+                                    : customer.margin >= 30
+                                    ? "text-blue-600"
+                                    : "text-orange-600"
+                                }`}
+                              >
                                 {customer.margin.toFixed(1)}%
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
-                            <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(customer.avgTransaction)}</td>
+                            <td className="px-4 py-3 text-sm text-right text-gray-600">
+                              {customer.transactions}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-gray-600">
+                              LKR {formatLKR(customer.avgTransaction)}
+                            </td>
                             <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
-                              {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
+                              {(
+                                (customer.revenue / totals.inflow) *
+                                100
+                              ).toFixed(1)}
+                              %
                             </td>
                           </tr>
                         ))}
@@ -1273,14 +1538,23 @@ export default function BookkeepingApp() {
                   </div>
                 </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4">Customer Concentration Risk</h3>
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="font-bold text-lg mb-4">
+                    Customer Concentration Risk
+                  </h3>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={customerAnalysis.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
+                      />
                       <YAxis />
-                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                      <Tooltip
+                        formatter={(value) => `LKR ${formatLKR(value)}`}
+                      />
                       <Legend />
                       <Bar dataKey="profit" fill="#3b82f6" name="Profit" />
                       <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
@@ -1293,21 +1567,28 @@ export default function BookkeepingApp() {
         )}
 
         {/* Pricing Intelligence Tab */}
-        {activeTab === 'pricing' && (
+        {activeTab === "pricing" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
                 <Sparkles className="w-7 h-7" />
                 AI-Powered Pricing Intelligence
               </h2>
-              <p className="text-orange-100">Data-driven recommendations to optimize your margins</p>
+              <p className="text-orange-100">
+                Data-driven recommendations to optimize your margins
+              </p>
             </div>
 
             {pricingRecommendations.length === 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
                 <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
-                <p className="text-green-800 font-semibold">All products have healthy margins (30%+)</p>
-                <p className="text-green-700 text-sm mt-2">Continue monitoring and consider testing premium pricing on best sellers</p>
+                <p className="text-green-800 font-semibold">
+                  All products have healthy margins (30%+)
+                </p>
+                <p className="text-green-700 text-sm mt-2">
+                  Continue monitoring and consider testing premium pricing on
+                  best sellers
+                </p>
               </div>
             ) : (
               <>
@@ -1315,12 +1596,21 @@ export default function BookkeepingApp() {
                   <div className="flex items-start gap-3">
                     <Zap className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
                     <div>
-                      <h3 className="font-bold text-orange-900 mb-2">Quick Win Opportunities</h3>
+                      <h3 className="font-bold text-orange-900 mb-2">
+                        Quick Win Opportunities
+                      </h3>
                       <p className="text-sm text-orange-800 mb-3">
-                        Implementing these price adjustments could generate an additional{' '}
+                        Implementing these price adjustments could generate an
+                        additional{" "}
                         <span className="font-bold">
-                          LKR {formatLKR(pricingRecommendations.reduce((sum, r) => sum + r.potentialRevenue, 0))}
-                        </span>{' '}
+                          LKR{" "}
+                          {formatLKR(
+                            pricingRecommendations.reduce(
+                              (sum, r) => sum + r.potentialRevenue,
+                              0
+                            )
+                          )}
+                        </span>{" "}
                         in revenue without changing volume.
                       </p>
                     </div>
@@ -1332,21 +1622,39 @@ export default function BookkeepingApp() {
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Product/Service</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Margin</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Price</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Recommended Price</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Increase</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Potential Revenue</th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Priority</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                            Product/Service
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Current Margin
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Current Price
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Recommended Price
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Increase
+                          </th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                            Potential Revenue
+                          </th>
+                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                            Priority
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {pricingRecommendations.map((rec, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{rec.product}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                              {rec.product}
+                            </td>
                             <td className="px-4 py-3 text-sm text-right">
-                              <span className="text-red-600 font-bold">{rec.currentMargin.toFixed(1)}%</span>
+                              <span className="text-red-600 font-bold">
+                                {rec.currentMargin.toFixed(1)}%
+                              </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-right text-gray-600">
                               LKR {formatLKR(rec.currentPrice)}
@@ -1363,12 +1671,16 @@ export default function BookkeepingApp() {
                               +LKR {formatLKR(rec.potentialRevenue)}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                                idx < 3 ? 'bg-red-100 text-red-800' :
-                                idx < 6 ? 'bg-orange-100 text-orange-800' :
-                                'bg-yellow-100 text-yellow-800'
-                              }`}>
-                                {idx < 3 ? 'High' : idx < 6 ? 'Medium' : 'Low'}
+                              <span
+                                className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                                  idx < 3
+                                    ? "bg-red-100 text-red-800"
+                                    : idx < 6
+                                    ? "bg-orange-100 text-orange-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}
+                              >
+                                {idx < 3 ? "High" : idx < 6 ? "Medium" : "Low"}
                               </span>
                             </td>
                           </tr>
@@ -1382,23 +1694,37 @@ export default function BookkeepingApp() {
                   <div className="flex items-start gap-3">
                     <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                     <div>
-                      <h3 className="font-semibold text-blue-900 mb-2">Implementation Strategy</h3>
+                      <h3 className="font-semibold text-blue-900 mb-2">
+                        Implementation Strategy
+                      </h3>
                       <ul className="space-y-2 text-sm text-blue-800">
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span><strong>Test incrementally:</strong> Start with 10-15% increases to gauge customer response</span>
+                          <span>
+                            <strong>Test incrementally:</strong> Start with
+                            10-15% increases to gauge customer response
+                          </span>
                         </li>
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span><strong>Bundle strategically:</strong> Combine low-margin items with high-margin services</span>
+                          <span>
+                            <strong>Bundle strategically:</strong> Combine
+                            low-margin items with high-margin services
+                          </span>
                         </li>
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span><strong>Value communication:</strong> Ensure pricing reflects the quality and outcomes you deliver</span>
+                          <span>
+                            <strong>Value communication:</strong> Ensure pricing
+                            reflects the quality and outcomes you deliver
+                          </span>
                         </li>
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span><strong>Monitor closely:</strong> Track conversion rates and customer feedback after adjustments</span>
+                          <span>
+                            <strong>Monitor closely:</strong> Track conversion
+                            rates and customer feedback after adjustments
+                          </span>
                         </li>
                       </ul>
                     </div>
@@ -1410,14 +1736,16 @@ export default function BookkeepingApp() {
         )}
 
         {/* Strategic Analytics Tab */}
-        {activeTab === 'analytics' && (
+        {activeTab === "analytics" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
                 <TrendingUp className="w-7 h-7" />
                 Strategic Business Analytics
               </h2>
-              <p className="text-purple-100">Enterprise-grade insights for data-driven decision making</p>
+              <p className="text-purple-100">
+                Enterprise-grade insights for data-driven decision making
+              </p>
             </div>
 
             {/* Business Health Score */}
@@ -1431,20 +1759,37 @@ export default function BookkeepingApp() {
                   <PolarGrid />
                   <PolarAngleAxis dataKey="metric" />
                   <PolarRadiusAxis angle={90} domain={[0, 100]} />
-                  <Radar name="Current" dataKey="current" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.6} />
-                  <Radar name="Target" dataKey="target" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
+                  <Radar
+                    name="Current"
+                    dataKey="current"
+                    stroke="#8b5cf6"
+                    fill="#8b5cf6"
+                    fillOpacity={0.6}
+                  />
+                  <Radar
+                    name="Target"
+                    dataKey="target"
+                    stroke="#10b981"
+                    fill="#10b981"
+                    fillOpacity={0.3}
+                  />
                   <Legend />
                 </RadarChart>
               </ResponsiveContainer>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                {businessValueData.map((item, idx) => (
-                  <div key={idx} className="text-center">
-                    <p className="text-sm text-gray-600">{item.metric}</p>
-                    <p className="text-2xl font-bold text-purple-600">{item.current.toFixed(0)}%</p>
-                    <p className="text-xs text-gray-500">Target: {item.target}%</p>
-                  </div>
-                ))}
-              </div>
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+  {businessValueData.map((item, idx) => (
+    <div key={idx} className="text-center">
+      <p className="text-sm text-gray-600">{item.metric}</p>
+      <p className="text-2xl font-bold text-purple-600">
+        {Number(item.current).toFixed(0)}%
+      </p>
+      <p className="text-xs text-gray-500">
+        Target: {item.target}%
+      </p>
+    </div>
+  ))}
+</div>
+
             </div>
 
             {/* ROI Projection Timeline */}
@@ -1460,19 +1805,39 @@ export default function BookkeepingApp() {
                   <YAxis />
                   <Tooltip formatter={(value) => `$${value}K`} />
                   <Legend />
-                  <Line type="monotone" dataKey="investment" stroke="#ef4444" strokeWidth={2} name="Investment" />
-                  <Line type="monotone" dataKey="return" stroke="#10b981" strokeWidth={2} name="Return" />
-                  <Line type="monotone" dataKey="net" stroke="#3b82f6" strokeWidth={3} name="Net Gain" />
+                  <Line
+                    type="monotone"
+                    dataKey="investment"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    name="Investment"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="return"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    name="Return"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="net"
+                    stroke="#3b82f6"
+                    strokeWidth={3}
+                    name="Net Gain"
+                  />
                 </LineChart>
               </ResponsiveContainer>
-<div className="mt-4 p-4 bg-green-50 rounded-lg">
-  <p className="text-sm text-green-800">
-    <strong>Break-even projection:</strong> {breakEvenMonth || "N/A"} | 
-    <strong className="ml-3">12-month ROI:</strong> {roiPercentage}% | 
-    <strong className="ml-3">Payback period:</strong> {paybackMonth || "N/A"}
-  </p>
-</div>
-
+              <div className="mt-4 p-4 bg-green-50 rounded-lg">
+                <p className="text-sm text-green-800">
+                  <strong>Break-even projection:</strong>{" "}
+                  {breakEvenMonth || "N/A"} |
+                  <strong className="ml-3">12-month ROI:</strong>{" "}
+                  {roiPercentage}% |
+                  <strong className="ml-3">Payback period:</strong>{" "}
+                  {paybackMonth || "N/A"}
+                </p>
+              </div>
             </div>
 
             {/* Analytics Maturity Model */}
@@ -1492,8 +1857,13 @@ export default function BookkeepingApp() {
               </ResponsiveContainer>
               <div className="mt-4 space-y-2">
                 {maturityData.map((stage, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                    <span className="font-medium text-gray-700">{stage.stage}</span>
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                  >
+                    <span className="font-medium text-gray-700">
+                      {stage.stage}
+                    </span>
                     <div className="flex items-center gap-2">
                       <div className="w-48 bg-gray-200 rounded-full h-2">
                         <div
@@ -1501,7 +1871,9 @@ export default function BookkeepingApp() {
                           style={{ width: `${stage.score}%` }}
                         ></div>
                       </div>
-                      <span className="text-sm font-semibold text-gray-600 w-12 text-right">{stage.score}%</span>
+                      <span className="text-sm font-semibold text-gray-600 w-12 text-right">
+                        {stage.score}%
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1521,29 +1893,59 @@ export default function BookkeepingApp() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis />
-                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                      <Tooltip
+                        formatter={(value) => `LKR ${formatLKR(value)}`}
+                      />
                       <Legend />
-                      <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} name="Revenue" />
-                      <Line type="monotone" dataKey="profit" stroke="#3b82f6" strokeWidth={2} name="Profit" />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        name="Revenue"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="profit"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        name="Profit"
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                   <div className="mt-4 grid grid-cols-3 gap-4">
                     <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Avg Monthly Revenue</p>
+                      <p className="text-sm text-gray-600">
+                        Avg Monthly Revenue
+                      </p>
                       <p className="text-xl font-bold text-green-600">
-                        LKR {formatLKR(monthlyData.reduce((sum, m) => sum + m.revenue, 0) / monthlyData.length)}
+                        LKR{" "}
+                        {formatLKR(
+                          monthlyData.reduce((sum, m) => sum + m.revenue, 0) /
+                            monthlyData.length
+                        )}
                       </p>
                     </div>
                     <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Avg Monthly Profit</p>
+                      <p className="text-sm text-gray-600">
+                        Avg Monthly Profit
+                      </p>
                       <p className="text-xl font-bold text-blue-600">
-                        LKR {formatLKR(monthlyData.reduce((sum, m) => sum + m.profit, 0) / monthlyData.length)}
+                        LKR{" "}
+                        {formatLKR(
+                          monthlyData.reduce((sum, m) => sum + m.profit, 0) /
+                            monthlyData.length
+                        )}
                       </p>
                     </div>
                     <div className="text-center p-3 bg-purple-50 rounded-lg">
                       <p className="text-sm text-gray-600">Avg Margin</p>
                       <p className="text-xl font-bold text-purple-600">
-                        {(monthlyData.reduce((sum, m) => sum + m.margin, 0) / monthlyData.length).toFixed(1)}%
+                        {(
+                          monthlyData.reduce((sum, m) => sum + m.margin, 0) /
+                          monthlyData.length
+                        ).toFixed(1)}
+                        %
                       </p>
                     </div>
                   </div>
@@ -1562,24 +1964,41 @@ export default function BookkeepingApp() {
                 <div className="flex items-start gap-3">
                   <Target className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                   <div>
-                    <h3 className="font-bold text-blue-900 mb-2">Current Performance</h3>
+                    <h3 className="font-bold text-blue-900 mb-2">
+                      Current Performance
+                    </h3>
                     <ul className="space-y-2 text-sm text-blue-800">
                       <li className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          <strong>Records tracked:</strong> {records.length} transactions
+                          <strong>Records tracked:</strong> {records.length}{" "}
+                          transactions
                         </span>
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          <strong>Cost tracking:</strong> {((filteredRecords.filter(r => r.category === 'Inflow' && r.cost_per_unit).length / Math.max(filteredRecords.filter(r => r.category === 'Inflow').length, 1)) * 100).toFixed(0)}% of sales have cost data
+                          <strong>Cost tracking:</strong>{" "}
+                          {(
+                            (filteredRecords.filter(
+                              (r) => r.category === "Inflow" && r.cost_per_unit
+                            ).length /
+                              Math.max(
+                                filteredRecords.filter(
+                                  (r) => r.category === "Inflow"
+                                ).length,
+                                1
+                              )) *
+                            100
+                          ).toFixed(0)}
+                          % of sales have cost data
                         </span>
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          <strong>Customer tracking:</strong> {customerAnalysis.length} unique customers identified
+                          <strong>Customer tracking:</strong>{" "}
+                          {customerAnalysis.length} unique customers identified
                         </span>
                       </li>
                     </ul>
@@ -1591,30 +2010,54 @@ export default function BookkeepingApp() {
                 <div className="flex items-start gap-3">
                   <Lightbulb className="w-6 h-6 text-purple-600 flex-shrink-0 mt-1" />
                   <div>
-                    <h3 className="font-bold text-purple-900 mb-2">Next Steps to Improve</h3>
+                    <h3 className="font-bold text-purple-900 mb-2">
+                      Next Steps to Improve
+                    </h3>
                     <ul className="space-y-2 text-sm text-purple-800">
-                      {filteredRecords.filter(r => r.category === 'Inflow' && !r.cost_per_unit).length > 0 && (
+                      {filteredRecords.filter(
+                        (r) => r.category === "Inflow" && !r.cost_per_unit
+                      ).length > 0 && (
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span>Add cost tracking to {filteredRecords.filter(r => r.category === 'Inflow' && !r.cost_per_unit).length} sales records for better margin analysis</span>
+                          <span>
+                            Add cost tracking to{" "}
+                            {
+                              filteredRecords.filter(
+                                (r) =>
+                                  r.category === "Inflow" && !r.cost_per_unit
+                              ).length
+                            }{" "}
+                            sales records for better margin analysis
+                          </span>
                         </li>
                       )}
-                      {filteredRecords.filter(r => !r.customer).length > 0 && (
+                      {filteredRecords.filter((r) => !r.customer).length >
+                        0 && (
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span>Add customer names to {filteredRecords.filter(r => !r.customer).length} records for customer profitability tracking</span>
+                          <span>
+                            Add customer names to{" "}
+                            {filteredRecords.filter((r) => !r.customer).length}{" "}
+                            records for customer profitability tracking
+                          </span>
                         </li>
                       )}
                       {Object.keys(budgets).length === 0 && (
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span>Set budgets for expense categories to enable budget monitoring and alerts</span>
+                          <span>
+                            Set budgets for expense categories to enable budget
+                            monitoring and alerts
+                          </span>
                         </li>
                       )}
                       {records.length < 50 && (
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span>Add more transaction history for better trend analysis and insights</span>
+                          <span>
+                            Add more transaction history for better trend
+                            analysis and insights
+                          </span>
                         </li>
                       )}
                     </ul>
@@ -1626,7 +2069,7 @@ export default function BookkeepingApp() {
         )}
 
         {/* All Records Tab */}
-        {activeTab === 'records' && (
+        {activeTab === "records" && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
               <FileText className="w-5 h-5" />
@@ -1636,17 +2079,39 @@ export default function BookkeepingApp() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost/Unit</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      Date
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      Description
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      Category
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      Customer
+                    </th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      Qty
+                    </th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      Unit Price
+                    </th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      Cost/Unit
+                    </th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      Total
+                    </th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      Profit
+                    </th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      Margin
+                    </th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -1657,45 +2122,80 @@ export default function BookkeepingApp() {
                     const total = price * qty;
                     const totalCost = cost * qty;
                     const profit = total - totalCost;
-                    const margin = price > 0 && cost > 0 ? (((price - cost) / price) * 100) : null;
-                    
+                    const margin =
+                      price > 0 && cost > 0
+                        ? ((price - cost) / price) * 100
+                        : null;
+
                     return (
                       <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {record.date}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {record.description}
+                        </td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
-                            record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
-                            record.category === 'Reinvestment' ? 'bg-blue-100 text-blue-800' :
-                            record.category === 'Overhead' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
+                          <span
+                            className={`px-2 py-1 text-xs rounded-full ${
+                              record.category === "Inflow"
+                                ? "bg-green-100 text-green-800"
+                                : record.category === "Outflow"
+                                ? "bg-red-100 text-red-800"
+                                : record.category === "Reinvestment"
+                                ? "bg-blue-100 text-blue-800"
+                                : record.category === "Overhead"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-800"
+                            }`}
+                          >
                             {record.category}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{record.customer || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-600">{qty}</td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(price)}</td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-600">
-                          {cost > 0 ? `LKR ${formatLKR(cost)}` : '-'}
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {record.customer || "-"}
                         </td>
-                        <td className={`px-4 py-3 text-sm text-right font-semibold ${
-                          record.category === 'Inflow' || record.category === 'Loan Received' ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {record.category === 'Inflow' || record.category === 'Loan Received' ? '+' : '−'} LKR {formatLKR(total)}
+                        <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          {qty}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          LKR {formatLKR(price)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          {cost > 0 ? `LKR ${formatLKR(cost)}` : "-"}
+                        </td>
+                        <td
+                          className={`px-4 py-3 text-sm text-right font-semibold ${
+                            record.category === "Inflow" ||
+                            record.category === "Loan Received"
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {record.category === "Inflow" ||
+                          record.category === "Loan Received"
+                            ? "+"
+                            : "−"}{" "}
+                          LKR {formatLKR(total)}
                         </td>
                         <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
-                          {record.category === 'Inflow' && cost > 0 ? `LKR ${formatLKR(profit)}` : '-'}
+                          {record.category === "Inflow" && cost > 0
+                            ? `LKR ${formatLKR(profit)}`
+                            : "-"}
                         </td>
                         <td className="px-4 py-3 text-sm text-right">
                           {margin !== null ? (
-                            <span className={`font-semibold ${
-                              margin >= 50 ? 'text-green-600' :
-                              margin >= 30 ? 'text-blue-600' :
-                              margin >= 15 ? 'text-orange-600' :
-                              'text-red-600'
-                            }`}>
+                            <span
+                              className={`font-semibold ${
+                                margin >= 50
+                                  ? "text-green-600"
+                                  : margin >= 30
+                                  ? "text-blue-600"
+                                  : margin >= 15
+                                  ? "text-orange-600"
+                                  : "text-red-600"
+                              }`}
+                            >
                               {margin.toFixed(1)}%
                             </span>
                           ) : (
@@ -1733,7 +2233,9 @@ export default function BookkeepingApp() {
               <input
                 type="number"
                 value={targetRevenue}
-                onChange={(e) => setTargetRevenue(parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  setTargetRevenue(parseFloat(e.target.value) || 0)
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 placeholder="Enter target revenue (LKR)"
               />
@@ -1765,9 +2267,13 @@ export default function BookkeepingApp() {
                 onChange={(e) => setBudgetCategory(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
               >
-                {categories.filter(c => c !== 'Inflow').map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
+                {categories
+                  .filter((c) => c !== "Inflow")
+                  .map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
               </select>
               <input
                 type="number"
@@ -1786,7 +2292,7 @@ export default function BookkeepingApp() {
                 <button
                   onClick={() => {
                     setShowBudgetModal(false);
-                    setBudgetAmount('');
+                    setBudgetAmount("");
                   }}
                   className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
                 >
@@ -1807,7 +2313,9 @@ export default function BookkeepingApp() {
                     <Layers className="w-7 h-7 text-purple-600" />
                     Strategic Implementation Roadmap
                   </h3>
-                  <p className="text-gray-600">Transform your business with data-driven sales analytics</p>
+                  <p className="text-gray-600">
+                    Transform your business with data-driven sales analytics
+                  </p>
                 </div>
                 <button
                   onClick={() => setShowStrategyModal(false)}
@@ -1822,41 +2330,72 @@ export default function BookkeepingApp() {
                 {implementationPhases.map((phase, idx) => {
                   const Icon = phase.icon;
                   const isExpanded = expandedSection === idx;
-                  
+
                   return (
-                    <div key={idx} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+                    <div
+                      key={idx}
+                      className="border-2 border-gray-200 rounded-lg overflow-hidden"
+                    >
                       <button
-                        onClick={() => setExpandedSection(isExpanded ? null : idx)}
+                        onClick={() =>
+                          setExpandedSection(isExpanded ? null : idx)
+                        }
                         className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors"
                       >
                         <div className="flex items-center gap-4">
-                          <div className={`${phase.color} p-3 rounded-lg text-white`}>
+                          <div
+                            className={`${phase.color} p-3 rounded-lg text-white`}
+                          >
                             <Icon className="w-6 h-6" />
                           </div>
                           <div className="text-left">
-                            <h4 className="font-bold text-lg text-gray-900">Phase {idx + 1}: {phase.phase}</h4>
-                            <p className="text-sm text-gray-600">{phase.duration} • Expected Value: {phase.value}</p>
+                            <h4 className="font-bold text-lg text-gray-900">
+                              Phase {idx + 1}: {phase.phase}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                              {phase.duration} • Expected Value: {phase.value}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                            idx === 0 ? 'bg-green-100 text-green-700' :
-                            idx === 1 ? 'bg-blue-100 text-blue-700' :
-                            idx === 2 ? 'bg-purple-100 text-purple-700' :
-                            'bg-orange-100 text-orange-700'
-                          }`}>
-                            {idx === 0 ? 'Ready to Start' : idx === 1 ? 'Next Priority' : idx === 2 ? 'Future Phase' : 'Long-term'}
+                          <span
+                            className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                              idx === 0
+                                ? "bg-green-100 text-green-700"
+                                : idx === 1
+                                ? "bg-blue-100 text-blue-700"
+                                : idx === 2
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-orange-100 text-orange-700"
+                            }`}
+                          >
+                            {idx === 0
+                              ? "Ready to Start"
+                              : idx === 1
+                              ? "Next Priority"
+                              : idx === 2
+                              ? "Future Phase"
+                              : "Long-term"}
                           </span>
-                          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                          {isExpanded ? (
+                            <ChevronUp className="w-5 h-5" />
+                          ) : (
+                            <ChevronDown className="w-5 h-5" />
+                          )}
                         </div>
                       </button>
-                      
+
                       {isExpanded && (
                         <div className="p-5 bg-gray-50 border-t-2 border-gray-200">
-                          <h5 className="font-semibold mb-3">Key Deliverables:</h5>
+                          <h5 className="font-semibold mb-3">
+                            Key Deliverables:
+                          </h5>
                           <ul className="space-y-2">
                             {phase.tasks.map((task, taskIdx) => (
-                              <li key={taskIdx} className="flex items-start gap-3">
+                              <li
+                                key={taskIdx}
+                                className="flex items-start gap-3"
+                              >
                                 <div className="mt-1">
                                   <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
                                     <CheckCircle className="w-3 h-3 text-green-600" />
@@ -1878,10 +2417,17 @@ export default function BookkeepingApp() {
                 <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-lg border-2 border-green-300">
                   <div className="flex items-center gap-3 mb-3">
                     <Database className="w-6 h-6 text-green-600" />
-                    <h4 className="font-bold text-green-900">Data Foundation</h4>
+                    <h4 className="font-bold text-green-900">
+                      Data Foundation
+                    </h4>
                   </div>
-                  <p className="text-3xl font-bold text-green-600 mb-2">{records.length}</p>
-                  <p className="text-sm text-green-800">Total records collected. Build to 200+ for robust analytics and predictive insights.</p>
+                  <p className="text-3xl font-bold text-green-600 mb-2">
+                    {records.length}
+                  </p>
+                  <p className="text-sm text-green-800">
+                    Total records collected. Build to 200+ for robust analytics
+                    and predictive insights.
+                  </p>
                 </div>
 
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-lg border-2 border-blue-300">
@@ -1890,18 +2436,39 @@ export default function BookkeepingApp() {
                     <h4 className="font-bold text-blue-900">Margin Quality</h4>
                   </div>
                   <p className="text-3xl font-bold text-blue-600 mb-2">
-                    {((filteredRecords.filter(r => r.category === 'Inflow' && r.cost_per_unit).length / Math.max(filteredRecords.filter(r => r.category === 'Inflow').length, 1)) * 100).toFixed(0)}%
+                    {(
+                      (filteredRecords.filter(
+                        (r) => r.category === "Inflow" && r.cost_per_unit
+                      ).length /
+                        Math.max(
+                          filteredRecords.filter((r) => r.category === "Inflow")
+                            .length,
+                          1
+                        )) *
+                      100
+                    ).toFixed(0)}
+                    %
                   </p>
-                  <p className="text-sm text-blue-800">Sales with cost tracking. Target 90%+ for accurate profitability analysis.</p>
+                  <p className="text-sm text-blue-800">
+                    Sales with cost tracking. Target 90%+ for accurate
+                    profitability analysis.
+                  </p>
                 </div>
 
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-lg border-2 border-purple-300">
                   <div className="flex items-center gap-3 mb-3">
                     <Users className="w-6 h-6 text-purple-600" />
-                    <h4 className="font-bold text-purple-900">Customer Insights</h4>
+                    <h4 className="font-bold text-purple-900">
+                      Customer Insights
+                    </h4>
                   </div>
-                  <p className="text-3xl font-bold text-purple-600 mb-2">{customerAnalysis.length}</p>
-                  <p className="text-sm text-purple-800">Unique customers tracked. Segment and analyze for better targeting strategies.</p>
+                  <p className="text-3xl font-bold text-purple-600 mb-2">
+                    {customerAnalysis.length}
+                  </p>
+                  <p className="text-sm text-purple-800">
+                    Unique customers tracked. Segment and analyze for better
+                    targeting strategies.
+                  </p>
                 </div>
               </div>
 
@@ -1909,8 +2476,12 @@ export default function BookkeepingApp() {
               <div className="mt-8 p-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg text-white">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
-                    <h4 className="font-bold text-xl mb-2">Ready to Transform Your Sales Process?</h4>
-                    <p className="text-purple-100">Start with Phase 1 and see measurable results in 6-8 weeks</p>
+                    <h4 className="font-bold text-xl mb-2">
+                      Ready to Transform Your Sales Process?
+                    </h4>
+                    <p className="text-purple-100">
+                      Start with Phase 1 and see measurable results in 6-8 weeks
+                    </p>
                   </div>
                   <button className="bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold hover:bg-purple-50 transition-colors shadow-lg">
                     Schedule Strategy Session
