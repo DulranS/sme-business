@@ -1,7 +1,8 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, BarChart3, AlertCircle, Target, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Layers, Bell, Calculator, Percent, ShoppingCart, Package, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Trash2, DollarSign, Download, TrendingUp, TrendingDown, Calendar, BarChart3, AlertCircle, Target, Lightbulb, Award, AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users, FileText, Layers, Bell, Calculator, Percent, ShoppingCart, Package, Sparkles, ArrowRight, Zap, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -32,6 +33,8 @@ export default function BookkeepingApp() {
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState('Overhead');
   const [budgetAmount, setBudgetAmount] = useState('');
+  const [expandedSection, setExpandedSection] = useState(null);
+  const [showStrategyModal, setShowStrategyModal] = useState(false);
 
   const categories = ['Inflow', 'Outflow', 'Reinvestment', 'Overhead', 'Loan Payment', 'Loan Received'];
 
@@ -74,6 +77,9 @@ export default function BookkeepingApp() {
     }
   };
 
+    // Monthly Aggregation
+
+
   const syncRecords = async () => {
     setSyncing(true);
     await loadRecords();
@@ -99,6 +105,49 @@ export default function BookkeepingApp() {
       return true;
     });
   }, [records, dateFilter]);
+
+    const monthlyData = useMemo(() => {
+    if (!filteredRecords || filteredRecords.length === 0) return [];
+
+    const grouped = {};
+
+    filteredRecords.forEach(r => {
+      const date = new Date(r.date);
+      const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
+        .toString()
+        .padStart(2, '0')}`;
+
+      if (!grouped[monthKey]) {
+        grouped[monthKey] = { revenue: 0, cost: 0, profit: 0, margin: 0 };
+      }
+
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      const cost = parseFloat(r.cost_per_unit) || 0;
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+
+      if (r.category === 'Inflow') {
+        grouped[monthKey].revenue += revenue;
+        grouped[monthKey].cost += totalCost;
+        grouped[monthKey].profit += profit;
+      } else if (['Outflow', 'Overhead', 'Reinvestment'].includes(r.category)) {
+        // treat as expenses
+        grouped[monthKey].cost += revenue;
+        grouped[monthKey].profit -= revenue;
+      }
+    });
+
+    return Object.entries(grouped)
+      .map(([month, vals]) => ({
+        month,
+        revenue: vals.revenue,
+        profit: vals.profit,
+        margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
+      }))
+      .sort((a, b) => new Date(a.month) - new Date(b.month));
+  }, [filteredRecords]);
 
   const handleSubmit = async () => {
     if (!formData.description || !formData.amount) return;
@@ -432,6 +481,118 @@ export default function BookkeepingApp() {
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   }, [productMargins]);
 
+    const roiTimeline = [
+    { month: 'M1-2', investment: -50, return: 5, net: -45 },
+    { month: 'M3-4', investment: -30, return: 35, net: 5 },
+    { month: 'M5-6', investment: -20, return: 75, net: 55 },
+    { month: 'M7-9', investment: -15, return: 120, net: 105 },
+    { month: 'M10-12', investment: -10, return: 180, net: 170 },
+  ];
+  
+  const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
+  let breakEvenMonth = null;
+  let paybackMonth = null;
+  let totalInvestment = 0;
+  let totalReturn = 0;
+  let cumulativeNet = 0;
+  
+
+  roiTimeline.forEach((point) => {
+    totalInvestment += point.investment;
+    totalReturn += point.return;
+    cumulativeNet += point.net;
+
+    if (!breakEvenMonth && point.return >= point.investment) {
+      breakEvenMonth = point.month;
+    }
+
+    if (!paybackMonth && cumulativeNet >= 0) {
+      paybackMonth = point.month;
+    }
+  });
+
+  return {
+    breakEvenMonth,
+    paybackMonth,
+    roiPercentage: totalInvestment > 0 
+      ? ((totalReturn - totalInvestment) / totalInvestment * 100).toFixed(0)
+      : 0
+  };
+}, [roiTimeline]);
+
+
+  // Strategic Analytics Data
+  const businessValueData = [
+    { metric: 'Revenue', current: (totals.inflow / targetRevenue) * 100, target: 100 },
+    { metric: 'Win Rate', current: 28, target: 45 },
+    { metric: 'Margin', current: trueGrossMargin, target: 50 },
+    { metric: 'Efficiency', current: 62, target: 92 },
+  ];
+
+
+
+  const maturityData = [
+    { stage: 'Reporting', score: records.length > 50 ? 85 : 45 },
+    { stage: 'Analysis', score: productMargins.length > 0 ? 70 : 30 },
+    { stage: 'Prediction', score: customerAnalysis.length > 5 ? 40 : 15 },
+    { stage: 'Automation', score: budgets && Object.keys(budgets).length > 0 ? 35 : 10 },
+  ];
+
+  const implementationPhases = [
+    {
+      phase: 'Foundation',
+      duration: '6-8 weeks',
+      icon: Database,
+      color: 'bg-blue-500',
+      value: '$50K-100K',
+      tasks: [
+        'Data Infrastructure Setup',
+        'CRM Integration & Clean-up',
+        'Analytics Platform Selection',
+        'Baseline Metrics Definition'
+      ]
+    },
+    {
+      phase: 'Quick Wins',
+      duration: '4-6 weeks',
+      icon: Zap,
+      color: 'bg-green-500',
+      value: '$75K-150K',
+      tasks: [
+        'Sales Dashboard Deployment',
+        'Lead Scoring Model v1',
+        'Pipeline Health Reports',
+        'Sales Rep Training'
+      ]
+    },
+    {
+      phase: 'Advanced Analytics',
+      duration: '8-12 weeks',
+      icon: Brain,
+      color: 'bg-purple-500',
+      value: '$200K-400K',
+      tasks: [
+        'Predictive Win Probability',
+        'Customer Segmentation',
+        'Next-Best-Action AI',
+        'Churn Prediction'
+      ]
+    },
+    {
+      phase: 'Optimization',
+      duration: 'Ongoing',
+      icon: TrendingUp,
+      color: 'bg-orange-500',
+      value: '$500K+',
+      tasks: [
+        'Model Performance Monitoring',
+        'Process Refinement',
+        'Advanced Experiments',
+        'AI Capability Expansion'
+      ]
+    },
+  ];
+
   const formatLKR = (amount) => {
     return new Intl.NumberFormat('en-LK', {
       minimumFractionDigits: 2,
@@ -496,6 +657,13 @@ export default function BookkeepingApp() {
               </div>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => setShowStrategyModal(true)}
+                className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-4 py-2 rounded-md hover:from-purple-600 hover:to-purple-700 transition-all font-semibold shadow-md"
+              >
+                <Layers className="w-4 h-4" />
+                Strategy
+              </button>
               <button
                 onClick={() => setShowTargetModal(true)}
                 className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
@@ -572,6 +740,7 @@ export default function BookkeepingApp() {
               { id: 'products', label: 'Products', icon: Package },
               { id: 'customers', label: 'Customers', icon: Users },
               { id: 'pricing', label: 'Pricing Intel', icon: Sparkles },
+              { id: 'analytics', label: 'Strategic Analytics', icon: TrendingUp },
               { id: 'records', label: 'All Records', icon: FileText }
             ].map(tab => {
               const Icon = tab.icon;
@@ -1104,33 +1273,19 @@ export default function BookkeepingApp() {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4">Customer Insights</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-green-50 p-4 rounded-lg">
-                      <p className="text-sm text-green-800 font-medium mb-1">Most Profitable Customer</p>
-                      <p className="text-lg font-bold text-green-900">{customerAnalysis[0].name}</p>
-                      <p className="text-sm text-green-700">LKR {formatLKR(customerAnalysis[0].profit)} profit</p>
-                    </div>
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <p className="text-sm text-blue-800 font-medium mb-1">Best Margin Customer</p>
-                      <p className="text-lg font-bold text-blue-900">
-                        {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].name}
-                      </p>
-                      <p className="text-sm text-blue-700">
-                        {customerAnalysis.sort((a, b) => b.margin - a.margin)[0].margin.toFixed(1)}% margin
-                      </p>
-                    </div>
-                    <div className="bg-purple-50 p-4 rounded-lg">
-                      <p className="text-sm text-purple-800 font-medium mb-1">Highest Volume Customer</p>
-                      <p className="text-lg font-bold text-purple-900">
-                        {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].name}
-                      </p>
-                      <p className="text-sm text-purple-700">
-                        {customerAnalysis.sort((a, b) => b.transactions - a.transactions)[0].transactions} transactions
-                      </p>
-                    </div>
-                  </div>
+            <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="font-bold text-lg mb-4">Customer Concentration Risk</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={customerAnalysis.slice(0, 10)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                      <Legend />
+                      <Bar dataKey="profit" fill="#3b82f6" name="Profit" />
+                      <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </>
             )}
@@ -1143,28 +1298,30 @@ export default function BookkeepingApp() {
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
                 <Sparkles className="w-7 h-7" />
-                AI Pricing Recommendations
+                AI-Powered Pricing Intelligence
               </h2>
-              <p className="text-orange-100">Data-driven strategies to optimize your pricing and margins</p>
+              <p className="text-orange-100">Data-driven recommendations to optimize your margins</p>
             </div>
 
             {pricingRecommendations.length === 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
                 <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
-                <p className="text-green-800 font-semibold">Your margins look healthy!</p>
-                <p className="text-green-700 text-sm mt-2">All products are performing above the 30% margin threshold.</p>
+                <p className="text-green-800 font-semibold">All products have healthy margins (30%+)</p>
+                <p className="text-green-700 text-sm mt-2">Continue monitoring and consider testing premium pricing on best sellers</p>
               </div>
             ) : (
               <>
-                <div className="bg-orange-50 border-l-4 border-orange-400 p-5 rounded-r-lg">
+                <div className="bg-orange-50 border-l-4 border-orange-500 p-5 rounded-r-lg">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
+                    <Zap className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
                     <div>
-                      <h3 className="font-semibold text-orange-900 mb-2">
-                        {pricingRecommendations.length} Products Need Pricing Review
-                      </h3>
-                      <p className="text-sm text-orange-800">
-                        These items are below the recommended 30% margin threshold. Consider the recommendations below.
+                      <h3 className="font-bold text-orange-900 mb-2">Quick Win Opportunities</h3>
+                      <p className="text-sm text-orange-800 mb-3">
+                        Implementing these price adjustments could generate an additional{' '}
+                        <span className="font-bold">
+                          LKR {formatLKR(pricingRecommendations.reduce((sum, r) => sum + r.potentialRevenue, 0))}
+                        </span>{' '}
+                        in revenue without changing volume.
                       </p>
                     </div>
                   </div>
@@ -1179,8 +1336,9 @@ export default function BookkeepingApp() {
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Margin</th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Price</th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Recommended Price</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Increase %</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Increase</th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Potential Revenue</th>
+                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Priority</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -1188,7 +1346,7 @@ export default function BookkeepingApp() {
                           <tr key={idx} className="hover:bg-gray-50">
                             <td className="px-4 py-3 text-sm font-medium text-gray-900">{rec.product}</td>
                             <td className="px-4 py-3 text-sm text-right">
-                              <span className="font-semibold text-red-600">{rec.currentMargin.toFixed(1)}%</span>
+                              <span className="text-red-600 font-bold">{rec.currentMargin.toFixed(1)}%</span>
                             </td>
                             <td className="px-4 py-3 text-sm text-right text-gray-600">
                               LKR {formatLKR(rec.currentPrice)}
@@ -1196,11 +1354,22 @@ export default function BookkeepingApp() {
                             <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
                               LKR {formatLKR(rec.recommendedPrice)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
-                              +{rec.percentIncrease.toFixed(1)}%
+                            <td className="px-4 py-3 text-sm text-right">
+                              <span className="text-orange-600 font-bold">
+                                +{rec.percentIncrease.toFixed(1)}%
+                              </span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-bold text-purple-600">
+                            <td className="px-4 py-3 text-sm text-right font-bold text-blue-600">
                               +LKR {formatLKR(rec.potentialRevenue)}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                                idx < 3 ? 'bg-red-100 text-red-800' :
+                                idx < 6 ? 'bg-orange-100 text-orange-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {idx < 3 ? 'High' : idx < 6 ? 'Medium' : 'Low'}
+                              </span>
                             </td>
                           </tr>
                         ))}
@@ -1213,14 +1382,24 @@ export default function BookkeepingApp() {
                   <div className="flex items-start gap-3">
                     <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                     <div>
-                      <h3 className="font-semibold text-blue-900 mb-2">Pricing Strategy Tips</h3>
+                      <h3 className="font-semibold text-blue-900 mb-2">Implementation Strategy</h3>
                       <ul className="space-y-2 text-sm text-blue-800">
-                        <li>• Test price increases gradually (5-10% at a time) to gauge customer response</li>
-                        <li>• Focus first on products with high demand and low price sensitivity</li>
-                        <li>• Bundle low-margin items with high-margin products</li>
-                        <li>• Consider value-based pricing instead of cost-plus for premium offerings</li>
-                        <li>• Review competitor pricing before implementing major changes</li>
-                        <li>• Track customer retention after price adjustments</li>
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span><strong>Test incrementally:</strong> Start with 10-15% increases to gauge customer response</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span><strong>Bundle strategically:</strong> Combine low-margin items with high-margin services</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span><strong>Value communication:</strong> Ensure pricing reflects the quality and outcomes you deliver</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span><strong>Monitor closely:</strong> Track conversion rates and customer feedback after adjustments</span>
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -1230,10 +1409,229 @@ export default function BookkeepingApp() {
           </div>
         )}
 
+        {/* Strategic Analytics Tab */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <TrendingUp className="w-7 h-7" />
+                Strategic Business Analytics
+              </h2>
+              <p className="text-purple-100">Enterprise-grade insights for data-driven decision making</p>
+            </div>
+
+            {/* Business Health Score */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <Award className="w-5 h-5 text-purple-600" />
+                Business Performance Scorecard
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <RadarChart data={businessValueData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="metric" />
+                  <PolarRadiusAxis angle={90} domain={[0, 100]} />
+                  <Radar name="Current" dataKey="current" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.6} />
+                  <Radar name="Target" dataKey="target" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
+                  <Legend />
+                </RadarChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                {businessValueData.map((item, idx) => (
+                  <div key={idx} className="text-center">
+                    <p className="text-sm text-gray-600">{item.metric}</p>
+                    <p className="text-2xl font-bold text-purple-600">{item.current.toFixed(0)}%</p>
+                    <p className="text-xs text-gray-500">Target: {item.target}%</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ROI Projection Timeline */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-blue-600" />
+                Investment ROI Timeline
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={roiTimeline}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => `$${value}K`} />
+                  <Legend />
+                  <Line type="monotone" dataKey="investment" stroke="#ef4444" strokeWidth={2} name="Investment" />
+                  <Line type="monotone" dataKey="return" stroke="#10b981" strokeWidth={2} name="Return" />
+                  <Line type="monotone" dataKey="net" stroke="#3b82f6" strokeWidth={3} name="Net Gain" />
+                </LineChart>
+              </ResponsiveContainer>
+<div className="mt-4 p-4 bg-green-50 rounded-lg">
+  <p className="text-sm text-green-800">
+    <strong>Break-even projection:</strong> {breakEvenMonth || "N/A"} | 
+    <strong className="ml-3">12-month ROI:</strong> {roiPercentage}% | 
+    <strong className="ml-3">Payback period:</strong> {paybackMonth || "N/A"}
+  </p>
+</div>
+
+            </div>
+
+            {/* Analytics Maturity Model */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <Brain className="w-5 h-5 text-indigo-600" />
+                Analytics Maturity Assessment
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={maturityData} layout="horizontal">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" domain={[0, 100]} />
+                  <YAxis dataKey="stage" type="category" width={100} />
+                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Bar dataKey="score" fill="#6366f1" />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="mt-4 space-y-2">
+                {maturityData.map((stage, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span className="font-medium text-gray-700">{stage.stage}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-48 bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-indigo-600 h-2 rounded-full transition-all"
+                          style={{ width: `${stage.score}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-600 w-12 text-right">{stage.score}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Monthly Trend Analysis */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-green-600" />
+                Revenue & Profit Trends (Last 6 Months)
+              </h3>
+              {monthlyData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={monthlyData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                      <Legend />
+                      <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} name="Revenue" />
+                      <Line type="monotone" dataKey="profit" stroke="#3b82f6" strokeWidth={2} name="Profit" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div className="mt-4 grid grid-cols-3 gap-4">
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Avg Monthly Revenue</p>
+                      <p className="text-xl font-bold text-green-600">
+                        LKR {formatLKR(monthlyData.reduce((sum, m) => sum + m.revenue, 0) / monthlyData.length)}
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Avg Monthly Profit</p>
+                      <p className="text-xl font-bold text-blue-600">
+                        LKR {formatLKR(monthlyData.reduce((sum, m) => sum + m.profit, 0) / monthlyData.length)}
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Avg Margin</p>
+                      <p className="text-xl font-bold text-purple-600">
+                        {(monthlyData.reduce((sum, m) => sum + m.margin, 0) / monthlyData.length).toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                  <p>Add more records with dates to see monthly trends</p>
+                </div>
+              )}
+            </div>
+
+            {/* Key Insights Panel */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
+                <div className="flex items-start gap-3">
+                  <Target className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-bold text-blue-900 mb-2">Current Performance</h3>
+                    <ul className="space-y-2 text-sm text-blue-800">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Records tracked:</strong> {records.length} transactions
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Cost tracking:</strong> {((filteredRecords.filter(r => r.category === 'Inflow' && r.cost_per_unit).length / Math.max(filteredRecords.filter(r => r.category === 'Inflow').length, 1)) * 100).toFixed(0)}% of sales have cost data
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Customer tracking:</strong> {customerAnalysis.length} unique customers identified
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg p-5">
+                <div className="flex items-start gap-3">
+                  <Lightbulb className="w-6 h-6 text-purple-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-bold text-purple-900 mb-2">Next Steps to Improve</h3>
+                    <ul className="space-y-2 text-sm text-purple-800">
+                      {filteredRecords.filter(r => r.category === 'Inflow' && !r.cost_per_unit).length > 0 && (
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>Add cost tracking to {filteredRecords.filter(r => r.category === 'Inflow' && !r.cost_per_unit).length} sales records for better margin analysis</span>
+                        </li>
+                      )}
+                      {filteredRecords.filter(r => !r.customer).length > 0 && (
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>Add customer names to {filteredRecords.filter(r => !r.customer).length} records for customer profitability tracking</span>
+                        </li>
+                      )}
+                      {Object.keys(budgets).length === 0 && (
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>Set budgets for expense categories to enable budget monitoring and alerts</span>
+                        </li>
+                      )}
+                      {records.length < 50 && (
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>Add more transaction history for better trend analysis and insights</span>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* All Records Tab */}
         {activeTab === 'records' && (
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold mb-4">All Transaction Records</h2>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Complete Transaction History
+            </h2>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
@@ -1241,9 +1639,10 @@ export default function BookkeepingApp() {
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Cost</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost/Unit</th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
@@ -1268,32 +1667,34 @@ export default function BookkeepingApp() {
                           <span className={`px-2 py-1 text-xs rounded-full ${
                             record.category === 'Inflow' ? 'bg-green-100 text-green-800' :
                             record.category === 'Outflow' ? 'bg-red-100 text-red-800' :
-                            record.category === 'Overhead' ? 'bg-orange-100 text-orange-800' :
                             record.category === 'Reinvestment' ? 'bg-blue-100 text-blue-800' :
-                            'bg-purple-100 text-purple-800'
+                            record.category === 'Overhead' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
                           }`}>
                             {record.category}
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{record.customer || '-'}</td>
                         <td className="px-4 py-3 text-sm text-right text-gray-600">{qty}</td>
                         <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(price)}</td>
                         <td className="px-4 py-3 text-sm text-right text-gray-600">
                           {cost > 0 ? `LKR ${formatLKR(cost)}` : '-'}
                         </td>
                         <td className={`px-4 py-3 text-sm text-right font-semibold ${
-                          record.category === 'Inflow' ? 'text-green-600' : 'text-red-600'
+                          record.category === 'Inflow' || record.category === 'Loan Received' ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {record.category === 'Inflow' ? '+' : '−'} LKR {formatLKR(total)}
+                          {record.category === 'Inflow' || record.category === 'Loan Received' ? '+' : '−'} LKR {formatLKR(total)}
                         </td>
                         <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
-                          {profit > 0 ? `+LKR ${formatLKR(profit)}` : '-'}
+                          {record.category === 'Inflow' && cost > 0 ? `LKR ${formatLKR(profit)}` : '-'}
                         </td>
                         <td className="px-4 py-3 text-sm text-right">
                           {margin !== null ? (
                             <span className={`font-semibold ${
                               margin >= 50 ? 'text-green-600' :
                               margin >= 30 ? 'text-blue-600' :
-                              'text-orange-600'
+                              margin >= 15 ? 'text-orange-600' :
+                              'text-red-600'
                             }`}>
                               {margin.toFixed(1)}%
                             </span>
@@ -1320,36 +1721,28 @@ export default function BookkeepingApp() {
                   })}
                 </tbody>
               </table>
-              {filteredRecords.length === 0 && (
-                <div className="text-center py-12 text-gray-500">
-                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No records found for the selected period</p>
-                </div>
-              )}
             </div>
           </div>
         )}
 
-        {/* Modals */}
+        {/* Target Modal */}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-4">Set Revenue Target</h3>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Target Revenue (LKR)
-              </label>
               <input
                 type="number"
                 value={targetRevenue}
                 onChange={(e) => setTargetRevenue(parseFloat(e.target.value) || 0)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                placeholder="Enter target revenue (LKR)"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowTargetModal(false)}
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
                 >
-                  Save Target
+                  Save
                 </button>
                 <button
                   onClick={() => setShowTargetModal(false)}
@@ -1362,13 +1755,11 @@ export default function BookkeepingApp() {
           </div>
         )}
 
+        {/* Budget Modal */}
         {showBudgetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-4">Set Category Budget</h3>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Category
-              </label>
               <select
                 value={budgetCategory}
                 onChange={(e) => setBudgetCategory(e.target.value)}
@@ -1378,31 +1769,13 @@ export default function BookkeepingApp() {
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Budget Amount (LKR)
-              </label>
               <input
                 type="number"
                 value={budgetAmount}
                 onChange={(e) => setBudgetAmount(e.target.value)}
-                placeholder={budgets[budgetCategory] ? `Current: ${formatLKR(budgets[budgetCategory])}` : 'Enter amount'}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                placeholder="Enter budget amount (LKR)"
               />
-              
-              {Object.keys(budgets).length > 0 && (
-                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Current Budgets:</h4>
-                  <div className="space-y-1">
-                    {Object.entries(budgets).map(([cat, amt]) => (
-                      <div key={cat} className="text-sm text-gray-600 flex justify-between">
-                        <span>{cat}:</span>
-                        <span className="font-medium">LKR {formatLKR(amt)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
               <div className="flex gap-2">
                 <button
                   onClick={saveBudget}
@@ -1418,6 +1791,139 @@ export default function BookkeepingApp() {
                   className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Strategy Implementation Modal */}
+        {showStrategyModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-lg p-6 max-w-6xl w-full my-8">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                    <Layers className="w-7 h-7 text-purple-600" />
+                    Strategic Implementation Roadmap
+                  </h3>
+                  <p className="text-gray-600">Transform your business with data-driven sales analytics</p>
+                </div>
+                <button
+                  onClick={() => setShowStrategyModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <span className="text-2xl">×</span>
+                </button>
+              </div>
+
+              {/* Implementation Phases */}
+              <div className="space-y-6">
+                {implementationPhases.map((phase, idx) => {
+                  const Icon = phase.icon;
+                  const isExpanded = expandedSection === idx;
+                  
+                  return (
+                    <div key={idx} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setExpandedSection(isExpanded ? null : idx)}
+                        className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`${phase.color} p-3 rounded-lg text-white`}>
+                            <Icon className="w-6 h-6" />
+                          </div>
+                          <div className="text-left">
+                            <h4 className="font-bold text-lg text-gray-900">Phase {idx + 1}: {phase.phase}</h4>
+                            <p className="text-sm text-gray-600">{phase.duration} • Expected Value: {phase.value}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                            idx === 0 ? 'bg-green-100 text-green-700' :
+                            idx === 1 ? 'bg-blue-100 text-blue-700' :
+                            idx === 2 ? 'bg-purple-100 text-purple-700' :
+                            'bg-orange-100 text-orange-700'
+                          }`}>
+                            {idx === 0 ? 'Ready to Start' : idx === 1 ? 'Next Priority' : idx === 2 ? 'Future Phase' : 'Long-term'}
+                          </span>
+                          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </div>
+                      </button>
+                      
+                      {isExpanded && (
+                        <div className="p-5 bg-gray-50 border-t-2 border-gray-200">
+                          <h5 className="font-semibold mb-3">Key Deliverables:</h5>
+                          <ul className="space-y-2">
+                            {phase.tasks.map((task, taskIdx) => (
+                              <li key={taskIdx} className="flex items-start gap-3">
+                                <div className="mt-1">
+                                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+                                    <CheckCircle className="w-3 h-3 text-green-600" />
+                                  </div>
+                                </div>
+                                <span className="text-gray-700">{task}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Expected Outcomes */}
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-lg border-2 border-green-300">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Database className="w-6 h-6 text-green-600" />
+                    <h4 className="font-bold text-green-900">Data Foundation</h4>
+                  </div>
+                  <p className="text-3xl font-bold text-green-600 mb-2">{records.length}</p>
+                  <p className="text-sm text-green-800">Total records collected. Build to 200+ for robust analytics and predictive insights.</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-lg border-2 border-blue-300">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Percent className="w-6 h-6 text-blue-600" />
+                    <h4 className="font-bold text-blue-900">Margin Quality</h4>
+                  </div>
+                  <p className="text-3xl font-bold text-blue-600 mb-2">
+                    {((filteredRecords.filter(r => r.category === 'Inflow' && r.cost_per_unit).length / Math.max(filteredRecords.filter(r => r.category === 'Inflow').length, 1)) * 100).toFixed(0)}%
+                  </p>
+                  <p className="text-sm text-blue-800">Sales with cost tracking. Target 90%+ for accurate profitability analysis.</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-lg border-2 border-purple-300">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Users className="w-6 h-6 text-purple-600" />
+                    <h4 className="font-bold text-purple-900">Customer Insights</h4>
+                  </div>
+                  <p className="text-3xl font-bold text-purple-600 mb-2">{customerAnalysis.length}</p>
+                  <p className="text-sm text-purple-800">Unique customers tracked. Segment and analyze for better targeting strategies.</p>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="mt-8 p-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg text-white">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <h4 className="font-bold text-xl mb-2">Ready to Transform Your Sales Process?</h4>
+                    <p className="text-purple-100">Start with Phase 1 and see measurable results in 6-8 weeks</p>
+                  </div>
+                  <button className="bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold hover:bg-purple-50 transition-colors shadow-lg">
+                    Schedule Strategy Session
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setShowStrategyModal(false)}
+                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Close
                 </button>
               </div>
             </div>
