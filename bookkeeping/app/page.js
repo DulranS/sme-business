@@ -65,6 +65,7 @@ const [syncing, setSyncing] = useState(false);
 const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
 const [formData, setFormData] = useState({
   date: new Date().toISOString().split("T")[0],
+  paymentDate: "",   // <--- add this
   description: "",
   category: "Inflow",
   amount: "",
@@ -198,18 +199,20 @@ const monthlyData = useMemo(() => {
     if (!formData.description || !formData.amount) return;
 
     try {
-      const recordData = {
-        date: formData.date,
-        description: formData.description,
-        category: formData.category,
-        amount: parseFloat(formData.amount),
-        cost_per_unit: formData.costPerUnit ? parseFloat(formData.costPerUnit) : null,
-        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
-        notes: formData.notes,
-        customer: formData.customer || null,
-        project: formData.project || null,
-        tags: formData.tags || null
-      };
+const recordData = {
+  date: formData.date,
+  payment_date: formData.paymentDate || formData.date,  // <--- add this
+  description: formData.description,
+  category: formData.category,
+  amount: parseFloat(formData.amount),
+  cost_per_unit: formData.costPerUnit ? parseFloat(formData.costPerUnit) : null,
+  quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+  notes: formData.notes,
+  customer: formData.customer || null,
+  project: formData.project || null,
+  tags: formData.tags || null
+};
+
 
       if (isEditing !== null) {
         const recordToUpdate = records[isEditing];
@@ -248,6 +251,26 @@ const monthlyData = useMemo(() => {
       alert('Failed to save record. Please check your Supabase configuration.');
     }
   };
+
+  // --- Cash Flow Gaps ---
+const cashFlowGaps = useMemo(() => {
+  return filteredRecords
+    .filter(r => r.payment_date && r.category === "Inflow")
+    .map(r => {
+      const issueDate = new Date(r.date);
+      const paidDate = new Date(r.payment_date);
+      const gapDays = Math.max(0, Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24)));
+      return {
+        id: r.id,
+        description: r.description,
+        amount: r.amount,
+        customer: r.customer,
+        gapDays,
+        status: gapDays > 30 ? "Delayed" : "On Time"
+      };
+    });
+}, [filteredRecords]);
+
 
 // --- ROI Timeline & Calculations ---
 const roiTimeline = useMemo(() => {
@@ -717,6 +740,46 @@ const maturityData = [
             </div>
           </div>
         </div>
+{/* --- Cash Flow Gaps Section --- */}
+<div className="mt-6 p-4 border rounded-lg shadow" style={{marginBottom:'20px', backgroundColor:'white'}}>
+  <h2 className="text-lg font-semibold mb-3 flex items-center">
+    <AlertTriangle className="w-5 h-5 text-yellow-500 mr-2" />
+    Cash Flow Gaps (Delayed Payments)
+  </h2>
+
+  {cashFlowGaps.length === 0 ? (
+    <p className="text-gray-500">No delayed payments recorded.</p>
+  ) : (
+    <table className="w-full text-sm border-collapse">
+      <thead>
+        <tr className="bg-gray-100 text-left">
+          <th className="p-2 border">Description</th>
+          <th className="p-2 border">Customer</th>
+          <th className="p-2 border">Amount (LKR)</th>
+          <th className="p-2 border">Gap (days)</th>
+          <th className="p-2 border">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {cashFlowGaps.map((gap) => (
+          <tr key={gap.id} className="hover:bg-gray-50">
+            <td className="p-2 border">{gap.description}</td>
+            <td className="p-2 border">{gap.customer || "-"}</td>
+            <td className="p-2 border">{formatLKR(gap.amount)}</td>
+            <td className="p-2 border">{gap.gapDays}</td>
+            <td
+              className={`p-2 border font-semibold ${
+                gap.status === "Delayed" ? "text-red-600" : "text-green-600"
+              }`}
+            >
+              {gap.status}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+</div>
 
         {/* Strategic Alerts */}
         {(budgetAlerts.length > 0 || pricingRecommendations.length > 0) && (
