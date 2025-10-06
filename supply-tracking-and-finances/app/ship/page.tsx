@@ -80,7 +80,7 @@ const sendDiscordWebhook = async (order: Order) => {
   const payload = {
     username: "Order Bot",
     avatar_url: "https://i.imgur.com/AfFp7pu.png",
-    content: `\n---------------------------------------------------------------------------------------\n🚚 **Shipping Order Notification - Ready to SHIP**\n**Order #${order.id}** - ${order.customer_name}\nLocation: ${order.location}\nPhone: ${order.phone}\nMOQ: ${order.moq}\nUrgency: ${order.urgency}\nDescription: ${order.description}\nStatus: ${order.status}\n---------------------------------------------------------------------------------------\n`,
+    content: `\n---------------------------------------------------------------------------------------\n🚚 **Shipping Order Notification - Ready to SHIP**\n**Order #${order.id}** - ${order.customer_name}\nLocation: ${order.location}\nPhone: ${order.phone}\nMOQ: ${order.moq}\nUrgency: ${order.urgency}\nDescription: ${order.description}\nStatus: ${order.status}\n**---------------------------------------------------------------------------------------**\n`,
   };
 
   try {
