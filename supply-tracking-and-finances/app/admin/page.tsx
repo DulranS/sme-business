@@ -997,6 +997,42 @@ const PricingSection: React.FC<{
     </div>
   );
 };
+const DISCORD_WEBHOOK_URL = process.env.NEXT_PUBLIC_DISCORD_UPDATE_WEBHOOK_URL || "";
+
+const sendOrderUpdateWebhook = async (order: Order, action: string) => {
+  if (!DISCORD_WEBHOOK_URL) return;
+
+  const payload = {
+    username: "Order Bot",
+    avatar_url: "https://i.imgur.com/AfFp7pu.png",
+    content: `
+**---------------------------------------------------------------------------------------**
+📢 **Order Update Notification**
+Action: ${action}
+**Order #${order.id}** - ${order.customer_name}
+Location: ${order.location}
+Phone: ${order.phone}
+MOQ: ${order.moq}
+Urgency: ${order.urgency}
+Description: ${order.description}
+Status: ${order.status}
+Supplier Price: ${order.supplier_price || "N/A"}
+Customer Price: ${order.customer_price || "N/A"}
+Supplier Description: ${order.supplier_description || "N/A"}
+**---------------------------------------------------------------------------------------**
+`,
+  };
+
+  try {
+    await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to send Discord webhook:", err);
+  }
+};
 
 // ------------------------
 // Main App Component
@@ -1158,72 +1194,70 @@ const loadOrders = async () => {
   // ------------------------
   // Actions
   // ------------------------
-  const updateOrderStatus = async (
-    orderId: number,
-    status: Order["status"]
-  ) => {
-    setLoading(true);
-    try {
-      await supabase
-        .from("orders")
-        .update({ status })
-        .eq("id", orderId)
-        .execute();
+const updateOrderStatus = async (orderId: number, status: Order["status"]) => {
+  setLoading(true);
+  try {
+    await supabase.from("orders").update({ status }).eq("id", orderId).execute();
+
+    const updatedOrder = orders.find((o) => o.id === orderId);
+    if (updatedOrder) {
+      const newOrder = { ...updatedOrder, status };
       setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+        prev.map((o) => (o.id === orderId ? newOrder : o))
       );
-      if (selectedOrder?.id === orderId)
-        setSelectedOrder({ ...selectedOrder, status });
-    } catch (error) {
-      console.error(error);
-      alert("Failed to update status");
-    } finally {
-      setLoading(false);
+      if (selectedOrder?.id === orderId) setSelectedOrder(newOrder);
+
+      // Send Discord notification
+      await sendOrderUpdateWebhook(newOrder, "Status Updated");
     }
-  };
+  } catch (error) {
+    console.error(error);
+    alert("Failed to update status");
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const updatePricingInfo = async (orderId: number) => {
-    setLoading(true);
-    try {
-      await supabase
-        .from("orders")
-        .update({
-          supplier_price: supplierPrice || undefined,
-          supplier_description: supplierDescription || undefined,
-          customer_price: customerPrice || undefined,
-        })
-        .eq("id", orderId)
-        .execute();
 
+const updatePricingInfo = async (orderId: number) => {
+  setLoading(true);
+  try {
+    await supabase
+      .from("orders")
+      .update({
+        supplier_price: supplierPrice || undefined,
+        supplier_description: supplierDescription || undefined,
+        customer_price: customerPrice || undefined,
+      })
+      .eq("id", orderId)
+      .execute();
+
+    const updatedOrder = orders.find((o) => o.id === orderId);
+    if (updatedOrder) {
+      const newOrder = {
+        ...updatedOrder,
+        supplier_price: supplierPrice || undefined,
+        supplier_description: supplierDescription || undefined,
+        customer_price: customerPrice || undefined,
+      };
       setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                supplier_price: supplierPrice || undefined,
-                supplier_description: supplierDescription || undefined,
-                customer_price: customerPrice || undefined,
-              }
-            : o
-        )
+        prev.map((o) => (o.id === orderId ? newOrder : o))
       );
-
-      if (selectedOrder?.id === orderId)
-        setSelectedOrder({
-          ...selectedOrder,
-          supplier_price: supplierPrice || undefined,
-          supplier_description: supplierDescription || undefined,
-          customer_price: customerPrice || undefined,
-        });
+      if (selectedOrder?.id === orderId) setSelectedOrder(newOrder);
 
       setIsEditingPricing(false);
       alert("Pricing updated successfully");
-    } catch {
-      alert("Failed to update pricing");
-    } finally {
-      setLoading(false);
+
+      // Send Discord notification
+      await sendOrderUpdateWebhook(newOrder, "Pricing Updated");
     }
-  };
+  } catch {
+    alert("Failed to update pricing");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const deleteOrder = async (orderId: number) => {
     if (!confirm("Are you sure you want to delete this order?")) return;
