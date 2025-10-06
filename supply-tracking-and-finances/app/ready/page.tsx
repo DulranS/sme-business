@@ -285,7 +285,7 @@ const CompletedOrdersPage: React.FC = () => {
   if (loading)
     return (
       <div className="flex items-center justify-center h-screen">
-        <p className="text-gray-500">Loading completed orders...</p>
+        <p className="text-gray-500" style={{color:'white'}}>Loading completed orders...</p>
       </div>
     );
   if (error)
