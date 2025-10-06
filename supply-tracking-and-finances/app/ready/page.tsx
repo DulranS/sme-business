@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { CheckCircle } from "lucide-react";
 
 // ------------------------
-// Order Interface (updated to include "ship")
+// Order Interface
 // ------------------------
 interface Order {
   id: number;
@@ -14,7 +14,7 @@ interface Order {
   description: string;
   moq: string;
   urgency: "low" | "medium" | "high";
-  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship"; // ← added "ship"
+  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship";
   images: string;
   created_at: string;
   supplier_price?: string;
@@ -32,9 +32,10 @@ interface OrderImage {
 // ------------------------
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const DISCORD_WEBHOOK_URL = process.env.NEXT_PUBLIC_DISCORD_READY_WEBHOOK_URL || "";
 
 // ------------------------
-// Custom Supabase Client (with update support)
+// Supabase Client
 // ------------------------
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
@@ -64,7 +65,6 @@ class SupabaseClient {
         }),
         execute: async (): Promise<Order[]> => this.request<Order[]>(`${table}?select=${columns}`),
       }),
-      // 👇 New update method for PATCH requests
       update: (data: Partial<Order>) => ({
         eq: (column: string, value: string | number) => ({
           execute: async (): Promise<void> => {
@@ -78,10 +78,7 @@ class SupabaseClient {
               },
               body: JSON.stringify(data),
             });
-
-            if (!response.ok) {
-              throw new Error(`Update failed: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`Update failed: ${response.status}`);
           },
         }),
       }),
@@ -90,9 +87,32 @@ class SupabaseClient {
 }
 
 // ------------------------
-// Initialize Supabase Client
+// Initialize Supabase
 // ------------------------
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ------------------------
+// Discord Webhook Helper
+// ------------------------
+const sendDiscordWebhook = async (order: Order) => {
+  if (!DISCORD_WEBHOOK_URL) return;
+
+  const payload = {
+    username: "Order Bot",
+    avatar_url: "https://i.imgur.com/AfFp7pu.png",
+    content: ` **\n---------------------------------------------------------------------------------------\n📦 Order Notification**\n**Order #${order.id}** - ${order.customer_name}\nLocation: ${order.location}\nPhone: ${order.phone}\nMOQ: ${order.moq}\nUrgency: ${order.urgency}\nDescription: ${order.description}\nStatus: ${order.status}\n---------------------------------------------------------------------------------------\n`,
+  };
+
+  try {
+    await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to send Discord webhook:", err);
+  }
+};
 
 // ------------------------
 // CompletedOrdersPage Component
@@ -102,7 +122,9 @@ const CompletedOrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch completed orders
+  // ------------------------
+  // Fetch Completed Orders
+  // ------------------------
   useEffect(() => {
     const fetchCompletedOrders = async () => {
       setLoading(true);
@@ -114,6 +136,12 @@ const CompletedOrdersPage: React.FC = () => {
           .select("*")
           .eq("status", "completed")
           .execute();
+
+        // Identify new orders and send webhook
+        const newOrders = completedOrders.filter(
+          (o) => !orders.some((existing) => existing.id === o.id)
+        );
+        newOrders.forEach((order) => sendDiscordWebhook(order));
 
         setOrders(completedOrders);
       } catch (err) {
@@ -128,27 +156,33 @@ const CompletedOrdersPage: React.FC = () => {
   }, []);
 
   // ------------------------
-  // Mark order as shipping
+  // Mark Order as Shipping
   // ------------------------
   const markAsShipping = async (orderId: number) => {
     if (!confirm("Are you sure you want to mark this order as shipping?")) return;
 
     try {
-      // Update in Supabase
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) throw new Error("Order not found");
+
       await supabase
         .from("orders")
         .update({ status: "ship" })
         .eq("id", orderId)
         .execute();
 
-      // Optimistically remove from UI (since it's no longer "completed")
-      setOrders((prev) => prev.filter((order) => order.id !== orderId));
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+
+      await sendDiscordWebhook({ ...order, status: "ship" });
     } catch (err) {
       console.error("Failed to update order status:", err);
       alert("Failed to mark order as shipping. Please try again.");
     }
   };
 
+  // ------------------------
+  // Parse Images
+  // ------------------------
   const parseImages = (imagesJson: string): OrderImage[] => {
     try {
       return JSON.parse(imagesJson || "[]");
@@ -158,9 +192,8 @@ const CompletedOrdersPage: React.FC = () => {
   };
 
   const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
-    const openImage = (url: string) =>
-      window.open(url, "_blank", "noopener,noreferrer");
-  
+    const openImage = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
+
     if (images.length === 0) {
       return (
         <div>
@@ -169,7 +202,7 @@ const CompletedOrdersPage: React.FC = () => {
         </div>
       );
     }
-  
+
     return (
       <div>
         <h3 className="font-semibold text-gray-900 mb-4">
@@ -181,9 +214,7 @@ const CompletedOrdersPage: React.FC = () => {
               key={i}
               className="bg-gray-50 rounded-lg p-4 border border-gray-200"
             >
-              <p className="text-sm font-medium text-gray-800 mb-2">
-                {image.name}
-              </p>
+              <p className="text-sm font-medium text-gray-800 mb-2">{image.name}</p>
               <div className="flex justify-center">
                 <img
                   src={image.url}
@@ -209,7 +240,7 @@ const CompletedOrdersPage: React.FC = () => {
   };
 
   // ------------------------
-  // Export to CSV
+  // Export CSV
   // ------------------------
   const exportToCSV = () => {
     if (orders.length === 0) return;
@@ -219,11 +250,7 @@ const CompletedOrdersPage: React.FC = () => {
       headers.join(","), // header row
       ...orders.map((order) =>
         headers
-          .map((field) => {
-            const value = (order as any)[field] ?? "";
-            // escape double quotes and wrap in quotes
-            return `"${String(value).replace(/"/g, '""')}"`;
-          })
+          .map((field) => `"${String((order as any)[field] ?? "").replace(/"/g, '""')}"`)
           .join(",")
       ),
     ];
@@ -241,43 +268,32 @@ const CompletedOrdersPage: React.FC = () => {
   };
 
   // ------------------------
-  // Loading State
+  // Loading/Error States
   // ------------------------
-  if (loading) {
+  if (loading)
     return (
       <div className="flex items-center justify-center h-screen">
         <p className="text-gray-500">Loading completed orders...</p>
       </div>
     );
-  }
-
-  // ------------------------
-  // Error State
-  // ------------------------
-  if (error) {
+  if (error)
     return (
       <div className="flex items-center justify-center h-screen text-center">
         <p className="text-red-600 font-semibold">{error}</p>
       </div>
     );
-  }
-
-  // ------------------------
-  // No Completed Orders
-  // ------------------------
-  if (orders.length === 0) {
+  if (orders.length === 0)
     return (
       <div className="flex items-center justify-center h-screen text-center">
         <p className="text-gray-500 font-medium">No completed orders available.</p>
       </div>
     );
-  }
 
   // ------------------------
-  // Completed Orders List
+  // Render Orders
   // ------------------------
   return (
-    <div className="p-4 space-y-2 bg-green-50 min-h-screen">
+    <div className="p-4 space-y-4 bg-green-50 min-h-screen">
       <button
         onClick={exportToCSV}
         className="mb-3 px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition"
@@ -290,26 +306,32 @@ const CompletedOrdersPage: React.FC = () => {
         return (
           <div
             key={order.id}
-            className="bg-white p-3 rounded shadow border border-green-200 hover:shadow-md transition"
+            className="bg-white p-4 rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition relative"
           >
+            {/* Status Badge */}
+            <div className="absolute top-2 right-2 px-2 py-0.5 text-xs font-semibold text-white bg-green-600 rounded">
+              Completed
+            </div>
+
             <div className="flex items-start gap-3">
-              <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+              <CheckCircle className="w-5 h-5 text-green-600 mt-1 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-bold text-green-800 mb-1">
+                <h2 className="text-sm font-bold text-green-800 mb-2">
                   Order #{order.id} - {order.customer_name}
                 </h2>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                  <p className="truncate"><span className="font-medium">Email:</span> {order.email || "N/A"}</p>
-                  <p className="truncate"><span className="font-medium">Phone:</span> {order.phone}</p>
-                  <p className="truncate"><span className="font-medium">Location:</span> {order.location}</p>
-                  <p className="truncate"><span className="font-medium">MOQ:</span> {order.moq}</p>
-                  <p className="truncate"><span className="font-medium">Urgency:</span> {order.urgency}</p>
-                  <p className="truncate"><span className="font-medium">Supplier Price:</span> {order.supplier_price || "N/A"}</p>
-                  <p className="truncate"><span className="font-medium">Customer Price:</span> {order.customer_price || "N/A"}</p>
-                  <p className="truncate"><span className="font-medium">Created:</span> {new Date(order.created_at).toLocaleDateString()}</p>
+                <div className="bg-green-50 p-2 rounded space-y-1 text-xs">
+                  <p><span className="font-medium">Email:</span> {order.email || "N/A"}</p>
+                  <p><span className="font-medium">Phone:</span> {order.phone}</p>
+                  <p><span className="font-medium">Location:</span> {order.location}</p>
+                  <p><span className="font-medium">MOQ:</span> {order.moq}</p>
+                  <p><span className="font-medium">Urgency:</span> {order.urgency}</p>
+                  <p><span className="font-medium">Supplier Price:</span> {order.supplier_price || "N/A"}</p>
+                  <p><span className="font-medium">Customer Price:</span> {order.customer_price || "N/A"}</p>
+                  <p><span className="font-medium">Created:</span> {new Date(order.created_at).toLocaleDateString()}</p>
+                  <p><span className="font-medium">Description:</span> {order.description}</p>
                 </div>
-                <p className="text-xs mt-1 line-clamp-2"><span className="font-medium">Description:</span> {order.description}</p>
               </div>
+
               {images.length > 0 && (
                 <div className="flex gap-2 flex-shrink-0">
                   {images.slice(0, 2).map((image, i) => (
@@ -331,7 +353,7 @@ const CompletedOrdersPage: React.FC = () => {
               )}
             </div>
 
-            {/* 👇 Mark as Shipping Button */}
+            {/* Mark as Shipping */}
             <div className="mt-3 flex justify-end">
               <button
                 onClick={() => markAsShipping(order.id)}

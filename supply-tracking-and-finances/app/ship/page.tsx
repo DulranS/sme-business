@@ -1,4 +1,3 @@
-// app/ship/page.tsx
 "use client";
 import React, { useEffect, useState } from "react";
 import { CheckCircle } from "lucide-react";
@@ -33,9 +32,10 @@ interface OrderImage {
 // ------------------------
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const DISCORD_WEBHOOK_URL = process.env.NEXT_PUBLIC_DISCORD_SHIP_WEBHOOK_URL || "";
 
 // ------------------------
-// Custom Supabase Client (same as before)
+// Custom Supabase Client
 // ------------------------
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
@@ -72,6 +72,29 @@ class SupabaseClient {
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
+// Discord Webhook Helper
+// ------------------------
+const sendDiscordWebhook = async (order: Order) => {
+  if (!DISCORD_WEBHOOK_URL) return;
+
+  const payload = {
+    username: "Order Bot",
+    avatar_url: "https://i.imgur.com/AfFp7pu.png",
+    content: `\n---------------------------------------------------------------------------------------\n🚚 **Shipping Order Notification**\n**Order #${order.id}** - ${order.customer_name}\nLocation: ${order.location}\nPhone: ${order.phone}\nMOQ: ${order.moq}\nUrgency: ${order.urgency}\nDescription: ${order.description}\nStatus: ${order.status}\n---------------------------------------------------------------------------------------\n`,
+  };
+
+  try {
+    await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to send Discord webhook:", err);
+  }
+};
+
+// ------------------------
 // ShipOrdersPage Component
 // ------------------------
 const ShipOrdersPage: React.FC = () => {
@@ -79,6 +102,9 @@ const ShipOrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // ------------------------
+  // Fetch Ship Orders
+  // ------------------------
   useEffect(() => {
     const fetchShipOrders = async () => {
       setLoading(true);
@@ -90,6 +116,12 @@ const ShipOrdersPage: React.FC = () => {
           .select("*")
           .eq("status", "ship")
           .execute();
+
+        // Identify new ship orders and send Discord webhook
+        const newOrders = shipOrders.filter(
+          (o) => !orders.some((existing) => existing.id === o.id)
+        );
+        newOrders.forEach((order) => sendDiscordWebhook(order));
 
         setOrders(shipOrders);
       } catch (err) {
@@ -103,6 +135,9 @@ const ShipOrdersPage: React.FC = () => {
     fetchShipOrders();
   }, []);
 
+  // ------------------------
+  // Parse Images
+  // ------------------------
   const parseImages = (imagesJson: string): OrderImage[] => {
     try {
       return JSON.parse(imagesJson || "[]");
@@ -112,8 +147,7 @@ const ShipOrdersPage: React.FC = () => {
   };
 
   const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
-    const openImage = (url: string) =>
-      window.open(url, "_blank", "noopener,noreferrer");
+    const openImage = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
 
     if (images.length === 0) {
       return (
@@ -162,18 +196,18 @@ const ShipOrdersPage: React.FC = () => {
     );
   };
 
+  // ------------------------
+  // Export to CSV
+  // ------------------------
   const exportToCSV = () => {
     if (orders.length === 0) return;
 
     const headers = Object.keys(orders[0]);
     const csvRows = [
-      headers.join(","),
+      headers.join(","), // header row
       ...orders.map((order) =>
         headers
-          .map((field) => {
-            const value = (order as any)[field] ?? "";
-            return `"${String(value).replace(/"/g, '""')}"`;
-          })
+          .map((field) => `"${String((order as any)[field] ?? "").replace(/"/g, '""')}"`)
           .join(",")
       ),
     ];
@@ -190,30 +224,33 @@ const ShipOrdersPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  if (loading) {
+  // ------------------------
+  // Loading / Error / Empty States
+  // ------------------------
+  if (loading)
     return (
       <div className="flex items-center justify-center h-screen">
-        <p className="text-gray-500">Loading shipping orders...</p>
+        <p className="text-gray-500" style={{ color: "white" }}>Loading shipping orders...</p>
       </div>
     );
-  }
 
-  if (error) {
+  if (error)
     return (
       <div className="flex items-center justify-center h-screen text-center">
         <p className="text-red-600 font-semibold">{error}</p>
       </div>
     );
-  }
 
-  if (orders.length === 0) {
+  if (orders.length === 0)
     return (
       <div className="flex items-center justify-center h-screen text-center">
         <p className="text-gray-500 font-medium">No shipping orders available.</p>
       </div>
     );
-  }
 
+  // ------------------------
+  // Render Ship Orders
+  // ------------------------
   return (
     <div className="p-4 space-y-2 bg-blue-50 min-h-screen">
       <button
