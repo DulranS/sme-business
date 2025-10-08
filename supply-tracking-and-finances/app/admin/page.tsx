@@ -55,6 +55,7 @@ interface FinancialSummary {
   completedOrders: number;
   pendingValue: number;
   inProgressValue: number;
+  shippedValue: number; // ✅ Add this
   cashInflow: number;
   cashOutflow: number;
   netCashFlow: number;
@@ -205,26 +206,35 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let completedOrders = 0;
   let pendingValue = 0;
   let inProgressValue = 0;
+  let shippedValue = 0; // ✅ Added
   let cashInflow = 0;
   let cashOutflow = 0;
 
-orders.forEach((order) => {
-  const customerPrice = extractNumericValue(order.customer_price);
-  const supplierPrice = extractNumericValue(order.supplier_price);
+  orders.forEach((order) => {
+    const customerPrice = extractNumericValue(order.customer_price);
+    const supplierPrice = extractNumericValue(order.supplier_price);
 
-  if (order.status === "completed") {
-    totalRevenue += customerPrice;
-    totalCost += supplierPrice;
-    completedOrders++;
-    cashInflow += customerPrice;
-    cashOutflow += supplierPrice;
-  } else if (order.status === "ship") {
-    // Ship orders are fulfilled - count as revenue but cash not yet received
-    totalRevenue += customerPrice;
-    totalCost += supplierPrice;
-    completedOrders++;
-    // Don't add to cashInflow yet since payment pending
-    cashOutflow += supplierPrice; // Supplier alre
+    if (order.status === "completed") {
+      totalRevenue += customerPrice;
+      totalCost += supplierPrice;
+      completedOrders++;
+      cashInflow += customerPrice;
+      cashOutflow += supplierPrice;
+    } else if (order.status === "ship") {
+      // Ship orders are fulfilled - count as revenue but cash not yet received
+      totalRevenue += customerPrice;
+      totalCost += supplierPrice;
+      completedOrders++;
+      shippedValue += customerPrice; // ✅ Track separately
+      cashOutflow += supplierPrice; // Supplier already paid
+      // Don't add to cashInflow yet since payment pending
+    } else if (order.status === "pending") {
+      pendingValue += customerPrice;
+    } else if (order.status === "in-progress") {
+      inProgressValue += customerPrice;
+    }
+    // Note: "cancelled" orders are not counted anywhere
+  });
 
   const totalProfit = totalRevenue - totalCost;
   const profitMargin =
@@ -246,6 +256,7 @@ orders.forEach((order) => {
     completedOrders,
     pendingValue,
     inProgressValue,
+    shippedValue, // ✅ Added
     cashInflow,
     cashOutflow,
     netCashFlow,
@@ -263,13 +274,14 @@ const StatusUpdater: React.FC<{
   onUpdate: (status: Order["status"]) => void;
   loading: boolean;
 }> = ({ currentStatus, onUpdate, loading }) => {
-const statuses: Order["status"][] = [
-  "pending",
-  "in-progress",
-  "ship",
-  "completed",
-  "cancelled",
-];
+  const statuses: Order["status"][] = [
+    "pending",
+    "in-progress",
+    "ship",
+    "completed",
+    "cancelled",
+  ];
+  
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -376,31 +388,37 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">
-                Pipeline Value
-              </span>
-              <Package className="w-4 h-4 text-purple-600" />
-            </div>
-            <p className="text-2xl font-bold text-gray-900">
-              {formatCurrency(summary.pendingValue + summary.inProgressValue)}
-            </p>
-            <div className="mt-2 space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Pending:</span>
-                <span className="font-medium text-amber-600">
-                  {formatCurrency(summary.pendingValue)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">In Progress:</span>
-                <span className="font-medium text-blue-600">
-                  {formatCurrency(summary.inProgressValue)}
-                </span>
-              </div>
-            </div>
-          </div>
+<div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
+  <div className="flex items-center justify-between mb-2">
+    <span className="text-sm font-medium text-gray-600">
+      Pipeline Value
+    </span>
+    <Package className="w-4 h-4 text-purple-600" />
+  </div>
+  <p className="text-2xl font-bold text-gray-900">
+    {formatCurrency(summary.pendingValue + summary.inProgressValue + summary.shippedValue)}
+  </p>
+  <div className="mt-2 space-y-1 text-xs">
+    <div className="flex justify-between">
+      <span className="text-gray-500">Pending:</span>
+      <span className="font-medium text-amber-600">
+        {formatCurrency(summary.pendingValue)}
+      </span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-gray-500">In Progress:</span>
+      <span className="font-medium text-blue-600">
+        {formatCurrency(summary.inProgressValue)}
+      </span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-gray-500">Shipped:</span>
+      <span className="font-medium text-purple-600">
+        {formatCurrency(summary.shippedValue)}
+      </span>
+    </div>
+  </div>
+</div>
         </div>
       </div>
 
@@ -1370,9 +1388,9 @@ const updatePricingInfo = async (orderId: number) => {
       "=== PIPELINE & FUTURE REVENUE ===",
       `Pending Orders Value,${summary.pendingValue.toFixed(2)}`,
       `In-Progress Orders Value,${summary.inProgressValue.toFixed(2)}`,
-      `Total Pipeline Value,${(
-        summary.pendingValue + summary.inProgressValue
-      ).toFixed(2)}`,
+  `Total Pipeline Value,${(
+    summary.pendingValue + summary.inProgressValue + summary.shippedValue
+  ).toFixed(2)}`,
       `Pipeline to Revenue Ratio,${
         summary.totalRevenue > 0
           ? (
