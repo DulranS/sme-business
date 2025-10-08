@@ -10,7 +10,7 @@ Finance:
 Payments → Cash Flow → Financial Controls → Reinvest - https://bookeepingx.vercel.app/  ---- (AFTER supply batch sales - calculation only)
 
 Customer Management:
-Customer → Support/Feedback → Retention → Service Quality - https://supply-zeta.vercel.app/ (can use this)**
+Customer → Support/Feedback + Retention → Service Quality (reviews) - https://supply-zeta.vercel.app/ (can use this)**
 
 
 Tiny, focused tools for small and medium businesses. Each micro-app solves a specific problem in your SME supply chain—fast to build, easy to use, and low on feature bloat.
