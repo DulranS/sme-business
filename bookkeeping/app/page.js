@@ -154,6 +154,58 @@ const filteredRecords = useMemo(() => {
   });
 }, [records, dateFilter]);
 
+  const competitiveAnalysis = useMemo(() => {
+    return filteredRecords
+      .filter((r) => r.category === "Inflow" && r.market_price > 0)
+      .map((r) => {
+        const qty = parseFloat(r.quantity) || 1;
+        const sellingPrice = parseFloat(r.amount) || 0;
+        const cost = parseFloat(r.cost_per_unit) || 0;
+        const marketPrice = parseFloat(r.market_price) || sellingPrice;
+        
+        const grossProfit = (sellingPrice - cost) * qty;
+        const grossMargin = sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
+        const competitiveEdge = marketPrice > sellingPrice ? (marketPrice - sellingPrice) * qty : 0;
+        const underpriced = marketPrice > sellingPrice;
+        const overpriced = marketPrice < sellingPrice;
+        const pricePosition = cost > 0 && marketPrice > cost 
+          ? ((sellingPrice - cost) / (marketPrice - cost)) * 100 
+          : 100;
+
+        return {
+          id: r.id,
+          name: r.description,
+          sellingPrice,
+          cost,
+          marketPrice,
+          quantity: qty,
+          grossProfit,
+          grossMargin,
+          competitiveEdge,
+          underpriced,
+          overpriced,
+          pricePosition,
+          customer: r.customer,
+          date: r.date,
+        };
+      })
+      .sort((a, b) => b.competitiveEdge - a.competitiveEdge);
+  }, [filteredRecords]);
+
+  const competitiveTotals = useMemo(() => {
+    return competitiveAnalysis.reduce(
+      (acc, item) => ({
+        totalRevenue: acc.totalRevenue + item.sellingPrice * item.quantity,
+        totalCost: acc.totalCost + item.cost * item.quantity,
+        totalProfit: acc.totalProfit + item.grossProfit,
+        totalCompetitiveEdge: acc.totalCompetitiveEdge + item.competitiveEdge,
+        avgMargin: acc.avgMargin + item.grossMargin,
+        count: acc.count + 1,
+      }),
+      { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalCompetitiveEdge: 0, avgMargin: 0, count: 0 }
+    );
+  }, [competitiveAnalysis]);
+
 // --- Monthly Data Aggregation ---
 const monthlyData = useMemo(() => {
   if (!filteredRecords || filteredRecords.length === 0) return [];
@@ -2292,7 +2344,244 @@ const maturityData = [
             </div>
           </div>
         )}
+        {activeTab === "competitive" && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <Target className="w-7 h-7" />
+                Competitive Positioning Intelligence
+              </h2>
+              <p className="text-indigo-100">
+                Understand your pricing power vs market rates and competitors
+              </p>
+            </div>
 
+            {competitiveAnalysis.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
+                <p className="text-yellow-800 font-semibold mb-2">
+                  No competitive data available yet
+                </p>
+                <p className="text-yellow-700 text-sm">
+                  Add market pricing data to your inflow records to unlock competitive analysis and see where you can capture more value.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
+                    <div className="flex justify-between items-start mb-2">
+                      <TrendingUp className="w-8 h-8 opacity-80" />
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Tracked</span>
+                    </div>
+                    <h3 className="text-2xl font-bold mb-1">{competitiveAnalysis.length}</h3>
+                    <p className="text-sm opacity-90">Products with Market Data</p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-5">
+                    <div className="flex justify-between items-start mb-2">
+                      <Zap className="w-8 h-8 opacity-80" />
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Opportunity</span>
+                    </div>
+                    <h3 className="text-2xl font-bold mb-1">
+                      LKR {formatLKR(competitiveTotals.totalCompetitiveEdge)}
+                    </h3>
+                    <p className="text-sm opacity-90">Potential Revenue Upside</p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
+                    <div className="flex justify-between items-start mb-2">
+                      <Percent className="w-8 h-8 opacity-80" />
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Margin</span>
+                    </div>
+                    <h3 className="text-2xl font-bold mb-1">
+                      {competitiveTotals.count > 0 
+                        ? (competitiveTotals.avgMargin / competitiveTotals.count).toFixed(1) 
+                        : "0"}%
+                    </h3>
+                    <p className="text-sm opacity-90">Avg Competitive Margin</p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-5">
+                    <div className="flex justify-between items-start mb-2">
+                      <Calculator className="w-8 h-8 opacity-80" />
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Position</span>
+                    </div>
+                    <h3 className="text-2xl font-bold mb-1">
+                      {competitiveAnalysis.filter(a => a.underpriced).length}
+                    </h3>
+                    <p className="text-sm opacity-90">Underpriced Products</p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-indigo-600" />
+                    Competitive Positioning by Product
+                  </h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={competitiveAnalysis.slice(0, 10)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                      <Legend />
+                      <Bar dataKey="sellingPrice" fill="#3b82f6" name="Your Price" />
+                      <Bar dataKey="marketPrice" fill="#10b981" name="Market Price" />
+                      <Bar dataKey="competitiveEdge" fill="#8b5cf6" name="Competitive Edge" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="font-bold text-lg mb-4">Detailed Competitive Analysis</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-600">Product</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Your Price</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Market Price</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Price Position</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Margin %</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Competitive Edge</th>
+                          <th className="px-4 py-3 text-center font-semibold text-gray-600">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {competitiveAnalysis.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-gray-900 font-medium">{item.name}</td>
+                            <td className="px-4 py-3 text-right">LKR {formatLKR(item.sellingPrice)}</td>
+                            <td className="px-4 py-3 text-right">LKR {formatLKR(item.marketPrice)}</td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              {((item.sellingPrice / item.marketPrice) * 100).toFixed(0)}%
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-green-600">
+                              {item.grossMargin.toFixed(1)}%
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-purple-600">
+                              LKR {formatLKR(item.competitiveEdge)}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {item.underpriced && (
+                                <span className="px-3 py-1 text-xs font-semibold bg-green-100 text-green-800 rounded-full">
+                                  UNDERPRICED ⬆️
+                                </span>
+                              )}
+                              {item.overpriced && (
+                                <span className="px-3 py-1 text-xs font-semibold bg-orange-100 text-orange-800 rounded-full">
+                                  PREMIUM 💎
+                                </span>
+                              )}
+                              {!item.underpriced && !item.overpriced && (
+                                <span className="px-3 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
+                                  MARKET RATE ✓
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {competitiveAnalysis.filter(a => a.underpriced).length > 0 && (
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-5">
+                      <div className="flex items-start gap-3">
+                        <Zap className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
+                        <div>
+                          <h3 className="font-bold text-green-900 mb-2">Quick Win Opportunities</h3>
+                          <div className="space-y-2 text-sm text-green-800">
+                            {competitiveAnalysis
+                              .filter(a => a.underpriced)
+                              .slice(0, 3)
+                              .map((item, idx) => (
+                                <div key={idx} className="flex items-start gap-2">
+                                  <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                  <span>
+                                    <strong>{item.name}:</strong> Raise price to LKR {formatLKR(item.marketPrice)} 
+                                    = +LKR {formatLKR(item.competitiveEdge)} revenue
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
+                    <div className="flex items-start gap-3">
+                      <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+                      <div>
+                        <h3 className="font-bold text-blue-900 mb-2">Competitive Positioning Guide</h3>
+                        <ul className="space-y-2 text-sm text-blue-800">
+                          <li className="flex items-start gap-2">
+                            <span className="font-bold">UNDERPRICED ⬆️:</span> 
+                            You're below market. Test gradual price increases to capture more value without losing customers.
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="font-bold">PREMIUM 💎:</span> 
+                            You're above market but profitable. Emphasize unique value and quality to justify premium pricing.
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="font-bold">MARKET RATE ✓:</span> 
+                            Competitive pricing. Focus on service differentiation and customer loyalty programs.
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-6 text-white">
+                  <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
+                    <Target className="w-6 h-6" />
+                    90-Day Competitive Advantage Roadmap
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white bg-opacity-10 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">1</div>
+                        <h4 className="font-semibold">Month 1: Data Collection</h4>
+                      </div>
+                      <ul className="text-sm space-y-1 text-purple-100">
+                        <li>• Track competitor pricing weekly</li>
+                        <li>• Document cost structures</li>
+                        <li>• Identify top 20% revenue products</li>
+                      </ul>
+                    </div>
+                    <div className="bg-white bg-opacity-10 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">2</div>
+                        <h4 className="font-semibold">Month 2: Testing</h4>
+                      </div>
+                      <ul className="text-sm space-y-1 text-purple-100">
+                        <li>• Test 10-15% price increases</li>
+                        <li>• Monitor conversion rates</li>
+                        <li>• A/B test value messaging</li>
+                      </ul>
+                    </div>
+                    <div className="bg-white bg-opacity-10 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">3</div>
+                        <h4 className="font-semibold">Month 3: Optimization</h4>
+                      </div>
+                      <ul className="text-sm space-y-1 text-purple-100">
+                        <li>• Roll out successful changes</li>
+                        <li>• Update positioning strategy</li>
+                        <li>• Measure profit impact</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         {/* Target Modal */}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
