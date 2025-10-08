@@ -208,26 +208,27 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let cashInflow = 0;
   let cashOutflow = 0;
 
-  orders.forEach((order) => {
-    const customerPrice = extractNumericValue(order.customer_price);
-    const supplierPrice = extractNumericValue(order.supplier_price);
+orders.forEach((order) => {
+  const customerPrice = extractNumericValue(order.customer_price);
+  const supplierPrice = extractNumericValue(order.supplier_price);
 
-    if (order.status === "completed") {
-      totalRevenue += customerPrice;
-      totalCost += supplierPrice;
-      completedOrders++;
-      cashInflow += customerPrice; // Money received
-      cashOutflow += supplierPrice; // Money paid out
-    } else if (order.status === "pending") {
-      pendingValue += customerPrice;
-    } else if (order.status === "in-progress") {
-      inProgressValue += customerPrice;
-      // For in-progress, we might have already paid suppliers
-      if (supplierPrice > 0) {
-        cashOutflow += supplierPrice;
-      }
-    }
-  });
+  if (order.status === "completed") {
+    totalRevenue += customerPrice;
+    totalCost += supplierPrice;
+    completedOrders++;
+    cashInflow += customerPrice; // Money received
+    cashOutflow += supplierPrice; // Money paid out
+  } else if (order.status === "pending") {
+    pendingValue += customerPrice;
+  } else if (order.status === "in-progress") {
+    inProgressValue += customerPrice;
+    // Note: In-progress orders don't affect cash flow until completed
+    // Cash flow only tracks actual money received and paid
+  } else if (order.status === "ship") {
+    // Shipped orders are awaiting payment - treat similarly to in-progress
+    inProgressValue += customerPrice;
+  }
+});
 
   const totalProfit = totalRevenue - totalCost;
   const profitMargin =
@@ -1165,25 +1166,25 @@ const downloadCSVTemplate = () => {
   // Load Orders
   // ------------------------
 const loadOrders = async () => {
-    setLoading(true);
-    try {
-      const data = await supabase.from("orders").select("*").execute();
-      // Filter out orders with status "ship" and sort by urgency (high > medium > low), then by date
-      const filtered = data.filter((order) => order.status !== "ship");
-      const urgencyPriority = { high: 3, medium: 2, low: 1 };
-      const sorted = filtered.sort((a, b) => {
-        const urgencyDiff = urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
-        if (urgencyDiff !== 0) return urgencyDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-      setOrders(sorted);
-    } catch (error) {
-      console.error(error);
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  try {
+    const data = await supabase.from("orders").select("*").execute();
+    // Sort by urgency (high > medium > low), then by date
+    // Note: Keep all statuses for accurate financial calculations
+    const urgencyPriority = { high: 3, medium: 2, low: 1 };
+    const sorted = data.sort((a, b) => {
+      const urgencyDiff = urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
+      if (urgencyDiff !== 0) return urgencyDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    setOrders(sorted);
+  } catch (error) {
+    console.error(error);
+    setOrders([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     loadOrders();
