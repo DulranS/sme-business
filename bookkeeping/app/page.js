@@ -58,45 +58,42 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function BookkeepingApp() {
-  const [records, setRecords] = useState([]);
-  const [isEditing, setIsEditing] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split("T")[0],
-    paymentDate: "", // <--- add this
-    description: "",
-    category: "Inflow",
-    amount: "",
-    costPerUnit: "",
-    quantity: "",
-    notes: "",
-    customer: "",
-    project: "",
-    tags: "",
-    expenseGroup: "", // <-- NEW
-  });
-  const [targetRevenue, setTargetRevenue] = useState(100000);
-  const [showTargetModal, setShowTargetModal] = useState(false);
-  const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [budgets, setBudgets] = useState({});
-  const [budgetCategory, setBudgetCategory] = useState("Overhead");
-  const [budgetAmount, setBudgetAmount] = useState("");
-  const [expandedSection, setExpandedSection] = useState(null);
-  const [showStrategyModal, setShowStrategyModal] = useState(false);
+const [records, setRecords] = useState([]);
+const [isEditing, setIsEditing] = useState(null);
+const [loading, setLoading] = useState(true);
+const [syncing, setSyncing] = useState(false);
+const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
+const [formData, setFormData] = useState({
+  date: new Date().toISOString().split("T")[0],
+  paymentDate: "",   // <--- add this
+  description: "",
+  category: "Inflow",
+  amount: "",
+  costPerUnit: "",
+  quantity: "",
+  notes: "",
+  customer: "",
+  project: "",
+  tags: "",
+});
+const [targetRevenue, setTargetRevenue] = useState(100000);
+const [showTargetModal, setShowTargetModal] = useState(false);
+const [showBudgetModal, setShowBudgetModal] = useState(false);
+const [activeTab, setActiveTab] = useState("overview");
+const [budgets, setBudgets] = useState({});
+const [budgetCategory, setBudgetCategory] = useState("Overhead");
+const [budgetAmount, setBudgetAmount] = useState("");
+const [expandedSection, setExpandedSection] = useState(null);
+const [showStrategyModal, setShowStrategyModal] = useState(false);
 
-  
-
-  const categories = [
-    "Inflow",
-    "Outflow",
-    "Reinvestment",
-    "Overhead",
-    "Loan Payment",
-    "Loan Received",
-  ];
+const categories = [
+  "Inflow",
+  "Outflow",
+  "Reinvestment",
+  "Overhead",
+  "Loan Payment",
+  "Loan Received",
+];
 
   const syncRecords = async () => {
     setSyncing(true);
@@ -105,141 +102,131 @@ export default function BookkeepingApp() {
     setSyncing(false);
   };
 
-  useEffect(() => {
-    loadRecords();
-    loadBudgets();
-  }, []);
+useEffect(() => {
+  loadRecords();
+  loadBudgets();
+}, []);
 
-  const loadRecords = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("bookkeeping_records")
-        .select("*")
-        .order("date", { ascending: false });
+const loadRecords = async () => {
+  try {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("bookkeeping_records")
+      .select("*")
+      .order("date", { ascending: false });
 
-      if (error) throw error;
-      setRecords(data || []);
-    } catch (error) {
-      console.error("Error loading records:", error);
-      setRecords([]);
-    } finally {
-      setLoading(false);
+    if (error) throw error;
+    setRecords(data || []);
+  } catch (error) {
+    console.error("Error loading records:", error);
+    setRecords([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const loadBudgets = async () => {
+  try {
+    const { data, error } = await supabase.from("category_budgets").select("*");
+    if (!error && data) {
+      const budgetMap = {};
+      data.forEach((b) => (budgetMap[b.category] = b.amount));
+      setBudgets(budgetMap);
     }
-  };
+  } catch (error) {
+    console.error("Error loading budgets:", error);
+  }
+};
 
-  const loadBudgets = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("category_budgets")
-        .select("*");
-      if (!error && data) {
-        const budgetMap = {};
-        data.forEach((b) => (budgetMap[b.category] = b.amount));
-        setBudgets(budgetMap);
-      }
-    } catch (error) {
-      console.error("Error loading budgets:", error);
+// --- Filtered Records ---
+const filteredRecords = useMemo(() => {
+  if (!dateFilter.start && !dateFilter.end) return records;
+
+  return records.filter((r) => {
+    const recordDate = new Date(r.date);
+    const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
+    const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
+
+    if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
+    if (startDate) return recordDate >= startDate;
+    if (endDate) return recordDate <= endDate;
+    return true;
+  });
+}, [records, dateFilter]);
+
+// --- Monthly Data Aggregation ---
+const monthlyData = useMemo(() => {
+  if (!filteredRecords || filteredRecords.length === 0) return [];
+
+  const grouped = {};
+
+  filteredRecords.forEach((r) => {
+    const date = new Date(r.date);
+    const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
+      .toString()
+      .padStart(2, "0")}`;
+
+    if (!grouped[monthKey]) grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
+
+    const qty = parseFloat(r.quantity) || 1;
+    const price = parseFloat(r.amount) || 0;
+    const cost = parseFloat(r.cost_per_unit) || 0;
+    const revenue = price * qty;
+    const totalCost = cost * qty;
+    const profit = revenue - totalCost;
+
+    if (r.category === "Inflow") {
+      grouped[monthKey].revenue += revenue;
+      grouped[monthKey].cost += totalCost;
+      grouped[monthKey].profit += profit;
+    } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+      grouped[monthKey].cost += revenue;
+      grouped[monthKey].profit -= revenue;
     }
-  };
+  });
 
-  // --- Filtered Records ---
-  const filteredRecords = useMemo(() => {
-    if (!dateFilter.start && !dateFilter.end) return records;
-
-    return records.filter((r) => {
-      const recordDate = new Date(r.date);
-      const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
-      const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
-
-      if (startDate && endDate)
-        return recordDate >= startDate && recordDate <= endDate;
-      if (startDate) return recordDate >= startDate;
-      if (endDate) return recordDate <= endDate;
-      return true;
-    });
-  }, [records, dateFilter]);
-
-  // --- Monthly Data Aggregation ---
-  const monthlyData = useMemo(() => {
-    if (!filteredRecords || filteredRecords.length === 0) return [];
-
-    const grouped = {};
-
-    filteredRecords.forEach((r) => {
-      const date = new Date(r.date);
-      const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
-        .toString()
-        .padStart(2, "0")}`;
-
-      if (!grouped[monthKey])
-        grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
-
-      const qty = parseFloat(r.quantity) || 1;
-      const price = parseFloat(r.amount) || 0;
-      const cost = parseFloat(r.cost_per_unit) || 0;
-      const revenue = price * qty;
-      const totalCost = cost * qty;
-      const profit = revenue - totalCost;
-
-      if (r.category === "Inflow") {
-        grouped[monthKey].revenue += revenue;
-        grouped[monthKey].cost += totalCost;
-        grouped[monthKey].profit += profit;
-      } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-        grouped[monthKey].cost += revenue;
-        grouped[monthKey].profit -= revenue;
-      }
-    });
-
-    return Object.entries(grouped)
-      .map(([month, vals]) => ({
-        month,
-        revenue: vals.revenue,
-        profit: vals.profit,
-        margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
-      }))
-      .sort((a, b) => new Date(a.month) - new Date(b.month));
-  }, [filteredRecords]);
+  return Object.entries(grouped)
+    .map(([month, vals]) => ({
+      month,
+      revenue: vals.revenue,
+      profit: vals.profit,
+      margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
+    }))
+    .sort((a, b) => new Date(a.month) - new Date(b.month));
+}, [filteredRecords]);
 
   const handleSubmit = async () => {
     if (!formData.description || !formData.amount) return;
 
     try {
-      const recordData = {
-        date: formData.date,
-        payment_date: formData.paymentDate || formData.date,
-        description: formData.description,
-        category: formData.category,
-        amount: parseFloat(formData.amount),
-        cost_per_unit: formData.costPerUnit
-          ? parseFloat(formData.costPerUnit)
-          : null,
-        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
-        notes: formData.notes,
-        customer: formData.customer || null,
-        project: formData.project || null,
-        tags: formData.tags || null,
-        expense_group: formData.expenseGroup || null,
-      };
+const recordData = {
+  date: formData.date,
+  payment_date: formData.paymentDate || formData.date,  // <--- add this
+  description: formData.description,
+  category: formData.category,
+  amount: parseFloat(formData.amount),
+  cost_per_unit: formData.costPerUnit ? parseFloat(formData.costPerUnit) : null,
+  quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+  notes: formData.notes,
+  customer: formData.customer || null,
+  project: formData.project || null,
+  tags: formData.tags || null
+};
+
 
       if (isEditing !== null) {
         const recordToUpdate = records[isEditing];
         const { error } = await supabase
-          .from("bookkeeping_records")
+          .from('bookkeeping_records')
           .update(recordData)
-          .eq("id", recordToUpdate.id);
+          .eq('id', recordToUpdate.id);
 
         if (error) throw error;
-        setRecords(
-          records.map((r, i) =>
-            i === isEditing ? { ...recordData, id: r.id } : r
-          )
-        );
+        setRecords(records.map((r, i) => i === isEditing ? { ...recordData, id: r.id } : r));
         setIsEditing(null);
       } else {
         const { data, error } = await supabase
-          .from("bookkeeping_records")
+          .from('bookkeeping_records')
           .insert([recordData])
           .select();
 
@@ -248,179 +235,116 @@ export default function BookkeepingApp() {
       }
 
       setFormData({
-        date: new Date().toISOString().split("T")[0],
-        description: "",
-        category: "Inflow",
-        amount: "",
-        costPerUnit: "",
-        quantity: "",
-        notes: "",
-        customer: "",
-        project: "",
-        tags: "",
+        date: new Date().toISOString().split('T')[0],
+        description: '',
+        category: 'Inflow',
+        amount: '',
+        costPerUnit: '',
+        quantity: '',
+        notes: '',
+        customer: '',
+        project: '',
+        tags: ''
       });
     } catch (error) {
-      console.error("Error saving record:", error);
-      alert("Failed to save record. Please check your Supabase configuration.");
+      console.error('Error saving record:', error);
+      alert('Failed to save record. Please check your Supabase configuration.');
     }
   };
 
-  const groupedExpenses = useMemo(() => {
-    const groups = {};
-
-    filteredRecords.forEach((r) => {
-      const group = r.expense_group || "Uncategorized";
-
-      if (!groups[group]) {
-        groups[group] = { total: 0, count: 0 };
-      }
-
-      const amount =
-        (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
-      if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-        groups[group].total += amount;
-        groups[group].count += 1;
-      }
-    });
-
-    return Object.entries(groups)
-      .map(([group, data]) => ({
-        group,
-        total: data.total,
-        count: data.count,
-        percent:
-          (data.total /
-            Math.max(
-              filteredRecords
-                .filter((r) =>
-                  ["Outflow", "Overhead", "Reinvestment"].includes(r.category)
-                )
-                .reduce(
-                  (sum, r) =>
-                    sum +
-                    (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1),
-                  0
-                ),
-              1
-            )) *
-          100,
-      }))
-      .sort((a, b) => b.total - a.total);
-  }, [filteredRecords]);
-
   // --- Cash Flow Gaps ---
-  const cashFlowGaps = useMemo(() => {
-    return filteredRecords
-      .filter((r) => r.payment_date && r.category === "Inflow")
-      .map((r) => {
-        const issueDate = new Date(r.date);
-        const paidDate = new Date(r.payment_date);
-        const gapDays = Math.max(
-          0,
-          Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24))
-        );
-        return {
-          id: r.id,
-          description: r.description,
-          amount: r.amount,
-          customer: r.customer,
-          gapDays,
-          status: gapDays > 30 ? "Delayed" : "On Time",
-        };
-      });
-  }, [filteredRecords]);
-
-  // --- ROI Timeline & Calculations ---
-  const roiTimeline = useMemo(() => {
-    const grouped = {};
-    filteredRecords.forEach((r) => {
-      if (!r.date) return;
-      const month = new Date(r.date).toLocaleString("default", {
-        month: "short",
-        year: "2-digit",
-      });
-      if (!grouped[month])
-        grouped[month] = { month, investment: 0, return: 0, net: 0 };
-
-      if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-        grouped[month].investment += parseFloat(r.amount) || 0;
-        grouped[month].net -= parseFloat(r.amount) || 0;
-      } else if (r.category === "Inflow") {
-        grouped[month].return += parseFloat(r.amount) || 0;
-        grouped[month].net += parseFloat(r.amount) || 0;
-      }
+const cashFlowGaps = useMemo(() => {
+  return filteredRecords
+    .filter(r => r.payment_date && r.category === "Inflow")
+    .map(r => {
+      const issueDate = new Date(r.date);
+      const paidDate = new Date(r.payment_date);
+      const gapDays = Math.max(0, Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24)));
+      return {
+        id: r.id,
+        description: r.description,
+        amount: r.amount,
+        customer: r.customer,
+        gapDays,
+        status: gapDays > 30 ? "Delayed" : "On Time"
+      };
     });
+}, [filteredRecords]);
 
-    return Object.values(grouped);
-  }, [filteredRecords]);
 
-  const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
-    let breakEvenMonth = null;
-    let paybackMonth = null;
-    let totalInvestment = 0;
-    let totalReturn = 0;
-    let cumulativeNet = 0;
-
-    roiTimeline.forEach((point) => {
-      totalInvestment += point.investment;
-      totalReturn += point.return;
-      cumulativeNet += point.net;
-
-      if (!breakEvenMonth && point.return >= point.investment) {
-        breakEvenMonth = point.month;
-      }
-      if (!paybackMonth && cumulativeNet >= 0) {
-        paybackMonth = point.month;
-      }
+// --- ROI Timeline & Calculations ---
+const roiTimeline = useMemo(() => {
+  const grouped = {};
+  filteredRecords.forEach((r) => {
+    if (!r.date) return;
+    const month = new Date(r.date).toLocaleString("default", {
+      month: "short",
+      year: "2-digit",
     });
+    if (!grouped[month]) grouped[month] = { month, investment: 0, return: 0, net: 0 };
 
-    return {
-      breakEvenMonth,
-      paybackMonth,
-      roiPercentage:
-        totalInvestment > 0
-          ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(
-              0
-            )
-          : 0,
-    };
-  }, [roiTimeline]);
+    if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+      grouped[month].investment += parseFloat(r.amount) || 0;
+      grouped[month].net -= parseFloat(r.amount) || 0;
+    } else if (r.category === "Inflow") {
+      grouped[month].return += parseFloat(r.amount) || 0;
+      grouped[month].net += parseFloat(r.amount) || 0;
+    }
+  });
 
-  // --- Totals & Business Value Data ---
+  return Object.values(grouped);
+}, [filteredRecords]);
+
+const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
+  let breakEvenMonth = null;
+  let paybackMonth = null;
+  let totalInvestment = 0;
+  let totalReturn = 0;
+  let cumulativeNet = 0;
+
+  roiTimeline.forEach((point) => {
+    totalInvestment += point.investment;
+    totalReturn += point.return;
+    cumulativeNet += point.net;
+
+    if (!breakEvenMonth && point.return >= point.investment) {
+      breakEvenMonth = point.month;
+    }
+    if (!paybackMonth && cumulativeNet >= 0) {
+      paybackMonth = point.month;
+    }
+  });
+
+  return {
+    breakEvenMonth,
+    paybackMonth,
+    roiPercentage:
+      totalInvestment > 0
+        ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(0)
+        : 0,
+  };
+}, [roiTimeline]);
+
+// --- Totals & Business Value Data ---
 
   const exportToCSV = () => {
     const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
-
+    
     if (dataToExport.length === 0) {
-      alert("No records to export");
+      alert('No records to export');
       return;
     }
 
-    const headers = [
-      "Date",
-      "Description",
-      "Category",
-      "Unit Price (LKR)",
-      "Cost per Unit (LKR)",
-      "Quantity",
-      "Total Revenue",
-      "Total Cost",
-      "Profit",
-      "Margin %",
-      "Customer",
-      "Project",
-      "Tags",
-      "Notes",
-    ];
-    const csvData = dataToExport.map((r) => {
+    const headers = ['Date', 'Description', 'Category', 'Unit Price (LKR)', 'Cost per Unit (LKR)', 'Quantity', 'Total Revenue', 'Total Cost', 'Profit', 'Margin %', 'Customer', 'Project', 'Tags', 'Notes'];
+    const csvData = dataToExport.map(r => {
       const qty = r.quantity || 1;
       const price = r.amount;
       const cost = r.cost_per_unit || 0;
       const revenue = price * qty;
       const totalCost = cost * qty;
       const profit = revenue - totalCost;
-      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : "0";
-
+      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : '0';
+      
       return [
         r.date,
         `"${r.description}"`,
@@ -432,141 +356,135 @@ export default function BookkeepingApp() {
         totalCost.toFixed(2),
         profit.toFixed(2),
         margin,
-        `"${r.customer || ""}"`,
-        `"${r.project || ""}"`,
-        `"${r.tags || ""}"`,
-        `"${r.notes || ""}"`,
+        `"${r.customer || ''}"`,
+        `"${r.project || ''}"`,
+        `"${r.tags || ''}"`,
+        `"${r.notes || ''}"`
       ];
     });
 
-    const dateRange =
-      dateFilter.start || dateFilter.end
-        ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
-        : "";
+    const dateRange = dateFilter.start || dateFilter.end 
+      ? `_${dateFilter.start || 'start'}_to_${dateFilter.end || 'end'}`
+      : '';
 
     const csvContent = [
-      headers.join(","),
-      ...csvData.map((row) => row.join(",")),
-    ].join("\n");
+      headers.join(','),
+      ...csvData.map(row => row.join(','))
+    ].join('\n');
 
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    const link = document.createElement('a');
     link.href = url;
-    link.download = `profit_analysis${dateRange}_${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
+    link.download = `profit_analysis${dateRange}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
   };
-  const totals = filteredRecords.reduce(
-    (acc, r) => {
-      const amount = parseFloat(r.amount) || 0;
-      const costPerUnit = parseFloat(r.cost_per_unit) || 0;
-      const quantity = parseFloat(r.quantity) || 1;
-      const revenue = amount * quantity;
-      const cost = costPerUnit * quantity;
+const totals = filteredRecords.reduce(
+  (acc, r) => {
+    const amount = parseFloat(r.amount) || 0;
+    const costPerUnit = parseFloat(r.cost_per_unit) || 0;
+    const quantity = parseFloat(r.quantity) || 1;
+    const revenue = amount * quantity;
+    const cost = costPerUnit * quantity;
 
-      if (r.category === "Inflow") {
-        acc.inflow += revenue;
-        acc.inflowCost += cost;
-        acc.inflowProfit += revenue - cost;
-      }
-      if (r.category === "Outflow") acc.outflow += revenue;
-      if (r.category === "Reinvestment") acc.reinvestment += revenue;
-      if (r.category === "Overhead") acc.overhead += revenue;
-      if (r.category === "Loan Payment") acc.loanPayment += revenue;
-      if (r.category === "Loan Received") acc.loanReceived += revenue;
-
-      return acc;
-    },
-    {
-      inflow: 0,
-      inflowCost: 0,
-      inflowProfit: 0,
-      outflow: 0,
-      reinvestment: 0,
-      overhead: 0,
-      loanPayment: 0,
-      loanReceived: 0,
+    if (r.category === "Inflow") {
+      acc.inflow += revenue;
+      acc.inflowCost += cost;
+      acc.inflowProfit += revenue - cost;
     }
-  );
+    if (r.category === "Outflow") acc.outflow += revenue;
+    if (r.category === "Reinvestment") acc.reinvestment += revenue;
+    if (r.category === "Overhead") acc.overhead += revenue;
+    if (r.category === "Loan Payment") acc.loanPayment += revenue;
+    if (r.category === "Loan Received") acc.loanReceived += revenue;
 
-  const grossProfit = totals.inflow - totals.outflow;
-  const grossMarginPercent =
-    totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
-  const trueGrossMargin =
-    totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-  const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
-  const netLoanImpact = totals.loanReceived - totals.loanPayment;
-  const netProfit = operatingProfit + netLoanImpact;
+    return acc;
+  },
+  {
+    inflow: 0,
+    inflowCost: 0,
+    inflowProfit: 0,
+    outflow: 0,
+    reinvestment: 0,
+    overhead: 0,
+    loanPayment: 0,
+    loanReceived: 0,
+  }
+);
 
-  // --- Customer Profitability Analysis ---
-  const customerAnalysis = useMemo(() => {
-    const customers = {};
-    filteredRecords.forEach((r) => {
-      if (r.customer && r.category === "Inflow") {
-        if (!customers[r.customer]) {
-          customers[r.customer] = {
-            revenue: 0,
-            cost: 0,
-            transactions: 0,
-            projects: new Set(),
-          };
-        }
-        const qty = parseFloat(r.quantity) || 1;
-        customers[r.customer].revenue += parseFloat(r.amount) * qty;
-        customers[r.customer].cost += parseFloat(r.cost_per_unit || 0) * qty;
-        customers[r.customer].transactions += 1;
-        if (r.project) customers[r.customer].projects.add(r.project);
+const grossProfit = totals.inflow - totals.outflow;
+const grossMarginPercent = totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
+const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
+const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
+const netLoanImpact = totals.loanReceived - totals.loanPayment;
+const netProfit = operatingProfit + netLoanImpact;
+
+// --- Customer Profitability Analysis ---
+const customerAnalysis = useMemo(() => {
+  const customers = {};
+  filteredRecords.forEach((r) => {
+    if (r.customer && r.category === "Inflow") {
+      if (!customers[r.customer]) {
+        customers[r.customer] = {
+          revenue: 0,
+          cost: 0,
+          transactions: 0,
+          projects: new Set(),
+        };
+
+        
       }
-    });
+      const qty = parseFloat(r.quantity) || 1;
+      customers[r.customer].revenue += parseFloat(r.amount) * qty;
+      customers[r.customer].cost += parseFloat(r.cost_per_unit || 0) * qty;
+      customers[r.customer].transactions += 1;
+      if (r.project) customers[r.customer].projects.add(r.project);
+    }
+  });
 
-    return Object.entries(customers)
-      .map(([name, data]) => ({
-        name,
-        revenue: data.revenue,
-        cost: data.cost,
-        profit: data.revenue - data.cost,
-        margin:
-          data.revenue > 0
-            ? ((data.revenue - data.cost) / data.revenue) * 100
-            : 0,
-        transactions: data.transactions,
-        projectCount: data.projects.size,
-        avgTransaction: data.revenue / data.transactions,
-      }))
-      .sort((a, b) => b.profit - a.profit);
-  }, [filteredRecords]);
+  return Object.entries(customers)
+    .map(([name, data]) => ({
+      name,
+      revenue: data.revenue,
+      cost: data.cost,
+      profit: data.revenue - data.cost,
+      margin:
+        data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
+      transactions: data.transactions,
+      projectCount: data.projects.size,
+      avgTransaction: data.revenue / data.transactions,
+    }))
+    .sort((a, b) => b.profit - a.profit);
+}, [filteredRecords]);
+
 
   const productMargins = useMemo(() => {
     const products = {};
-
-    filteredRecords
-      .filter((r) => r.category === "Inflow")
-      .forEach((r) => {
-        const key = r.description;
-        if (!products[key]) {
-          products[key] = {
-            revenue: 0,
-            cost: 0,
-            quantity: 0,
-            transactions: 0,
-            customers: new Set(),
-          };
-        }
-
-        const qty = parseFloat(r.quantity) || 1;
-        const revenue = parseFloat(r.amount) * qty;
-        const cost = parseFloat(r.cost_per_unit || 0) * qty;
-
-        products[key].revenue += revenue;
-        products[key].cost += cost;
-        products[key].quantity += qty;
-        products[key].transactions += 1;
-        if (r.customer) products[key].customers.add(r.customer);
-      });
-
+    
+    filteredRecords.filter(r => r.category === 'Inflow').forEach(r => {
+      const key = r.description;
+      if (!products[key]) {
+        products[key] = { 
+          revenue: 0, 
+          cost: 0, 
+          quantity: 0,
+          transactions: 0,
+          customers: new Set()
+        };
+      }
+      
+      const qty = parseFloat(r.quantity) || 1;
+      const revenue = parseFloat(r.amount) * qty;
+      const cost = parseFloat(r.cost_per_unit || 0) * qty;
+      
+      products[key].revenue += revenue;
+      products[key].cost += cost;
+      products[key].quantity += qty;
+      products[key].transactions += 1;
+      if (r.customer) products[key].customers.add(r.customer);
+    });
+    
     return Object.entries(products)
       .map(([name, data]) => ({
         name,
@@ -576,13 +494,10 @@ export default function BookkeepingApp() {
         transactions: data.transactions,
         customers: data.customers.size,
         profit: data.revenue - data.cost,
-        margin:
-          data.revenue > 0
-            ? ((data.revenue - data.cost) / data.revenue) * 100
-            : 0,
+        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
         avgPrice: data.revenue / data.quantity,
         avgCost: data.cost / data.quantity,
-        avgProfit: (data.revenue - data.cost) / data.quantity,
+        avgProfit: (data.revenue - data.cost) / data.quantity
       }))
       .sort((a, b) => b.margin - a.margin);
   }, [filteredRecords]);
@@ -591,37 +506,33 @@ export default function BookkeepingApp() {
     const alerts = [];
     Object.entries(budgets).forEach(([category, budgetAmount]) => {
       const spent = filteredRecords
-        .filter((r) => r.category === category)
-        .reduce(
-          (sum, r) =>
-            sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1),
-          0
-        );
-
+        .filter(r => r.category === category)
+        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1), 0);
+      
       const percentUsed = (spent / budgetAmount) * 100;
-
+      
       if (percentUsed >= 90) {
         alerts.push({
           category,
           spent,
           budget: budgetAmount,
           percentUsed,
-          severity: percentUsed >= 100 ? "critical" : "warning",
+          severity: percentUsed >= 100 ? 'critical' : 'warning'
         });
       }
     });
     return alerts;
   }, [filteredRecords, budgets]);
 
-  const pricingRecommendations = useMemo(() => {
+    const pricingRecommendations = useMemo(() => {
     return productMargins
-      .filter((p) => p.cost > 0)
-      .map((p) => {
+      .filter(p => p.cost > 0)
+      .map(p => {
         const targetMargin = 50;
         const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         const priceIncrease = recommendedPrice - p.avgPrice;
         const percentIncrease = (priceIncrease / p.avgPrice) * 100;
-
+        
         return {
           product: p.name,
           currentMargin: p.margin,
@@ -630,58 +541,47 @@ export default function BookkeepingApp() {
           priceIncrease,
           percentIncrease,
           potentialRevenue: priceIncrease * p.quantity,
-          needsAction: p.margin < 30,
+          needsAction: p.margin < 30
         };
       })
-      .filter((r) => r.needsAction)
+      .filter(r => r.needsAction)
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   }, [productMargins]);
-  const businessValueData = [
-    {
-      metric: "Revenue",
-      current: (totals.inflow / targetRevenue) * 100,
-      target: 100,
-    },
-    { metric: "Margin", current: trueGrossMargin, target: 50 },
-    {
-      metric: "Cost Coverage",
-      current: totals.inflow > 0 ? (totals.outflow / totals.inflow) * 100 : 0,
-      target: 70,
-    },
-    {
-      metric: "Customer Coverage",
-      current:
-        (customerAnalysis.length / Math.max(filteredRecords.length, 1)) * 100,
-      target: 100,
-    },
-  ];
+const businessValueData = [
+  { metric: "Revenue", current: (totals.inflow / targetRevenue) * 100, target: 100 },
+  { metric: "Margin", current: trueGrossMargin, target: 50 },
+  { metric: "Cost Coverage", current: totals.inflow > 0 ? (totals.outflow / totals.inflow) * 100 : 0, target: 70 },
+  { metric: "Customer Coverage", current: (customerAnalysis.length / Math.max(filteredRecords.length, 1)) * 100, target: 100 },
+];
 
-  // --- Analytics Maturity ---
-  const maturityData = [
-    { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
-    {
-      stage: "Cost Tracking",
-      score: (
-        (filteredRecords.filter(
-          (r) => r.category === "Inflow" && r.cost_per_unit
-        ).length /
-          Math.max(
-            filteredRecords.filter((r) => r.category === "Inflow").length,
-            1
-          )) *
-        100
-      ).toFixed(0),
-    },
-    {
-      stage: "Customer Tracking",
-      score: (
-        (filteredRecords.filter((r) => r.customer).length /
-          Math.max(filteredRecords.length, 1)) *
-        100
-      ).toFixed(0),
-    },
-    { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
-  ];
+
+
+// --- Analytics Maturity ---
+const maturityData = [
+  { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
+  {
+    stage: "Cost Tracking",
+    score: (
+      (filteredRecords.filter(
+        (r) => r.category === "Inflow" && r.cost_per_unit
+      ).length /
+        Math.max(
+          filteredRecords.filter((r) => r.category === "Inflow").length,
+          1
+        )) *
+      100
+    ).toFixed(0),
+  },
+  {
+    stage: "Customer Tracking",
+    score: (
+      (filteredRecords.filter((r) => r.customer).length /
+        Math.max(filteredRecords.length, 1)) *
+      100
+    ).toFixed(0),
+  },
+  { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
+];
 
   const implementationPhases = [
     {
@@ -776,7 +676,7 @@ export default function BookkeepingApp() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white">
+         <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white">
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
@@ -840,51 +740,47 @@ export default function BookkeepingApp() {
             </div>
           </div>
         </div>
-        {/* --- Cash Flow Gaps Section --- */}
-        <div
-          className="mt-6 p-4 border rounded-lg shadow"
-          style={{ marginBottom: "20px", backgroundColor: "white" }}
-        >
-          <h2 className="text-lg font-semibold mb-3 flex items-center">
-            <AlertTriangle className="w-5 h-5 text-yellow-500 mr-2" />
-            Cash Flow Gaps (Delayed Payments)
-          </h2>
-
-          {cashFlowGaps.length === 0 ? (
-            <p className="text-gray-500">No delayed payments recorded.</p>
-          ) : (
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-gray-100 text-left">
-                  <th className="p-2 border">Description</th>
-                  <th className="p-2 border">Customer</th>
-                  <th className="p-2 border">Amount (LKR)</th>
-                  <th className="p-2 border">Gap (days)</th>
-                  <th className="p-2 border">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cashFlowGaps.map((gap) => (
-                  <tr key={gap.id} className="hover:bg-gray-50">
-                    <td className="p-2 border">{gap.description}</td>
-                    <td className="p-2 border">{gap.customer || "-"}</td>
-                    <td className="p-2 border">{formatLKR(gap.amount)}</td>
-                    <td className="p-2 border">{gap.gapDays}</td>
-                    <td
-                      className={`p-2 border font-semibold ${
-                        gap.status === "Delayed"
-                          ? "text-red-600"
-                          : "text-green-600"
-                      }`}
-                    >
-                      {gap.status}
-                    </td>
+        {/* Cash Flow Gaps Section */}
+        {cashFlowGaps.length > 0 && (
+          <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+            <h2 className="text-lg font-semibold mb-3 flex items-center">
+              <AlertTriangle className="w-5 h-5 text-yellow-500 mr-2" />
+              Cash Flow Gaps (Delayed Payments)
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Description</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Customer</th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-600">Amount (LKR)</th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-600">Gap (days)</th>
+                    <th className="px-4 py-2 text-center font-semibold text-gray-600">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {cashFlowGaps.map((gap) => (
+                    <tr key={gap.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">{gap.description}</td>
+                      <td className="px-4 py-2">{gap.customer || "-"}</td>
+                      <td className="px-4 py-2 text-right">{formatLKR(gap.amount)}</td>
+                      <td className="px-4 py-2 text-right">{gap.gapDays}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className={`px-2 py-1 text-xs rounded-full font-semibold ${
+                          gap.status === "Delayed"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-green-100 text-green-800"
+                        }`}>
+                          {gap.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Strategic Alerts */}
         {(budgetAlerts.length > 0 || pricingRecommendations.length > 0) && (
@@ -932,6 +828,7 @@ export default function BookkeepingApp() {
                 </div>
               </div>
             )}
+          
           </div>
         )}
 
@@ -941,6 +838,7 @@ export default function BookkeepingApp() {
             {[
               { id: "overview", label: "Overview", icon: BarChart3 },
               { id: "margins", label: "Profit Margins", icon: Percent },
+              { id: "competitive", label: "Competitive Edge", icon: Target },
               { id: "products", label: "Products", icon: Package },
               { id: "customers", label: "Customers", icon: Users },
               { id: "pricing", label: "Pricing Intel", icon: Sparkles },
@@ -1267,24 +1165,7 @@ export default function BookkeepingApp() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 rows="2"
               />
-              <label className="font-medium mb-1">Expense Group</label>
-              <input
-                list="expense-groups"
-                type="text"
-                value={formData.expenseGroup}
-                onChange={(e) =>
-                  setFormData({ ...formData, expenseGroup: e.target.value })
-                }
-                placeholder="e.g. Marketing, Operations, HR..."
-                className="border rounded p-2 w-full"
-              />
-              <datalist id="expense-groups">
-                {Array.from(
-                  new Set(records.map((r) => r.expense_group).filter(Boolean))
-                ).map((group) => (
-                  <option key={group} value={group} />
-                ))}
-              </datalist>
+
               <div className="flex gap-2">
                 <button
                   onClick={handleSubmit}
@@ -1477,6 +1358,8 @@ export default function BookkeepingApp() {
                 </p>
               </div>
             </div>
+
+            
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
               <div className="flex items-start gap-3">
@@ -1728,16 +1611,21 @@ export default function BookkeepingApp() {
                     Customer Concentration Risk
                   </h3>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={groupedExpenses}>
+                    <BarChart data={customerAnalysis.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="group" />
-                      <YAxis />
-                      <Tooltip formatter={(val) => `LKR ${formatLKR(val)}`} />
-                      <Bar
-                        dataKey="total"
-                        fill="#82ca9d"
-                        name="Total Expense"
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
                       />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value) => `LKR ${formatLKR(value)}`}
+                      />
+                      <Legend />
+                      <Bar dataKey="profit" fill="#3b82f6" name="Profit" />
+                      <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1956,19 +1844,20 @@ export default function BookkeepingApp() {
                   <Legend />
                 </RadarChart>
               </ResponsiveContainer>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                {businessValueData.map((item, idx) => (
-                  <div key={idx} className="text-center">
-                    <p className="text-sm text-gray-600">{item.metric}</p>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {Number(item.current).toFixed(0)}%
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Target: {item.target}%
-                    </p>
-                  </div>
-                ))}
-              </div>
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+  {businessValueData.map((item, idx) => (
+    <div key={idx} className="text-center">
+      <p className="text-sm text-gray-600">{item.metric}</p>
+      <p className="text-2xl font-bold text-purple-600">
+        {Number(item.current).toFixed(0)}%
+      </p>
+      <p className="text-xs text-gray-500">
+        Target: {item.target}%
+      </p>
+    </div>
+  ))}
+</div>
+
             </div>
 
             {/* ROI Projection Timeline */}
