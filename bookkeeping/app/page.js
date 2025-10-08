@@ -95,6 +95,23 @@ const categories = [
   "Loan Received",
 ];
 
+const saveBudget = async () => {
+  if (!budgetAmount) return;
+  try {
+    const { error } = await supabase.from("category_budgets").upsert({
+      category: budgetCategory,
+      amount: parseFloat(budgetAmount),
+    });
+    if (!error) {
+      await loadBudgets();
+      setShowBudgetModal(false);
+      setBudgetAmount("");
+    }
+  } catch (error) {
+    console.error("Error saving budget:", error);
+  }
+};
+
   const syncRecords = async () => {
     setSyncing(true);
     await loadRecords();
@@ -303,7 +320,64 @@ const recordData = {
       alert('Failed to save record. Please check your Supabase configuration.');
     }
   };
+const handleEdit = (index) => {
+  const record = filteredRecords[index];
+  setFormData({
+    date: record.date,
+    paymentDate: record.payment_date || "",
+    description: record.description,
+    category: record.category,
+    amount: record.amount.toString(),
+    costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
+    quantity: record.quantity ? record.quantity.toString() : "",
+    notes: record.notes || "",
+    customer: record.customer || "",
+    project: record.project || "",
+    tags: record.tags || "",
+  });
+  setIsEditing(index);
+  // Scroll to top of form
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
+const handleCancel = () => {
+  setIsEditing(null);
+  setFormData({
+    date: new Date().toISOString().split("T")[0],
+    paymentDate: "",
+    description: "",
+    category: "Inflow",
+    amount: "",
+    costPerUnit: "",
+    quantity: "",
+    notes: "",
+    customer: "",
+    project: "",
+    tags: "",
+  });
+};
+
+const handleDelete = async (index) => {
+  if (!window.confirm("Are you sure you want to delete this record?")) {
+    return;
+  }
+
+  try {
+    const recordToDelete = filteredRecords[index];
+    const { error } = await supabase
+      .from("bookkeeping_records")
+      .delete()
+      .eq("id", recordToDelete.id);
+
+    if (error) throw error;
+
+    // Remove from local state
+    setRecords(records.filter((r) => r.id !== recordToDelete.id));
+  } catch (error) {
+    console.error("Error deleting record:", error);
+    alert("Failed to delete record. Please try again.");
+  }
+};
   // --- Cash Flow Gaps ---
 const cashFlowGaps = useMemo(() => {
   return filteredRecords
