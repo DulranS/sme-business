@@ -58,136 +58,160 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function BookkeepingApp() {
-const [records, setRecords] = useState([]);
-const [isEditing, setIsEditing] = useState(null);
-const [loading, setLoading] = useState(true);
-const [syncing, setSyncing] = useState(false);
-const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
-const [formData, setFormData] = useState({
-  date: new Date().toISOString().split("T")[0],
-  paymentDate: "",   // <--- add this
-  description: "",
-  category: "Inflow",
-  amount: "",
-  costPerUnit: "",
-  quantity: "",
-  notes: "",
-  customer: "",
-  project: "",
-  tags: "",
-});
-const [targetRevenue, setTargetRevenue] = useState(100000);
-const [showTargetModal, setShowTargetModal] = useState(false);
-const [showBudgetModal, setShowBudgetModal] = useState(false);
-const [activeTab, setActiveTab] = useState("overview");
-const [budgets, setBudgets] = useState({});
-const [budgetCategory, setBudgetCategory] = useState("Overhead");
-const [budgetAmount, setBudgetAmount] = useState("");
-const [expandedSection, setExpandedSection] = useState(null);
-const [showStrategyModal, setShowStrategyModal] = useState(false);
+  const [records, setRecords] = useState([]);
+  const [isEditing, setIsEditing] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split("T")[0],
+    paymentDate: "",
+    description: "",
+    category: "Inflow",
+    amount: "",
+    costPerUnit: "",
+    quantity: "",
+    notes: "",
+    customer: "",
+    project: "",
+    tags: "",
+    marketPrice: "",
+  });
+  const [targetRevenue, setTargetRevenue] = useState(100000);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [budgets, setBudgets] = useState({});
+  const [budgetCategory, setBudgetCategory] = useState("Overhead");
+  const [budgetAmount, setBudgetAmount] = useState("");
+  const [expandedSection, setExpandedSection] = useState(null);
+  const [showStrategyModal, setShowStrategyModal] = useState(false);
 
-const categories = [
-  "Inflow",
-  "Outflow",
-  "Reinvestment",
-  "Overhead",
-  "Loan Payment",
-  "Loan Received",
-];
+  const categories = [
+    "Inflow",
+    "Outflow",
+    "Reinvestment",
+    "Overhead",
+    "Loan Payment",
+    "Loan Received",
+  ];
 
-const saveBudget = async () => {
-  if (!budgetAmount) return;
-  try {
-    const { error } = await supabase.from("category_budgets").upsert({
-      category: budgetCategory,
-      amount: parseFloat(budgetAmount),
-    });
-    if (!error) {
+  const saveBudget = async () => {
+    if (!budgetAmount) {
+      alert("Please enter a budget amount");
+      return;
+    }
+    try {
+      const { error } = await supabase.from("category_budgets").upsert({
+        category: budgetCategory,
+        amount: parseFloat(budgetAmount),
+      });
+      if (error) {
+        throw error;
+      }
       await loadBudgets();
       setShowBudgetModal(false);
       setBudgetAmount("");
+      alert(`Budget for ${budgetCategory} saved successfully!`);
+    } catch (error) {
+      console.error("Error saving budget:", error);
+      alert("Failed to save budget. Please try again.");
     }
-  } catch (error) {
-    console.error("Error saving budget:", error);
-  }
-};
+  };
 
   const syncRecords = async () => {
     setSyncing(true);
-    await loadRecords();
-    await loadBudgets();
-    setSyncing(false);
+    try {
+      await loadRecords();
+      await loadBudgets();
+    } catch (error) {
+      console.error("Sync failed:", error);
+      alert("Failed to sync data. Please check your connection and try again.");
+    } finally {
+      setSyncing(false);
+    }
   };
 
-useEffect(() => {
-  loadRecords();
-  loadBudgets();
-}, []);
+  useEffect(() => {
+    loadRecords();
+    loadBudgets();
+  }, []);
 
-const loadRecords = async () => {
-  try {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("bookkeeping_records")
-      .select("*")
-      .order("date", { ascending: false });
+  const loadRecords = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("bookkeeping_records")
+        .select("*")
+        .order("date", { ascending: false });
 
-    if (error) throw error;
-    setRecords(data || []);
-  } catch (error) {
-    console.error("Error loading records:", error);
-    setRecords([]);
-  } finally {
-    setLoading(false);
-  }
-};
-
-const loadBudgets = async () => {
-  try {
-    const { data, error } = await supabase.from("category_budgets").select("*");
-    if (!error && data) {
-      const budgetMap = {};
-      data.forEach((b) => (budgetMap[b.category] = b.amount));
-      setBudgets(budgetMap);
+      if (error) throw error;
+      setRecords(data || []);
+    } catch (error) {
+      console.error("Error loading records:", error);
+      setRecords([]);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Error loading budgets:", error);
-  }
-};
+  };
 
-// --- Filtered Records ---
-const filteredRecords = useMemo(() => {
-  if (!dateFilter.start && !dateFilter.end) return records;
+  const loadBudgets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("category_budgets")
+        .select("*");
+      if (!error && data) {
+        const budgetMap = {};
+        data.forEach((b) => (budgetMap[b.category] = b.amount));
+        setBudgets(budgetMap);
+      }
+    } catch (error) {
+      console.error("Error loading budgets:", error);
+    }
+  };
 
-  return records.filter((r) => {
-    const recordDate = new Date(r.date);
-    const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
-    const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
+  // --- Filtered Records ---
+  const filteredRecords = useMemo(() => {
+    if (!dateFilter.start && !dateFilter.end) return records;
 
-    if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
-    if (startDate) return recordDate >= startDate;
-    if (endDate) return recordDate <= endDate;
-    return true;
-  });
-}, [records, dateFilter]);
+    return records.filter((r) => {
+      const recordDate = new Date(r.date);
+      const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
+      const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
+
+      if (startDate && endDate)
+        return recordDate >= startDate && recordDate <= endDate;
+      if (startDate) return recordDate >= startDate;
+      if (endDate) return recordDate <= endDate;
+      return true;
+    });
+  }, [records, dateFilter]);
 
   const competitiveAnalysis = useMemo(() => {
     return filteredRecords
-      .filter((r) => r.category === "Inflow" && r.market_price > 0)
+      .filter(
+        (r) =>
+          r.category === "Inflow" &&
+          r.market_price != null &&
+          r.market_price > 0
+      )
       .map((r) => {
         const qty = parseFloat(r.quantity) || 1;
         const sellingPrice = parseFloat(r.amount) || 0;
         const cost = parseFloat(r.cost_per_unit) || 0;
         const marketPrice = parseFloat(r.market_price) || sellingPrice;
-        
+
         const grossProfit = (sellingPrice - cost) * qty;
-        const grossMargin = sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
-        const competitiveEdge = marketPrice > sellingPrice ? (marketPrice - sellingPrice) * qty : 0;
+        const grossMargin =
+          sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
+        const competitiveEdge =
+          marketPrice > sellingPrice ? (marketPrice - sellingPrice) * qty : 0;
         const underpriced = marketPrice > sellingPrice;
         const overpriced = marketPrice < sellingPrice;
-        const pricePosition = cost > 0 && marketPrice > cost 
-          ? ((sellingPrice - cost) / (marketPrice - cost)) * 100 
-          : 100;
+        const pricePosition =
+          cost > 0 && marketPrice > cost
+            ? ((sellingPrice - cost) / (marketPrice - cost)) * 100
+            : 100;
 
         return {
           id: r.id,
@@ -219,83 +243,99 @@ const filteredRecords = useMemo(() => {
         avgMargin: acc.avgMargin + item.grossMargin,
         count: acc.count + 1,
       }),
-      { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalCompetitiveEdge: 0, avgMargin: 0, count: 0 }
+      {
+        totalRevenue: 0,
+        totalCost: 0,
+        totalProfit: 0,
+        totalCompetitiveEdge: 0,
+        avgMargin: 0,
+        count: 0,
+      }
     );
   }, [competitiveAnalysis]);
 
-// --- Monthly Data Aggregation ---
-const monthlyData = useMemo(() => {
-  if (!filteredRecords || filteredRecords.length === 0) return [];
+  // --- Monthly Data Aggregation ---
+  const monthlyData = useMemo(() => {
+    if (!filteredRecords || filteredRecords.length === 0) return [];
 
-  const grouped = {};
+    const grouped = {};
 
-  filteredRecords.forEach((r) => {
-    const date = new Date(r.date);
-    const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
-      .toString()
-      .padStart(2, "0")}`;
+    filteredRecords.forEach((r) => {
+      const date = new Date(r.date);
+      const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
+        .toString()
+        .padStart(2, "0")}`;
 
-    if (!grouped[monthKey]) grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
+      if (!grouped[monthKey])
+        grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
 
-    const qty = parseFloat(r.quantity) || 1;
-    const price = parseFloat(r.amount) || 0;
-    const cost = parseFloat(r.cost_per_unit) || 0;
-    const revenue = price * qty;
-    const totalCost = cost * qty;
-    const profit = revenue - totalCost;
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      const cost = parseFloat(r.cost_per_unit) || 0;
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
 
-    if (r.category === "Inflow") {
-      grouped[monthKey].revenue += revenue;
-      grouped[monthKey].cost += totalCost;
-      grouped[monthKey].profit += profit;
-    } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-      grouped[monthKey].cost += revenue;
-      grouped[monthKey].profit -= revenue;
-    }
-  });
+      if (r.category === "Inflow") {
+        grouped[monthKey].revenue += revenue;
+        grouped[monthKey].cost += totalCost;
+        grouped[monthKey].profit += profit;
+      } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+        grouped[monthKey].cost += revenue;
+        grouped[monthKey].profit -= revenue;
+      }
+    });
 
-  return Object.entries(grouped)
-    .map(([month, vals]) => ({
-      month,
-      revenue: vals.revenue,
-      profit: vals.profit,
-      margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
-    }))
-    .sort((a, b) => new Date(a.month) - new Date(b.month));
-}, [filteredRecords]);
+    return Object.entries(grouped)
+      .map(([month, vals]) => ({
+        month,
+        revenue: vals.revenue,
+        profit: vals.profit,
+        margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
+      }))
+      .sort((a, b) => new Date(a.month) - new Date(b.month));
+  }, [filteredRecords]);
 
   const handleSubmit = async () => {
     if (!formData.description || !formData.amount) return;
 
     try {
-const recordData = {
-  date: formData.date,
-  payment_date: formData.paymentDate || formData.date,  // <--- add this
-  description: formData.description,
-  category: formData.category,
-  amount: parseFloat(formData.amount),
-  cost_per_unit: formData.costPerUnit ? parseFloat(formData.costPerUnit) : null,
-  quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
-  notes: formData.notes,
-  customer: formData.customer || null,
-  project: formData.project || null,
-  tags: formData.tags || null
-};
-
+      const recordData = {
+        date: formData.date,
+        payment_date: formData.paymentDate || formData.date,
+        description: formData.description,
+        category: formData.category,
+        amount: parseFloat(formData.amount),
+        cost_per_unit: formData.costPerUnit
+          ? parseFloat(formData.costPerUnit)
+          : null,
+        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+        notes: formData.notes,
+        customer: formData.customer || null,
+        project: formData.project || null,
+        tags: formData.tags || null,
+        market_price: formData.marketPrice
+          ? parseFloat(formData.marketPrice)
+          : null,
+      };
 
       if (isEditing !== null) {
         const recordToUpdate = records[isEditing];
         const { error } = await supabase
-          .from('bookkeeping_records')
+          .from("bookkeeping_records")
           .update(recordData)
-          .eq('id', recordToUpdate.id);
+          .eq("id", recordToUpdate.id);
 
         if (error) throw error;
-        setRecords(records.map((r, i) => i === isEditing ? { ...recordData, id: r.id } : r));
+        setRecords(
+          records.map((r, i) =>
+            i === isEditing ? { ...recordData, id: r.id } : r
+          )
+        );
         setIsEditing(null);
       } else {
         const { data, error } = await supabase
-          .from('bookkeeping_records')
+          .from("bookkeeping_records")
           .insert([recordData])
           .select();
 
@@ -304,173 +344,196 @@ const recordData = {
       }
 
       setFormData({
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        category: 'Inflow',
-        amount: '',
-        costPerUnit: '',
-        quantity: '',
-        notes: '',
-        customer: '',
-        project: '',
-        tags: ''
+        date: new Date().toISOString().split("T")[0],
+        paymentDate: "",
+        description: "",
+        category: "Inflow",
+        amount: "",
+        costPerUnit: "",
+        quantity: "",
+        notes: "",
+        customer: "",
+        project: "",
+        tags: "",
+        marketPrice: "",
       });
     } catch (error) {
-      console.error('Error saving record:', error);
-      alert('Failed to save record. Please check your Supabase configuration.');
+      console.error("Error saving record:", error);
+      alert("Failed to save record. Please check your Supabase configuration.");
     }
   };
-const handleEdit = (index) => {
-  const record = filteredRecords[index];
-  setFormData({
-    date: record.date,
-    paymentDate: record.payment_date || "",
-    description: record.description,
-    category: record.category,
-    amount: record.amount.toString(),
-    costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
-    quantity: record.quantity ? record.quantity.toString() : "",
-    notes: record.notes || "",
-    customer: record.customer || "",
-    project: record.project || "",
-    tags: record.tags || "",
-  });
-  setIsEditing(index);
-  // Scroll to top of form
-  window.scrollTo({ top: 0, behavior: "smooth" });
-};
-
-const handleCancel = () => {
-  setIsEditing(null);
-  setFormData({
-    date: new Date().toISOString().split("T")[0],
-    paymentDate: "",
-    description: "",
-    category: "Inflow",
-    amount: "",
-    costPerUnit: "",
-    quantity: "",
-    notes: "",
-    customer: "",
-    project: "",
-    tags: "",
-  });
-};
-
-const handleDelete = async (index) => {
-  if (!window.confirm("Are you sure you want to delete this record?")) {
-    return;
-  }
-
-  try {
-    const recordToDelete = filteredRecords[index];
-    const { error } = await supabase
-      .from("bookkeeping_records")
-      .delete()
-      .eq("id", recordToDelete.id);
-
-    if (error) throw error;
-
-    // Remove from local state
-    setRecords(records.filter((r) => r.id !== recordToDelete.id));
-  } catch (error) {
-    console.error("Error deleting record:", error);
-    alert("Failed to delete record. Please try again.");
-  }
-};
-  // --- Cash Flow Gaps ---
-const cashFlowGaps = useMemo(() => {
-  return filteredRecords
-    .filter(r => r.payment_date && r.category === "Inflow")
-    .map(r => {
-      const issueDate = new Date(r.date);
-      const paidDate = new Date(r.payment_date);
-      const gapDays = Math.max(0, Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24)));
-      return {
-        id: r.id,
-        description: r.description,
-        amount: r.amount,
-        customer: r.customer,
-        gapDays,
-        status: gapDays > 30 ? "Delayed" : "On Time"
-      };
+  const handleEdit = (index) => {
+    const record = filteredRecords[index];
+    setFormData({
+      date: record.date,
+      paymentDate: record.payment_date || "",
+      description: record.description,
+      category: record.category,
+      amount: record.amount.toString(),
+      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
+      quantity: record.quantity ? record.quantity.toString() : "",
+      notes: record.notes || "",
+      customer: record.customer || "",
+      project: record.project || "",
+      tags: record.tags || "",
+      marketPrice: record.market_price ? record.market_price.toString() : "", // ← ADD THIS
     });
-}, [filteredRecords]);
-
-
-// --- ROI Timeline & Calculations ---
-const roiTimeline = useMemo(() => {
-  const grouped = {};
-  filteredRecords.forEach((r) => {
-    if (!r.date) return;
-    const month = new Date(r.date).toLocaleString("default", {
-      month: "short",
-      year: "2-digit",
-    });
-    if (!grouped[month]) grouped[month] = { month, investment: 0, return: 0, net: 0 };
-
-    if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-      grouped[month].investment += parseFloat(r.amount) || 0;
-      grouped[month].net -= parseFloat(r.amount) || 0;
-    } else if (r.category === "Inflow") {
-      grouped[month].return += parseFloat(r.amount) || 0;
-      grouped[month].net += parseFloat(r.amount) || 0;
-    }
-  });
-
-  return Object.values(grouped);
-}, [filteredRecords]);
-
-const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
-  let breakEvenMonth = null;
-  let paybackMonth = null;
-  let totalInvestment = 0;
-  let totalReturn = 0;
-  let cumulativeNet = 0;
-
-  roiTimeline.forEach((point) => {
-    totalInvestment += point.investment;
-    totalReturn += point.return;
-    cumulativeNet += point.net;
-
-    if (!breakEvenMonth && point.return >= point.investment) {
-      breakEvenMonth = point.month;
-    }
-    if (!paybackMonth && cumulativeNet >= 0) {
-      paybackMonth = point.month;
-    }
-  });
-
-  return {
-    breakEvenMonth,
-    paybackMonth,
-    roiPercentage:
-      totalInvestment > 0
-        ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(0)
-        : 0,
+    setIsEditing(index);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
-}, [roiTimeline]);
 
-// --- Totals & Business Value Data ---
+  const handleCancel = () => {
+    setIsEditing(null);
+    setFormData({
+      date: new Date().toISOString().split("T")[0],
+      paymentDate: "",
+      description: "",
+      category: "Inflow",
+      amount: "",
+      costPerUnit: "",
+      quantity: "",
+      notes: "",
+      customer: "",
+      project: "",
+      tags: "",
+      marketPrice: "",
+    });
+  };
 
-  const exportToCSV = () => {
-    const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
-    
-    if (dataToExport.length === 0) {
-      alert('No records to export');
+  const handleDelete = async (index) => {
+    if (!window.confirm("Are you sure you want to delete this record?")) {
       return;
     }
 
-    const headers = ['Date', 'Description', 'Category', 'Unit Price (LKR)', 'Cost per Unit (LKR)', 'Quantity', 'Total Revenue', 'Total Cost', 'Profit', 'Margin %', 'Customer', 'Project', 'Tags', 'Notes'];
-    const csvData = dataToExport.map(r => {
+    try {
+      const recordToDelete = filteredRecords[index];
+      const { error } = await supabase
+        .from("bookkeeping_records")
+        .delete()
+        .eq("id", recordToDelete.id);
+
+      if (error) throw error;
+
+      // Remove from local state
+      setRecords(records.filter((r) => r.id !== recordToDelete.id));
+    } catch (error) {
+      console.error("Error deleting record:", error);
+      alert("Failed to delete record. Please try again.");
+    }
+  };
+  // --- Cash Flow Gaps ---
+  const cashFlowGaps = useMemo(() => {
+    return filteredRecords
+      .filter((r) => r.payment_date && r.category === "Inflow")
+      .map((r) => {
+        const issueDate = new Date(r.date);
+        const paidDate = new Date(r.payment_date);
+        const gapDays = Math.max(
+          0,
+          Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24))
+        );
+        return {
+          id: r.id,
+          description: r.description,
+          amount: r.amount,
+          customer: r.customer,
+          gapDays,
+          status: gapDays > 30 ? "Delayed" : "On Time",
+        };
+      });
+  }, [filteredRecords]);
+
+  // --- ROI Timeline & Calculations ---
+  const roiTimeline = useMemo(() => {
+    const grouped = {};
+    filteredRecords.forEach((r) => {
+      if (!r.date) return;
+      const month = new Date(r.date).toLocaleString("default", {
+        month: "short",
+        year: "2-digit",
+      });
+      if (!grouped[month])
+        grouped[month] = { month, investment: 0, return: 0, net: 0 };
+
+      if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+        grouped[month].investment += parseFloat(r.amount) || 0;
+        grouped[month].net -= parseFloat(r.amount) || 0;
+      } else if (r.category === "Inflow") {
+        grouped[month].return += parseFloat(r.amount) || 0;
+        grouped[month].net += parseFloat(r.amount) || 0;
+      }
+    });
+
+    return Object.values(grouped);
+  }, [filteredRecords]);
+
+  const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
+    let breakEvenMonth = null;
+    let paybackMonth = null;
+    let totalInvestment = 0;
+    let totalReturn = 0;
+    let cumulativeNet = 0;
+
+    roiTimeline.forEach((point) => {
+      totalInvestment += point.investment;
+      totalReturn += point.return;
+      cumulativeNet += point.net;
+
+      if (!breakEvenMonth && point.return >= point.investment) {
+        breakEvenMonth = point.month;
+      }
+      if (!paybackMonth && cumulativeNet >= 0) {
+        paybackMonth = point.month;
+      }
+    });
+
+    return {
+      breakEvenMonth,
+      paybackMonth,
+      roiPercentage:
+        totalInvestment > 0
+          ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(
+              0
+            )
+          : 0,
+    };
+  }, [roiTimeline]);
+
+  // --- Totals & Business Value Data ---
+
+  const exportToCSV = () => {
+    const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
+
+    if (dataToExport.length === 0) {
+      alert("No records to export");
+      return;
+    }
+
+    const headers = [
+      "Date",
+      "Description",
+      "Category",
+      "Unit Price (LKR)",
+      "Cost per Unit (LKR)",
+      "Quantity",
+      "Total Revenue",
+      "Total Cost",
+      "Profit",
+      "Margin %",
+      "Customer",
+      "Project",
+      "Tags",
+      "Notes",
+    ];
+    const csvData = dataToExport.map((r) => {
       const qty = r.quantity || 1;
       const price = r.amount;
       const cost = r.cost_per_unit || 0;
       const revenue = price * qty;
       const totalCost = cost * qty;
       const profit = revenue - totalCost;
-      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : '0';
-      
+      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : "0";
+
       return [
         r.date,
         `"${r.description}"`,
@@ -482,135 +545,141 @@ const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
         totalCost.toFixed(2),
         profit.toFixed(2),
         margin,
-        `"${r.customer || ''}"`,
-        `"${r.project || ''}"`,
-        `"${r.tags || ''}"`,
-        `"${r.notes || ''}"`
+        `"${r.customer || ""}"`,
+        `"${r.project || ""}"`,
+        `"${r.tags || ""}"`,
+        `"${r.notes || ""}"`,
       ];
     });
 
-    const dateRange = dateFilter.start || dateFilter.end 
-      ? `_${dateFilter.start || 'start'}_to_${dateFilter.end || 'end'}`
-      : '';
+    const dateRange =
+      dateFilter.start || dateFilter.end
+        ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
+        : "";
 
     const csvContent = [
-      headers.join(','),
-      ...csvData.map(row => row.join(','))
-    ].join('\n');
+      headers.join(","),
+      ...csvData.map((row) => row.join(",")),
+    ].join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `profit_analysis${dateRange}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `profit_analysis${dateRange}_${
+      new Date().toISOString().split("T")[0]
+    }.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
   };
-const totals = filteredRecords.reduce(
-  (acc, r) => {
-    const amount = parseFloat(r.amount) || 0;
-    const costPerUnit = parseFloat(r.cost_per_unit) || 0;
-    const quantity = parseFloat(r.quantity) || 1;
-    const revenue = amount * quantity;
-    const cost = costPerUnit * quantity;
+  const totals = filteredRecords.reduce(
+    (acc, r) => {
+      const amount = parseFloat(r.amount) || 0;
+      const costPerUnit = parseFloat(r.cost_per_unit) || 0;
+      const quantity = parseFloat(r.quantity) || 1;
+      const revenue = amount * quantity;
+      const cost = costPerUnit * quantity;
 
-    if (r.category === "Inflow") {
-      acc.inflow += revenue;
-      acc.inflowCost += cost;
-      acc.inflowProfit += revenue - cost;
-    }
-    if (r.category === "Outflow") acc.outflow += revenue;
-    if (r.category === "Reinvestment") acc.reinvestment += revenue;
-    if (r.category === "Overhead") acc.overhead += revenue;
-    if (r.category === "Loan Payment") acc.loanPayment += revenue;
-    if (r.category === "Loan Received") acc.loanReceived += revenue;
-
-    return acc;
-  },
-  {
-    inflow: 0,
-    inflowCost: 0,
-    inflowProfit: 0,
-    outflow: 0,
-    reinvestment: 0,
-    overhead: 0,
-    loanPayment: 0,
-    loanReceived: 0,
-  }
-);
-
-const grossProfit = totals.inflow - totals.outflow;
-const grossMarginPercent = totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
-const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
-const netLoanImpact = totals.loanReceived - totals.loanPayment;
-const netProfit = operatingProfit + netLoanImpact;
-
-// --- Customer Profitability Analysis ---
-const customerAnalysis = useMemo(() => {
-  const customers = {};
-  filteredRecords.forEach((r) => {
-    if (r.customer && r.category === "Inflow") {
-      if (!customers[r.customer]) {
-        customers[r.customer] = {
-          revenue: 0,
-          cost: 0,
-          transactions: 0,
-          projects: new Set(),
-        };
-
-        
+      if (r.category === "Inflow") {
+        acc.inflow += revenue;
+        acc.inflowCost += cost;
+        acc.inflowProfit += revenue - cost;
       }
-      const qty = parseFloat(r.quantity) || 1;
-      customers[r.customer].revenue += parseFloat(r.amount) * qty;
-      customers[r.customer].cost += parseFloat(r.cost_per_unit || 0) * qty;
-      customers[r.customer].transactions += 1;
-      if (r.project) customers[r.customer].projects.add(r.project);
+      if (r.category === "Outflow") acc.outflow += revenue;
+      if (r.category === "Reinvestment") acc.reinvestment += revenue;
+      if (r.category === "Overhead") acc.overhead += revenue;
+      if (r.category === "Loan Payment") acc.loanPayment += revenue;
+      if (r.category === "Loan Received") acc.loanReceived += revenue;
+
+      return acc;
+    },
+    {
+      inflow: 0,
+      inflowCost: 0,
+      inflowProfit: 0,
+      outflow: 0,
+      reinvestment: 0,
+      overhead: 0,
+      loanPayment: 0,
+      loanReceived: 0,
     }
-  });
+  );
 
-  return Object.entries(customers)
-    .map(([name, data]) => ({
-      name,
-      revenue: data.revenue,
-      cost: data.cost,
-      profit: data.revenue - data.cost,
-      margin:
-        data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
-      transactions: data.transactions,
-      projectCount: data.projects.size,
-      avgTransaction: data.revenue / data.transactions,
-    }))
-    .sort((a, b) => b.profit - a.profit);
-}, [filteredRecords]);
+  const grossProfit = totals.inflow - totals.outflow;
+  const grossMarginPercent =
+    totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
+  const trueGrossMargin =
+    totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
+  const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
+  const netLoanImpact = totals.loanReceived - totals.loanPayment;
+  const netProfit = operatingProfit + netLoanImpact;
 
+  // --- Customer Profitability Analysis ---
+  const customerAnalysis = useMemo(() => {
+    const customers = {};
+    filteredRecords.forEach((r) => {
+      if (r.customer && r.category === "Inflow") {
+        if (!customers[r.customer]) {
+          customers[r.customer] = {
+            revenue: 0,
+            cost: 0,
+            transactions: 0,
+            projects: new Set(),
+          };
+        }
+        const qty = parseFloat(r.quantity) || 1;
+        customers[r.customer].revenue += parseFloat(r.amount) * qty;
+        customers[r.customer].cost += parseFloat(r.cost_per_unit || 0) * qty;
+        customers[r.customer].transactions += 1;
+        if (r.project) customers[r.customer].projects.add(r.project);
+      }
+    });
+
+    return Object.entries(customers)
+      .map(([name, data]) => ({
+        name,
+        revenue: data.revenue,
+        cost: data.cost,
+        profit: data.revenue - data.cost,
+        margin:
+          data.revenue > 0
+            ? ((data.revenue - data.cost) / data.revenue) * 100
+            : 0,
+        transactions: data.transactions,
+        projectCount: data.projects.size,
+        avgTransaction: data.revenue / data.transactions,
+      }))
+      .sort((a, b) => b.profit - a.profit);
+  }, [filteredRecords]);
 
   const productMargins = useMemo(() => {
     const products = {};
-    
-    filteredRecords.filter(r => r.category === 'Inflow').forEach(r => {
-      const key = r.description;
-      if (!products[key]) {
-        products[key] = { 
-          revenue: 0, 
-          cost: 0, 
-          quantity: 0,
-          transactions: 0,
-          customers: new Set()
-        };
-      }
-      
-      const qty = parseFloat(r.quantity) || 1;
-      const revenue = parseFloat(r.amount) * qty;
-      const cost = parseFloat(r.cost_per_unit || 0) * qty;
-      
-      products[key].revenue += revenue;
-      products[key].cost += cost;
-      products[key].quantity += qty;
-      products[key].transactions += 1;
-      if (r.customer) products[key].customers.add(r.customer);
-    });
-    
+
+    filteredRecords
+      .filter((r) => r.category === "Inflow")
+      .forEach((r) => {
+        const key = r.description;
+        if (!products[key]) {
+          products[key] = {
+            revenue: 0,
+            cost: 0,
+            quantity: 0,
+            transactions: 0,
+            customers: new Set(),
+          };
+        }
+
+        const qty = parseFloat(r.quantity) || 1;
+        const revenue = parseFloat(r.amount) * qty;
+        const cost = parseFloat(r.cost_per_unit || 0) * qty;
+
+        products[key].revenue += revenue;
+        products[key].cost += cost;
+        products[key].quantity += qty;
+        products[key].transactions += 1;
+        if (r.customer) products[key].customers.add(r.customer);
+      });
+
     return Object.entries(products)
       .map(([name, data]) => ({
         name,
@@ -620,10 +689,13 @@ const customerAnalysis = useMemo(() => {
         transactions: data.transactions,
         customers: data.customers.size,
         profit: data.revenue - data.cost,
-        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
+        margin:
+          data.revenue > 0
+            ? ((data.revenue - data.cost) / data.revenue) * 100
+            : 0,
         avgPrice: data.revenue / data.quantity,
         avgCost: data.cost / data.quantity,
-        avgProfit: (data.revenue - data.cost) / data.quantity
+        avgProfit: (data.revenue - data.cost) / data.quantity,
       }))
       .sort((a, b) => b.margin - a.margin);
   }, [filteredRecords]);
@@ -632,33 +704,37 @@ const customerAnalysis = useMemo(() => {
     const alerts = [];
     Object.entries(budgets).forEach(([category, budgetAmount]) => {
       const spent = filteredRecords
-        .filter(r => r.category === category)
-        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1), 0);
-      
+        .filter((r) => r.category === category)
+        .reduce(
+          (sum, r) =>
+            sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1),
+          0
+        );
+
       const percentUsed = (spent / budgetAmount) * 100;
-      
+
       if (percentUsed >= 90) {
         alerts.push({
           category,
           spent,
           budget: budgetAmount,
           percentUsed,
-          severity: percentUsed >= 100 ? 'critical' : 'warning'
+          severity: percentUsed >= 100 ? "critical" : "warning",
         });
       }
     });
     return alerts;
   }, [filteredRecords, budgets]);
 
-    const pricingRecommendations = useMemo(() => {
+  const pricingRecommendations = useMemo(() => {
     return productMargins
-      .filter(p => p.cost > 0)
-      .map(p => {
+      .filter((p) => p.cost > 0)
+      .map((p) => {
         const targetMargin = 50;
         const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         const priceIncrease = recommendedPrice - p.avgPrice;
         const percentIncrease = (priceIncrease / p.avgPrice) * 100;
-        
+
         return {
           product: p.name,
           currentMargin: p.margin,
@@ -667,47 +743,58 @@ const customerAnalysis = useMemo(() => {
           priceIncrease,
           percentIncrease,
           potentialRevenue: priceIncrease * p.quantity,
-          needsAction: p.margin < 30
+          needsAction: p.margin < 30,
         };
       })
-      .filter(r => r.needsAction)
+      .filter((r) => r.needsAction)
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   }, [productMargins]);
-const businessValueData = [
-  { metric: "Revenue", current: (totals.inflow / targetRevenue) * 100, target: 100 },
-  { metric: "Margin", current: trueGrossMargin, target: 50 },
-  { metric: "Cost Coverage", current: totals.inflow > 0 ? (totals.outflow / totals.inflow) * 100 : 0, target: 70 },
-  { metric: "Customer Coverage", current: (customerAnalysis.length / Math.max(filteredRecords.length, 1)) * 100, target: 100 },
-];
+  const businessValueData = [
+    {
+      metric: "Revenue",
+      current: (totals.inflow / targetRevenue) * 100,
+      target: 100,
+    },
+    { metric: "Margin", current: trueGrossMargin, target: 50 },
+    {
+      metric: "Cost Coverage",
+      current: totals.inflow > 0 ? (totals.outflow / totals.inflow) * 100 : 0,
+      target: 70,
+    },
+    {
+      metric: "Customer Coverage",
+      current:
+        (customerAnalysis.length / Math.max(filteredRecords.length, 1)) * 100,
+      target: 100,
+    },
+  ];
 
-
-
-// --- Analytics Maturity ---
-const maturityData = [
-  { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
-  {
-    stage: "Cost Tracking",
-    score: (
-      (filteredRecords.filter(
-        (r) => r.category === "Inflow" && r.cost_per_unit
-      ).length /
-        Math.max(
-          filteredRecords.filter((r) => r.category === "Inflow").length,
-          1
-        )) *
-      100
-    ).toFixed(0),
-  },
-  {
-    stage: "Customer Tracking",
-    score: (
-      (filteredRecords.filter((r) => r.customer).length /
-        Math.max(filteredRecords.length, 1)) *
-      100
-    ).toFixed(0),
-  },
-  { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
-];
+  // --- Analytics Maturity ---
+  const maturityData = [
+    { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
+    {
+      stage: "Cost Tracking",
+      score: (
+        (filteredRecords.filter(
+          (r) => r.category === "Inflow" && r.cost_per_unit
+        ).length /
+          Math.max(
+            filteredRecords.filter((r) => r.category === "Inflow").length,
+            1
+          )) *
+        100
+      ).toFixed(0),
+    },
+    {
+      stage: "Customer Tracking",
+      score: (
+        (filteredRecords.filter((r) => r.customer).length /
+          Math.max(filteredRecords.length, 1)) *
+        100
+      ).toFixed(0),
+    },
+    { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
+  ];
 
   const implementationPhases = [
     {
@@ -802,7 +889,7 @@ const maturityData = [
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-         <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white">
           <div className="flex justify-between items-start flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
@@ -877,11 +964,21 @@ const maturityData = [
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Description</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Customer</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-600">Amount (LKR)</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-600">Gap (days)</th>
-                    <th className="px-4 py-2 text-center font-semibold text-gray-600">Status</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                      Description
+                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                      Customer
+                    </th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-600">
+                      Amount (LKR)
+                    </th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-600">
+                      Gap (days)
+                    </th>
+                    <th className="px-4 py-2 text-center font-semibold text-gray-600">
+                      Status
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -889,14 +986,18 @@ const maturityData = [
                     <tr key={gap.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2">{gap.description}</td>
                       <td className="px-4 py-2">{gap.customer || "-"}</td>
-                      <td className="px-4 py-2 text-right">{formatLKR(gap.amount)}</td>
+                      <td className="px-4 py-2 text-right">
+                        {formatLKR(gap.amount)}
+                      </td>
                       <td className="px-4 py-2 text-right">{gap.gapDays}</td>
                       <td className="px-4 py-2 text-center">
-                        <span className={`px-2 py-1 text-xs rounded-full font-semibold ${
-                          gap.status === "Delayed"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-green-100 text-green-800"
-                        }`}>
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full font-semibold ${
+                            gap.status === "Delayed"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-green-100 text-green-800"
+                          }`}
+                        >
                           {gap.status}
                         </span>
                       </td>
@@ -1119,16 +1220,33 @@ const maturityData = [
                 <Plus className="w-5 h-5" />
                 {isEditing !== null ? "Edit Record" : "Add New Record"}
               </h2>
-
+              <input
+                type="date"
+                placeholder="Payment Date (optional)"
+                value={formData.paymentDate}
+                onChange={(e) =>
+                  setFormData({ ...formData, paymentDate: e.target.value })
+                }
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, date: e.target.value })
-                  }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+<input
+  type="date"
+  value={formData.date}
+  onChange={(e) =>
+    setFormData({ ...formData, date: e.target.value })
+  }
+  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+/>
+<input
+  type="date"
+  placeholder="Payment Date (optional)"
+  value={formData.paymentDate}
+  onChange={(e) =>
+    setFormData({ ...formData, paymentDate: e.target.value })
+  }
+  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+/>
                 <input
                   type="text"
                   placeholder="Description *"
@@ -1173,6 +1291,20 @@ const maturityData = [
                     value={formData.amount}
                     onChange={(e) =>
                       setFormData({ ...formData, amount: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Market/Competitor Price (LKR) - for competitive analysis
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g., 120"
+                    value={formData.marketPrice}
+                    onChange={(e) =>
+                      setFormData({ ...formData, marketPrice: e.target.value })
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -1970,20 +2102,19 @@ const maturityData = [
                   <Legend />
                 </RadarChart>
               </ResponsiveContainer>
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-  {businessValueData.map((item, idx) => (
-    <div key={idx} className="text-center">
-      <p className="text-sm text-gray-600">{item.metric}</p>
-      <p className="text-2xl font-bold text-purple-600">
-        {Number(item.current).toFixed(0)}%
-      </p>
-      <p className="text-xs text-gray-500">
-        Target: {item.target}%
-      </p>
-    </div>
-  ))}
-</div>
-
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                {businessValueData.map((item, idx) => (
+                  <div key={idx} className="text-center">
+                    <p className="text-sm text-gray-600">{item.metric}</p>
+                    <p className="text-2xl font-bold text-purple-600">
+                      {Number(item.current).toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Target: {item.target}%
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* ROI Projection Timeline */}
@@ -2437,7 +2568,8 @@ const maturityData = [
                   No competitive data available yet
                 </p>
                 <p className="text-yellow-700 text-sm">
-                  Add market pricing data to your inflow records to unlock competitive analysis and see where you can capture more value.
+                  Add market pricing data to your inflow records to unlock
+                  competitive analysis and see where you can capture more value.
                 </p>
               </div>
             ) : (
@@ -2446,32 +2578,48 @@ const maturityData = [
                   <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <TrendingUp className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Tracked</span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
+                        Tracked
+                      </span>
                     </div>
-                    <h3 className="text-2xl font-bold mb-1">{competitiveAnalysis.length}</h3>
-                    <p className="text-sm opacity-90">Products with Market Data</p>
+                    <h3 className="text-2xl font-bold mb-1">
+                      {competitiveAnalysis.length}
+                    </h3>
+                    <p className="text-sm opacity-90">
+                      Products with Market Data
+                    </p>
                   </div>
 
                   <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <Zap className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Opportunity</span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
+                        Opportunity
+                      </span>
                     </div>
                     <h3 className="text-2xl font-bold mb-1">
                       LKR {formatLKR(competitiveTotals.totalCompetitiveEdge)}
                     </h3>
-                    <p className="text-sm opacity-90">Potential Revenue Upside</p>
+                    <p className="text-sm opacity-90">
+                      Potential Revenue Upside
+                    </p>
                   </div>
 
                   <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <Percent className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Margin</span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
+                        Margin
+                      </span>
                     </div>
                     <h3 className="text-2xl font-bold mb-1">
-                      {competitiveTotals.count > 0 
-                        ? (competitiveTotals.avgMargin / competitiveTotals.count).toFixed(1) 
-                        : "0"}%
+                      {competitiveTotals.count > 0
+                        ? (
+                            competitiveTotals.avgMargin /
+                            competitiveTotals.count
+                          ).toFixed(1)
+                        : "0"}
+                      %
                     </h3>
                     <p className="text-sm opacity-90">Avg Competitive Margin</p>
                   </div>
@@ -2479,10 +2627,12 @@ const maturityData = [
                   <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <Calculator className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Position</span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
+                        Position
+                      </span>
                     </div>
                     <h3 className="text-2xl font-bold mb-1">
-                      {competitiveAnalysis.filter(a => a.underpriced).length}
+                      {competitiveAnalysis.filter((a) => a.underpriced).length}
                     </h3>
                     <p className="text-sm opacity-90">Underpriced Products</p>
                   </div>
@@ -2496,40 +2646,85 @@ const maturityData = [
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={competitiveAnalysis.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
+                      />
                       <YAxis />
-                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                      <Tooltip
+                        formatter={(value) => `LKR ${formatLKR(value)}`}
+                      />
                       <Legend />
-                      <Bar dataKey="sellingPrice" fill="#3b82f6" name="Your Price" />
-                      <Bar dataKey="marketPrice" fill="#10b981" name="Market Price" />
-                      <Bar dataKey="competitiveEdge" fill="#8b5cf6" name="Competitive Edge" />
+                      <Bar
+                        dataKey="sellingPrice"
+                        fill="#3b82f6"
+                        name="Your Price"
+                      />
+                      <Bar
+                        dataKey="marketPrice"
+                        fill="#10b981"
+                        name="Market Price"
+                      />
+                      <Bar
+                        dataKey="competitiveEdge"
+                        fill="#8b5cf6"
+                        name="Competitive Edge"
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
 
                 <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4">Detailed Competitive Analysis</h3>
+                  <h3 className="font-bold text-lg mb-4">
+                    Detailed Competitive Analysis
+                  </h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left font-semibold text-gray-600">Product</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Your Price</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Market Price</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Price Position</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Margin %</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Competitive Edge</th>
-                          <th className="px-4 py-3 text-center font-semibold text-gray-600">Status</th>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                            Product
+                          </th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                            Your Price
+                          </th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                            Market Price
+                          </th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                            Price Position
+                          </th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                            Margin %
+                          </th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                            Competitive Edge
+                          </th>
+                          <th className="px-4 py-3 text-center font-semibold text-gray-600">
+                            Status
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {competitiveAnalysis.map((item) => (
                           <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-900 font-medium">{item.name}</td>
-                            <td className="px-4 py-3 text-right">LKR {formatLKR(item.sellingPrice)}</td>
-                            <td className="px-4 py-3 text-right">LKR {formatLKR(item.marketPrice)}</td>
+                            <td className="px-4 py-3 text-gray-900 font-medium">
+                              {item.name}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              LKR {formatLKR(item.sellingPrice)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              LKR {formatLKR(item.marketPrice)}
+                            </td>
                             <td className="px-4 py-3 text-right font-semibold">
-                              {((item.sellingPrice / item.marketPrice) * 100).toFixed(0)}%
+                              {(
+                                (item.sellingPrice / item.marketPrice) *
+                                100
+                              ).toFixed(0)}
+                              %
                             </td>
                             <td className="px-4 py-3 text-right font-semibold text-green-600">
                               {item.grossMargin.toFixed(1)}%
@@ -2562,22 +2757,29 @@ const maturityData = [
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {competitiveAnalysis.filter(a => a.underpriced).length > 0 && (
+                  {competitiveAnalysis.filter((a) => a.underpriced).length >
+                    0 && (
                     <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-5">
                       <div className="flex items-start gap-3">
                         <Zap className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
                         <div>
-                          <h3 className="font-bold text-green-900 mb-2">Quick Win Opportunities</h3>
+                          <h3 className="font-bold text-green-900 mb-2">
+                            Quick Win Opportunities
+                          </h3>
                           <div className="space-y-2 text-sm text-green-800">
                             {competitiveAnalysis
-                              .filter(a => a.underpriced)
+                              .filter((a) => a.underpriced)
                               .slice(0, 3)
                               .map((item, idx) => (
-                                <div key={idx} className="flex items-start gap-2">
+                                <div
+                                  key={idx}
+                                  className="flex items-start gap-2"
+                                >
                                   <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                                   <span>
-                                    <strong>{item.name}:</strong> Raise price to LKR {formatLKR(item.marketPrice)} 
-                                    = +LKR {formatLKR(item.competitiveEdge)} revenue
+                                    <strong>{item.name}:</strong> Raise price to
+                                    LKR {formatLKR(item.marketPrice)}= +LKR{" "}
+                                    {formatLKR(item.competitiveEdge)} revenue
                                   </span>
                                 </div>
                               ))}
@@ -2591,19 +2793,24 @@ const maturityData = [
                     <div className="flex items-start gap-3">
                       <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                       <div>
-                        <h3 className="font-bold text-blue-900 mb-2">Competitive Positioning Guide</h3>
+                        <h3 className="font-bold text-blue-900 mb-2">
+                          Competitive Positioning Guide
+                        </h3>
                         <ul className="space-y-2 text-sm text-blue-800">
                           <li className="flex items-start gap-2">
-                            <span className="font-bold">UNDERPRICED ⬆️:</span> 
-                            You're below market. Test gradual price increases to capture more value without losing customers.
+                            <span className="font-bold">UNDERPRICED ⬆️:</span>
+                            You're below market. Test gradual price increases to
+                            capture more value without losing customers.
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="font-bold">PREMIUM 💎:</span> 
-                            You're above market but profitable. Emphasize unique value and quality to justify premium pricing.
+                            <span className="font-bold">PREMIUM 💎:</span>
+                            You're above market but profitable. Emphasize unique
+                            value and quality to justify premium pricing.
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="font-bold">MARKET RATE ✓:</span> 
-                            Competitive pricing. Focus on service differentiation and customer loyalty programs.
+                            <span className="font-bold">MARKET RATE ✓:</span>
+                            Competitive pricing. Focus on service
+                            differentiation and customer loyalty programs.
                           </li>
                         </ul>
                       </div>
@@ -2619,8 +2826,12 @@ const maturityData = [
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-white bg-opacity-10 rounded-lg p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">1</div>
-                        <h4 className="font-semibold">Month 1: Data Collection</h4>
+                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">
+                          1
+                        </div>
+                        <h4 className="font-semibold">
+                          Month 1: Data Collection
+                        </h4>
                       </div>
                       <ul className="text-sm space-y-1 text-purple-100">
                         <li>• Track competitor pricing weekly</li>
@@ -2630,7 +2841,9 @@ const maturityData = [
                     </div>
                     <div className="bg-white bg-opacity-10 rounded-lg p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">2</div>
+                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">
+                          2
+                        </div>
                         <h4 className="font-semibold">Month 2: Testing</h4>
                       </div>
                       <ul className="text-sm space-y-1 text-purple-100">
@@ -2641,7 +2854,9 @@ const maturityData = [
                     </div>
                     <div className="bg-white bg-opacity-10 rounded-lg p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">3</div>
+                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">
+                          3
+                        </div>
                         <h4 className="font-semibold">Month 3: Optimization</h4>
                       </div>
                       <ul className="text-sm space-y-1 text-purple-100">
