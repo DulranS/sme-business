@@ -216,19 +216,15 @@ orders.forEach((order) => {
     totalRevenue += customerPrice;
     totalCost += supplierPrice;
     completedOrders++;
-    cashInflow += customerPrice; // Money received
-    cashOutflow += supplierPrice; // Money paid out
-  } else if (order.status === "pending") {
-    pendingValue += customerPrice;
-  } else if (order.status === "in-progress") {
-    inProgressValue += customerPrice;
-    // Note: In-progress orders don't affect cash flow until completed
-    // Cash flow only tracks actual money received and paid
+    cashInflow += customerPrice;
+    cashOutflow += supplierPrice;
   } else if (order.status === "ship") {
-    // Shipped orders are awaiting payment - treat similarly to in-progress
-    inProgressValue += customerPrice;
-  }
-});
+    // Ship orders are fulfilled - count as revenue but cash not yet received
+    totalRevenue += customerPrice;
+    totalCost += supplierPrice;
+    completedOrders++;
+    // Don't add to cashInflow yet since payment pending
+    cashOutflow += supplierPrice; // Supplier alre
 
   const totalProfit = totalRevenue - totalCost;
   const profitMargin =
@@ -267,12 +263,13 @@ const StatusUpdater: React.FC<{
   onUpdate: (status: Order["status"]) => void;
   loading: boolean;
 }> = ({ currentStatus, onUpdate, loading }) => {
-  const statuses: Order["status"][] = [
-    "pending",
-    "in-progress",
-    "completed",
-    "cancelled",
-  ];
+const statuses: Order["status"][] = [
+  "pending",
+  "in-progress",
+  "ship",
+  "completed",
+  "cancelled",
+];
 
   return (
     <div className="flex flex-wrap gap-2">
