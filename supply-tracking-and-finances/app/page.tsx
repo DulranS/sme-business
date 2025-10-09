@@ -20,6 +20,7 @@ interface Order {
   status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
   images: string; // JSON string of OrderImage[]
   created_at: string;
+  supplier_name: string;
   supplier_price?: string;
   supplier_description?: string;
   customer_price?:string;
@@ -229,6 +230,7 @@ const OrderManagementApp: React.FC = () => {
         created_at: new Date().toISOString(),
           supplier_price: '',
     supplier_description: '',
+        supplier_name: '',
     customer_price:""
       };
 
