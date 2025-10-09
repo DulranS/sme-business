@@ -163,6 +163,7 @@ const OrderManagementApp: React.FC = () => {
           moq: '50 units',
           images: '[]',
           status: 'pending',
+          supplier_name: '',
           created_at: '2024-01-15T10:00:00Z',
           urgency: 'medium',
           supplier_price: undefined,
