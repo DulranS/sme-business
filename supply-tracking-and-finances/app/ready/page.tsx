@@ -344,7 +344,7 @@ const CompletedOrdersPage: React.FC = () => {
                 </div>
               </div>
 
-              {images.length > 0 && (
+              {/* {images.length > 0 && (
                 <div className="flex gap-2 flex-shrink-0">
                   {images.slice(0, 2).map((image, i) => (
                     <img
@@ -362,7 +362,7 @@ const CompletedOrdersPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-              )}
+              )} */}
             </div>
 
             {/* Mark as Shipping */}

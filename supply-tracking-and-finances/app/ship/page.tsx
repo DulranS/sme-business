@@ -297,7 +297,7 @@ const ShipOrdersPage: React.FC = () => {
                 </div>
                 <p className="text-xs mt-1 line-clamp-2"><span className="font-medium">Description:</span> {order.description}</p>
               </div>
-              {images.length > 0 && (
+              {/* {images.length > 0 && (
                 <div className="flex gap-2 flex-shrink-0">
                   {images.slice(0, 2).map((image, i) => (
                     <img
@@ -315,7 +315,7 @@ const ShipOrdersPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-              )}
+              )} */}
             </div>
           </div>
         );
