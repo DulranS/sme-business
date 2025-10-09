@@ -2818,22 +2818,22 @@ export default function BookkeepingApp() {
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-6 text-white">
+                {/* <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-6 text-white">
                   <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
                     <Target className="w-6 h-6" />
                     90-Day Competitive Advantage Roadmap
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-white bg-opacity-10 rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{color:"black"}}>
+                    <div className="bg-white bg-opacity-10 rounded-lg p-4" style={{color:"black"}}>
+                      <div className="flex items-center gap-2 mb-2" style={{color:"black"}}>
+                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold" style={{color:"black"}}>
                           1
                         </div>
                         <h4 className="font-semibold">
                           Month 1: Data Collection
                         </h4>
                       </div>
-                      <ul className="text-sm space-y-1 text-purple-100">
+                      <ul className="text-sm space-y-1 text-purple-100" style={{color:"black"}}>
                         <li>• Track competitor pricing weekly</li>
                         <li>• Document cost structures</li>
                         <li>• Identify top 20% revenue products</li>
@@ -2866,7 +2866,7 @@ export default function BookkeepingApp() {
                       </ul>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </>
             )}
           </div>
