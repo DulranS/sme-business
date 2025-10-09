@@ -33,6 +33,7 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Factory,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -76,16 +77,20 @@ export default function BookkeepingApp() {
     project: "",
     tags: "",
     marketPrice: "",
+    suppliedBy: "", // ✅ NEW FIELD
   });
   const [targetRevenue, setTargetRevenue] = useState(100000);
+  const [monthlyLoanTarget, setMonthlyLoanTarget] = useState(458333); // ✅ LOAN TARGET
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [showLoanModal, setShowLoanModal] = useState(false); // ✅ LOAN MODAL
   const [activeTab, setActiveTab] = useState("overview");
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState("Overhead");
   const [budgetAmount, setBudgetAmount] = useState("");
   const [expandedSection, setExpandedSection] = useState(null);
   const [showStrategyModal, setShowStrategyModal] = useState(false);
+  const [groupBy, setGroupBy] = useState("none"); // ✅ GROUPING OPTION
 
   const categories = [
     "Inflow",
@@ -96,6 +101,7 @@ export default function BookkeepingApp() {
     "Loan Received",
   ];
 
+  // --- Save Budget ---
   const saveBudget = async () => {
     if (!budgetAmount) {
       alert("Please enter a budget amount");
@@ -119,6 +125,18 @@ export default function BookkeepingApp() {
     }
   };
 
+  // --- Save Loan Target ---
+  const saveLoanTarget = () => {
+    if (monthlyLoanTarget <= 0) {
+      alert("Please enter a valid monthly loan target");
+      return;
+    }
+    localStorage.setItem("monthlyLoanTarget", monthlyLoanTarget.toString());
+    setShowLoanModal(false);
+    alert("Monthly loan target updated!");
+  };
+
+  // --- Sync Data ---
   const syncRecords = async () => {
     setSyncing(true);
     try {
@@ -132,7 +150,10 @@ export default function BookkeepingApp() {
     }
   };
 
+  // --- Load Data ---
   useEffect(() => {
+    const savedLoanTarget = localStorage.getItem("monthlyLoanTarget");
+    if (savedLoanTarget) setMonthlyLoanTarget(parseFloat(savedLoanTarget));
     loadRecords();
     loadBudgets();
   }, []);
@@ -144,7 +165,6 @@ export default function BookkeepingApp() {
         .from("bookkeeping_records")
         .select("*")
         .order("date", { ascending: false });
-
       if (error) throw error;
       setRecords(data || []);
     } catch (error) {
@@ -173,12 +193,10 @@ export default function BookkeepingApp() {
   // --- Filtered Records ---
   const filteredRecords = useMemo(() => {
     if (!dateFilter.start && !dateFilter.end) return records;
-
     return records.filter((r) => {
       const recordDate = new Date(r.date);
       const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
       const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
-
       if (startDate && endDate)
         return recordDate >= startDate && recordDate <= endDate;
       if (startDate) return recordDate >= startDate;
@@ -187,6 +205,281 @@ export default function BookkeepingApp() {
     });
   }, [records, dateFilter]);
 
+  // --- Totals & Loan Coverage ---
+  const totals = filteredRecords.reduce(
+    (acc, r) => {
+      const amount = parseFloat(r.amount) || 0;
+      const costPerUnit = parseFloat(r.cost_per_unit) || 0;
+      const quantity = parseFloat(r.quantity) || 1;
+      const revenue = amount * quantity;
+      const cost = costPerUnit * quantity;
+      if (r.category === "Inflow") {
+        acc.inflow += revenue;
+        acc.inflowCost += cost;
+        acc.inflowProfit += revenue - cost;
+      }
+      if (r.category === "Outflow") acc.outflow += revenue;
+      if (r.category === "Reinvestment") acc.reinvestment += revenue;
+      if (r.category === "Overhead") acc.overhead += revenue;
+      if (r.category === "Loan Payment") acc.loanPayment += revenue;
+      if (r.category === "Loan Received") acc.loanReceived += revenue;
+      return acc;
+    },
+    {
+      inflow: 0,
+      inflowCost: 0,
+      inflowProfit: 0,
+      outflow: 0,
+      reinvestment: 0,
+      overhead: 0,
+      loanPayment: 0,
+      loanReceived: 0,
+    }
+  );
+
+  const grossProfit = totals.inflow - totals.outflow;
+  const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
+  const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
+  const netLoanImpact = totals.loanReceived - totals.loanPayment;
+  const netProfit = operatingProfit + netLoanImpact;
+
+  // ✅ Loan Coverage Logic
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const thisMonthInflow = filteredRecords
+    .filter(r => r.date.startsWith(currentMonth) && r.category === "Inflow")
+    .reduce((sum, r) => sum + (parseFloat(r.amount) * (parseFloat(r.quantity) || 1)), 0);
+
+  const loanCoveragePercent = monthlyLoanTarget > 0 ? (thisMonthInflow / monthlyLoanTarget) * 100 : 0;
+  const loanStatus = loanCoveragePercent >= 100 ? "On Track" : "At Risk";
+
+  // --- Supplier Analysis ---
+  const supplierAnalysis = useMemo(() => {
+    const suppliers = {};
+    filteredRecords.forEach((r) => {
+      if (r.supplied_by) {
+        if (!suppliers[r.supplied_by]) {
+          suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
+        }
+        const qty = parseFloat(r.quantity) || 1;
+        suppliers[r.supplied_by].cost += (parseFloat(r.cost_per_unit) || 0) * qty;
+        suppliers[r.supplied_by].transactions += 1;
+      }
+    });
+    return Object.entries(suppliers)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.cost - a.cost);
+  }, [filteredRecords]);
+
+  // --- Grouped Records ---
+  const groupedRecords = useMemo(() => {
+    if (groupBy === "none") return filteredRecords;
+    const groups = {};
+    filteredRecords.forEach((r) => {
+      let key = "Uncategorized";
+      if (groupBy === "customer") key = r.customer || "No Customer";
+      if (groupBy === "product") key = r.description || "No Product";
+      if (groupBy === "supplier") key = r.supplied_by || "No Supplier";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    });
+    return Object.entries(groups).map(([group, items]) => ({ group, items }));
+  }, [filteredRecords, groupBy]);
+
+  // --- Other memoized data (competitiveAnalysis, monthlyData, etc.) ---
+  // (Keep existing logic unchanged for brevity – see full code below)
+
+  // --- Existing memoized sections (competitiveAnalysis, monthlyData, roiTimeline, customerAnalysis, productMargins, etc.) ---
+  // ... [All existing useMemo blocks remain unchanged] ...
+
+  // --- Handle Form Submit ---
+  const handleSubmit = async () => {
+    if (!formData.description || !formData.amount) return;
+    try {
+      const recordData = {
+        date: formData.date,
+        payment_date: formData.paymentDate || formData.date,
+        description: formData.description,
+        category: formData.category,
+        amount: parseFloat(formData.amount),
+        cost_per_unit: formData.costPerUnit ? parseFloat(formData.costPerUnit) : null,
+        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+        notes: formData.notes,
+        customer: formData.customer || null,
+        project: formData.project || null,
+        tags: formData.tags || null,
+        market_price: formData.marketPrice ? parseFloat(formData.marketPrice) : null,
+        supplied_by: formData.suppliedBy || null, // ✅ SAVE SUPPLIED_BY
+      };
+
+      if (isEditing !== null) {
+        const recordToUpdate = records[isEditing];
+        const { error } = await supabase
+          .from("bookkeeping_records")
+          .update(recordData)
+          .eq("id", recordToUpdate.id);
+        if (error) throw error;
+        setRecords(records.map((r, i) => (i === isEditing ? { ...recordData, id: r.id } : r)));
+        setIsEditing(null);
+      } else {
+        const { data, error } = await supabase
+          .from("bookkeeping_records")
+          .insert([recordData])
+          .select();
+        if (error) throw error;
+        setRecords([data[0], ...records]);
+      }
+      resetForm();
+    } catch (error) {
+      console.error("Error saving record:", error);
+      alert("Failed to save record. Please check your Supabase configuration.");
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      date: new Date().toISOString().split("T")[0],
+      paymentDate: "",
+      description: "",
+      category: "Inflow",
+      amount: "",
+      costPerUnit: "",
+      quantity: "",
+      notes: "",
+      customer: "",
+      project: "",
+      tags: "",
+      marketPrice: "",
+      suppliedBy: "",
+    });
+  };
+
+  const handleEdit = (index) => {
+    const record = filteredRecords[index];
+    setFormData({
+      date: record.date,
+      paymentDate: record.payment_date || "",
+      description: record.description,
+      category: record.category,
+      amount: record.amount.toString(),
+      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
+      quantity: record.quantity ? record.quantity.toString() : "",
+      notes: record.notes || "",
+      customer: record.customer || "",
+      project: record.project || "",
+      tags: record.tags || "",
+      marketPrice: record.market_price ? record.market_price.toString() : "",
+      suppliedBy: record.supplied_by || "", // ✅ LOAD SUPPLIED_BY
+    });
+    setIsEditing(index);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancel = () => {
+    setIsEditing(null);
+    resetForm();
+  };
+
+  const handleDelete = async (index) => {
+    if (!window.confirm("Are you sure you want to delete this record?")) return;
+    try {
+      const recordToDelete = filteredRecords[index];
+      const { error } = await supabase
+        .from("bookkeeping_records")
+        .delete()
+        .eq("id", recordToDelete.id);
+      if (error) throw error;
+      setRecords(records.filter((r) => r.id !== recordToDelete.id));
+    } catch (error) {
+      console.error("Error deleting record:", error);
+      alert("Failed to delete record. Please try again.");
+    }
+  };
+
+  // --- Export to CSV (with supplied_by) ---
+  const exportToCSV = () => {
+    const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
+    if (dataToExport.length === 0) {
+      alert("No records to export");
+      return;
+    }
+    const headers = [
+      "Date",
+      "Description",
+      "Category",
+      "Unit Price (LKR)",
+      "Cost per Unit (LKR)",
+      "Quantity",
+      "Total Revenue",
+      "Total Cost",
+      "Profit",
+      "Margin %",
+      "Customer",
+      "Project",
+      "Supplied By", // ✅ ADDED
+      "Tags",
+      "Notes",
+    ];
+    const csvData = dataToExport.map((r) => {
+      const qty = r.quantity || 1;
+      const price = r.amount;
+      const cost = r.cost_per_unit || 0;
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : "0";
+      return [
+        r.date,
+        `"${r.description}"`,
+        r.category,
+        price,
+        cost,
+        qty,
+        revenue.toFixed(2),
+        totalCost.toFixed(2),
+        profit.toFixed(2),
+        margin,
+        `"${r.customer || ""}"`,
+        `"${r.project || ""}"`,
+        `"${r.supplied_by || ""}"`, // ✅ ADDED
+        `"${r.tags || ""}"`,
+        `"${r.notes || ""}"`,
+      ];
+    });
+    const dateRange =
+      dateFilter.start || dateFilter.end
+        ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
+        : "";
+    const csvContent = [headers.join(","), ...csvData.map((row) => row.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `profit_analysis${dateRange}_${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  // --- Format LKR ---
+  const formatLKR = (amount) => {
+    return new Intl.NumberFormat("en-LK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  // --- Date Filter Helpers ---
+  const clearDateFilter = () => setDateFilter({ start: "", end: "" });
+  const setQuickFilter = (days) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    setDateFilter({
+      start: start.toISOString().split("T")[0],
+      end: end.toISOString().split("T")[0],
+    });
+  };
+
+  // --- Keep all existing useMemo blocks (competitiveAnalysis, monthlyData, etc.) ---
   const competitiveAnalysis = useMemo(() => {
     return filteredRecords
       .filter(
@@ -200,7 +493,6 @@ export default function BookkeepingApp() {
         const sellingPrice = parseFloat(r.amount) || 0;
         const cost = parseFloat(r.cost_per_unit) || 0;
         const marketPrice = parseFloat(r.market_price) || sellingPrice;
-
         const grossProfit = (sellingPrice - cost) * qty;
         const grossMargin =
           sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
@@ -212,7 +504,6 @@ export default function BookkeepingApp() {
           cost > 0 && marketPrice > cost
             ? ((sellingPrice - cost) / (marketPrice - cost)) * 100
             : 100;
-
         return {
           id: r.id,
           name: r.description,
@@ -254,28 +545,22 @@ export default function BookkeepingApp() {
     );
   }, [competitiveAnalysis]);
 
-  // --- Monthly Data Aggregation ---
   const monthlyData = useMemo(() => {
     if (!filteredRecords || filteredRecords.length === 0) return [];
-
     const grouped = {};
-
     filteredRecords.forEach((r) => {
       const date = new Date(r.date);
       const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1)
         .toString()
         .padStart(2, "0")}`;
-
       if (!grouped[monthKey])
         grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
-
       const qty = parseFloat(r.quantity) || 1;
       const price = parseFloat(r.amount) || 0;
       const cost = parseFloat(r.cost_per_unit) || 0;
       const revenue = price * qty;
       const totalCost = cost * qty;
       const profit = revenue - totalCost;
-
       if (r.category === "Inflow") {
         grouped[monthKey].revenue += revenue;
         grouped[monthKey].cost += totalCost;
@@ -285,7 +570,6 @@ export default function BookkeepingApp() {
         grouped[monthKey].profit -= revenue;
       }
     });
-
     return Object.entries(grouped)
       .map(([month, vals]) => ({
         month,
@@ -296,132 +580,6 @@ export default function BookkeepingApp() {
       .sort((a, b) => new Date(a.month) - new Date(b.month));
   }, [filteredRecords]);
 
-  const handleSubmit = async () => {
-    if (!formData.description || !formData.amount) return;
-
-    try {
-      const recordData = {
-        date: formData.date,
-        payment_date: formData.paymentDate || formData.date,
-        description: formData.description,
-        category: formData.category,
-        amount: parseFloat(formData.amount),
-        cost_per_unit: formData.costPerUnit
-          ? parseFloat(formData.costPerUnit)
-          : null,
-        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
-        notes: formData.notes,
-        customer: formData.customer || null,
-        project: formData.project || null,
-        tags: formData.tags || null,
-        market_price: formData.marketPrice
-          ? parseFloat(formData.marketPrice)
-          : null,
-      };
-
-      if (isEditing !== null) {
-        const recordToUpdate = records[isEditing];
-        const { error } = await supabase
-          .from("bookkeeping_records")
-          .update(recordData)
-          .eq("id", recordToUpdate.id);
-
-        if (error) throw error;
-        setRecords(
-          records.map((r, i) =>
-            i === isEditing ? { ...recordData, id: r.id } : r
-          )
-        );
-        setIsEditing(null);
-      } else {
-        const { data, error } = await supabase
-          .from("bookkeeping_records")
-          .insert([recordData])
-          .select();
-
-        if (error) throw error;
-        setRecords([data[0], ...records]);
-      }
-
-      setFormData({
-        date: new Date().toISOString().split("T")[0],
-        paymentDate: "",
-        description: "",
-        category: "Inflow",
-        amount: "",
-        costPerUnit: "",
-        quantity: "",
-        notes: "",
-        customer: "",
-        project: "",
-        tags: "",
-        marketPrice: "",
-      });
-    } catch (error) {
-      console.error("Error saving record:", error);
-      alert("Failed to save record. Please check your Supabase configuration.");
-    }
-  };
-  const handleEdit = (index) => {
-    const record = filteredRecords[index];
-    setFormData({
-      date: record.date,
-      paymentDate: record.payment_date || "",
-      description: record.description,
-      category: record.category,
-      amount: record.amount.toString(),
-      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
-      quantity: record.quantity ? record.quantity.toString() : "",
-      notes: record.notes || "",
-      customer: record.customer || "",
-      project: record.project || "",
-      tags: record.tags || "",
-      marketPrice: record.market_price ? record.market_price.toString() : "", // ← ADD THIS
-    });
-    setIsEditing(index);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleCancel = () => {
-    setIsEditing(null);
-    setFormData({
-      date: new Date().toISOString().split("T")[0],
-      paymentDate: "",
-      description: "",
-      category: "Inflow",
-      amount: "",
-      costPerUnit: "",
-      quantity: "",
-      notes: "",
-      customer: "",
-      project: "",
-      tags: "",
-      marketPrice: "",
-    });
-  };
-
-  const handleDelete = async (index) => {
-    if (!window.confirm("Are you sure you want to delete this record?")) {
-      return;
-    }
-
-    try {
-      const recordToDelete = filteredRecords[index];
-      const { error } = await supabase
-        .from("bookkeeping_records")
-        .delete()
-        .eq("id", recordToDelete.id);
-
-      if (error) throw error;
-
-      // Remove from local state
-      setRecords(records.filter((r) => r.id !== recordToDelete.id));
-    } catch (error) {
-      console.error("Error deleting record:", error);
-      alert("Failed to delete record. Please try again.");
-    }
-  };
-  // --- Cash Flow Gaps ---
   const cashFlowGaps = useMemo(() => {
     return filteredRecords
       .filter((r) => r.payment_date && r.category === "Inflow")
@@ -443,7 +601,6 @@ export default function BookkeepingApp() {
       });
   }, [filteredRecords]);
 
-  // --- ROI Timeline & Calculations ---
   const roiTimeline = useMemo(() => {
     const grouped = {};
     filteredRecords.forEach((r) => {
@@ -454,7 +611,6 @@ export default function BookkeepingApp() {
       });
       if (!grouped[month])
         grouped[month] = { month, investment: 0, return: 0, net: 0 };
-
       if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
         grouped[month].investment += parseFloat(r.amount) || 0;
         grouped[month].net -= parseFloat(r.amount) || 0;
@@ -463,7 +619,6 @@ export default function BookkeepingApp() {
         grouped[month].net += parseFloat(r.amount) || 0;
       }
     });
-
     return Object.values(grouped);
   }, [filteredRecords]);
 
@@ -473,12 +628,10 @@ export default function BookkeepingApp() {
     let totalInvestment = 0;
     let totalReturn = 0;
     let cumulativeNet = 0;
-
     roiTimeline.forEach((point) => {
       totalInvestment += point.investment;
       totalReturn += point.return;
       cumulativeNet += point.net;
-
       if (!breakEvenMonth && point.return >= point.investment) {
         breakEvenMonth = point.month;
       }
@@ -486,135 +639,16 @@ export default function BookkeepingApp() {
         paybackMonth = point.month;
       }
     });
-
     return {
       breakEvenMonth,
       paybackMonth,
       roiPercentage:
         totalInvestment > 0
-          ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(
-              0
-            )
+          ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(0)
           : 0,
     };
   }, [roiTimeline]);
 
-  // --- Totals & Business Value Data ---
-
-  const exportToCSV = () => {
-    const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
-
-    if (dataToExport.length === 0) {
-      alert("No records to export");
-      return;
-    }
-
-    const headers = [
-      "Date",
-      "Description",
-      "Category",
-      "Unit Price (LKR)",
-      "Cost per Unit (LKR)",
-      "Quantity",
-      "Total Revenue",
-      "Total Cost",
-      "Profit",
-      "Margin %",
-      "Customer",
-      "Project",
-      "Tags",
-      "Notes",
-    ];
-    const csvData = dataToExport.map((r) => {
-      const qty = r.quantity || 1;
-      const price = r.amount;
-      const cost = r.cost_per_unit || 0;
-      const revenue = price * qty;
-      const totalCost = cost * qty;
-      const profit = revenue - totalCost;
-      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : "0";
-
-      return [
-        r.date,
-        `"${r.description}"`,
-        r.category,
-        price,
-        cost,
-        qty,
-        revenue.toFixed(2),
-        totalCost.toFixed(2),
-        profit.toFixed(2),
-        margin,
-        `"${r.customer || ""}"`,
-        `"${r.project || ""}"`,
-        `"${r.tags || ""}"`,
-        `"${r.notes || ""}"`,
-      ];
-    });
-
-    const dateRange =
-      dateFilter.start || dateFilter.end
-        ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
-        : "";
-
-    const csvContent = [
-      headers.join(","),
-      ...csvData.map((row) => row.join(",")),
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `profit_analysis${dateRange}_${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-  };
-  const totals = filteredRecords.reduce(
-    (acc, r) => {
-      const amount = parseFloat(r.amount) || 0;
-      const costPerUnit = parseFloat(r.cost_per_unit) || 0;
-      const quantity = parseFloat(r.quantity) || 1;
-      const revenue = amount * quantity;
-      const cost = costPerUnit * quantity;
-
-      if (r.category === "Inflow") {
-        acc.inflow += revenue;
-        acc.inflowCost += cost;
-        acc.inflowProfit += revenue - cost;
-      }
-      if (r.category === "Outflow") acc.outflow += revenue;
-      if (r.category === "Reinvestment") acc.reinvestment += revenue;
-      if (r.category === "Overhead") acc.overhead += revenue;
-      if (r.category === "Loan Payment") acc.loanPayment += revenue;
-      if (r.category === "Loan Received") acc.loanReceived += revenue;
-
-      return acc;
-    },
-    {
-      inflow: 0,
-      inflowCost: 0,
-      inflowProfit: 0,
-      outflow: 0,
-      reinvestment: 0,
-      overhead: 0,
-      loanPayment: 0,
-      loanReceived: 0,
-    }
-  );
-
-  const grossProfit = totals.inflow - totals.outflow;
-  const grossMarginPercent =
-    totals.inflow > 0 ? (grossProfit / totals.inflow) * 100 : 0;
-  const trueGrossMargin =
-    totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-  const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
-  const netLoanImpact = totals.loanReceived - totals.loanPayment;
-  const netProfit = operatingProfit + netLoanImpact;
-
-  // --- Customer Profitability Analysis ---
   const customerAnalysis = useMemo(() => {
     const customers = {};
     filteredRecords.forEach((r) => {
@@ -634,17 +668,13 @@ export default function BookkeepingApp() {
         if (r.project) customers[r.customer].projects.add(r.project);
       }
     });
-
     return Object.entries(customers)
       .map(([name, data]) => ({
         name,
         revenue: data.revenue,
         cost: data.cost,
         profit: data.revenue - data.cost,
-        margin:
-          data.revenue > 0
-            ? ((data.revenue - data.cost) / data.revenue) * 100
-            : 0,
+        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
         transactions: data.transactions,
         projectCount: data.projects.size,
         avgTransaction: data.revenue / data.transactions,
@@ -654,7 +684,6 @@ export default function BookkeepingApp() {
 
   const productMargins = useMemo(() => {
     const products = {};
-
     filteredRecords
       .filter((r) => r.category === "Inflow")
       .forEach((r) => {
@@ -668,18 +697,15 @@ export default function BookkeepingApp() {
             customers: new Set(),
           };
         }
-
         const qty = parseFloat(r.quantity) || 1;
         const revenue = parseFloat(r.amount) * qty;
         const cost = parseFloat(r.cost_per_unit || 0) * qty;
-
         products[key].revenue += revenue;
         products[key].cost += cost;
         products[key].quantity += qty;
         products[key].transactions += 1;
         if (r.customer) products[key].customers.add(r.customer);
       });
-
     return Object.entries(products)
       .map(([name, data]) => ({
         name,
@@ -689,10 +715,7 @@ export default function BookkeepingApp() {
         transactions: data.transactions,
         customers: data.customers.size,
         profit: data.revenue - data.cost,
-        margin:
-          data.revenue > 0
-            ? ((data.revenue - data.cost) / data.revenue) * 100
-            : 0,
+        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
         avgPrice: data.revenue / data.quantity,
         avgCost: data.cost / data.quantity,
         avgProfit: (data.revenue - data.cost) / data.quantity,
@@ -705,14 +728,8 @@ export default function BookkeepingApp() {
     Object.entries(budgets).forEach(([category, budgetAmount]) => {
       const spent = filteredRecords
         .filter((r) => r.category === category)
-        .reduce(
-          (sum, r) =>
-            sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1),
-          0
-        );
-
+        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1), 0);
       const percentUsed = (spent / budgetAmount) * 100;
-
       if (percentUsed >= 90) {
         alerts.push({
           category,
@@ -734,7 +751,6 @@ export default function BookkeepingApp() {
         const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         const priceIncrease = recommendedPrice - p.avgPrice;
         const percentIncrease = (priceIncrease / p.avgPrice) * 100;
-
         return {
           product: p.name,
           currentMargin: p.margin,
@@ -749,6 +765,7 @@ export default function BookkeepingApp() {
       .filter((r) => r.needsAction)
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   }, [productMargins]);
+
   const businessValueData = [
     {
       metric: "Revenue",
@@ -762,34 +779,26 @@ export default function BookkeepingApp() {
       target: 70,
     },
     {
-      metric: "Customer Coverage",
-      current:
-        (customerAnalysis.length / Math.max(filteredRecords.length, 1)) * 100,
+      metric: "Loan Coverage",
+      current: loanCoveragePercent,
       target: 100,
     },
   ];
 
-  // --- Analytics Maturity ---
   const maturityData = [
     { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
     {
       stage: "Cost Tracking",
       score: (
-        (filteredRecords.filter(
-          (r) => r.category === "Inflow" && r.cost_per_unit
-        ).length /
-          Math.max(
-            filteredRecords.filter((r) => r.category === "Inflow").length,
-            1
-          )) *
+        (filteredRecords.filter((r) => r.category === "Inflow" && r.cost_per_unit).length /
+          Math.max(filteredRecords.filter((r) => r.category === "Inflow").length, 1)) *
         100
       ).toFixed(0),
     },
     {
       stage: "Customer Tracking",
       score: (
-        (filteredRecords.filter((r) => r.customer).length /
-          Math.max(filteredRecords.length, 1)) *
+        (filteredRecords.filter((r) => r.customer).length / Math.max(filteredRecords.length, 1)) *
         100
       ).toFixed(0),
     },
@@ -803,12 +812,7 @@ export default function BookkeepingApp() {
       icon: Database,
       color: "bg-blue-500",
       value: "$50K-100K",
-      tasks: [
-        "Data Infrastructure Setup",
-        "CRM Integration & Clean-up",
-        "Analytics Platform Selection",
-        "Baseline Metrics Definition",
-      ],
+      tasks: ["Data Infrastructure Setup", "CRM Integration & Clean-up", "Analytics Platform Selection", "Baseline Metrics Definition"],
     },
     {
       phase: "Quick Wins",
@@ -816,12 +820,7 @@ export default function BookkeepingApp() {
       icon: Zap,
       color: "bg-green-500",
       value: "$75K-150K",
-      tasks: [
-        "Sales Dashboard Deployment",
-        "Lead Scoring Model v1",
-        "Pipeline Health Reports",
-        "Sales Rep Training",
-      ],
+      tasks: ["Sales Dashboard Deployment", "Lead Scoring Model v1", "Pipeline Health Reports", "Sales Rep Training"],
     },
     {
       phase: "Advanced Analytics",
@@ -829,12 +828,7 @@ export default function BookkeepingApp() {
       icon: Brain,
       color: "bg-purple-500",
       value: "$200K-400K",
-      tasks: [
-        "Predictive Win Probability",
-        "Customer Segmentation",
-        "Next-Best-Action AI",
-        "Churn Prediction",
-      ],
+      tasks: ["Predictive Win Probability", "Customer Segmentation", "Next-Best-Action AI", "Churn Prediction"],
     },
     {
       phase: "Optimization",
@@ -842,44 +836,16 @@ export default function BookkeepingApp() {
       icon: TrendingUp,
       color: "bg-orange-500",
       value: "$500K+",
-      tasks: [
-        "Model Performance Monitoring",
-        "Process Refinement",
-        "Advanced Experiments",
-        "AI Capability Expansion",
-      ],
+      tasks: ["Model Performance Monitoring", "Process Refinement", "Advanced Experiments", "AI Capability Expansion"],
     },
   ];
-
-  const formatLKR = (amount) => {
-    return new Intl.NumberFormat("en-LK", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
-
-  const clearDateFilter = () => {
-    setDateFilter({ start: "", end: "" });
-  };
-
-  const setQuickFilter = (days) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - days);
-    setDateFilter({
-      start: start.toISOString().split("T")[0],
-      end: end.toISOString().split("T")[0],
-    });
-  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">
-            Loading your financial data...
-          </p>
+          <p className="text-gray-600 text-lg">Loading your financial data...</p>
         </div>
       </div>
     );
@@ -897,13 +863,16 @@ export default function BookkeepingApp() {
                 SME Profit Intelligence Platform
               </h1>
               <p className="text-blue-100">
-                AI-powered margin analysis • Pricing intelligence • Strategic
-                profitability insights
+                AI-powered margin analysis • Pricing intelligence • Strategic profitability insights
               </p>
               <div className="flex items-center gap-3 mt-2">
                 <div className="flex items-center gap-1 text-sm">
                   <Percent className="w-4 h-4" />
                   <span>True Margin: {trueGrossMargin.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center gap-1 text-sm">
+                  <DollarSign className="w-4 h-4" />
+                  <span>Loan Coverage: {loanCoveragePercent.toFixed(1)}%</span>
                 </div>
                 <div className="flex items-center gap-1 text-sm">
                   <Database className="w-4 h-4" />
@@ -914,27 +883,32 @@ export default function BookkeepingApp() {
                   disabled={syncing}
                   className="flex items-center gap-1 text-sm bg-blue-500 px-2 py-1 rounded hover:bg-blue-400 transition-colors disabled:opacity-50"
                 >
-                  <RefreshCw
-                    className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`}
-                  />
+                  <RefreshCw className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`} />
                   {syncing ? "Syncing..." : "Sync"}
                 </button>
               </div>
             </div>
             <div className="flex gap-2">
-              <button
+              {/* <button
                 onClick={() => setShowStrategyModal(true)}
                 className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-4 py-2 rounded-md hover:from-purple-600 hover:to-purple-700 transition-all font-semibold shadow-md"
               >
                 <Layers className="w-4 h-4" />
                 Strategy
-              </button>
+              </button> */}
               <button
                 onClick={() => setShowTargetModal(true)}
                 className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
               >
                 <Target className="w-4 h-4" />
                 Target
+              </button>
+              <button
+                onClick={() => setShowLoanModal(true)}
+                className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-400 transition-colors font-semibold shadow-md"
+              >
+                <DollarSign className="w-4 h-4" />
+                Loan Plan
               </button>
               <button
                 onClick={() => setShowBudgetModal(true)}
@@ -953,7 +927,30 @@ export default function BookkeepingApp() {
             </div>
           </div>
         </div>
-        {/* Cash Flow Gaps Section */}
+
+        {/* Loan Health Alert */}
+        <div className="mb-6">
+          <div
+            className={`p-4 rounded-lg flex items-center gap-3 ${
+              loanStatus === "On Track"
+                ? "bg-green-50 border border-green-200"
+                : "bg-red-50 border border-red-200"
+            }`}
+          >
+            <DollarSign className={`w-6 h-6 ${loanStatus === "On Track" ? "text-green-600" : "text-red-600"}`} />
+            <div>
+              <h3 className="font-semibold">
+                {loanStatus === "On Track" ? "✅ Loan Coverage On Track" : "⚠️ Loan Coverage At Risk"}
+              </h3>
+              <p className="text-sm">
+                This month: LKR {formatLKR(thisMonthInflow)} / LKR {formatLKR(monthlyLoanTarget)} (
+                {loanCoveragePercent.toFixed(1)}%)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Existing Cash Flow Gaps & Strategic Alerts */}
         {cashFlowGaps.length > 0 && (
           <div className="bg-white rounded-lg shadow-md p-4 mb-6">
             <h2 className="text-lg font-semibold mb-3 flex items-center">
@@ -964,21 +961,11 @@ export default function BookkeepingApp() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">
-                      Description
-                    </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">
-                      Customer
-                    </th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-600">
-                      Amount (LKR)
-                    </th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-600">
-                      Gap (days)
-                    </th>
-                    <th className="px-4 py-2 text-center font-semibold text-gray-600">
-                      Status
-                    </th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Description</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Customer</th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-600">Amount (LKR)</th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-600">Gap (days)</th>
+                    <th className="px-4 py-2 text-center font-semibold text-gray-600">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -986,16 +973,12 @@ export default function BookkeepingApp() {
                     <tr key={gap.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2">{gap.description}</td>
                       <td className="px-4 py-2">{gap.customer || "-"}</td>
-                      <td className="px-4 py-2 text-right">
-                        {formatLKR(gap.amount)}
-                      </td>
+                      <td className="px-4 py-2 text-right">{formatLKR(gap.amount)}</td>
                       <td className="px-4 py-2 text-right">{gap.gapDays}</td>
                       <td className="px-4 py-2 text-center">
                         <span
                           className={`px-2 py-1 text-xs rounded-full font-semibold ${
-                            gap.status === "Delayed"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-green-100 text-green-800"
+                            gap.status === "Delayed" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
                           }`}
                         >
                           {gap.status}
@@ -1009,7 +992,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Strategic Alerts */}
         {(budgetAlerts.length > 0 || pricingRecommendations.length > 0) && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {budgetAlerts.length > 0 && (
@@ -1017,14 +999,11 @@ export default function BookkeepingApp() {
                 <div className="flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="font-semibold text-yellow-900 mb-2">
-                      Budget Alerts
-                    </h3>
+                    <h3 className="font-semibold text-yellow-900 mb-2">Budget Alerts</h3>
                     <div className="space-y-2">
                       {budgetAlerts.slice(0, 2).map((alert, idx) => (
                         <div key={idx} className="text-sm text-yellow-800">
-                          <strong>{alert.category}:</strong>{" "}
-                          {alert.percentUsed.toFixed(0)}% used
+                          <strong>{alert.category}:</strong> {alert.percentUsed.toFixed(0)}% used
                           {alert.severity === "critical" && " - OVER BUDGET!"}
                         </div>
                       ))}
@@ -1033,20 +1012,16 @@ export default function BookkeepingApp() {
                 </div>
               </div>
             )}
-
             {pricingRecommendations.length > 0 && (
               <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-lg">
                 <div className="flex items-start gap-3">
                   <Sparkles className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="font-semibold text-orange-900 mb-2">
-                      Pricing Opportunities
-                    </h3>
+                    <h3 className="font-semibold text-orange-900 mb-2">Pricing Opportunities</h3>
                     <div className="space-y-2">
                       {pricingRecommendations.slice(0, 2).map((rec, idx) => (
                         <div key={idx} className="text-sm text-orange-800">
-                          <strong>{rec.product}:</strong> +
-                          {rec.percentIncrease.toFixed(0)}% price = +LKR{" "}
+                          <strong>{rec.product}:</strong> +{rec.percentIncrease.toFixed(0)}% price = +LKR{" "}
                           {formatLKR(rec.potentialRevenue)} revenue
                         </div>
                       ))}
@@ -1055,7 +1030,6 @@ export default function BookkeepingApp() {
                 </div>
               </div>
             )}
-          
           </div>
         )}
 
@@ -1068,12 +1042,9 @@ export default function BookkeepingApp() {
               { id: "competitive", label: "Competitive Edge", icon: Target },
               { id: "products", label: "Products", icon: Package },
               { id: "customers", label: "Customers", icon: Users },
+              { id: "suppliers", label: "Suppliers", icon: Factory },
               { id: "pricing", label: "Pricing Intel", icon: Sparkles },
-              {
-                id: "analytics",
-                label: "Strategic Analytics",
-                icon: TrendingUp,
-              },
+              { id: "analytics", label: "Strategic Analytics", icon: TrendingUp },
               { id: "records", label: "All Records", icon: FileText },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -1082,9 +1053,7 @@ export default function BookkeepingApp() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-600 hover:bg-gray-100"
+                    activeTab === tab.id ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -1102,18 +1071,14 @@ export default function BookkeepingApp() {
             <input
               type="date"
               value={dateFilter.start}
-              onChange={(e) =>
-                setDateFilter({ ...dateFilter, start: e.target.value })
-              }
+              onChange={(e) => setDateFilter({ ...dateFilter, start: e.target.value })}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <span className="text-gray-600">to</span>
             <input
               type="date"
               value={dateFilter.end}
-              onChange={(e) =>
-                setDateFilter({ ...dateFilter, end: e.target.value })
-              }
+              onChange={(e) => setDateFilter({ ...dateFilter, end: e.target.value })}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
@@ -1154,33 +1119,23 @@ export default function BookkeepingApp() {
         {/* Overview Tab */}
         {activeTab === "overview" && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <TrendingUp className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">
-                    Revenue
-                  </span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">Revenue</span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
-                  LKR {formatLKR(totals.inflow)}
-                </h3>
+                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflow)}</h3>
                 <p className="text-sm opacity-90">Total Inflow</p>
               </div>
-
               <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <ShoppingCart className="w-8 h-8 opacity-80" />
-                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">
-                    COGS
-                  </span>
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">COGS</span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
-                  LKR {formatLKR(totals.inflowCost)}
-                </h3>
+                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflowCost)}</h3>
                 <p className="text-sm opacity-90">Cost of Goods Sold</p>
               </div>
-
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
                 <div className="flex justify-between items-start mb-2">
                   <Award className="w-8 h-8 opacity-80" />
@@ -1188,29 +1143,34 @@ export default function BookkeepingApp() {
                     {trueGrossMargin.toFixed(1)}%
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
-                  LKR {formatLKR(totals.inflowProfit)}
-                </h3>
+                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(totals.inflowProfit)}</h3>
                 <p className="text-sm opacity-90">Gross Profit (True)</p>
               </div>
-
               <div
                 className={`bg-gradient-to-br ${
-                  netProfit >= 0
-                    ? "from-purple-500 to-purple-600"
-                    : "from-orange-500 to-orange-600"
+                  netProfit >= 0 ? "from-purple-500 to-purple-600" : "from-orange-500 to-orange-600"
+                } text-white rounded-lg shadow-lg p-5`}
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <DollarSign className="w-8 h-8 opacity-80" />
+                  <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">Net</span>
+                </div>
+                <h3 className="text-2xl font-bold mb-1">LKR {formatLKR(netProfit)}</h3>
+                <p className="text-sm opacity-90">Net Profit</p>
+              </div>
+              <div
+                className={`bg-gradient-to-br ${
+                  loanStatus === "On Track" ? "from-green-500 to-teal-600" : "from-red-500 to-orange-600"
                 } text-white rounded-lg shadow-lg p-5`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <DollarSign className="w-8 h-8 opacity-80" />
                   <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded text-white">
-                    Net
+                    {loanCoveragePercent.toFixed(0)}%
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
-                  LKR {formatLKR(netProfit)}
-                </h3>
-                <p className="text-sm opacity-90">Net Profit</p>
+                <h3 className="text-2xl font-bold mb-1">Loan Health</h3>
+                <p className="text-sm opacity-90">{loanStatus}</p>
               </div>
             </div>
 
@@ -1220,47 +1180,30 @@ export default function BookkeepingApp() {
                 <Plus className="w-5 h-5" />
                 {isEditing !== null ? "Edit Record" : "Add New Record"}
               </h2>
-              <input
-                type="date"
-                placeholder="Payment Date (optional)"
-                value={formData.paymentDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, paymentDate: e.target.value })
-                }
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-<input
-  type="date"
-  value={formData.date}
-  onChange={(e) =>
-    setFormData({ ...formData, date: e.target.value })
-  }
-  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-/>
-<input
-  type="date"
-  placeholder="Payment Date (optional)"
-  value={formData.paymentDate}
-  onChange={(e) =>
-    setFormData({ ...formData, paymentDate: e.target.value })
-  }
-  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-/>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="date"
+                  placeholder="Payment Date (optional)"
+                  value={formData.paymentDate}
+                  onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 <input
                   type="text"
                   placeholder="Description *"
                   value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <select
                   value={formData.category}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {categories.map((cat) => (
@@ -1273,13 +1216,17 @@ export default function BookkeepingApp() {
                   type="number"
                   placeholder="Quantity (default: 1)"
                   value={formData.quantity}
-                  onChange={(e) =>
-                    setFormData({ ...formData, quantity: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Supplied By (optional)"
+                  value={formData.suppliedBy}
+                  onChange={(e) => setFormData({ ...formData, suppliedBy: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1289,9 +1236,7 @@ export default function BookkeepingApp() {
                     type="number"
                     placeholder="e.g., 100"
                     value={formData.amount}
-                    onChange={(e) =>
-                      setFormData({ ...formData, amount: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1303,24 +1248,19 @@ export default function BookkeepingApp() {
                     type="number"
                     placeholder="e.g., 120"
                     value={formData.marketPrice}
-                    onChange={(e) =>
-                      setFormData({ ...formData, marketPrice: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, marketPrice: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Cost per Unit (LKR){" "}
-                    {formData.category === "Inflow" && "- for margin tracking"}
+                    Cost per Unit (LKR) {formData.category === "Inflow" && "- for margin tracking"}
                   </label>
                   <input
                     type="number"
                     placeholder="e.g., 60"
                     value={formData.costPerUnit}
-                    onChange={(e) =>
-                      setFormData({ ...formData, costPerUnit: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, costPerUnit: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1334,50 +1274,31 @@ export default function BookkeepingApp() {
                   <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
                     <div className="grid grid-cols-4 gap-4 text-sm">
                       <div>
-                        <p className="text-gray-600 font-medium">
-                          Total Revenue
-                        </p>
+                        <p className="text-gray-600 font-medium">Total Revenue</p>
                         <p className="text-lg font-bold text-green-600">
-                          LKR{" "}
-                          {formatLKR(
-                            parseFloat(formData.quantity) *
-                              parseFloat(formData.amount)
-                          )}
+                          LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.amount))}
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-600 font-medium">Total Cost</p>
                         <p className="text-lg font-bold text-red-600">
-                          LKR{" "}
-                          {formatLKR(
-                            parseFloat(formData.quantity) *
-                              parseFloat(formData.costPerUnit)
-                          )}
+                          LKR {formatLKR(parseFloat(formData.quantity) * parseFloat(formData.costPerUnit))}
                         </p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">
-                          Gross Profit
-                        </p>
+                        <p className="text-gray-600 font-medium">Gross Profit</p>
                         <p className="text-lg font-bold text-blue-600">
                           LKR{" "}
                           {formatLKR(
                             parseFloat(formData.quantity) *
-                              (parseFloat(formData.amount) -
-                                parseFloat(formData.costPerUnit))
+                              (parseFloat(formData.amount) - parseFloat(formData.costPerUnit))
                           )}
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-600 font-medium">Margin</p>
                         <p className="text-lg font-bold text-purple-600">
-                          {(
-                            ((parseFloat(formData.amount) -
-                              parseFloat(formData.costPerUnit)) /
-                              parseFloat(formData.amount)) *
-                            100
-                          ).toFixed(1)}
-                          %
+                          {(((parseFloat(formData.amount) - parseFloat(formData.costPerUnit)) / parseFloat(formData.amount)) * 100).toFixed(1)}%
                         </p>
                       </div>
                     </div>
@@ -1389,41 +1310,31 @@ export default function BookkeepingApp() {
                   type="text"
                   placeholder="Customer (optional)"
                   value={formData.customer}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customer: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
                   placeholder="Project (optional)"
                   value={formData.project}
-                  onChange={(e) =>
-                    setFormData({ ...formData, project: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, project: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
                   placeholder="Tags (comma-separated)"
                   value={formData.tags}
-                  onChange={(e) =>
-                    setFormData({ ...formData, tags: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-
               <textarea
                 placeholder="Notes (optional)"
                 value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 rows="2"
               />
-
               <div className="flex gap-2">
                 <button
                   onClick={handleSubmit}
@@ -1449,30 +1360,14 @@ export default function BookkeepingApp() {
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                        Description
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                        Category
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                        Qty
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                        Unit Price
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                        Total
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                        Margin
-                      </th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
-                        Actions
-                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -1481,19 +1376,11 @@ export default function BookkeepingApp() {
                       const price = record.amount;
                       const cost = record.cost_per_unit || 0;
                       const total = price * qty;
-                      const margin =
-                        price > 0 && cost > 0
-                          ? ((price - cost) / price) * 100
-                          : null;
-
+                      const margin = price > 0 && cost > 0 ? ((price - cost) / price) * 100 : null;
                       return (
                         <tr key={index} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {record.date}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {record.description}
-                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
                           <td className="px-4 py-3">
                             <span
                               className={`px-2 py-1 text-xs rounded-full ${
@@ -1507,21 +1394,14 @@ export default function BookkeepingApp() {
                               {record.category}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            {qty}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            LKR {formatLKR(price)}
-                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{qty}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(price)}</td>
                           <td
                             className={`px-4 py-3 text-sm text-right font-semibold ${
-                              record.category === "Inflow"
-                                ? "text-green-600"
-                                : "text-red-600"
+                              record.category === "Inflow" ? "text-green-600" : "text-red-600"
                             }`}
                           >
-                            {record.category === "Inflow" ? "+" : "−"} LKR{" "}
-                            {formatLKR(total)}
+                            {record.category === "Inflow" ? "+" : "−"} LKR {formatLKR(total)}
                           </td>
                           <td className="px-4 py-3 text-sm text-right">
                             {margin !== null ? (
@@ -1564,7 +1444,233 @@ export default function BookkeepingApp() {
           </>
         )}
 
-        {/* Profit Margins Tab */}
+        {/* Suppliers Tab */}
+        {activeTab === "suppliers" && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <Factory className="w-7 h-7" />
+                Supplier Cost Analysis
+              </h2>
+              <p className="text-amber-100">Track spending by supplier to optimize procurement</p>
+            </div>
+            {supplierAnalysis.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                <Factory className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
+                <p className="text-yellow-800">
+                  No supplier data available. Add “Supplied By” to your records to see analysis.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Supplier</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total Cost</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of COGS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {supplierAnalysis.map((supplier, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{supplier.name}</td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
+                            LKR {formatLKR(supplier.cost)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{supplier.transactions}</td>
+                          <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
+                            {totals.inflowCost > 0 ? ((supplier.cost / totals.inflowCost) * 100).toFixed(1) : "0"}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* All Records Tab with Grouping */}
+        {activeTab === "records" && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Complete Transaction History
+              </h2>
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="none">No Grouping</option>
+                <option value="customer">Group by Customer</option>
+                <option value="product">Group by Product</option>
+                <option value="supplier">Group by Supplier</option>
+              </select>
+            </div>
+
+            <div className="overflow-x-auto">
+              {groupBy === "none" ? (
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Date</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Description</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Supplied By</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Price</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost/Unit</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredRecords.map((record, index) => {
+                      const qty = record.quantity || 1;
+                      const price = record.amount;
+                      const cost = record.cost_per_unit || 0;
+                      const total = price * qty;
+                      const totalCost = cost * qty;
+                      const profit = total - totalCost;
+                      const margin = price > 0 && cost > 0 ? ((price - cost) / price) * 100 : null;
+                      return (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-600">{record.date}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{record.description}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`px-2 py-1 text-xs rounded-full ${
+                                record.category === "Inflow"
+                                  ? "bg-green-100 text-green-800"
+                                  : record.category === "Outflow"
+                                  ? "bg-red-100 text-red-800"
+                                  : record.category === "Reinvestment"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : record.category === "Overhead"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {record.category}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{record.customer || "-"}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{record.supplied_by || "-"}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{qty}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(price)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            {cost > 0 ? `LKR ${formatLKR(cost)}` : "-"}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-sm text-right font-semibold ${
+                              record.category === "Inflow" || record.category === "Loan Received"
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {record.category === "Inflow" || record.category === "Loan Received" ? "+" : "−"} LKR{" "}
+                            {formatLKR(total)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
+                            {record.category === "Inflow" && cost > 0 ? `LKR ${formatLKR(profit)}` : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {margin !== null ? (
+                              <span
+                                className={`font-semibold ${
+                                  margin >= 50
+                                    ? "text-green-600"
+                                    : margin >= 30
+                                    ? "text-blue-600"
+                                    : margin >= 15
+                                    ? "text-orange-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {margin.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleEdit(index)}
+                              className="text-blue-600 hover:text-blue-800 mx-1"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(index)}
+                              className="text-red-600 hover:text-red-800 mx-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="space-y-6">
+                  {groupedRecords.map(({ group, items }) => (
+                    <div key={group} className="border rounded-lg p-4">
+                      <h3 className="font-bold text-lg mb-3">{group}</h3>
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Date</th>
+                            <th className="px-3 py-2 text-left">Description</th>
+                            <th className="px-3 py-2 text-right">Total</th>
+                            <th className="px-3 py-2 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((record, idx) => {
+                            const total = (parseFloat(record.amount) || 0) * (parseFloat(record.quantity) || 1);
+                            return (
+                              <tr key={idx} className="border-b">
+                                <td className="px-3 py-2">{record.date}</td>
+                                <td className="px-3 py-2">{record.description}</td>
+                                <td className="px-3 py-2 text-right">LKR {formatLKR(total)}</td>
+                                <td className="px-3 py-2 text-right">
+                                  <button
+                                    onClick={() => handleEdit(records.findIndex(r => r.id === record.id))}
+                                    className="text-blue-600 hover:text-blue-800 mx-1"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(records.findIndex(r => r.id === record.id))}
+                                    className="text-red-600 hover:text-red-800 mx-1"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Other tabs (margins, products, customers, pricing, analytics, competitive) remain unchanged */}
         {activeTab === "margins" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
@@ -1572,85 +1678,54 @@ export default function BookkeepingApp() {
                 <Percent className="w-7 h-7" />
                 Profit Margin Intelligence
               </h2>
-              <p className="text-purple-100">
-                Deep dive into your product/service profitability
-              </p>
+              <p className="text-purple-100">Deep dive into your product/service profitability</p>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">Average Margin</h3>
-                <p className="text-3xl font-bold text-blue-600">
-                  {trueGrossMargin.toFixed(1)}%
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Across all products
-                </p>
+                <p className="text-3xl font-bold text-blue-600">{trueGrossMargin.toFixed(1)}%</p>
+                <p className="text-xs text-gray-500 mt-1">Across all products</p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">Total Markup</h3>
-                <p className="text-3xl font-bold text-green-600">
-                  LKR {formatLKR(totals.inflowProfit)}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Gross profit from sales
-                </p>
+                <p className="text-3xl font-bold text-green-600">LKR {formatLKR(totals.inflowProfit)}</p>
+                <p className="text-xs text-gray-500 mt-1">Gross profit from sales</p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">COGS</h3>
-                <p className="text-3xl font-bold text-red-600">
-                  LKR {formatLKR(totals.inflowCost)}
-                </p>
+                <p className="text-3xl font-bold text-red-600">LKR {formatLKR(totals.inflowCost)}</p>
                 <p className="text-xs text-gray-500 mt-1">Cost of goods sold</p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">Markup Ratio</h3>
                 <p className="text-3xl font-bold text-purple-600">
-                  {totals.inflowCost > 0
-                    ? (totals.inflowProfit / totals.inflowCost).toFixed(2)
-                    : "0"}
-                  x
+                  {totals.inflowCost > 0 ? (totals.inflowProfit / totals.inflowCost).toFixed(2) : "0"}x
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Profit per cost dollar
-                </p>
+                <p className="text-xs text-gray-500 mt-1">Profit per cost dollar</p>
               </div>
             </div>
-
-            
-
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
               <div className="flex items-start gap-3">
                 <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                 <div>
-                  <h3 className="font-semibold text-blue-900 mb-2">
-                    Margin Health Check
-                  </h3>
+                  <h3 className="font-semibold text-blue-900 mb-2">Margin Health Check</h3>
                   <div className="space-y-2 text-sm text-blue-800">
                     {trueGrossMargin >= 50 && (
                       <div className="flex items-center gap-2">
                         <CheckCircle className="w-4 h-4" />
-                        <span>
-                          Excellent margins - you have strong pricing power
-                        </span>
+                        <span>Excellent margins - you have strong pricing power</span>
                       </div>
                     )}
                     {trueGrossMargin >= 30 && trueGrossMargin < 50 && (
                       <div className="flex items-center gap-2">
                         <AlertCircle className="w-4 h-4" />
-                        <span>
-                          Good margins - consider testing price increases on
-                          high-demand items
-                        </span>
+                        <span>Good margins - consider testing price increases on high-demand items</span>
                       </div>
                     )}
                     {trueGrossMargin < 30 && trueGrossMargin > 0 && (
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4" />
-                        <span>
-                          Margins below target - review pricing strategy and
-                          cost optimization
-                        </span>
+                        <span>Margins below target - review pricing strategy and cost optimization</span>
                       </div>
                     )}
                   </div>
@@ -1660,7 +1735,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Products Tab */}
         {activeTab === "products" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-teal-500 to-teal-600 text-white rounded-lg shadow-lg p-6">
@@ -1668,17 +1742,13 @@ export default function BookkeepingApp() {
                 <Package className="w-7 h-7" />
                 Product/Service Performance
               </h2>
-              <p className="text-teal-100">
-                Identify your profit champions and underperformers
-              </p>
+              <p className="text-teal-100">Identify your profit champions and underperformers</p>
             </div>
-
             {productMargins.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                 <Package className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
                 <p className="text-yellow-800">
-                  No product data available. Add cost tracking to your inflow
-                  records to see detailed analysis.
+                  No product data available. Add cost tracking to your inflow records to see detailed analysis.
                 </p>
               </div>
             ) : (
@@ -1687,47 +1757,23 @@ export default function BookkeepingApp() {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                          Product/Service
-                        </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                          Qty Sold
-                        </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                          Avg Price
-                        </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                          Avg Cost
-                        </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                          Unit Profit
-                        </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                          Total Profit
-                        </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                          Margin %
-                        </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                          Customers
-                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Product/Service</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Qty Sold</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Price</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Cost</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Unit Profit</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total Profit</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin %</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Customers</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {productMargins.map((product, idx) => (
                         <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                            {product.name}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            {product.quantity.toFixed(0)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            LKR {formatLKR(product.avgPrice)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            LKR {formatLKR(product.avgCost)}
-                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{product.name}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{product.quantity.toFixed(0)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgPrice)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgCost)}</td>
                           <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
                             LKR {formatLKR(product.avgProfit)}
                           </td>
@@ -1749,9 +1795,7 @@ export default function BookkeepingApp() {
                               {product.margin.toFixed(1)}%
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            {product.customers}
-                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">{product.customers}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1762,7 +1806,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Customers Tab */}
         {activeTab === "customers" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-6">
@@ -1770,17 +1813,13 @@ export default function BookkeepingApp() {
                 <Users className="w-7 h-7" />
                 Customer Profitability Analysis
               </h2>
-              <p className="text-indigo-100">
-                Understand which customers drive the most profit
-              </p>
+              <p className="text-indigo-100">Understand which customers drive the most profit</p>
             </div>
-
             {customerAnalysis.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                 <Users className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
                 <p className="text-yellow-800">
-                  No customer data available. Add customer names to your inflow
-                  records to see analysis.
+                  No customer data available. Add customer names to your inflow records to see analysis.
                 </p>
               </div>
             ) : (
@@ -1790,38 +1829,20 @@ export default function BookkeepingApp() {
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                            Customer
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Revenue
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Cost
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Profit
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Margin
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Transactions
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Avg Order
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            % of Revenue
-                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Customer</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Revenue</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Cost</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Profit</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Margin</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Transactions</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Avg Order</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">% of Revenue</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {customerAnalysis.map((customer, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                              {customer.name}
-                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{customer.name}</td>
                             <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
                               LKR {formatLKR(customer.revenue)}
                             </td>
@@ -1844,18 +1865,12 @@ export default function BookkeepingApp() {
                                 {customer.margin.toFixed(1)}%
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-right text-gray-600">
-                              {customer.transactions}
-                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-gray-600">{customer.transactions}</td>
                             <td className="px-4 py-3 text-sm text-right text-gray-600">
                               LKR {formatLKR(customer.avgTransaction)}
                             </td>
                             <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
-                              {(
-                                (customer.revenue / totals.inflow) *
-                                100
-                              ).toFixed(1)}
-                              %
+                              {((customer.revenue / totals.inflow) * 100).toFixed(1)}%
                             </td>
                           </tr>
                         ))}
@@ -1863,24 +1878,14 @@ export default function BookkeepingApp() {
                     </table>
                   </div>
                 </div>
-
                 <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4">
-                    Customer Concentration Risk
-                  </h3>
+                  <h3 className="font-bold text-lg mb-4">Customer Concentration Risk</h3>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={customerAnalysis.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="name"
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                      />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                       <YAxis />
-                      <Tooltip
-                        formatter={(value) => `LKR ${formatLKR(value)}`}
-                      />
+                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
                       <Legend />
                       <Bar dataKey="profit" fill="#3b82f6" name="Profit" />
                       <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
@@ -1892,7 +1897,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Pricing Intelligence Tab */}
         {activeTab === "pricing" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-6">
@@ -1900,20 +1904,14 @@ export default function BookkeepingApp() {
                 <Sparkles className="w-7 h-7" />
                 AI-Powered Pricing Intelligence
               </h2>
-              <p className="text-orange-100">
-                Data-driven recommendations to optimize your margins
-              </p>
+              <p className="text-orange-100">Data-driven recommendations to optimize your margins</p>
             </div>
-
             {pricingRecommendations.length === 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
                 <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
-                <p className="text-green-800 font-semibold">
-                  All products have healthy margins (30%+)
-                </p>
+                <p className="text-green-800 font-semibold">All products have healthy margins (30%+)</p>
                 <p className="text-green-700 text-sm mt-2">
-                  Continue monitoring and consider testing premium pricing on
-                  best sellers
+                  Continue monitoring and consider testing premium pricing on best sellers
                 </p>
               </div>
             ) : (
@@ -1922,19 +1920,13 @@ export default function BookkeepingApp() {
                   <div className="flex items-start gap-3">
                     <Zap className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
                     <div>
-                      <h3 className="font-bold text-orange-900 mb-2">
-                        Quick Win Opportunities
-                      </h3>
+                      <h3 className="font-bold text-orange-900 mb-2">Quick Win Opportunities</h3>
                       <p className="text-sm text-orange-800 mb-3">
-                        Implementing these price adjustments could generate an
-                        additional{" "}
+                        Implementing these price adjustments could generate an additional{" "}
                         <span className="font-bold">
                           LKR{" "}
                           {formatLKR(
-                            pricingRecommendations.reduce(
-                              (sum, r) => sum + r.potentialRevenue,
-                              0
-                            )
+                            pricingRecommendations.reduce((sum, r) => sum + r.potentialRevenue, 0)
                           )}
                         </span>{" "}
                         in revenue without changing volume.
@@ -1942,56 +1934,33 @@ export default function BookkeepingApp() {
                     </div>
                   </div>
                 </div>
-
                 <div className="bg-white rounded-lg shadow-md p-6">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                            Product/Service
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Current Margin
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Current Price
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Recommended Price
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Increase
-                          </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            Potential Revenue
-                          </th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
-                            Priority
-                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Product/Service</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Margin</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Current Price</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Recommended Price</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Increase</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Potential Revenue</th>
+                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Priority</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {pricingRecommendations.map((rec, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                              {rec.product}
-                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{rec.product}</td>
                             <td className="px-4 py-3 text-sm text-right">
-                              <span className="text-red-600 font-bold">
-                                {rec.currentMargin.toFixed(1)}%
-                              </span>
+                              <span className="text-red-600 font-bold">{rec.currentMargin.toFixed(1)}%</span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-right text-gray-600">
-                              LKR {formatLKR(rec.currentPrice)}
-                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(rec.currentPrice)}</td>
                             <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
                               LKR {formatLKR(rec.recommendedPrice)}
                             </td>
                             <td className="px-4 py-3 text-sm text-right">
-                              <span className="text-orange-600 font-bold">
-                                +{rec.percentIncrease.toFixed(1)}%
-                              </span>
+                              <span className="text-orange-600 font-bold">+{rec.percentIncrease.toFixed(1)}%</span>
                             </td>
                             <td className="px-4 py-3 text-sm text-right font-bold text-blue-600">
                               +LKR {formatLKR(rec.potentialRevenue)}
@@ -2015,41 +1984,34 @@ export default function BookkeepingApp() {
                     </table>
                   </div>
                 </div>
-
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
                   <div className="flex items-start gap-3">
                     <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                     <div>
-                      <h3 className="font-semibold text-blue-900 mb-2">
-                        Implementation Strategy
-                      </h3>
+                      <h3 className="font-semibold text-blue-900 mb-2">Implementation Strategy</h3>
                       <ul className="space-y-2 text-sm text-blue-800">
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
-                            <strong>Test incrementally:</strong> Start with
-                            10-15% increases to gauge customer response
+                            <strong>Test incrementally:</strong> Start with 10-15% increases to gauge customer response
                           </span>
                         </li>
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
-                            <strong>Bundle strategically:</strong> Combine
-                            low-margin items with high-margin services
+                            <strong>Bundle strategically:</strong> Combine low-margin items with high-margin services
                           </span>
                         </li>
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
-                            <strong>Value communication:</strong> Ensure pricing
-                            reflects the quality and outcomes you deliver
+                            <strong>Value communication:</strong> Ensure pricing reflects the quality and outcomes you deliver
                           </span>
                         </li>
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
-                            <strong>Monitor closely:</strong> Track conversion
-                            rates and customer feedback after adjustments
+                            <strong>Monitor closely:</strong> Track conversion rates and customer feedback after adjustments
                           </span>
                         </li>
                       </ul>
@@ -2061,7 +2023,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Strategic Analytics Tab */}
         {activeTab === "analytics" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-6">
@@ -2069,11 +2030,8 @@ export default function BookkeepingApp() {
                 <TrendingUp className="w-7 h-7" />
                 Strategic Business Analytics
               </h2>
-              <p className="text-purple-100">
-                Enterprise-grade insights for data-driven decision making
-              </p>
+              <p className="text-purple-100">Enterprise-grade insights for data-driven decision making</p>
             </div>
-
             {/* Business Health Score */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
@@ -2085,20 +2043,8 @@ export default function BookkeepingApp() {
                   <PolarGrid />
                   <PolarAngleAxis dataKey="metric" />
                   <PolarRadiusAxis angle={90} domain={[0, 100]} />
-                  <Radar
-                    name="Current"
-                    dataKey="current"
-                    stroke="#8b5cf6"
-                    fill="#8b5cf6"
-                    fillOpacity={0.6}
-                  />
-                  <Radar
-                    name="Target"
-                    dataKey="target"
-                    stroke="#10b981"
-                    fill="#10b981"
-                    fillOpacity={0.3}
-                  />
+                  <Radar name="Current" dataKey="current" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.6} />
+                  <Radar name="Target" dataKey="target" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
                   <Legend />
                 </RadarChart>
               </ResponsiveContainer>
@@ -2106,17 +2052,12 @@ export default function BookkeepingApp() {
                 {businessValueData.map((item, idx) => (
                   <div key={idx} className="text-center">
                     <p className="text-sm text-gray-600">{item.metric}</p>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {Number(item.current).toFixed(0)}%
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Target: {item.target}%
-                    </p>
+                    <p className="text-2xl font-bold text-purple-600">{Number(item.current).toFixed(0)}%</p>
+                    <p className="text-xs text-gray-500">Target: {item.target}%</p>
                   </div>
                 ))}
               </div>
             </div>
-
             {/* ROI Projection Timeline */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
@@ -2130,41 +2071,19 @@ export default function BookkeepingApp() {
                   <YAxis />
                   <Tooltip formatter={(value) => `$${value}K`} />
                   <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="investment"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    name="Investment"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="return"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    name="Return"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="net"
-                    stroke="#3b82f6"
-                    strokeWidth={3}
-                    name="Net Gain"
-                  />
+                  <Line type="monotone" dataKey="investment" stroke="#ef4444" strokeWidth={2} name="Investment" />
+                  <Line type="monotone" dataKey="return" stroke="#10b981" strokeWidth={2} name="Return" />
+                  <Line type="monotone" dataKey="net" stroke="#3b82f6" strokeWidth={3} name="Net Gain" />
                 </LineChart>
               </ResponsiveContainer>
               <div className="mt-4 p-4 bg-green-50 rounded-lg">
                 <p className="text-sm text-green-800">
-                  <strong>Break-even projection:</strong>{" "}
-                  {breakEvenMonth || "N/A"} |
-                  <strong className="ml-3">12-month ROI:</strong>{" "}
-                  {roiPercentage}% |
-                  <strong className="ml-3">Payback period:</strong>{" "}
-                  {paybackMonth || "N/A"}
+                  <strong>Break-even projection:</strong> {breakEvenMonth || "N/A"} |{" "}
+                  <strong className="ml-3">12-month ROI:</strong> {roiPercentage}% |{" "}
+                  <strong className="ml-3">Payback period:</strong> {paybackMonth || "N/A"}
                 </p>
               </div>
             </div>
-
             {/* Analytics Maturity Model */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
@@ -2182,13 +2101,8 @@ export default function BookkeepingApp() {
               </ResponsiveContainer>
               <div className="mt-4 space-y-2">
                 {maturityData.map((stage, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded"
-                  >
-                    <span className="font-medium text-gray-700">
-                      {stage.stage}
-                    </span>
+                  <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span className="font-medium text-gray-700">{stage.stage}</span>
                     <div className="flex items-center gap-2">
                       <div className="w-48 bg-gray-200 rounded-full h-2">
                         <div
@@ -2196,15 +2110,12 @@ export default function BookkeepingApp() {
                           style={{ width: `${stage.score}%` }}
                         ></div>
                       </div>
-                      <span className="text-sm font-semibold text-gray-600 w-12 text-right">
-                        {stage.score}%
-                      </span>
+                      <span className="text-sm font-semibold text-gray-600 w-12 text-right">{stage.score}%</span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-
             {/* Monthly Trend Analysis */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
@@ -2218,59 +2129,35 @@ export default function BookkeepingApp() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis />
-                      <Tooltip
-                        formatter={(value) => `LKR ${formatLKR(value)}`}
-                      />
+                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
                       <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        name="Revenue"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="profit"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                        name="Profit"
-                      />
+                      <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} name="Revenue" />
+                      <Line type="monotone" dataKey="profit" stroke="#3b82f6" strokeWidth={2} name="Profit" />
                     </LineChart>
                   </ResponsiveContainer>
                   <div className="mt-4 grid grid-cols-3 gap-4">
                     <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <p className="text-sm text-gray-600">
-                        Avg Monthly Revenue
-                      </p>
+                      <p className="text-sm text-gray-600">Avg Monthly Revenue</p>
                       <p className="text-xl font-bold text-green-600">
                         LKR{" "}
                         {formatLKR(
-                          monthlyData.reduce((sum, m) => sum + m.revenue, 0) /
-                            monthlyData.length
+                          monthlyData.reduce((sum, m) => sum + m.revenue, 0) / monthlyData.length
                         )}
                       </p>
                     </div>
                     <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-gray-600">
-                        Avg Monthly Profit
-                      </p>
+                      <p className="text-sm text-gray-600">Avg Monthly Profit</p>
                       <p className="text-xl font-bold text-blue-600">
                         LKR{" "}
                         {formatLKR(
-                          monthlyData.reduce((sum, m) => sum + m.profit, 0) /
-                            monthlyData.length
+                          monthlyData.reduce((sum, m) => sum + m.profit, 0) / monthlyData.length
                         )}
                       </p>
                     </div>
                     <div className="text-center p-3 bg-purple-50 rounded-lg">
                       <p className="text-sm text-gray-600">Avg Margin</p>
                       <p className="text-xl font-bold text-purple-600">
-                        {(
-                          monthlyData.reduce((sum, m) => sum + m.margin, 0) /
-                          monthlyData.length
-                        ).toFixed(1)}
-                        %
+                        {(monthlyData.reduce((sum, m) => sum + m.margin, 0) / monthlyData.length).toFixed(1)}%
                       </p>
                     </div>
                   </div>
@@ -2282,22 +2169,18 @@ export default function BookkeepingApp() {
                 </div>
               )}
             </div>
-
             {/* Key Insights Panel */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
                 <div className="flex items-start gap-3">
                   <Target className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                   <div>
-                    <h3 className="font-bold text-blue-900 mb-2">
-                      Current Performance
-                    </h3>
+                    <h3 className="font-bold text-blue-900 mb-2">Current Performance</h3>
                     <ul className="space-y-2 text-sm text-blue-800">
                       <li className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          <strong>Records tracked:</strong> {records.length}{" "}
-                          transactions
+                          <strong>Records tracked:</strong> {records.length} transactions
                         </span>
                       </li>
                       <li className="flex items-start gap-2">
@@ -2305,15 +2188,8 @@ export default function BookkeepingApp() {
                         <span>
                           <strong>Cost tracking:</strong>{" "}
                           {(
-                            (filteredRecords.filter(
-                              (r) => r.category === "Inflow" && r.cost_per_unit
-                            ).length /
-                              Math.max(
-                                filteredRecords.filter(
-                                  (r) => r.category === "Inflow"
-                                ).length,
-                                1
-                              )) *
+                            (filteredRecords.filter((r) => r.category === "Inflow" && r.cost_per_unit).length /
+                              Math.max(filteredRecords.filter((r) => r.category === "Inflow").length, 1)) *
                             100
                           ).toFixed(0)}
                           % of sales have cost data
@@ -2322,48 +2198,44 @@ export default function BookkeepingApp() {
                       <li className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          <strong>Customer tracking:</strong>{" "}
-                          {customerAnalysis.length} unique customers identified
+                          <strong>Customer tracking:</strong> {customerAnalysis.length} unique customers identified
                         </span>
                       </li>
                     </ul>
                   </div>
                 </div>
               </div>
-
               <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg p-5">
                 <div className="flex items-start gap-3">
                   <Lightbulb className="w-6 h-6 text-purple-600 flex-shrink-0 mt-1" />
                   <div>
-                    <h3 className="font-bold text-purple-900 mb-2">
-                      Next Steps to Improve
-                    </h3>
+                    <h3 className="font-bold text-purple-900 mb-2">Next Steps to Improve</h3>
                     <ul className="space-y-2 text-sm text-purple-800">
-                      {filteredRecords.filter(
-                        (r) => r.category === "Inflow" && !r.cost_per_unit
-                      ).length > 0 && (
+                      {filteredRecords.filter((r) => r.category === "Inflow" && !r.cost_per_unit).length > 0 && (
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             Add cost tracking to{" "}
-                            {
-                              filteredRecords.filter(
-                                (r) =>
-                                  r.category === "Inflow" && !r.cost_per_unit
-                              ).length
-                            }{" "}
-                            sales records for better margin analysis
+                            {filteredRecords.filter((r) => r.category === "Inflow" && !r.cost_per_unit).length} sales
+                            records for better margin analysis
                           </span>
                         </li>
                       )}
-                      {filteredRecords.filter((r) => !r.customer).length >
-                        0 && (
+                      {filteredRecords.filter((r) => !r.customer).length > 0 && (
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
-                            Add customer names to{" "}
-                            {filteredRecords.filter((r) => !r.customer).length}{" "}
-                            records for customer profitability tracking
+                            Add customer names to {filteredRecords.filter((r) => !r.customer).length} records for
+                            customer profitability tracking
+                          </span>
+                        </li>
+                      )}
+                      {filteredRecords.filter((r) => !r.supplied_by).length > 0 && (
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>
+                            Add supplier info to {filteredRecords.filter((r) => !r.supplied_by).length} records for
+                            procurement insights
                           </span>
                         </li>
                       )}
@@ -2371,8 +2243,7 @@ export default function BookkeepingApp() {
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
-                            Set budgets for expense categories to enable budget
-                            monitoring and alerts
+                            Set budgets for expense categories to enable budget monitoring and alerts
                           </span>
                         </li>
                       )}
@@ -2380,8 +2251,7 @@ export default function BookkeepingApp() {
                         <li className="flex items-start gap-2">
                           <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                           <span>
-                            Add more transaction history for better trend
-                            analysis and insights
+                            Add more transaction history for better trend analysis and insights
                           </span>
                         </li>
                       )}
@@ -2393,162 +2263,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* All Records Tab */}
-        {activeTab === "records" && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Complete Transaction History
-            </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                      Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                      Description
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                      Category
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
-                      Customer
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                      Qty
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                      Unit Price
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                      Cost/Unit
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                      Total
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                      Profit
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                      Margin
-                    </th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredRecords.map((record, index) => {
-                    const qty = record.quantity || 1;
-                    const price = record.amount;
-                    const cost = record.cost_per_unit || 0;
-                    const total = price * qty;
-                    const totalCost = cost * qty;
-                    const profit = total - totalCost;
-                    const margin =
-                      price > 0 && cost > 0
-                        ? ((price - cost) / price) * 100
-                        : null;
-
-                    return (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {record.date}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {record.description}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`px-2 py-1 text-xs rounded-full ${
-                              record.category === "Inflow"
-                                ? "bg-green-100 text-green-800"
-                                : record.category === "Outflow"
-                                ? "bg-red-100 text-red-800"
-                                : record.category === "Reinvestment"
-                                ? "bg-blue-100 text-blue-800"
-                                : record.category === "Overhead"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {record.category}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {record.customer || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-600">
-                          {qty}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-600">
-                          LKR {formatLKR(price)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-600">
-                          {cost > 0 ? `LKR ${formatLKR(cost)}` : "-"}
-                        </td>
-                        <td
-                          className={`px-4 py-3 text-sm text-right font-semibold ${
-                            record.category === "Inflow" ||
-                            record.category === "Loan Received"
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {record.category === "Inflow" ||
-                          record.category === "Loan Received"
-                            ? "+"
-                            : "−"}{" "}
-                          LKR {formatLKR(total)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
-                          {record.category === "Inflow" && cost > 0
-                            ? `LKR ${formatLKR(profit)}`
-                            : "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right">
-                          {margin !== null ? (
-                            <span
-                              className={`font-semibold ${
-                                margin >= 50
-                                  ? "text-green-600"
-                                  : margin >= 30
-                                  ? "text-blue-600"
-                                  : margin >= 15
-                                  ? "text-orange-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {margin.toFixed(1)}%
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => handleEdit(index)}
-                            className="text-blue-600 hover:text-blue-800 mx-1"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(index)}
-                            className="text-red-600 hover:text-red-800 mx-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
         {activeTab === "competitive" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-lg shadow-lg p-6">
@@ -2560,16 +2274,13 @@ export default function BookkeepingApp() {
                 Understand your pricing power vs market rates and competitors
               </p>
             </div>
-
             {competitiveAnalysis.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                 <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800 font-semibold mb-2">
-                  No competitive data available yet
-                </p>
+                <p className="text-yellow-800 font-semibold mb-2">No competitive data available yet</p>
                 <p className="text-yellow-700 text-sm">
-                  Add market pricing data to your inflow records to unlock
-                  competitive analysis and see where you can capture more value.
+                  Add market pricing data to your inflow records to unlock competitive analysis and see where you can
+                  capture more value.
                 </p>
               </div>
             ) : (
@@ -2578,58 +2289,38 @@ export default function BookkeepingApp() {
                   <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <TrendingUp className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
-                        Tracked
-                      </span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Tracked</span>
                     </div>
-                    <h3 className="text-2xl font-bold mb-1">
-                      {competitiveAnalysis.length}
-                    </h3>
-                    <p className="text-sm opacity-90">
-                      Products with Market Data
-                    </p>
+                    <h3 className="text-2xl font-bold mb-1">{competitiveAnalysis.length}</h3>
+                    <p className="text-sm opacity-90">Products with Market Data</p>
                   </div>
-
                   <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <Zap className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
-                        Opportunity
-                      </span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Opportunity</span>
                     </div>
                     <h3 className="text-2xl font-bold mb-1">
                       LKR {formatLKR(competitiveTotals.totalCompetitiveEdge)}
                     </h3>
-                    <p className="text-sm opacity-90">
-                      Potential Revenue Upside
-                    </p>
+                    <p className="text-sm opacity-90">Potential Revenue Upside</p>
                   </div>
-
                   <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <Percent className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
-                        Margin
-                      </span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Margin</span>
                     </div>
                     <h3 className="text-2xl font-bold mb-1">
                       {competitiveTotals.count > 0
-                        ? (
-                            competitiveTotals.avgMargin /
-                            competitiveTotals.count
-                          ).toFixed(1)
+                        ? (competitiveTotals.avgMargin / competitiveTotals.count).toFixed(1)
                         : "0"}
                       %
                     </h3>
                     <p className="text-sm opacity-90">Avg Competitive Margin</p>
                   </div>
-
                   <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-5">
                     <div className="flex justify-between items-start mb-2">
                       <Calculator className="w-8 h-8 opacity-80" />
-                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">
-                        Position
-                      </span>
+                      <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded">Position</span>
                     </div>
                     <h3 className="text-2xl font-bold mb-1">
                       {competitiveAnalysis.filter((a) => a.underpriced).length}
@@ -2637,7 +2328,6 @@ export default function BookkeepingApp() {
                     <p className="text-sm opacity-90">Underpriced Products</p>
                   </div>
                 </div>
-
                 <div className="bg-white rounded-lg shadow-md p-6">
                   <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-indigo-600" />
@@ -2646,85 +2336,39 @@ export default function BookkeepingApp() {
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={competitiveAnalysis.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="name"
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                      />
+                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                       <YAxis />
-                      <Tooltip
-                        formatter={(value) => `LKR ${formatLKR(value)}`}
-                      />
+                      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
                       <Legend />
-                      <Bar
-                        dataKey="sellingPrice"
-                        fill="#3b82f6"
-                        name="Your Price"
-                      />
-                      <Bar
-                        dataKey="marketPrice"
-                        fill="#10b981"
-                        name="Market Price"
-                      />
-                      <Bar
-                        dataKey="competitiveEdge"
-                        fill="#8b5cf6"
-                        name="Competitive Edge"
-                      />
+                      <Bar dataKey="sellingPrice" fill="#3b82f6" name="Your Price" />
+                      <Bar dataKey="marketPrice" fill="#10b981" name="Market Price" />
+                      <Bar dataKey="competitiveEdge" fill="#8b5cf6" name="Competitive Edge" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-
                 <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4">
-                    Detailed Competitive Analysis
-                  </h3>
+                  <h3 className="font-bold text-lg mb-4">Detailed Competitive Analysis</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                            Product
-                          </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                            Your Price
-                          </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                            Market Price
-                          </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                            Price Position
-                          </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                            Margin %
-                          </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                            Competitive Edge
-                          </th>
-                          <th className="px-4 py-3 text-center font-semibold text-gray-600">
-                            Status
-                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-600">Product</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Your Price</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Market Price</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Price Position</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Margin %</th>
+                          <th className="px-4 py-3 text-right font-semibold text-gray-600">Competitive Edge</th>
+                          <th className="px-4 py-3 text-center font-semibold text-gray-600">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {competitiveAnalysis.map((item) => (
                           <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-900 font-medium">
-                              {item.name}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              LKR {formatLKR(item.sellingPrice)}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              LKR {formatLKR(item.marketPrice)}
-                            </td>
+                            <td className="px-4 py-3 text-gray-900 font-medium">{item.name}</td>
+                            <td className="px-4 py-3 text-right">LKR {formatLKR(item.sellingPrice)}</td>
+                            <td className="px-4 py-3 text-right">LKR {formatLKR(item.marketPrice)}</td>
                             <td className="px-4 py-3 text-right font-semibold">
-                              {(
-                                (item.sellingPrice / item.marketPrice) *
-                                100
-                              ).toFixed(0)}
-                              %
+                              {((item.sellingPrice / item.marketPrice) * 100).toFixed(0)}%
                             </td>
                             <td className="px-4 py-3 text-right font-semibold text-green-600">
                               {item.grossMargin.toFixed(1)}%
@@ -2755,30 +2399,22 @@ export default function BookkeepingApp() {
                     </table>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {competitiveAnalysis.filter((a) => a.underpriced).length >
-                    0 && (
+                  {competitiveAnalysis.filter((a) => a.underpriced).length > 0 && (
                     <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-5">
                       <div className="flex items-start gap-3">
                         <Zap className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
                         <div>
-                          <h3 className="font-bold text-green-900 mb-2">
-                            Quick Win Opportunities
-                          </h3>
+                          <h3 className="font-bold text-green-900 mb-2">Quick Win Opportunities</h3>
                           <div className="space-y-2 text-sm text-green-800">
                             {competitiveAnalysis
                               .filter((a) => a.underpriced)
                               .slice(0, 3)
                               .map((item, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-start gap-2"
-                                >
+                                <div key={idx} className="flex items-start gap-2">
                                   <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
                                   <span>
-                                    <strong>{item.name}:</strong> Raise price to
-                                    LKR {formatLKR(item.marketPrice)}= +LKR{" "}
+                                    <strong>{item.name}:</strong> Raise price to LKR {formatLKR(item.marketPrice)}= +LKR{" "}
                                     {formatLKR(item.competitiveEdge)} revenue
                                   </span>
                                 </div>
@@ -2788,90 +2424,35 @@ export default function BookkeepingApp() {
                       </div>
                     </div>
                   )}
-
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
                     <div className="flex items-start gap-3">
                       <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                       <div>
-                        <h3 className="font-bold text-blue-900 mb-2">
-                          Competitive Positioning Guide
-                        </h3>
+                        <h3 className="font-bold text-blue-900 mb-2">Competitive Positioning Guide</h3>
                         <ul className="space-y-2 text-sm text-blue-800">
                           <li className="flex items-start gap-2">
                             <span className="font-bold">UNDERPRICED ⬆️:</span>
-                            You're below market. Test gradual price increases to
-                            capture more value without losing customers.
+                            You're below market. Test gradual price increases to capture more value without losing customers.
                           </li>
                           <li className="flex items-start gap-2">
                             <span className="font-bold">PREMIUM 💎:</span>
-                            You're above market but profitable. Emphasize unique
-                            value and quality to justify premium pricing.
+                            You're above market but profitable. Emphasize unique value and quality to justify premium pricing.
                           </li>
                           <li className="flex items-start gap-2">
                             <span className="font-bold">MARKET RATE ✓:</span>
-                            Competitive pricing. Focus on service
-                            differentiation and customer loyalty programs.
+                            Competitive pricing. Focus on service differentiation and customer loyalty programs.
                           </li>
                         </ul>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                {/* <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-6 text-white">
-                  <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
-                    <Target className="w-6 h-6" />
-                    90-Day Competitive Advantage Roadmap
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{color:"black"}}>
-                    <div className="bg-white bg-opacity-10 rounded-lg p-4" style={{color:"black"}}>
-                      <div className="flex items-center gap-2 mb-2" style={{color:"black"}}>
-                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold" style={{color:"black"}}>
-                          1
-                        </div>
-                        <h4 className="font-semibold">
-                          Month 1: Data Collection
-                        </h4>
-                      </div>
-                      <ul className="text-sm space-y-1 text-purple-100" style={{color:"black"}}>
-                        <li>• Track competitor pricing weekly</li>
-                        <li>• Document cost structures</li>
-                        <li>• Identify top 20% revenue products</li>
-                      </ul>
-                    </div>
-                    <div className="bg-white bg-opacity-10 rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">
-                          2
-                        </div>
-                        <h4 className="font-semibold">Month 2: Testing</h4>
-                      </div>
-                      <ul className="text-sm space-y-1 text-purple-100">
-                        <li>• Test 10-15% price increases</li>
-                        <li>• Monitor conversion rates</li>
-                        <li>• A/B test value messaging</li>
-                      </ul>
-                    </div>
-                    <div className="bg-white bg-opacity-10 rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-white text-purple-600 rounded-full w-8 h-8 flex items-center justify-center font-bold">
-                          3
-                        </div>
-                        <h4 className="font-semibold">Month 3: Optimization</h4>
-                      </div>
-                      <ul className="text-sm space-y-1 text-purple-100">
-                        <li>• Roll out successful changes</li>
-                        <li>• Update positioning strategy</li>
-                        <li>• Measure profit impact</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div> */}
               </>
             )}
           </div>
         )}
-        {/* Target Modal */}
+
+        {/* Modals */}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
@@ -2879,9 +2460,7 @@ export default function BookkeepingApp() {
               <input
                 type="number"
                 value={targetRevenue}
-                onChange={(e) =>
-                  setTargetRevenue(parseFloat(e.target.value) || 0)
-                }
+                onChange={(e) => setTargetRevenue(parseFloat(e.target.value) || 0)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 placeholder="Enter target revenue (LKR)"
               />
@@ -2903,7 +2482,38 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Budget Modal */}
+        {showLoanModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">Set Monthly Loan Target</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                This is the minimum monthly inflow needed to comfortably cover your loan payments.
+              </p>
+              <input
+                type="number"
+                value={monthlyLoanTarget}
+                onChange={(e) => setMonthlyLoanTarget(parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                placeholder="Enter monthly loan target (LKR)"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={saveLoanTarget}
+                  className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setShowLoanModal(false)}
+                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showBudgetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
@@ -2949,7 +2559,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Strategy Implementation Modal */}
         {showStrategyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white rounded-lg p-6 max-w-6xl w-full my-8">
@@ -2970,28 +2579,22 @@ export default function BookkeepingApp() {
                   <span className="text-2xl">×</span>
                 </button>
               </div>
-
               {/* Implementation Phases */}
               <div className="space-y-6">
                 {implementationPhases.map((phase, idx) => {
                   const Icon = phase.icon;
                   const isExpanded = expandedSection === idx;
-
                   return (
                     <div
                       key={idx}
                       className="border-2 border-gray-200 rounded-lg overflow-hidden"
                     >
                       <button
-                        onClick={() =>
-                          setExpandedSection(isExpanded ? null : idx)
-                        }
+                        onClick={() => setExpandedSection(isExpanded ? null : idx)}
                         className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors"
                       >
                         <div className="flex items-center gap-4">
-                          <div
-                            className={`${phase.color} p-3 rounded-lg text-white`}
-                          >
+                          <div className={`${phase.color} p-3 rounded-lg text-white`}>
                             <Icon className="w-6 h-6" />
                           </div>
                           <div className="text-left">
@@ -3030,18 +2633,12 @@ export default function BookkeepingApp() {
                           )}
                         </div>
                       </button>
-
                       {isExpanded && (
                         <div className="p-5 bg-gray-50 border-t-2 border-gray-200">
-                          <h5 className="font-semibold mb-3">
-                            Key Deliverables:
-                          </h5>
+                          <h5 className="font-semibold mb-3">Key Deliverables:</h5>
                           <ul className="space-y-2">
                             {phase.tasks.map((task, taskIdx) => (
-                              <li
-                                key={taskIdx}
-                                className="flex items-start gap-3"
-                              >
+                              <li key={taskIdx} className="flex items-start gap-3">
                                 <div className="mt-1">
                                   <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
                                     <CheckCircle className="w-3 h-3 text-green-600" />
@@ -3057,25 +2654,18 @@ export default function BookkeepingApp() {
                   );
                 })}
               </div>
-
               {/* Expected Outcomes */}
               <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-lg border-2 border-green-300">
                   <div className="flex items-center gap-3 mb-3">
                     <Database className="w-6 h-6 text-green-600" />
-                    <h4 className="font-bold text-green-900">
-                      Data Foundation
-                    </h4>
+                    <h4 className="font-bold text-green-900">Data Foundation</h4>
                   </div>
-                  <p className="text-3xl font-bold text-green-600 mb-2">
-                    {records.length}
-                  </p>
+                  <p className="text-3xl font-bold text-green-600 mb-2">{records.length}</p>
                   <p className="text-sm text-green-800">
-                    Total records collected. Build to 200+ for robust analytics
-                    and predictive insights.
+                    Total records collected. Build to 200+ for robust analytics and predictive insights.
                   </p>
                 </div>
-
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-lg border-2 border-blue-300">
                   <div className="flex items-center gap-3 mb-3">
                     <Percent className="w-6 h-6 text-blue-600" />
@@ -3083,48 +2673,32 @@ export default function BookkeepingApp() {
                   </div>
                   <p className="text-3xl font-bold text-blue-600 mb-2">
                     {(
-                      (filteredRecords.filter(
-                        (r) => r.category === "Inflow" && r.cost_per_unit
-                      ).length /
-                        Math.max(
-                          filteredRecords.filter((r) => r.category === "Inflow")
-                            .length,
-                          1
-                        )) *
+                      (filteredRecords.filter((r) => r.category === "Inflow" && r.cost_per_unit).length /
+                        Math.max(filteredRecords.filter((r) => r.category === "Inflow").length, 1)) *
                       100
                     ).toFixed(0)}
                     %
                   </p>
                   <p className="text-sm text-blue-800">
-                    Sales with cost tracking. Target 90%+ for accurate
-                    profitability analysis.
+                    Sales with cost tracking. Target 90%+ for accurate profitability analysis.
                   </p>
                 </div>
-
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-lg border-2 border-purple-300">
                   <div className="flex items-center gap-3 mb-3">
                     <Users className="w-6 h-6 text-purple-600" />
-                    <h4 className="font-bold text-purple-900">
-                      Customer Insights
-                    </h4>
+                    <h4 className="font-bold text-purple-900">Customer Insights</h4>
                   </div>
-                  <p className="text-3xl font-bold text-purple-600 mb-2">
-                    {customerAnalysis.length}
-                  </p>
+                  <p className="text-3xl font-bold text-purple-600 mb-2">{customerAnalysis.length}</p>
                   <p className="text-sm text-purple-800">
-                    Unique customers tracked. Segment and analyze for better
-                    targeting strategies.
+                    Unique customers tracked. Segment and analyze for better targeting strategies.
                   </p>
                 </div>
               </div>
-
               {/* Action Button */}
               <div className="mt-8 p-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg text-white">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
-                    <h4 className="font-bold text-xl mb-2">
-                      Ready to Transform Your Sales Process?
-                    </h4>
+                    <h4 className="font-bold text-xl mb-2">Ready to Transform Your Sales Process?</h4>
                     <p className="text-purple-100">
                       Start with Phase 1 and see measurable results in 6-8 weeks
                     </p>
@@ -3134,7 +2708,6 @@ export default function BookkeepingApp() {
                   </button>
                 </div>
               </div>
-
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => setShowStrategyModal(false)}
