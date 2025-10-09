@@ -714,12 +714,11 @@ const OrderCard: React.FC<{
             {order.urgency}
           </span>
           {isAging && (
-            <Clock className="w-3 h-3 text-red-500" title="Follow up needed" />
+            <Clock className="w-3 h-3 text-red-500" />
           )}
           {isLowMargin && (
             <AlertTriangle
               className="w-3 h-3 text-yellow-500"
-              title="Low margin"
             />
           )}
         </div>
