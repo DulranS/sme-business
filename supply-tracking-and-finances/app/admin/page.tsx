@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   RefreshCw,
   Download,
@@ -17,9 +17,17 @@ import {
   Edit2,
   Save,
   TrendingUp,
-  Upload,FileDown,
+  Upload,
+  FileDown,
   Wallet,
   Calculator,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  AlertTriangle,
+  BarChart3,
+  Users,
+  Calendar,
 } from "lucide-react";
 
 // ------------------------
@@ -42,9 +50,11 @@ interface Order {
   status: "pending" | "in-progress" | "completed" | "cancelled" | "ship";
   images: string;
   created_at: string;
+  supplier_name?: string;
   supplier_price?: string;
   supplier_description?: string;
   customer_price?: string;
+  last_contacted?: string; // NEW: for follow-ups
 }
 
 interface FinancialSummary {
@@ -55,13 +65,19 @@ interface FinancialSummary {
   completedOrders: number;
   pendingValue: number;
   inProgressValue: number;
-  shippedValue: number; // ✅ Add this
+  shippedValue: number;
   cashInflow: number;
   cashOutflow: number;
   netCashFlow: number;
   reinvestmentPool: number;
   averageOrderValue: number;
   averageProfit: number;
+  // NEW METRICS
+  grossMargin: number;
+  cogs: number;
+  roi: number;
+  projectedCashFlow30Days: number;
+  lowMarginOrders: number;
 }
 
 interface CSVRow {
@@ -76,13 +92,16 @@ interface CSVRow {
   supplier_price?: string;
   supplier_description?: string;
   customer_price?: string;
+  supplier_name?: string;
 }
 
 // ------------------------
-// Supabase Client
+// Supabase Client (Enhanced)
 // ------------------------
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const DISCORD_WEBHOOK_URL =
+  process.env.NEXT_PUBLIC_DISCORD_UPDATE_WEBHOOK_URL || "";
 
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
@@ -102,7 +121,11 @@ class SupabaseClient {
       ...options,
     });
 
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Supabase error:", errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
     return response.json() as Promise<T>;
   }
 
@@ -116,7 +139,7 @@ class SupabaseClient {
         execute: async (): Promise<Order[]> =>
           this.request<Order[]>(table, {
             method: "POST",
-            body: JSON.stringify(data),
+            body: JSON.stringify(Array.isArray(data) ? data : [data]),
           }),
       }),
       update: (data: Partial<Order>) => ({
@@ -151,7 +174,7 @@ const getStatusColor = (status: Order["status"]) => {
     "in-progress": "bg-blue-100 text-blue-800 border-blue-300",
     completed: "bg-green-100 text-green-800 border-green-300",
     cancelled: "bg-red-100 text-red-800 border-red-300",
-      ship: "bg-purple-100 text-purple-800 border-purple-300", // Add this
+    ship: "bg-purple-100 text-purple-800 border-purple-300",
   };
   return colors[status] || "bg-gray-100 text-gray-800 border-gray-300";
 };
@@ -162,7 +185,7 @@ const getStatusIcon = (status: Order["status"]) => {
     "in-progress": <Loader className="w-4 h-4" />,
     completed: <CheckCircle className="w-4 h-4" />,
     cancelled: <XCircle className="w-4 h-4" />,
-      ship: <Package className="w-4 h-4" />, // Add this
+    ship: <Package className="w-4 h-4" />,
   };
   return icons[status] || <AlertCircle className="w-4 h-4" />;
 };
@@ -180,6 +203,7 @@ const parseImages = (imagesJson: string): OrderImage[] => {
   try {
     return JSON.parse(imagesJson || "[]");
   } catch {
+    console.warn("Failed to parse images JSON:", imagesJson);
     return [];
   }
 };
@@ -194,7 +218,7 @@ const extractNumericValue = (priceString?: string): number => {
 const formatCurrency = (value: number): string => {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: "LKR",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
@@ -206,13 +230,16 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let completedOrders = 0;
   let pendingValue = 0;
   let inProgressValue = 0;
-  let shippedValue = 0; // ✅ Added
+  let shippedValue = 0;
   let cashInflow = 0;
   let cashOutflow = 0;
+  let lowMarginOrders = 0;
 
   orders.forEach((order) => {
     const customerPrice = extractNumericValue(order.customer_price);
     const supplierPrice = extractNumericValue(order.supplier_price);
+    const margin =
+      customerPrice > 0 ? (customerPrice - supplierPrice) / customerPrice : 0;
 
     if (order.status === "completed") {
       totalRevenue += customerPrice;
@@ -220,33 +247,35 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
       completedOrders++;
       cashInflow += customerPrice;
       cashOutflow += supplierPrice;
+      if (margin < 0.2) lowMarginOrders++;
     } else if (order.status === "ship") {
-      // Ship orders are fulfilled - count as revenue but cash not yet received
-      totalRevenue += customerPrice;
+      // Shipped = cost incurred, but revenue not yet realized
       totalCost += supplierPrice;
-      completedOrders++;
-      shippedValue += customerPrice; // ✅ Track separately
-      cashOutflow += supplierPrice; // Supplier already paid
-      // Don't add to cashInflow yet since payment pending
+      cashOutflow += supplierPrice;
+      shippedValue += customerPrice;
     } else if (order.status === "pending") {
       pendingValue += customerPrice;
     } else if (order.status === "in-progress") {
       inProgressValue += customerPrice;
     }
-    // Note: "cancelled" orders are not counted anywhere
   });
 
   const totalProfit = totalRevenue - totalCost;
   const profitMargin =
     totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+  const grossMargin =
+    totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
+  const cogs = totalCost;
+  const roi = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
   const netCashFlow = cashInflow - cashOutflow;
-
-  // Reinvestment pool: 30% of profit reserved for growth
   const reinvestmentPool = totalProfit > 0 ? totalProfit * 0.3 : 0;
-
   const averageOrderValue =
     completedOrders > 0 ? totalRevenue / completedOrders : 0;
   const averageProfit = completedOrders > 0 ? totalProfit / completedOrders : 0;
+
+  // Projected cash flow: assume 50% of in-progress convert in 30 days
+  const projectedCashFlow30Days =
+    cashInflow + inProgressValue * 0.5 - shippedValue * 0.3;
 
   return {
     totalRevenue,
@@ -256,14 +285,63 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
     completedOrders,
     pendingValue,
     inProgressValue,
-    shippedValue, // ✅ Added
+    shippedValue,
     cashInflow,
     cashOutflow,
     netCashFlow,
     reinvestmentPool,
     averageOrderValue,
     averageProfit,
+    grossMargin,
+    cogs,
+    roi,
+    projectedCashFlow30Days,
+    lowMarginOrders,
   };
+};
+
+const getDaysSince = (dateString: string): number => {
+  const created = new Date(dateString);
+  const now = new Date();
+  const diffTime = now.getTime() - created.getTime();
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+const sendOrderUpdateWebhook = async (order: Order, action: string) => {
+  if (!DISCORD_WEBHOOK_URL) return;
+
+  const payload = {
+    username: "Order Bot",
+    avatar_url: "https://i.imgur.com/AfFp7pu.png",
+    content: `
+**---------------------------------------------------------------------------------------**
+📢 **Order Update Notification**
+Action: ${action}
+**Order #${order.id}** - ${order.customer_name}
+Location: ${order.location}
+Phone: ${order.phone}
+MOQ: ${order.moq}
+Urgency: ${order.urgency}
+Description: ${order.description}
+Status: ${order.status}
+Created At: ${new Date(order.created_at).toLocaleString()}
+Supplied By: ${order.supplier_name || "N/A"}
+Supplier Price: ${order.supplier_price || "N/A"}
+Customer Price: ${order.customer_price || "N/A"}
+Supplier Description: ${order.supplier_description || "N/A"}
+**---------------------------------------------------------------------------------------**
+`,
+  };
+
+  try {
+    await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to send Discord webhook:", err);
+  }
 };
 
 // ------------------------
@@ -281,7 +359,6 @@ const StatusUpdater: React.FC<{
     "completed",
     "cancelled",
   ];
-  
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -296,7 +373,7 @@ const StatusUpdater: React.FC<{
               : "bg-gray-200 text-gray-700 hover:bg-gray-300"
           } disabled:opacity-50`}
         >
-          {status}
+          {status.replace("-", " ")}
         </button>
       ))}
     </div>
@@ -304,18 +381,51 @@ const StatusUpdater: React.FC<{
 };
 
 // ------------------------
-// Financial Dashboard Component
+// Financial Dashboard Component (Enhanced)
 // ------------------------
 const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
   summary,
 }) => {
   const operatingCashFlow = summary.totalProfit - summary.reinvestmentPool;
   const cashFlowHealth = summary.netCashFlow >= 0 ? "positive" : "negative";
+  const marginHealth =
+    summary.profitMargin >= 30
+      ? "excellent"
+      : summary.profitMargin >= 20
+      ? "good"
+      : "poor";
 
   return (
     <div className="space-y-6">
+      {/* Alerts Banner */}
+      {(summary.lowMarginOrders > 0 || summary.netCashFlow < 0) && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+          <div className="flex items-start">
+            <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
+            <div>
+              <h3 className="text-sm font-medium text-yellow-800">
+                Action Required
+              </h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                {summary.lowMarginOrders > 0 && (
+                  <p>
+                    ⚠️ {summary.lowMarginOrders} order(s) have profit margin
+                    below 20%
+                  </p>
+                )}
+                {summary.netCashFlow < 0 && (
+                  <p>
+                    ⚠️ Negative cash flow: {formatCurrency(summary.netCashFlow)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Financial Metrics */}
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
+      {/* <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
           <Calculator className="w-6 h-6 mr-2 text-blue-600" />
           Financial Overview
@@ -323,404 +433,236 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-green-500">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">
-                Total Revenue
-              </span>
+              <span className="text-sm font-medium text-gray-600">Total Revenue</span>
               <TrendingUp className="w-4 h-4 text-green-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">
-              {formatCurrency(summary.totalRevenue)}
-            </p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalRevenue)}</p>
             <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-gray-500">
-                {summary.completedOrders} orders
-              </span>
-              <span className="text-green-600 font-medium">
-                Avg: {formatCurrency(summary.averageOrderValue)}
-              </span>
+              <span className="text-gray-500">{summary.completedOrders} orders</span>
+              <span className="text-green-600 font-medium">Avg: {formatCurrency(summary.averageOrderValue)}</span>
             </div>
           </div>
-
           <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-red-500">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">
-                Total Cost
-              </span>
+              <span className="text-sm font-medium text-gray-600">COGS</span>
               <Wallet className="w-4 h-4 text-red-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">
-              {formatCurrency(summary.totalCost)}
-            </p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.cogs)}</p>
             <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-gray-500">Supplier payments</span>
-              <span className="text-red-600 font-medium">
-                {summary.totalRevenue > 0
-                  ? ((summary.totalCost / summary.totalRevenue) * 100).toFixed(
-                      1
-                    )
-                  : 0}
-                % of revenue
-              </span>
+              <span className="text-gray-500">Cost of Goods Sold</span>
+              <span className="text-red-600 font-medium">{summary.totalRevenue > 0 ? ((summary.cogs / summary.totalRevenue) * 100).toFixed(1) : 0}%</span>
             </div>
           </div>
-
           <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">
-                Net Profit
-              </span>
+              <span className="text-sm font-medium text-gray-600">Gross Profit</span>
               <DollarSign className="w-4 h-4 text-blue-600" />
             </div>
-            <p
-              className={`text-2xl font-bold ${
-                summary.totalProfit >= 0 ? "text-green-600" : "text-red-600"
-              }`}
-            >
+            <p className={`text-2xl font-bold ${summary.totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
               {formatCurrency(summary.totalProfit)}
             </p>
             <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-gray-500">
-                {summary.profitMargin.toFixed(1)}% margin
-              </span>
-              <span className="text-blue-600 font-medium">
-                Avg: {formatCurrency(summary.averageProfit)}
-              </span>
+              <span className="text-gray-500">{summary.grossMargin.toFixed(1)}% margin</span>
+              <span className="text-blue-600 font-medium">ROI: {summary.roi.toFixed(1)}%</span>
             </div>
           </div>
-
-<div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
-  <div className="flex items-center justify-between mb-2">
-    <span className="text-sm font-medium text-gray-600">
-      Pipeline Value
-    </span>
-    <Package className="w-4 h-4 text-purple-600" />
-  </div>
-  <p className="text-2xl font-bold text-gray-900">
-    {formatCurrency(summary.pendingValue + summary.inProgressValue + summary.shippedValue)}
-  </p>
-  <div className="mt-2 space-y-1 text-xs">
-    <div className="flex justify-between">
-      <span className="text-gray-500">Pending:</span>
-      <span className="font-medium text-amber-600">
-        {formatCurrency(summary.pendingValue)}
-      </span>
-    </div>
-    <div className="flex justify-between">
-      <span className="text-gray-500">In Progress:</span>
-      <span className="font-medium text-blue-600">
-        {formatCurrency(summary.inProgressValue)}
-      </span>
-    </div>
-    <div className="flex justify-between">
-      <span className="text-gray-500">Shipped:</span>
-      <span className="font-medium text-purple-600">
-        {formatCurrency(summary.shippedValue)}
-      </span>
-    </div>
-  </div>
-</div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">Pipeline Value</span>
+              <Package className="w-4 h-4 text-purple-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              {formatCurrency(summary.pendingValue + summary.inProgressValue + summary.shippedValue)}
+            </p>
+            <div className="mt-2 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Pending:</span>
+                <span className="font-medium text-amber-600">{formatCurrency(summary.pendingValue)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">In Progress:</span>
+                <span className="font-medium text-blue-600">{formatCurrency(summary.inProgressValue)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Shipped:</span>
+                <span className="font-medium text-purple-600">{formatCurrency(summary.shippedValue)}</span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Cash Flow Analysis */}
-      <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-lg border border-emerald-200">
+      {/* <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-lg border border-emerald-200">
         <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
           <TrendingUp className="w-5 h-5 mr-2 text-emerald-600" />
-          Cash Flow Analysis
+          Cash Flow & Forecast
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">
-                Cash Inflows
-              </span>
+              <span className="text-sm font-medium text-gray-600">Cash Inflows</span>
               <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
                 <span className="text-green-600 text-lg">↓</span>
               </div>
             </div>
-            <p className="text-2xl font-bold text-green-600">
-              {formatCurrency(summary.cashInflow)}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Money received from customers
-            </p>
+            <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.cashInflow)}</p>
+            <p className="text-xs text-gray-500 mt-1">Realized revenue</p>
           </div>
-
           <div className="bg-white p-4 rounded-lg shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">
-                Cash Outflows
-              </span>
+              <span className="text-sm font-medium text-gray-600">Cash Outflows</span>
               <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
                 <span className="text-red-600 text-lg">↑</span>
               </div>
             </div>
-            <p className="text-2xl font-bold text-red-600">
-              {formatCurrency(summary.cashOutflow)}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">Payments to suppliers</p>
+            <p className="text-2xl font-bold text-red-600">{formatCurrency(summary.cashOutflow)}</p>
+            <p className="text-xs text-gray-500 mt-1">Supplier payments</p>
           </div>
-
           <div className="bg-white p-4 rounded-lg shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">
-                Net Cash Flow
-              </span>
-              <div
-                className={`w-8 h-8 rounded-full ${
-                  cashFlowHealth === "positive" ? "bg-green-100" : "bg-red-100"
-                } flex items-center justify-center`}
-              >
-                <span
-                  className={`${
-                    cashFlowHealth === "positive"
-                      ? "text-green-600"
-                      : "text-red-600"
-                  } text-lg font-bold`}
-                >
+              <span className="text-sm font-medium text-gray-600">Net Cash Flow</span>
+              <div className={`w-8 h-8 rounded-full ${cashFlowHealth === "positive" ? "bg-green-100" : "bg-red-100"} flex items-center justify-center`}>
+                <span className={`${cashFlowHealth === "positive" ? "text-green-600" : "text-red-600"} text-lg font-bold`}>
                   {cashFlowHealth === "positive" ? "+" : "-"}
                 </span>
               </div>
             </div>
-            <p
-              className={`text-2xl font-bold ${
-                summary.netCashFlow >= 0 ? "text-green-600" : "text-red-600"
-              }`}
-            >
+            <p className={`text-2xl font-bold ${summary.netCashFlow >= 0 ? "text-green-600" : "text-red-600"}`}>
               {formatCurrency(summary.netCashFlow)}
             </p>
-            <p
-              className={`text-xs mt-1 font-medium ${
-                cashFlowHealth === "positive"
-                  ? "text-green-600"
-                  : "text-red-600"
-              }`}
-            >
-              {cashFlowHealth === "positive"
-                ? "Healthy cash position"
-                : "Cash flow needs attention"}
+            <p className={`text-xs mt-1 font-medium ${cashFlowHealth === "positive" ? "text-green-600" : "text-red-600"}`}>
+              {cashFlowHealth === "positive" ? "Healthy" : "Needs attention"}
             </p>
           </div>
-        </div>
-
-        {/* Cash Flow Bar Visualization */}
-        <div className="mt-4 bg-white p-4 rounded-lg shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">
-              Cash Flow Balance
-            </span>
-            <span className="text-xs text-gray-500">Visual representation</span>
-          </div>
-          <div className="relative h-8 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="absolute left-0 top-0 h-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500"
-              style={{
-                width: `${
-                  summary.cashInflow > 0
-                    ? (summary.cashInflow /
-                        (summary.cashInflow + summary.cashOutflow)) *
-                      100
-                    : 0
-                }%`,
-              }}
-            />
-            <div
-              className="absolute right-0 top-0 h-full bg-gradient-to-l from-red-400 to-red-600 transition-all duration-500"
-              style={{
-                width: `${
-                  summary.cashOutflow > 0
-                    ? (summary.cashOutflow /
-                        (summary.cashInflow + summary.cashOutflow)) *
-                      100
-                    : 0
-                }%`,
-              }}
-            />
-          </div>
-          <div className="flex justify-between mt-2 text-xs">
-            <span className="text-green-600 font-medium">
-              Inflows:{" "}
-              {summary.cashInflow > 0
-                ? (
-                    (summary.cashInflow /
-                      (summary.cashInflow + summary.cashOutflow)) *
-                    100
-                  ).toFixed(1)
-                : 0}
-              %
-            </span>
-            <span className="text-red-600 font-medium">
-              Outflows:{" "}
-              {summary.cashOutflow > 0
-                ? (
-                    (summary.cashOutflow /
-                      (summary.cashInflow + summary.cashOutflow)) *
-                    100
-                  ).toFixed(1)
-                : 0}
-              %
-            </span>
+          <div className="bg-white p-4 rounded-lg shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">30-Day Forecast</span>
+              <BarChart3 className="w-4 h-4 text-indigo-600" />
+            </div>
+            <p className={`text-2xl font-bold ${summary.projectedCashFlow30Days >= 0 ? "text-indigo-600" : "text-red-600"}`}>
+              {formatCurrency(summary.projectedCashFlow30Days)}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Projected net cash</p>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Profit Distribution & Reinvestment */}
-      <div className="bg-gradient-to-br from-violet-50 to-purple-50 p-6 rounded-lg border border-violet-200">
+      {/* <div className="bg-gradient-to-br from-violet-50 to-purple-50 p-6 rounded-lg border border-violet-200">
         <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
           <Calculator className="w-5 h-5 mr-2 text-violet-600" />
-          Profit Distribution & Growth Strategy
+          Profit Allocation Strategy
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white p-4 rounded-lg shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-600">
-                Reinvestment Pool (30%)
-              </span>
+              <span className="text-sm font-medium text-gray-600">Reinvestment Pool (30%)</span>
               <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
                 <TrendingUp className="w-4 h-4 text-purple-600" />
               </div>
             </div>
-            <p className="text-3xl font-bold text-purple-600">
-              {formatCurrency(summary.reinvestmentPool)}
-            </p>
+            <p className="text-3xl font-bold text-purple-600">{formatCurrency(summary.reinvestmentPool)}</p>
             <div className="mt-3 space-y-2">
               <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Available for growth</span>
-                <span className="font-medium text-purple-600">
-                  30% of profit
-                </span>
+                <span className="text-gray-500">For growth</span>
+                <span className="font-medium text-purple-600">30% of profit</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-gradient-to-r from-purple-400 to-purple-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: "30%" }}
-                />
+                <div className="bg-gradient-to-r from-purple-400 to-purple-600 h-2 rounded-full" style={{ width: "30%" }} />
               </div>
             </div>
             <div className="mt-3 p-2 bg-purple-50 rounded text-xs text-gray-600">
-              <span className="font-medium">Use for:</span> Marketing,
-              inventory, expansion
+              <span className="font-medium">Use for:</span> Marketing, inventory, expansion
             </div>
           </div>
-
           <div className="bg-white p-4 rounded-lg shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-600">
-                Operating Cash (70%)
-              </span>
+              <span className="text-sm font-medium text-gray-600">Operating Cash (70%)</span>
               <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
                 <Wallet className="w-4 h-4 text-blue-600" />
               </div>
             </div>
-            <p className="text-3xl font-bold text-blue-600">
-              {formatCurrency(operatingCashFlow)}
-            </p>
+            <p className="text-3xl font-bold text-blue-600">{formatCurrency(operatingCashFlow)}</p>
             <div className="mt-3 space-y-2">
               <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Available for operations</span>
+                <span className="text-gray-500">For operations</span>
                 <span className="font-medium text-blue-600">70% of profit</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: "70%" }}
-                />
+                <div className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full" style={{ width: "70%" }} />
               </div>
             </div>
             <div className="mt-3 p-2 bg-blue-50 rounded text-xs text-gray-600">
-              <span className="font-medium">Use for:</span> Salaries, expenses,
-              reserves
+              <span className="font-medium">Use for:</span> Salaries, expenses, reserves
             </div>
           </div>
         </div>
 
-        {/* Profit Margin Indicator */}
+       
         <div className="mt-4 bg-white p-4 rounded-lg shadow-sm">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">
-              Profit Margin Health
-            </span>
-            <span
-              className={`text-xs px-2 py-1 rounded-full font-medium ${
-                summary.profitMargin >= 30
-                  ? "bg-green-100 text-green-700"
-                  : summary.profitMargin >= 20
-                  ? "bg-yellow-100 text-yellow-700"
-                  : "bg-red-100 text-red-700"
-              }`}
-            >
-              {summary.profitMargin >= 30
-                ? "Excellent"
-                : summary.profitMargin >= 20
-                ? "Good"
-                : "Needs Improvement"}
+            <span className="text-sm font-medium text-gray-700">Profit Margin Health</span>
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+              marginHealth === "excellent" ? "bg-green-100 text-green-700" :
+              marginHealth === "good" ? "bg-yellow-100 text-yellow-700" :
+              "bg-red-100 text-red-700"
+            }`}>
+              {marginHealth === "excellent" ? "Excellent" : marginHealth === "good" ? "Good" : "Needs Improvement"}
             </span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-            <div
-              className={`h-4 rounded-full transition-all duration-500 ${
-                summary.profitMargin >= 30
-                  ? "bg-gradient-to-r from-green-400 to-green-600"
-                  : summary.profitMargin >= 20
-                  ? "bg-gradient-to-r from-yellow-400 to-yellow-600"
-                  : "bg-gradient-to-r from-red-400 to-red-600"
-              }`}
-              style={{ width: `${Math.min(summary.profitMargin, 100)}%` }}
-            />
+            <div className={`h-4 rounded-full ${
+              marginHealth === "excellent" ? "bg-gradient-to-r from-green-400 to-green-600" :
+              marginHealth === "good" ? "bg-gradient-to-r from-yellow-400 to-yellow-600" :
+              "bg-gradient-to-r from-red-400 to-red-600"
+            }`} style={{ width: `${Math.min(summary.profitMargin, 100)}%` }} />
           </div>
           <div className="flex justify-between mt-2 text-xs text-gray-500">
             <span>0%</span>
-            <span>Target: 30%</span>
+            <span>Target: ≥30%</span>
             <span>100%</span>
           </div>
         </div>
-      </div>
+      </div> */}
 
-      {/* Key Performance Indicators */}
-      <div className="bg-white p-6 rounded-lg border border-gray-200">
+      {/* Executive KPIs */}
+      {/* <div className="bg-white p-6 rounded-lg border border-gray-200">
         <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-          <Package className="w-5 h-5 mr-2 text-gray-600" />
-          Key Performance Indicators
+          <BarChart3 className="w-5 h-5 mr-2 text-gray-600" />
+          Executive KPIs
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="text-center p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500 mb-1">Avg Order Value</p>
-            <p className="text-lg font-bold text-gray-900">
-              {formatCurrency(summary.averageOrderValue)}
-            </p>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(summary.averageOrderValue)}</p>
           </div>
           <div className="text-center p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500 mb-1">Avg Profit/Order</p>
-            <p className="text-lg font-bold text-green-600">
-              {formatCurrency(summary.averageProfit)}
+            <p className="text-lg font-bold text-green-600">{formatCurrency(summary.averageProfit)}</p>
+          </div>
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500 mb-1">Gross Margin</p>
+            <p className={`text-lg font-bold ${summary.grossMargin >= 30 ? "text-green-600" : summary.grossMargin >= 20 ? "text-yellow-600" : "text-red-600"}`}>
+              {summary.grossMargin.toFixed(1)}%
             </p>
           </div>
           <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500 mb-1">Total Orders</p>
-            <p className="text-lg font-bold text-gray-900">
-              {summary.completedOrders}
-            </p>
+            <p className="text-xs text-gray-500 mb-1">ROI</p>
+            <p className="text-lg font-bold text-blue-600">{summary.roi.toFixed(1)}%</p>
           </div>
           <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500 mb-1">Profit Margin</p>
-            <p
-              className={`text-lg font-bold ${
-                summary.profitMargin >= 20 ? "text-green-600" : "text-red-600"
-              }`}
-            >
-              {summary.profitMargin.toFixed(1)}%
-            </p>
+            <p className="text-xs text-gray-500 mb-1">Low Margin Orders</p>
+            <p className="text-lg font-bold text-red-600">{summary.lowMarginOrders}</p>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 };
 
-
-
 // ------------------------
-// Order Card Component
+// Order Card Component (Enhanced)
 // ------------------------
 const OrderCard: React.FC<{
   order: Order;
@@ -730,11 +672,21 @@ const OrderCard: React.FC<{
   const customerPrice = extractNumericValue(order.customer_price);
   const supplierPrice = extractNumericValue(order.supplier_price);
   const profit = customerPrice - supplierPrice;
+  const margin = customerPrice > 0 ? (profit / customerPrice) * 100 : 0;
+  const daysSince = getDaysSince(order.created_at);
+  const isAging = daysSince > 14 && order.status === "pending";
+  const isLowMargin = margin < 20 && order.status === "completed";
 
   return (
     <div
       className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
         selected ? "bg-blue-50 border-l-4 border-l-blue-500" : ""
+      } ${
+        order.urgency === "high" || isAging
+          ? "bg-red-50"
+          : isLowMargin
+          ? "bg-yellow-50"
+          : ""
       }`}
       onClick={onClick}
     >
@@ -750,24 +702,39 @@ const OrderCard: React.FC<{
       </div>
       <p className="text-sm text-gray-600 mb-2">{order.moq}</p>
       <p className="text-xs text-gray-500">
-        {new Date(order.created_at).toLocaleDateString()}
+        {new Date(order.created_at).toLocaleDateString()} • {daysSince}d ago
       </p>
       <div className="mt-2 flex items-center justify-between">
-        <span
-          className={`text-xs px-2 py-1 rounded-full ${getUrgencyColor(
-            order.urgency
-          )}`}
-        >
-          {order.urgency} priority
-        </span>
+        <div className="flex items-center space-x-2">
+          <span
+            className={`text-xs px-2 py-1 rounded-full ${getUrgencyColor(
+              order.urgency
+            )}`}
+          >
+            {order.urgency}
+          </span>
+          {isAging && (
+            <Clock className="w-3 h-3 text-red-500" title="Follow up needed" />
+          )}
+          {isLowMargin && (
+            <AlertTriangle
+              className="w-3 h-3 text-yellow-500"
+              title="Low margin"
+            />
+          )}
+        </div>
         {customerPrice > 0 && (
           <div className="text-xs">
             <span className="font-medium text-green-600">
               {formatCurrency(customerPrice)}
             </span>
             {supplierPrice > 0 && profit > 0 && (
-              <span className="ml-2 text-blue-600">
-                +{formatCurrency(profit)}
+              <span
+                className={`ml-2 ${
+                  margin < 20 ? "text-red-600" : "text-blue-600"
+                }`}
+              >
+                +{formatCurrency(profit)} ({margin.toFixed(0)}%)
               </span>
             )}
           </div>
@@ -799,21 +766,16 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
         Order Images ({images.length})
       </h3>
       <div className="space-y-4">
-        {images.map((image, i) => (
-          <div
-            key={i}
-            className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-          >
-            <p className="text-sm font-medium text-gray-800 mb-2">
-              {image.name}
-            </p>
+        {/* {images.map((image, i) => (
+          <div key={i} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <p className="text-sm font-medium text-gray-800 mb-2">{image.name}</p>
             <div className="flex justify-center">
               <img
                 src={image.url}
                 alt={image.name}
                 className="w-full h-auto object-contain rounded-lg shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
                 onClick={() => openImage(image.url)}
-                title="Click to view full size in new tab"
+                title="Click to view full size"
               />
             </div>
             <div className="mt-2 text-center">
@@ -821,11 +783,11 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
                 onClick={() => openImage(image.url)}
                 className="text-blue-600 hover:text-blue-800 text-xs underline"
               >
-                View full size in new tab
+                View full size
               </button>
             </div>
           </div>
-        ))}
+        ))} */}
       </div>
     </div>
   );
@@ -837,9 +799,11 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
 const PricingSection: React.FC<{
   order: Order;
   isEditing: boolean;
+  supplierName: string;
   supplierPrice: string;
   supplierDescription: string;
   customerPrice: string;
+  setSupplierName: (val: string) => void;
   setSupplierPrice: (val: string) => void;
   setSupplierDescription: (val: string) => void;
   setCustomerPrice: (val: string) => void;
@@ -850,9 +814,11 @@ const PricingSection: React.FC<{
 }> = ({
   order,
   isEditing,
+  supplierName,
   supplierPrice,
   supplierDescription,
   customerPrice,
+  setSupplierName,
   setSupplierPrice,
   setSupplierDescription,
   setCustomerPrice,
@@ -887,7 +853,6 @@ const PricingSection: React.FC<{
           </button>
         )}
       </div>
-
       {isEditing ? (
         <div className="space-y-4">
           <div>
@@ -898,8 +863,22 @@ const PricingSection: React.FC<{
               type="text"
               value={customerPrice}
               onChange={(e) => setCustomerPrice(e.target.value)}
+              className="..."
+              placeholder={
+                "e.g., 8000 LKR"
+              }
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Supplied By (Supplier Name)
+            </label>
+            <input
+              type="text"
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="e.g., 8000 USD"
+              placeholder="e.g., ABC Manufacturing"
             />
           </div>
           <div>
@@ -926,18 +905,29 @@ const PricingSection: React.FC<{
               placeholder="Additional details about pricing, materials, shipping, etc."
             />
           </div>
-
           {supplierCost > 0 && customerRevenue > 0 && (
-            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+            <div
+              className={`p-3 rounded-lg border ${
+                margin < 20
+                  ? "bg-red-50 border-red-200"
+                  : "bg-blue-50 border-blue-200"
+              }`}
+            >
               <p className="text-sm font-medium text-gray-700 mb-1">
                 Profit Calculation:
               </p>
-              <p className="text-lg font-bold text-blue-600">
+              <p
+                className={`text-lg font-bold ${
+                  margin < 20 ? "text-red-600" : "text-blue-600"
+                }`}
+              >
                 {formatCurrency(profit)} ({margin.toFixed(1)}% margin)
+                {margin < 20 && (
+                  <span className="ml-2 text-xs">(Below target)</span>
+                )}
               </p>
             </div>
           )}
-
           <div className="flex space-x-2">
             <button
               onClick={onSave}
@@ -966,15 +956,24 @@ const PricingSection: React.FC<{
               </p>
             </div>
             <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <p className="text-xs text-gray-500 mb-1">Supplied By</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {order.supplier_name || "Not set"}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
               <p className="text-xs text-gray-500 mb-1">Supplier Cost</p>
               <p className="text-2xl font-bold text-red-600">
                 {order.supplier_price || "Not set"}
               </p>
             </div>
           </div>
-
           {supplierCost > 0 && customerRevenue > 0 && (
-            <div className="bg-white p-4 rounded-lg border border-blue-200">
+            <div
+              className={`bg-white p-4 rounded-lg border ${
+                margin < 20 ? "border-red-200" : "border-blue-200"
+              }`}
+            >
               <div className="flex justify-between items-center mb-2">
                 <p className="text-sm font-medium text-gray-700">Profit:</p>
                 <p
@@ -987,13 +986,17 @@ const PricingSection: React.FC<{
               </div>
               <div className="flex justify-between items-center">
                 <p className="text-xs text-gray-500">Margin:</p>
-                <p className="text-sm font-medium text-gray-700">
+                <p
+                  className={`text-sm font-medium ${
+                    margin < 20 ? "text-red-600" : "text-gray-700"
+                  }`}
+                >
                   {margin.toFixed(1)}%
+                  {margin < 20 && <span className="ml-1">(Low)</span>}
                 </p>
               </div>
             </div>
           )}
-
           {order.supplier_description && (
             <div className="bg-white p-3 rounded-lg border border-gray-200">
               <p className="text-xs text-gray-500 mb-1">Supplier Notes:</p>
@@ -1002,7 +1005,6 @@ const PricingSection: React.FC<{
               </p>
             </div>
           )}
-
           {!order.customer_price && !order.supplier_price && (
             <p className="text-gray-500 italic text-sm">
               No pricing information added yet
@@ -1012,42 +1014,6 @@ const PricingSection: React.FC<{
       )}
     </div>
   );
-};
-const DISCORD_WEBHOOK_URL = process.env.NEXT_PUBLIC_DISCORD_UPDATE_WEBHOOK_URL || "";
-
-const sendOrderUpdateWebhook = async (order: Order, action: string) => {
-  if (!DISCORD_WEBHOOK_URL) return;
-
-  const payload = {
-    username: "Order Bot",
-    avatar_url: "https://i.imgur.com/AfFp7pu.png",
-    content: `
-**---------------------------------------------------------------------------------------**
-📢 **Order Update Notification**
-Action: ${action}
-**Order #${order.id}** - ${order.customer_name}
-Location: ${order.location}
-Phone: ${order.phone}
-MOQ: ${order.moq}
-Urgency: ${order.urgency}
-Description: ${order.description}
-Status: ${order.status}
-Supplier Price: ${order.supplier_price || "N/A"}
-Customer Price: ${order.customer_price || "N/A"}
-Supplier Description: ${order.supplier_description || "N/A"}
-**---------------------------------------------------------------------------------------**
-`,
-  };
-
-  try {
-    await fetch(DISCORD_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    console.error("Failed to send Discord webhook:", err);
-  }
 };
 
 // ------------------------
@@ -1059,221 +1025,137 @@ const OrderManagementApp: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showOrdersList, setShowOrdersList] = useState(true);
   const [isEditingPricing, setIsEditingPricing] = useState(false);
+  const [supplierName, setSupplierName] = useState("");
   const [supplierPrice, setSupplierPrice] = useState("");
   const [supplierDescription, setSupplierDescription] = useState("");
   const [customerPrice, setCustomerPrice] = useState("");
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
+  const [filter, setFilter] = useState<"all" | "low-margin" | "aging">("all");
 
-  const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async (e) => {
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
     try {
-      const text = e.target?.result as string;
-      const rows = text.split('\n').map(row => row.trim()).filter(row => row);
-      
-      if (rows.length < 2) {
-        alert('CSV file is empty or invalid');
-        return;
-      }
-
-      // Parse headers
-      const headers = rows[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
-      
-      // Parse data rows
-      const newOrders: Partial<Order>[] = [];
-      
-      for (let i = 1; i < rows.length; i++) {
-        const values = rows[i].match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)?.map(v => 
-          v.trim().replace(/^"(.*)"$/, '$1').replace(/""/g, '"')
-        ) || [];
-        
-        if (values.length === 0) continue;
-        
-        const rowData: CSVRow = {};
-        headers.forEach((header, index) => {
-          if (values[index]) {
-            rowData[header as keyof CSVRow] = values[index];
-          }
-        });
-
-        // Validate required fields
-        if (!rowData.customer_name || !rowData.phone || !rowData.location || 
-            !rowData.description || !rowData.moq) {
-          console.warn(`Skipping row ${i + 1}: Missing required fields`);
-          continue;
-        }
-
-        // Map and validate data
-        const order: Partial<Order> = {
-          customer_name: rowData.customer_name,
-          email: rowData.email || undefined,
-          phone: rowData.phone,
-          location: rowData.location,
-          description: rowData.description,
-          moq: rowData.moq,
-          urgency: (['low', 'medium', 'high'].includes(rowData.urgency?.toLowerCase() || '') 
-            ? rowData.urgency?.toLowerCase() 
-            : 'medium') as Order['urgency'],
-          status: (['pending', 'in-progress', 'completed', 'cancelled'].includes(rowData.status?.toLowerCase() || '') 
-            ? rowData.status?.toLowerCase() 
-            : 'pending') as Order['status'],
-          supplier_price: rowData.supplier_price || undefined,
-          supplier_description: rowData.supplier_description || undefined,
-          customer_price: rowData.customer_price || undefined,
-          images: '[]', // Default empty images array
-        };
-
-        newOrders.push(order);
-      }
-
-      if (newOrders.length === 0) {
-        alert('No valid orders found in CSV file');
-        return;
-      }
-
-      // Insert orders into database
-      setLoading(true);
-      try {
-        const result = await supabase.from("orders").insert(newOrders).execute();
-        
-        // Refresh orders list
-        await loadOrders();
-        
-        alert(`Successfully imported ${newOrders.length} order(s)`);
-      } catch (error) {
-        console.error('Import error:', error);
-        alert('Failed to import orders. Please check the CSV format.');
-      } finally {
-        setLoading(false);
-      }
-      
+      const data = await supabase.from("orders").select("*").execute();
+      const urgencyPriority = { high: 3, medium: 2, low: 1 };
+      const sorted = data.sort((a, b) => {
+        const urgencyDiff =
+          urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
+        if (urgencyDiff !== 0) return urgencyDiff;
+        return (
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      });
+      setOrders(sorted);
     } catch (error) {
-      console.error('CSV parsing error:', error);
-      alert('Error parsing CSV file. Please check the format.');
+      console.error("Failed to load orders:", error);
+      setOrders([]);
+      alert("Failed to load orders. Please try again.");
+    } finally {
+      setLoading(false);
     }
-  };
-
-  reader.readAsText(file);
-  event.target.value = ''; // Reset input
-};
-
-// CSV Template Download Function
-const downloadCSVTemplate = () => {
-  const template = [
-    'customer_name,email,phone,location,description,moq,urgency,status,supplier_price,supplier_description,customer_price',
-    '"John Doe","john@example.com","+1234567890","New York","Custom widgets order","1000 units","high","pending","5000 USD","Premium supplier","8000 USD"',
-    '"Jane Smith","jane@example.com","+9876543210","Los Angeles","Bulk electronics","500 units","medium","in-progress","3000 USD","Standard shipping","4500 USD"'
-  ].join('\n');
-
-  const blob = new Blob([template], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'order_import_template.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-  // ------------------------
-  // Load Orders
-  // ------------------------
-const loadOrders = async () => {
-  setLoading(true);
-  try {
-    const data = await supabase.from("orders").select("*").execute();
-    // Sort by urgency (high > medium > low), then by date
-    // Note: Keep all statuses for accurate financial calculations
-    const urgencyPriority = { high: 3, medium: 2, low: 1 };
-    const sorted = data.sort((a, b) => {
-      const urgencyDiff = urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
-      if (urgencyDiff !== 0) return urgencyDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-    setOrders(sorted);
-  } catch (error) {
-    console.error(error);
-    setOrders([]);
-  } finally {
-    setLoading(false);
-  }
-};
+  }, []);
 
   useEffect(() => {
     loadOrders();
-  }, []);
+  }, [loadOrders]);
 
   const financialSummary = calculateFinancials(orders);
 
-  // ------------------------
-  // Actions
-  // ------------------------
-const updateOrderStatus = async (orderId: number, status: Order["status"]) => {
-  setLoading(true);
-  try {
-    await supabase.from("orders").update({ status }).eq("id", orderId).execute();
-
-    const updatedOrder = orders.find((o) => o.id === orderId);
-    if (updatedOrder) {
-      const newOrder = { ...updatedOrder, status };
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? newOrder : o))
-      );
-      if (selectedOrder?.id === orderId) setSelectedOrder(newOrder);
-
-      // Send Discord notification
-      await sendOrderUpdateWebhook(newOrder, "Status Updated");
+  const filteredOrders = orders.filter((order) => {
+    if (filter === "low-margin") {
+      const margin =
+        order.customer_price && order.supplier_price
+          ? (extractNumericValue(order.customer_price) -
+              extractNumericValue(order.supplier_price)) /
+            extractNumericValue(order.customer_price)
+          : 0;
+      return order.status === "completed" && margin < 0.2;
     }
-  } catch (error) {
-    console.error(error);
-    alert("Failed to update status");
-  } finally {
-    setLoading(false);
-  }
-};
+    if (filter === "aging") {
+      return order.status === "pending" && getDaysSince(order.created_at) > 14;
+    }
+    return true;
+  });
 
+  const updateOrderStatus = async (
+    orderId: number,
+    status: Order["status"]
+  ) => {
+    setLoading(true);
+    try {
+      await supabase
+        .from("orders")
+        .update({ status })
+        .eq("id", orderId)
+        .execute();
+      const updatedOrder = orders.find((o) => o.id === orderId);
+      if (updatedOrder) {
+        const newOrder = { ...updatedOrder, status };
+        setOrders((prev) => prev.map((o) => (o.id === orderId ? newOrder : o)));
+        if (selectedOrder?.id === orderId) setSelectedOrder(newOrder);
+        await sendOrderUpdateWebhook(newOrder, "Status Updated");
+      }
+    } catch (error) {
+      console.error("Status update error:", error);
+      alert("Failed to update status");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-const updatePricingInfo = async (orderId: number) => {
-  setLoading(true);
-  try {
-    await supabase
-      .from("orders")
-      .update({
-        supplier_price: supplierPrice || undefined,
-        supplier_description: supplierDescription || undefined,
-        customer_price: customerPrice || undefined,
-      })
-      .eq("id", orderId)
-      .execute();
+  const updatePricingInfo = async (orderId: number) => {
+    setLoading(true);
+    try {
+      // Only include fields that are non-empty strings
+      const updatePayload: Partial<Order> = {};
+      if (supplierName.trim() !== "")
+        updatePayload.supplier_name = supplierName;
+      if (supplierPrice.trim() !== "")
+        updatePayload.supplier_price = supplierPrice;
+      if (supplierDescription.trim() !== "")
+        updatePayload.supplier_description = supplierDescription;
+      if (customerPrice.trim() !== "")
+        updatePayload.customer_price = customerPrice;
 
-    const updatedOrder = orders.find((o) => o.id === orderId);
-    if (updatedOrder) {
-      const newOrder = {
-        ...updatedOrder,
-        supplier_price: supplierPrice || undefined,
-        supplier_description: supplierDescription || undefined,
-        customer_price: customerPrice || undefined,
-      };
+      // If all fields are empty, skip the update
+      if (Object.keys(updatePayload).length === 0) {
+        setIsEditingPricing(false);
+        return;
+      }
+
+      await supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", orderId)
+        .execute();
+
+      // Optimistically update local state
       setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? newOrder : o))
+        prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o))
       );
-      if (selectedOrder?.id === orderId) setSelectedOrder(newOrder);
+
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder((prev) =>
+          prev ? { ...prev, ...updatePayload } : null
+        );
+      }
 
       setIsEditingPricing(false);
       alert("Pricing updated successfully");
-
-      // Send Discord notification
-      await sendOrderUpdateWebhook(newOrder, "Pricing Updated");
+      await sendOrderUpdateWebhook(
+        { ...selectedOrder, ...updatePayload } as Order,
+        "Pricing Updated"
+      );
+    } catch (error) {
+      console.error("Pricing update error:", error);
+      alert("Failed to update pricing");
+    } finally {
+      setLoading(false);
     }
-  } catch {
-    alert("Failed to update pricing");
-  } finally {
-    setLoading(false);
-  }
-};
-
+  };
 
   const deleteOrder = async (orderId: number) => {
     if (!confirm("Are you sure you want to delete this order?")) return;
@@ -1283,11 +1165,155 @@ const updatePricingInfo = async (orderId: number) => {
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
       setSelectedOrder(null);
       alert("Order deleted");
-    } catch {
+    } catch (error) {
+      console.error("Delete error:", error);
       alert("Failed to delete order");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCSVImport = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line);
+
+        if (lines.length < 2) {
+          alert("CSV must contain headers and at least one data row");
+          return;
+        }
+
+        const headers = lines[0].split(",").map((h) =>
+          h
+            .trim()
+            .replace(/^"(.*)"$/, "$1")
+            .toLowerCase()
+        );
+        const newOrders: Partial<Order>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i];
+          if (!line) continue;
+
+          // Handle quoted fields with commas
+          const values: string[] = [];
+          let current = "";
+          let inQuotes = false;
+          for (let char of line) {
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === "," && !inQuotes) {
+              values.push(current.trim().replace(/^"(.*)"$/, "$1"));
+              current = "";
+            } else {
+              current += char;
+            }
+          }
+          values.push(current.trim().replace(/^"(.*)"$/, "$1"));
+
+          if (values.length !== headers.length) {
+            console.warn(`Skipping row ${i + 1}: column count mismatch`);
+            continue;
+          }
+
+          const rowData: CSVRow = {};
+          headers.forEach((header, index) => {
+            if (values[index] !== undefined) {
+              rowData[header as keyof CSVRow] = values[index] || undefined;
+            }
+          });
+
+          if (
+            !rowData.customer_name ||
+            !rowData.phone ||
+            !rowData.location ||
+            !rowData.description ||
+            !rowData.moq
+          ) {
+            console.warn(`Skipping row ${i + 1}: missing required fields`);
+            continue;
+          }
+
+          const order: Partial<Order> = {
+            customer_name: rowData.customer_name,
+            email: rowData.email || undefined,
+            phone: rowData.phone,
+            location: rowData.location,
+            description: rowData.description,
+            moq: rowData.moq,
+            urgency: (["low", "medium", "high"].includes(
+              rowData.urgency?.toLowerCase() || ""
+            )
+              ? rowData.urgency?.toLowerCase()
+              : "medium") as Order["urgency"],
+            status: ([
+              "pending",
+              "in-progress",
+              "completed",
+              "cancelled",
+              "ship",
+            ].includes(rowData.status?.toLowerCase() || "")
+              ? rowData.status?.toLowerCase()
+              : "pending") as Order["status"],
+            created_at: new Date().toISOString(),
+            supplier_name: rowData.supplier_name || undefined,
+            supplier_price: rowData.supplier_price || undefined,
+            supplier_description: rowData.supplier_description || undefined,
+            customer_price: rowData.customer_price || undefined,
+            images: "[]",
+          };
+          newOrders.push(order);
+        }
+
+        if (newOrders.length === 0) {
+          alert("No valid orders found in CSV");
+          return;
+        }
+
+        setLoading(true);
+        try {
+          await supabase.from("orders").insert(newOrders).execute();
+          await loadOrders();
+          alert(`Successfully imported ${newOrders.length} order(s)`);
+        } catch (error) {
+          console.error("Import error:", error);
+          alert(
+            "Failed to import orders. Check CSV format and required fields."
+          );
+        } finally {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("CSV parsing error:", error);
+        alert("Error parsing CSV file");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  };
+
+  const downloadCSVTemplate = () => {
+    const template = [
+      "customer_name,email,phone,location,description,moq,urgency,status,supplier_name,supplier_price,supplier_description,customer_price",
+      '"John Doe","john@example.com","+1234567890","New York","Custom widgets order","1000 units","high","pending","ABC Supplier","5000 USD","Premium supplier with fast shipping","8000 USD"',
+    ].join("\n");
+    const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "order_import_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const exportToCSV = () => {
@@ -1302,11 +1328,13 @@ const updatePricingInfo = async (orderId: number) => {
       "Status",
       "Urgency",
       "Customer Price",
+      "Supplier Name",
       "Supplier Price",
       "Profit",
       "Margin %",
       "Supplier Description",
       "Created Date",
+      "Days Since Created",
     ];
     const csv = [
       headers.join(","),
@@ -1315,32 +1343,34 @@ const updatePricingInfo = async (orderId: number) => {
         const supplierPrice = extractNumericValue(o.supplier_price);
         const profit = customerPrice - supplierPrice;
         const margin = customerPrice > 0 ? (profit / customerPrice) * 100 : 0;
-
         return [
           o.id,
-          `"${o.customer_name}"`,
-          o.email || "N/A",
+          `"${o.customer_name.replace(/"/g, '""')}"`,
+          o.email ? `"${o.email.replace(/"/g, '""')}"` : "N/A",
           o.phone,
-          `"${o.location}"`,
+          `"${o.location.replace(/"/g, '""')}"`,
           `"${o.description.replace(/"/g, '""')}"`,
-          `"${o.moq}"`,
+          `"${o.moq.replace(/"/g, '""')}"`,
           o.status,
           o.urgency,
           o.customer_price || "N/A",
+          o.supplier_name || "N/A",
           o.supplier_price || "N/A",
           customerPrice > 0 && supplierPrice > 0 ? profit.toFixed(2) : "N/A",
           customerPrice > 0 && supplierPrice > 0 ? margin.toFixed(1) : "N/A",
-          `"${(o.supplier_description || "").replace(/"/g, '""')}"`,
+          o.supplier_description
+            ? `"${o.supplier_description.replace(/"/g, '""')}"`
+            : "N/A",
           new Date(o.created_at).toLocaleDateString(),
+          getDaysSince(o.created_at),
         ].join(",");
       }),
     ].join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `orders_${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `orders_export_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1349,213 +1379,138 @@ const updatePricingInfo = async (orderId: number) => {
     const summary = financialSummary;
     const operatingCashFlow = summary.totalProfit - summary.reinvestmentPool;
     const date = new Date().toISOString().split("T")[0];
-
-    // Strategic Financial Report
     const reportSections = [
       "STRATEGIC FINANCIAL REPORT",
       `Generated: ${new Date().toLocaleString()}`,
       "",
       "=== EXECUTIVE SUMMARY ===",
       `Total Revenue,${summary.totalRevenue.toFixed(2)}`,
-      `Total Costs,${summary.totalCost.toFixed(2)}`,
-      `Net Profit,${summary.totalProfit.toFixed(2)}`,
+      `Total Costs (COGS),${summary.cogs.toFixed(2)}`,
+      `Gross Profit,${summary.totalProfit.toFixed(2)}`,
+      `Gross Margin,${summary.grossMargin.toFixed(2)}%`,
       `Profit Margin,${summary.profitMargin.toFixed(2)}%`,
+      `ROI,${summary.roi.toFixed(2)}%`,
       `Completed Orders,${summary.completedOrders}`,
+      `Low Margin Orders (<20%),${summary.lowMarginOrders}`,
       "",
       "=== CASH FLOW ANALYSIS ===",
-      `Cash Inflows (Revenue Received),${summary.cashInflow.toFixed(2)}`,
+      `Cash Inflows (Realized Revenue),${summary.cashInflow.toFixed(2)}`,
       `Cash Outflows (Supplier Payments),${summary.cashOutflow.toFixed(2)}`,
       `Net Cash Flow,${summary.netCashFlow.toFixed(2)}`,
+      `30-Day Projected Cash Flow,${summary.projectedCashFlow30Days.toFixed(
+        2
+      )}`,
       `Cash Flow Status,${
         summary.netCashFlow >= 0
           ? "POSITIVE - Healthy"
           : "NEGATIVE - Needs Attention"
       }`,
-      `Inflow to Outflow Ratio,${
-        summary.cashOutflow > 0
-          ? (summary.cashInflow / summary.cashOutflow).toFixed(2)
-          : "N/A"
-      }`,
       "",
-      "=== PROFIT DISTRIBUTION STRATEGY ===",
-      `Reinvestment Pool (30% of Profit),${summary.reinvestmentPool.toFixed(
-        2
-      )}`,
-      `Operating Cash (70% of Profit),${operatingCashFlow.toFixed(2)}`,
-      `Reinvestment Recommendations,Marketing expansion; Inventory growth; Technology upgrades`,
-      `Operating Cash Uses,Salaries; Operational expenses; Emergency reserves`,
+      "=== PROFIT ALLOCATION ===",
+      `Reinvestment Pool (30%),${summary.reinvestmentPool.toFixed(2)}`,
+      `Operating Cash (70%),${operatingCashFlow.toFixed(2)}`,
       "",
       "=== PIPELINE & FUTURE REVENUE ===",
       `Pending Orders Value,${summary.pendingValue.toFixed(2)}`,
       `In-Progress Orders Value,${summary.inProgressValue.toFixed(2)}`,
-  `Total Pipeline Value,${(
-    summary.pendingValue + summary.inProgressValue + summary.shippedValue
-  ).toFixed(2)}`,
-      `Pipeline to Revenue Ratio,${
-        summary.totalRevenue > 0
-          ? (
-              ((summary.pendingValue + summary.inProgressValue) /
-                summary.totalRevenue) *
-              100
-            ).toFixed(1)
-          : 0
-      }%`,
-      "",
-      "=== KEY PERFORMANCE INDICATORS ===",
-      `Average Order Value,${summary.averageOrderValue.toFixed(2)}`,
-      `Average Profit per Order,${summary.averageProfit.toFixed(2)}`,
-      `Cost to Revenue Ratio,${
-        summary.totalRevenue > 0
-          ? ((summary.totalCost / summary.totalRevenue) * 100).toFixed(1)
-          : 0
-      }%`,
-      `Profit per Dollar of Revenue,${
-        summary.totalRevenue > 0
-          ? (summary.totalProfit / summary.totalRevenue).toFixed(2)
-          : 0
-      }`,
-      "",
-      "=== PERFORMANCE HEALTH SCORES ===",
-      `Profit Margin Health,${
-        summary.profitMargin >= 30
-          ? "EXCELLENT (30%+)"
-          : summary.profitMargin >= 20
-          ? "GOOD (20-30%)"
-          : "NEEDS IMPROVEMENT (<20%)"
-      }`,
-      `Cash Flow Health,${summary.netCashFlow >= 0 ? "HEALTHY" : "AT RISK"}`,
-      `Revenue Growth Potential,${
-        summary.pendingValue + summary.inProgressValue > summary.totalRevenue
-          ? "HIGH"
-          : "MODERATE"
-      }`,
+      `Shipped (Cost Incurred),${summary.shippedValue.toFixed(2)}`,
+      `Total Pipeline Value,${(
+        summary.pendingValue +
+        summary.inProgressValue +
+        summary.shippedValue
+      ).toFixed(2)}`,
       "",
       "=== STRATEGIC RECOMMENDATIONS ===",
       `Priority 1,${
-        summary.profitMargin < 20
-          ? "Improve profit margins through cost reduction or pricing optimization"
+        summary.lowMarginOrders > 0
+          ? `Review ${summary.lowMarginOrders} low-margin orders for repricing`
           : "Maintain current margin levels"
       }`,
       `Priority 2,${
         summary.netCashFlow < 0
-          ? "Address negative cash flow - review payment terms with suppliers/customers"
-          : "Continue positive cash flow management"
+          ? "Improve cash flow: negotiate supplier terms or accelerate collections"
+          : "Maintain healthy cash flow"
       }`,
       `Priority 3,${
         summary.pendingValue > 0
-          ? "Convert pending orders to in-progress status to accelerate revenue"
-          : "Focus on new customer acquisition"
+          ? "Follow up on pending orders to convert to in-progress"
+          : "Focus on new acquisition"
       }`,
       `Priority 4,${
         summary.reinvestmentPool > 0
-          ? `Allocate ${summary.reinvestmentPool.toFixed(
-              2
-            )} USD for growth initiatives`
-          : "Build profit base before major investments"
+          ? `Allocate ${formatCurrency(summary.reinvestmentPool)} for growth`
+          : "Build profit base before investing"
       }`,
       "",
       "=== DETAILED ORDER BREAKDOWN ===",
-      "",
-      "Order ID,Customer,Status,Revenue,Cost,Profit,Margin %,Urgency,Date,Cash Impact",
+      "Order ID,Customer,Status,Revenue,Cost,Profit,Margin %,Urgency,Days Old,Cash Impact",
     ];
 
-    // Add individual order details
     orders.forEach((o) => {
       const customerPrice = extractNumericValue(o.customer_price);
       const supplierPrice = extractNumericValue(o.supplier_price);
       const profit = customerPrice - supplierPrice;
       const margin = customerPrice > 0 ? (profit / customerPrice) * 100 : 0;
+      const daysOld = getDaysSince(o.created_at);
       const cashImpact =
         o.status === "completed"
           ? "Realized"
-          : o.status === "in-progress"
-          ? "Pending"
-          : o.status === "cancelled"
-          ? "Lost"
-          : "Future";
+          : o.status === "ship"
+          ? "Cost Incurred"
+          : "Pending";
 
       reportSections.push(
         [
           o.id,
-          `"${o.customer_name}"`,
+          `"${o.customer_name.replace(/"/g, '""')}"`,
           o.status,
           customerPrice > 0 ? customerPrice.toFixed(2) : "0",
           supplierPrice > 0 ? supplierPrice.toFixed(2) : "0",
-          customerPrice > 0 && supplierPrice > 0 ? profit.toFixed(2) : "0",
-          customerPrice > 0 && supplierPrice > 0 ? margin.toFixed(1) : "0",
+          profit > 0 ? profit.toFixed(2) : "0",
+          margin > 0 ? margin.toFixed(1) : "0",
           o.urgency,
-          new Date(o.created_at).toLocaleDateString(),
+          daysOld,
           cashImpact,
         ].join(",")
       );
     });
 
-    // Add summary statistics by status
     reportSections.push("");
-    reportSections.push("=== STATUS-WISE BREAKDOWN ===");
-    reportSections.push(
-      "Status,Count,Total Revenue,Total Cost,Total Profit,Avg Margin %"
-    );
-
+    reportSections.push("=== STATUS BREAKDOWN ===");
+    reportSections.push("Status,Count,Revenue,Cost,Profit,Margin %");
     const statuses: Order["status"][] = [
       "pending",
       "in-progress",
       "completed",
       "cancelled",
+      "ship",
     ];
     statuses.forEach((status) => {
       const statusOrders = orders.filter((o) => o.status === status);
-      const statusRevenue = statusOrders.reduce(
+      const rev = statusOrders.reduce(
         (sum, o) => sum + extractNumericValue(o.customer_price),
         0
       );
-      const statusCost = statusOrders.reduce(
+      const cost = statusOrders.reduce(
         (sum, o) => sum + extractNumericValue(o.supplier_price),
         0
       );
-      const statusProfit = statusRevenue - statusCost;
-      const statusMargin =
-        statusRevenue > 0 ? (statusProfit / statusRevenue) * 100 : 0;
-
+      const prof = rev - cost;
+      const marg = rev > 0 ? (prof / rev) * 100 : 0;
       reportSections.push(
         [
           status,
           statusOrders.length,
-          statusRevenue.toFixed(2),
-          statusCost.toFixed(2),
-          statusProfit.toFixed(2),
-          statusMargin.toFixed(1),
-        ].join(",")
-      );
-    });
-
-    // Add urgency-wise breakdown
-    reportSections.push("");
-    reportSections.push("=== URGENCY-WISE BREAKDOWN ===");
-    reportSections.push("Urgency,Count,Total Revenue,Avg Order Value");
-
-    const urgencies: Order["urgency"][] = ["high", "medium", "low"];
-    urgencies.forEach((urgency) => {
-      const urgencyOrders = orders.filter((o) => o.urgency === urgency);
-      const urgencyRevenue = urgencyOrders.reduce(
-        (sum, o) => sum + extractNumericValue(o.customer_price),
-        0
-      );
-      const avgOrderValue =
-        urgencyOrders.length > 0 ? urgencyRevenue / urgencyOrders.length : 0;
-
-      reportSections.push(
-        [
-          urgency,
-          urgencyOrders.length,
-          urgencyRevenue.toFixed(2),
-          avgOrderValue.toFixed(2),
+          rev.toFixed(2),
+          cost.toFixed(2),
+          prof.toFixed(2),
+          marg.toFixed(1),
         ].join(",")
       );
     });
 
     const csv = reportSections.join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1564,13 +1519,11 @@ const updatePricingInfo = async (orderId: number) => {
     URL.revokeObjectURL(url);
   };
 
-  // ------------------------
-  // Handlers
-  // ------------------------
   const handleSelectOrder = (order: Order) => {
     setSelectedOrder(order);
     setShowOrdersList(false);
     setIsEditingPricing(false);
+    setSupplierName(order.supplier_name || "");
     setSupplierPrice(order.supplier_price || "");
     setSupplierDescription(order.supplier_description || "");
     setCustomerPrice(order.customer_price || "");
@@ -1586,15 +1539,28 @@ const updatePricingInfo = async (orderId: number) => {
   const handleCancelEdit = () => {
     setIsEditingPricing(false);
     if (selectedOrder) {
+      setSupplierName(selectedOrder.supplier_name || "");
       setSupplierPrice(selectedOrder.supplier_price || "");
       setSupplierDescription(selectedOrder.supplier_description || "");
       setCustomerPrice(selectedOrder.customer_price || "");
     }
   };
 
-  // ------------------------
-  // Render
-  // ------------------------
+  const toggleGroup = (status: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [status]: !prev[status] }));
+  };
+
+  const groupOrdersByStatus = () => {
+    const groups: Record<string, Order[]> = {};
+    filteredOrders.forEach((order) => {
+      if (!groups[order.status]) groups[order.status] = [];
+      groups[order.status].push(order);
+    });
+    return groups;
+  };
+
+  const groupedOrders = groupOrdersByStatus();
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       {/* Orders List Sidebar */}
@@ -1605,42 +1571,76 @@ const updatePricingInfo = async (orderId: number) => {
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-          <h2 className="font-semibold text-gray-900">
-            Orders ({orders.length})
-          </h2>
+          <div>
+            <h2 className="font-semibold text-gray-900">
+              Orders ({filteredOrders.length})
+            </h2>
+            <div className="flex space-x-2 mt-2">
+              <button
+                onClick={() => setFilter("all")}
+                className={`px-3 py-1 text-xs rounded ${
+                  filter === "all"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setFilter("low-margin")}
+                className={`px-3 py-1 text-xs rounded flex items-center space-x-1 ${
+                  filter === "low-margin"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                <AlertTriangle className="w-3 h-3" />
+                <span>Low Margin</span>
+              </button>
+              <button
+                onClick={() => setFilter("aging")}
+                className={`px-3 py-1 text-xs rounded flex items-center space-x-1 ${
+                  filter === "aging"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                <span>Aging</span>
+              </button>
+            </div>
+          </div>
           <div className="flex space-x-2">
-           <button
-      onClick={loadOrders}
-      className="bg-gray-100 p-2 rounded hover:bg-gray-200"
-      title="Refresh Orders"
-    >
-      <RefreshCw className="w-4 h-4" />
-    </button>
-    
-    <input
-      type="file"
-      accept=".csv"
-      onChange={handleCSVImport}
-      className="hidden"
-      id="csv-import"
-    />
-    <label
-      htmlFor="csv-import"
-      className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 flex items-center space-x-1 cursor-pointer"
-      title="Import CSV"
-    >
-      <Upload className="w-4 h-4" />
-      <span className="text-sm hidden sm:inline">Import</span>
-    </label>
-    
-    <button
-      onClick={downloadCSVTemplate}
-      className="bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 flex items-center space-x-1"
-      title="Download Template"
-    >
-      <FileDown className="w-4 h-4" />
-      <span className="text-sm hidden sm:inline">Template</span>
-    </button>
+            <button
+              onClick={loadOrders}
+              className="bg-gray-100 p-2 rounded hover:bg-gray-200"
+              title="Refresh Orders"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleCSVImport}
+              className="hidden"
+              id="csv-import"
+            />
+            <label
+              htmlFor="csv-import"
+              className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 flex items-center space-x-1 cursor-pointer"
+              title="Import CSV"
+            >
+              <Upload className="w-4 h-4" />
+              <span className="text-sm hidden sm:inline">Import</span>
+            </label>
+            <button
+              onClick={downloadCSVTemplate}
+              className="bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 flex items-center space-x-1"
+              title="Download Template"
+            >
+              <FileDown className="w-4 h-4" />
+              <span className="text-sm hidden sm:inline">Template</span>
+            </button>
             <div className="relative">
               <button
                 onClick={() => setShowExportMenu(!showExportMenu)}
@@ -1682,7 +1682,7 @@ const updatePricingInfo = async (orderId: number) => {
                         }}
                         className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center space-x-3"
                       >
-                        <TrendingUp className="w-5 h-5 text-blue-600" />
+                        <BarChart3 className="w-5 h-5 text-blue-600" />
                         <div>
                           <p className="text-sm font-medium text-gray-900">
                             Strategic Report
@@ -1706,18 +1706,55 @@ const updatePricingInfo = async (orderId: number) => {
             <div className="flex items-center justify-center h-full">
               <Loader className="w-6 h-6 animate-spin text-blue-600" />
             </div>
-          ) : orders.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              No orders found
+          ) : filteredOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 p-4">
+              <Package className="w-12 h-12 mb-2 text-gray-300" />
+              <p className="text-center">
+                {filter === "all"
+                  ? "No orders found"
+                  : `No ${filter} orders found`}
+              </p>
+              {filter !== "all" && (
+                <button
+                  onClick={() => setFilter("all")}
+                  className="mt-2 text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  View all orders
+                </button>
+              )}
             </div>
           ) : (
-            orders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                selected={selectedOrder?.id === order.id}
-                onClick={() => handleSelectOrder(order)}
-              />
+            Object.entries(groupedOrders).map(([status, groupOrders]) => (
+              <div key={status} className="border-b border-gray-100">
+                <div
+                  className="flex items-center justify-between p-3 bg-gray-50 cursor-pointer"
+                  onClick={() => toggleGroup(status)}
+                >
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(status as Order["status"])}
+                    <span className="font-medium text-gray-800 capitalize">
+                      {status.replace("-", " ")} ({groupOrders.length})
+                    </span>
+                  </div>
+                  {collapsedGroups[status] ? (
+                    <ChevronRight className="w-4 h-4 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                  )}
+                </div>
+                {!collapsedGroups[status] && (
+                  <div>
+                    {groupOrders.map((order) => (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        selected={selectedOrder?.id === order.id}
+                        onClick={() => handleSelectOrder(order)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>
@@ -1731,7 +1768,6 @@ const updatePricingInfo = async (orderId: number) => {
       >
         {selectedOrder ? (
           <>
-            {/* Details Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
               <div className="flex items-center space-x-4">
                 <button
@@ -1765,19 +1801,16 @@ const updatePricingInfo = async (orderId: number) => {
               </button>
             </div>
 
-            {/* Details Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Financial Dashboard */}
               <FinancialDashboard summary={financialSummary} />
 
-              {/* Customer Information */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Customer Information
                 </h3>
                 <div className="space-y-3">
                   <div className="flex items-start">
-                    <Package className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
+                    <Users className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
                     <div>
                       <p className="text-sm text-gray-500">Customer Name</p>
                       <p className="font-medium text-gray-900">
@@ -1814,10 +1847,26 @@ const updatePricingInfo = async (orderId: number) => {
                       </p>
                     </div>
                   </div>
+                  <div className="flex items-start">
+                    <Calendar className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
+                    <div>
+                      <p className="text-sm text-gray-500">
+                        Days Since Created
+                      </p>
+                      <p className="font-medium text-gray-900">
+                        {getDaysSince(selectedOrder.created_at)} days
+                      </p>
+                      {getDaysSince(selectedOrder.created_at) > 14 &&
+                        selectedOrder.status === "pending" && (
+                          <p className="text-xs text-red-600 mt-1 flex items-center">
+                            <Clock className="w-3 h-3 mr-1" /> Follow up needed!
+                          </p>
+                        )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Order Details */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Order Details
@@ -1852,7 +1901,6 @@ const updatePricingInfo = async (orderId: number) => {
                 </div>
               </div>
 
-              {/* Status Management */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Update Status
@@ -1866,13 +1914,14 @@ const updatePricingInfo = async (orderId: number) => {
                 />
               </div>
 
-              {/* Pricing Section */}
               <PricingSection
                 order={selectedOrder}
                 isEditing={isEditingPricing}
+                supplierName={supplierName}
                 supplierPrice={supplierPrice}
                 supplierDescription={supplierDescription}
                 customerPrice={customerPrice}
+                setSupplierName={setSupplierName}
                 setSupplierPrice={setSupplierPrice}
                 setSupplierDescription={setSupplierDescription}
                 setCustomerPrice={setCustomerPrice}
@@ -1882,7 +1931,6 @@ const updatePricingInfo = async (orderId: number) => {
                 onEdit={handleEditPricing}
               />
 
-              {/* Images */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <ImageGallery images={parseImages(selectedOrder.images)} />
               </div>
@@ -1893,9 +1941,7 @@ const updatePricingInfo = async (orderId: number) => {
             <div className="text-center">
               <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <p className="text-lg font-medium">No order selected</p>
-              <p className="text-sm mt-2">
-                Select an order from the list to view details
-              </p>
+              <p className="text-sm mt-2">Select an order to view details</p>
             </div>
           </div>
         )}
