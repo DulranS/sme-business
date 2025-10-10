@@ -8,6 +8,7 @@ import {
   Download,
   Image as ImageIcon,
   AlertTriangle,
+  Link,
 } from "lucide-react";
 
 // ------------------------
@@ -305,6 +306,12 @@ const ShipOrdersPage: React.FC = () => {
           <Package className="w-6 h-6" />
           Shipping Orders ({orders.length})
         </h1>
+        
+        <Link href={"/"} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+          <AlertTriangle className="w-4 h-4" />
+          Report Issue
+        </Link>
+
         <button
           onClick={exportToCSV}
           className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition"
