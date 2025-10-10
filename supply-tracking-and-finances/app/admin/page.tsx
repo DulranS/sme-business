@@ -245,12 +245,16 @@ const parseImages = (imagesJson: string): OrderImage[] => {
   }
 };
 
-const extractNumericValue = (priceString?: string): number => {
-  if (!priceString) return 0;
-  const match = priceString.match(/[\d,]+\.?\d*/);
+const extractNumericValue = (priceString?: any): number => {
+  if (priceString == null) return 0; // handles null or undefined
+
+  const str = String(priceString); // ensure it's a string
+  const match = str.match(/[\d,]+\.?\d*/);
   if (!match) return 0;
+
   return parseFloat(match[0].replace(/,/g, ""));
 };
+
 
 const formatCurrency = (value: number): string => {
   return new Intl.NumberFormat("en-US", {
