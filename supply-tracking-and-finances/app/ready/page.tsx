@@ -295,7 +295,6 @@ const CompletedOrdersPage: React.FC = () => {
         <br/>
         <h1>OR</h1> <br/>
         <b><Link href={"/ship"}>Visit Shipped Panel</Link></b>
-         <br/>
       </div>
     );
 
