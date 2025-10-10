@@ -290,7 +290,12 @@ const CompletedOrdersPage: React.FC = () => {
         <CheckCircle className="w-16 h-16 text-green-400 mb-3" />
         <h2 className="text-lg font-bold text-green-800 mb-1">No Completed Orders</h2>
         <p className="text-green-600">Completed orders will appear here.</p>
-        <Link href={"/admin"}>Visit Admin Panel</Link>
+         <br/>
+        <b><Link href={"/admin"}>Visit Admin Panel</Link></b>
+        <br/>
+        <h1>OR</h1> <br/>
+        <b><Link href={"/ship"}>Visit Shipped Panel</Link></b>
+         <br/>
       </div>
     );
 
