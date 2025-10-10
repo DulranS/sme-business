@@ -34,6 +34,7 @@ import {
   Warehouse,
   Timer,
 } from "lucide-react";
+import Link from "next/link";
 
 // ------------------------
 // TypeScript Types (Enhanced)
@@ -567,6 +568,7 @@ const OrderCard: React.FC<{
   const isLowMargin = margin < 20 && order.status === "completed";
 
   return (
+    (
     <div
       className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
         selected ? "bg-blue-50 border-l-4 border-l-blue-500" : ""
@@ -631,7 +633,8 @@ const OrderCard: React.FC<{
         )}
       </div>
     </div>
-  );
+  )
+)
 };
 
 // ------------------------
@@ -1686,6 +1689,7 @@ const OrderManagementApp: React.FC = () => {
             >
               <RefreshCw className="w-4 h-4" />
             </button>
+            <Link href={"/ready"}>Show completed orders</Link>
             <input
               type="file"
               accept=".csv"
@@ -1789,7 +1793,10 @@ const OrderManagementApp: React.FC = () => {
                 </button>
               )}
             </div>
-          ) : (
+          ) :  
+          //the status is not equal to shipped
+               
+          (
             Object.entries(groupedOrders).map(([status, groupOrders]) => (
               <div key={status} className="border-b border-gray-100">
                 <div
@@ -1832,7 +1839,7 @@ const OrderManagementApp: React.FC = () => {
           showOrdersList ? "hidden md:flex" : "flex"
         }`}
       >
-        {selectedOrder ? (
+        {selectedOrder && selectedOrder.status !=="ship" ? (
           <>
             <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
               <div className="flex items-center space-x-4">

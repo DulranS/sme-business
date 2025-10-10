@@ -39,6 +39,7 @@ import {
   Shield,
   Recycle,
   ArrowUp,
+  HeartPulse,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -57,20 +58,23 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// ✅ Strategic category weights (higher = more business value)
 const STRATEGIC_WEIGHTS = {
-  "Inflow": 10,           // Revenue generation
-  "Reinvestment": 8,      // Growth investment
-  "Loan Received": 7,     // Liquidity boost
-  "Inventory Purchase": 5, // Asset building
-  "Outflow": -3,          // Cost (negative value)
-  "Overhead": -4,         // Fixed cost (higher negative)
-  "Loan Payment": -2,     // Obligation (lower negative)
+  Inflow: 10,
+  Reinvestment: 8,
+  "Loan Received": 7,
+  "Inventory Purchase": 5,
+  Outflow: -3,
+  Overhead: -4,
+  "Loan Payment": -2,
 };
 
 const categoryLabels = {
@@ -126,15 +130,8 @@ export default function BookkeepingApp() {
   const [expandedSection, setExpandedSection] = useState(null);
   const [showStrategyModal, setShowStrategyModal] = useState(false);
   const [groupBy, setGroupBy] = useState("none");
-  const categories = [
-    "Inflow",
-    "Outflow",
-    "Reinvestment",
-    "Overhead",
-    "Loan Payment",
-    "Loan Received",
-    "Inventory Purchase",
-  ];
+
+  const categories = internalCategories;
 
   // --- Save Budget ---
   const saveBudget = async () => {
@@ -203,7 +200,7 @@ export default function BookkeepingApp() {
       const { data, error } = await supabase
         .from("bookkeeping_records")
         .select("*")
-        .order("date", { ascending: false }); // Already latest first
+        .order("date", { ascending: false });
       if (error) throw error;
       setRecords(data || []);
     } catch (error) {
@@ -243,7 +240,6 @@ export default function BookkeepingApp() {
     });
   }, [records, dateFilter]);
 
-  // ✅ Compute average cost per product from Inventory Purchases
   const inventoryCostMap = useMemo(() => {
     const map = {};
     const inventoryRecords = filteredRecords.filter(
@@ -271,23 +267,26 @@ export default function BookkeepingApp() {
   const totals = filteredRecords.reduce(
     (acc, r) => {
       const amount = parseFloat(r.amount) || 0;
-      const quantity = parseFloat(r.quantity) || 1;
-      const revenue = amount * quantity;
+      let totalAmount = amount;
       if (r.category === "Inflow") {
+        const quantity = parseFloat(r.quantity) || 1;
+        totalAmount = amount * quantity;
         let costPerUnit = parseFloat(r.cost_per_unit) || 0;
         if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
           costPerUnit = inventoryCostMap[r.description];
         }
         const cost = costPerUnit * quantity;
-        acc.inflow += revenue;
+        acc.inflow += totalAmount;
         acc.inflowCost += cost;
-        acc.inflowProfit += revenue - cost;
+        acc.inflowProfit += totalAmount - cost;
+      } else {
+        // For non-Inflow, amount is already total
+        if (r.category === "Outflow") acc.outflow += totalAmount;
+        if (r.category === "Reinvestment") acc.reinvestment += totalAmount;
+        if (r.category === "Overhead") acc.overhead += totalAmount;
+        if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
+        if (r.category === "Loan Received") acc.loanReceived += totalAmount;
       }
-      if (r.category === "Outflow") acc.outflow += revenue;
-      if (r.category === "Reinvestment") acc.reinvestment += revenue;
-      if (r.category === "Overhead") acc.overhead += revenue;
-      if (r.category === "Loan Payment") acc.loanPayment += revenue;
-      if (r.category === "Loan Received") acc.loanReceived += revenue;
       return acc;
     },
     {
@@ -309,63 +308,61 @@ export default function BookkeepingApp() {
   const netLoanImpact = totals.loanReceived - totals.loanPayment;
   const netProfit = operatingProfit + netLoanImpact;
 
-  // ✅ Loan Coverage Logic
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const thisMonthInflow = filteredRecords
-    .filter((r) => r.date.startsWith(currentMonth) && r.category === "Inflow")
+  // ✅ Loan Coverage Logic (Rolling 30 days)
+  const today = new Date();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+  const rollingInflow = filteredRecords
+    .filter(
+      (r) =>
+        r.category === "Inflow" &&
+        new Date(r.date) >= thirtyDaysAgo &&
+        new Date(r.date) <= today
+    )
     .reduce(
-      (sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
+      (sum, r) =>
+        sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
       0
     );
   const loanCoveragePercent =
-    monthlyLoanTarget > 0 ? (thisMonthInflow / monthlyLoanTarget) * 100 : 0;
+    monthlyLoanTarget > 0 ? (rollingInflow / monthlyLoanTarget) * 100 : 0;
   const loanStatus = loanCoveragePercent >= 100 ? "On Track" : "At Risk";
 
-  // --- Supplier Analysis ---
-  const supplierAnalysis = useMemo(() => {
-    const suppliers = {};
+  // --- Customer Concentration for Strategic Scoring ---
+  const customerRevenueMap = useMemo(() => {
+    const map = {};
     filteredRecords.forEach((r) => {
-      if (r.supplied_by) {
-        if (!suppliers[r.supplied_by]) {
-          suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
-        }
-        const qty = parseFloat(r.quantity) || 1;
-        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
-        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-          costPerUnit = inventoryCostMap[r.description];
-        }
-        suppliers[r.supplied_by].cost += costPerUnit * qty;
-        suppliers[r.supplied_by].transactions += 1;
+      if (r.category === "Inflow" && r.customer) {
+        const rev = (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
+        map[r.customer] = (map[r.customer] || 0) + rev;
       }
     });
-    return Object.entries(suppliers)
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.cost - a.cost);
-  }, [filteredRecords, inventoryCostMap]);
+    return map;
+  }, [filteredRecords]);
 
-  // --- Grouped Records ---
-  const groupedRecords = useMemo(() => {
-    if (groupBy === "none") return filteredRecords;
-    const groups = {};
-    filteredRecords.forEach((r) => {
-      let key = "Uncategorized";
-      if (groupBy === "customer") key = r.customer || "No Customer";
-      if (groupBy === "product") key = r.description || "No Product";
-      if (groupBy === "supplier") key = r.supplied_by || "No Supplier";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(r);
-    });
-    return Object.entries(groups).map(([group, items]) => ({ group, items }));
-  }, [filteredRecords, groupBy]);
+  const totalCustomerRevenue = Object.values(customerRevenueMap).reduce(
+    (sum, rev) => sum + rev,
+    0
+  );
+  const topCustomerShare =
+    totalCustomerRevenue > 0
+      ? Math.max(...Object.values(customerRevenueMap)) / totalCustomerRevenue
+      : 0;
 
-  // --- Strategic Scoring ---
+  // --- Strategic Scoring (Enhanced) ---
   const recordsWithStrategicScore = useMemo(() => {
     return filteredRecords.map((r) => {
       const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
       let marginImpact = 0;
       let loanImpact = 0;
+      let recencyBonus = 0;
+      let customerPenalty = 0;
 
-      // Margin contribution for Inflow
+      const daysOld = Math.floor(
+        (new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24)
+      );
+      recencyBonus = Math.max(0, 5 - daysOld / 30); // Max +5 for today, decays
+
       if (r.category === "Inflow") {
         const qty = parseFloat(r.quantity) || 1;
         const price = parseFloat(r.amount) || 0;
@@ -374,21 +371,23 @@ export default function BookkeepingApp() {
           cost = inventoryCostMap[r.description];
         }
         const profit = (price - cost) * qty;
-        marginImpact = profit > 0 ? profit / 1000 : 0; // Normalize
+        marginImpact = profit > 0 ? profit / 1000 : 0;
+
+        // Loan impact for recent inflows
+        if (daysOld <= 30) {
+          loanImpact = (price * qty) / 10000;
+        }
+
+        // Customer concentration penalty
+        if (r.customer && topCustomerShare > 0.5) {
+          customerPenalty = -2; // Penalize over-reliance
+        }
       }
 
-      // Loan coverage boost for recent inflows
-      if (r.category === "Inflow" && r.date.startsWith(currentMonth)) {
-        const qty = parseFloat(r.quantity) || 1;
-        const amount = parseFloat(r.amount) || 0;
-        loanImpact = (amount * qty) / 10000; // Normalize
-      }
-
-      const strategicScore = baseWeight + marginImpact + loanImpact;
+      const strategicScore =
+        baseWeight + marginImpact + loanImpact + recencyBonus + customerPenalty;
       return { ...r, strategicScore };
     }).sort((a, b) => {
-      // Primary: Date (latest first)
-      // Secondary: Strategic score (highest first)
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
       if (dateB.getTime() !== dateA.getTime()) {
@@ -396,7 +395,7 @@ export default function BookkeepingApp() {
       }
       return b.strategicScore - a.strategicScore;
     });
-  }, [filteredRecords, inventoryCostMap, currentMonth]);
+  }, [filteredRecords, inventoryCostMap, topCustomerShare]);
 
   // --- Handle Form Submit ---
   const handleSubmit = async () => {
@@ -421,17 +420,15 @@ export default function BookkeepingApp() {
           : null,
         supplied_by: formData.suppliedBy || null,
       };
+
       if (isEditing !== null) {
-        const recordToUpdate = records[isEditing];
         const { error } = await supabase
           .from("bookkeeping_records")
           .update(recordData)
-          .eq("id", recordToUpdate.id);
+          .eq("id", isEditing);
         if (error) throw error;
         setRecords(
-          records.map((r, i) =>
-            i === isEditing ? { ...recordData, id: r.id } : r
-          )
+          records.map((r) => (r.id === isEditing ? { ...recordData, id: r.id } : r))
         );
         setIsEditing(null);
       } else {
@@ -468,10 +465,7 @@ export default function BookkeepingApp() {
   };
 
   const handleEdit = (index) => {
-    // Find actual record index in original records array
-    const recordId = recordsWithStrategicScore[index].id;
-    const originalIndex = records.findIndex(r => r.id === recordId);
-    const record = records[originalIndex];
+    const record = recordsWithStrategicScore[index];
     setFormData({
       date: record.date,
       paymentDate: record.payment_date || "",
@@ -487,7 +481,7 @@ export default function BookkeepingApp() {
       marketPrice: record.market_price ? record.market_price.toString() : "",
       suppliedBy: record.supplied_by || "",
     });
-    setIsEditing(originalIndex); // Use original index for editing
+    setIsEditing(record.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -599,7 +593,7 @@ export default function BookkeepingApp() {
       "Unit Price (LKR)",
       "Cost per Unit (LKR)",
       "Quantity",
-      "Total Revenue",
+      "Total",
       "Total Cost",
       "Profit",
       "Margin %",
@@ -672,7 +666,7 @@ export default function BookkeepingApp() {
     });
   };
 
-  // --- All useMemo blocks updated to use inventoryCostMap ---
+  // --- Reused analytics (unchanged logic but now use fixed totals) ---
   const competitiveAnalysis = useMemo(() => {
     return filteredRecords
       .filter(
@@ -760,8 +754,8 @@ export default function BookkeepingApp() {
         grouped[monthKey].cost += totalCost;
         grouped[monthKey].profit += profit;
       } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-        grouped[monthKey].cost += revenue;
-        grouped[monthKey].profit -= revenue;
+        grouped[monthKey].cost += price; // amount is total
+        grouped[monthKey].profit -= price;
       }
     });
     return Object.entries(grouped)
@@ -809,8 +803,9 @@ export default function BookkeepingApp() {
         grouped[month].investment += parseFloat(r.amount) || 0;
         grouped[month].net -= parseFloat(r.amount) || 0;
       } else if (r.category === "Inflow") {
-        grouped[month].return += parseFloat(r.amount) || 0;
-        grouped[month].net += parseFloat(r.amount) || 0;
+        const qty = parseFloat(r.quantity) || 1;
+        grouped[month].return += (parseFloat(r.amount) || 0) * qty;
+        grouped[month].net += (parseFloat(r.amount) || 0) * qty;
       }
     });
     return Object.values(grouped);
@@ -937,11 +932,13 @@ export default function BookkeepingApp() {
     Object.entries(budgets).forEach(([category, budgetAmount]) => {
       const spent = filteredRecords
         .filter((r) => r.category === category)
-        .reduce(
-          (sum, r) =>
-            sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1),
-          0
-        );
+        .reduce((sum, r) => {
+          if (r.category === "Inflow") {
+            return sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
+          } else {
+            return sum + (parseFloat(r.amount) || 0);
+          }
+        }, 0);
       const percentUsed = (spent / budgetAmount) * 100;
       if (percentUsed >= 90) {
         alerts.push({
@@ -1023,6 +1020,15 @@ export default function BookkeepingApp() {
     },
     { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
   ];
+
+  // --- Business Health Metrics ---
+  const monthlyBurn = totals.overhead + totals.outflow + totals.reinvestment;
+  const cashRunwayMonths = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
+  const liquidityRatio = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
+  const dataCompletenessScore = (
+    (maturityData.reduce((sum, m) => sum + parseFloat(m.score), 0) / 400) *
+    100
+  ).toFixed(0);
 
   const implementationPhases = [
     {
@@ -1178,7 +1184,7 @@ export default function BookkeepingApp() {
           </div>
         </div>
 
-        {/* Loan Health Alert */}
+        {/* Loan Health Alert with Trend */}
         <div className="mb-6">
           <div
             className={`p-4 rounded-lg flex items-center gap-3 ${
@@ -1199,7 +1205,7 @@ export default function BookkeepingApp() {
                   : "⚠️ Loan Coverage At Risk"}
               </h3>
               <p className="text-sm">
-                This month: LKR {formatLKR(thisMonthInflow)} / LKR{" "}
+                Rolling 30-day inflow: LKR {formatLKR(rollingInflow)} / LKR{" "}
                 {formatLKR(monthlyLoanTarget)} ({loanCoveragePercent.toFixed(1)}
                 %)
               </p>
@@ -1262,6 +1268,7 @@ export default function BookkeepingApp() {
           <div className="flex overflow-x-auto">
             {[
               { id: "overview", label: "Overview", icon: BarChart3 },
+              { id: "health", label: "Business Health", icon: HeartPulse },
               { id: "margins", label: "Profit Margins", icon: Percent },
               { id: "competitive", label: "Competitive Edge", icon: Target },
               { id: "products", label: "Products", icon: Package },
@@ -1349,6 +1356,136 @@ export default function BookkeepingApp() {
             </div>
           </div>
         </div>
+
+        {/* Business Health Tab */}
+        {activeTab === "health" && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-rose-500 to-rose-600 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <HeartPulse className="w-7 h-7" />
+                Business Health Dashboard
+              </h2>
+              <p className="text-rose-100">
+                Monitor your financial stability and operational resilience
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-lg shadow-md p-5 text-center">
+                <h3 className="text-sm text-gray-600 mb-1">Cash Runway</h3>
+                <p className="text-2xl font-bold text-blue-600">
+                  {cashRunwayMonths > 0 ? cashRunwayMonths.toFixed(1) : "∞"}{" "}
+                  months
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  At current burn rate
+                </p>
+              </div>
+              <div className="bg-white rounded-lg shadow-md p-5 text-center">
+                <h3 className="text-sm text-gray-600 mb-1">Burn Rate</h3>
+                <p className="text-2xl font-bold text-red-600">
+                  LKR {formatLKR(monthlyBurn)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Monthly expenses</p>
+              </div>
+              <div className="bg-white rounded-lg shadow-md p-5 text-center">
+                <h3 className="text-sm text-gray-600 mb-1">Liquidity Ratio</h3>
+                <p className="text-2xl font-bold text-green-600">
+                  {liquidityRatio > 0 ? liquidityRatio.toFixed(2) : "0"}x
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Revenue vs monthly burn
+                </p>
+              </div>
+              <div className="bg-white rounded-lg shadow-md p-5 text-center">
+                <h3 className="text-sm text-gray-600 mb-1">Data Quality</h3>
+                <p className="text-2xl font-bold text-purple-600">
+                  {dataCompletenessScore}%
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Bookkeeping completeness
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border border-blue-200">
+              <h3 className="font-bold text-lg mb-3 text-blue-900">
+                Strategic Recommendations
+              </h3>
+              <ul className="space-y-2 text-blue-800">
+                {cashRunwayMonths < 3 && (
+                  <li className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>Urgent:</strong> Cash runway under 3 months. Focus on
+                      accelerating collections and reducing non-essential spend.
+                    </span>
+                  </li>
+                )}
+                {trueGrossMargin < 30 && (
+                  <li className="flex items-start gap-2">
+                    <Percent className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>Margin Alert:</strong> Gross margin below 30%. Review
+                      pricing and cost structure immediately.
+                    </span>
+                  </li>
+                )}
+                {topCustomerShare > 0.5 && (
+                  <li className="flex items-start gap-2">
+                    <Users className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>Risk:</strong> Over {Math.round(topCustomerShare * 100)}%
+                      revenue from one customer. Diversify your client base.
+                    </span>
+                  </li>
+                )}
+                {dataCompletenessScore < 70 && (
+                  <li className="flex items-start gap-2">
+                    <Database className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>Improve Data:</strong> Add cost, customer, and supplier
+                      details to unlock deeper insights.
+                    </span>
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4">Expense Breakdown</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: "Overhead", value: totals.overhead },
+                      { name: "Outflow", value: totals.outflow },
+                      { name: "Reinvestment", value: totals.reinvestment },
+                    ]}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {[
+                      { name: "Overhead", value: totals.overhead },
+                      { name: "Outflow", value: totals.outflow },
+                      { name: "Reinvestment", value: totals.reinvestment },
+                    ].map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={["#ff6b6b", "#4ecdc4", "#45b7d1"][index % 3]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
 
         {/* Overview Tab */}
         {activeTab === "overview" && (
@@ -1693,7 +1830,7 @@ export default function BookkeepingApp() {
                           ? ((price - cost) / price) * 100
                           : null;
                       return (
-                        <tr key={index} className="hover:bg-gray-50">
+                        <tr key={record.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm text-gray-600">
                             {record.date}
                           </td>
@@ -1748,13 +1885,25 @@ export default function BookkeepingApp() {
                           </td>
                           <td className="px-4 py-3 text-center">
                             <button
-                              onClick={() => handleEdit(index)}
+                              onClick={() =>
+                                handleEdit(
+                                  recordsWithStrategicScore.findIndex(
+                                    (r) => r.id === record.id
+                                  )
+                                )
+                              }
                               className="text-blue-600 hover:text-blue-800 mx-1"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleDelete(index)}
+                              onClick={() =>
+                                handleDelete(
+                                  recordsWithStrategicScore.findIndex(
+                                    (r) => r.id === record.id
+                                  )
+                                )
+                              }
                               className="text-red-600 hover:text-red-800 mx-1"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1919,7 +2068,7 @@ export default function BookkeepingApp() {
                           ? ((price - cost) / price) * 100
                           : null;
                       return (
-                        <tr key={index} className="hover:bg-gray-50">
+                        <tr key={record.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm text-gray-600">
                             {record.date}
                           </td>
@@ -2040,7 +2189,7 @@ export default function BookkeepingApp() {
                               (parseFloat(record.amount) || 0) *
                               (parseFloat(record.quantity) || 1);
                             return (
-                              <tr key={idx} className="border-b">
+                              <tr key={record.id} className="border-b">
                                 <td className="px-3 py-2">{record.date}</td>
                                 <td className="px-3 py-2">
                                   {record.description}
@@ -2052,7 +2201,7 @@ export default function BookkeepingApp() {
                                   <button
                                     onClick={() =>
                                       handleEdit(
-                                        records.findIndex(
+                                        recordsWithStrategicScore.findIndex(
                                           (r) => r.id === record.id
                                         )
                                       )
@@ -2064,7 +2213,7 @@ export default function BookkeepingApp() {
                                   <button
                                     onClick={() =>
                                       handleDelete(
-                                        records.findIndex(
+                                        recordsWithStrategicScore.findIndex(
                                           (r) => r.id === record.id
                                         )
                                       )
