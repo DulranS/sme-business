@@ -412,6 +412,8 @@ const OrderManagementApp: React.FC = () => {
   </div>
 </div>
 
+</div>
+
         {/* Order Form */}
         <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6">
