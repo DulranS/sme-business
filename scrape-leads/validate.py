@@ -1,132 +1,218 @@
+"""
+whatsapp_lead_preparer.py
+
+🎯 STRATEGIC WHATSAPP LEAD PREPARER — Sri Lanka Focused
+✅ Cleans & validates mobile numbers for WhatsApp  
+✅ Filters out landlines & invalid formats  
+✅ Builds personalized contact names  
+✅ Adds 1-click wa.me links  
+✅ Preserves lead quality & source  
+✅ Exports CRM-ready + WhatsApp-ready files  
+
+Designed for sales teams running WhatsApp outreach in Sri Lanka.
+"""
+
 import pandas as pd
 import re
 import os
+import logging
+from datetime import datetime
 
-# === Configuration ===
+# ==============================
+# 🔧 CONFIGURATION
+# ==============================
 INPUT_FILE = "business_leads.csv"
-OUTPUT_FILE = "output_business_leads.csv"
-INVALID_FILE = "invalid_numbers.csv"
+OUTPUT_FILE = "whatsapp_ready_leads.csv"
+INVALID_FILE = "invalid_or_landline_leads.csv"
+LOG_FILE = "whatsapp_prep.log"
 
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("WhatsAppPrep")
 
-# === Helper: Clean and validate phone numbers ===
-def clean_number(num):
-    """Clean and validate phone numbers, removing country code 94"""
-    if pd.isna(num):
-        return None
+# Sri Lankan mobile prefixes (2024)
+MOBILE_PREFIXES = {
+    "70", "71", "72", "75", "76", "77", "78",
+    "11", "12", "13", "14", "15", "16", "17", "18", "19"  # Some 11xxx are mobile now
+}
+LANDLINE_PREFIXES = {"11", "31", "32", "33", "34", "35", "36", "37", "38", "41", "45", "47", "51", "52", "54", "55", "57", "63", "65", "66", "67"}
 
-    # Remove non-digit characters
-    s = re.sub(r'\D', '', str(num)).strip()
+# ==============================
+# 📞 PHONE NUMBER PROCESSING
+# ==============================
+def clean_and_classify_number(raw_num):
+    """
+    Returns: (cleaned_9_digit, is_valid_mobile, reason)
+    """
+    if pd.isna(raw_num) or raw_num == "":
+        return None, False, "Empty"
 
-    # Remove country code 94 if present
-    if s.startswith('94'):
-        s = s[2:]
+    # Normalize: keep only digits
+    digits = re.sub(r'\D', '', str(raw_num))
+    
+    # Handle international formats
+    if digits.startswith("94"):
+        digits = digits[2:]
+    elif digits.startswith("+94"):
+        digits = digits[3:]
+    elif digits.startswith("0"):
+        digits = digits[1:]
+    elif len(digits) == 10 and digits.startswith("94"):
+        digits = digits[2:]
 
-    # Sri Lankan numbers usually 9–10 digits long
-    if len(s) < 9 or len(s) > 10:
-        return None
+    # Must be 9 digits for Sri Lankan mobile
+    if len(digits) != 9:
+        return None, False, f"Invalid length ({len(digits)})"
 
-    return s
+    prefix = digits[:2]
+    
+    # Check if it's a known mobile prefix
+    if prefix in MOBILE_PREFIXES:
+        return digits, True, "Valid Mobile"
+    elif prefix in LANDLINE_PREFIXES:
+        return digits, False, f"Landline ({prefix})"
+    else:
+        return digits, False, f"Unknown prefix ({prefix})"
 
+def generate_wa_link(number):
+    """Generate clickable WhatsApp link."""
+    if number:
+        return f"https://wa.me/94{number}"
+    return ""
 
-# === Core Function ===
-def prepare_csv(input_file=INPUT_FILE, output_file=OUTPUT_FILE, invalid_file=INVALID_FILE):
-    # --- Check file existence ---
+# ==============================
+# 👤 NAME & PERSONALIZATION
+# ==============================
+def build_contact_name(row):
+    """Build the best possible display name for outreach."""
+    # Priority 1: Business name
+    if pd.notna(row.get("business_name")) and str(row["business_name"]).strip() not in ["", "Unknown", "Unknown Business"]:
+        return str(row["business_name"]).strip()
+    
+    # Priority 2: First + Last
+    first = str(row.get("first_name", "")).strip() if pd.notna(row.get("first_name")) else ""
+    last = str(row.get("last_name", "")).strip() if pd.notna(row.get("last_name")) else ""
+    if first or last:
+        return f"{first} {last}".strip()
+    
+    # Priority 3: Company or name fallback
+    for col in ["company", "name", "place_name"]:
+        if pd.notna(row.get(col)) and str(row[col]).strip() not in ["", "Unknown"]:
+            return str(row[col]).strip()
+    
+    return "Prospect"
+
+# ==============================
+# 🚀 MAIN PROCESSING FUNCTION
+# ==============================
+def prepare_whatsapp_leads(
+    input_file=INPUT_FILE,
+    output_file=OUTPUT_FILE,
+    invalid_file=INVALID_FILE
+):
+    logger.info("🚀 Starting WhatsApp Lead Preparation")
+    logger.info("=" * 50)
+
+    # --- Validate input ---
     if not os.path.exists(input_file):
-        print(f"✗ Error: File '{input_file}' not found in {os.getcwd()}")
+        logger.error(f"❌ Input file not found: {os.path.abspath(input_file)}")
         return
 
-    # --- Load CSV ---
+    # --- Load data ---
     df = pd.read_csv(input_file)
-    print(f"✓ Loaded {len(df)} rows from '{input_file}'")
-    print(f"📄 Columns found: {list(df.columns)}")
+    logger.info(f"📥 Loaded {len(df)} rows from '{input_file}'")
+    logger.info(f"📄 Columns: {list(df.columns)}")
 
     # --- Detect phone column ---
-    possible_phone_cols = ["whatsapp_number", "phone_raw", "phone_number", "phone", "mobile", "contact"]
-    phone_col = next((col for col in possible_phone_cols if col in df.columns), None)
-
+    phone_cols = ["whatsapp_number", "phone_raw", "phone_number", "phone", "mobile", "contact", "formatted_phone_number"]
+    phone_col = next((col for col in phone_cols if col in df.columns), None)
+    
     if not phone_col:
-        print(f"✗ Could not find phone column. Columns: {list(df.columns)}")
+        logger.error(f"❌ No phone column found. Available: {list(df.columns)}")
         return
 
-    print(f"📞 Using phone column: '{phone_col}'")
+    logger.info(f"📞 Using phone column: '{phone_col}'")
 
-    # --- Handle business name ---
-    if "business_name" in df.columns:
-        df["clean_business_name"] = df["business_name"].astype(str).str.strip()
-    elif "first_name" in df.columns and "last_name" in df.columns:
-        df["clean_business_name"] = (
-            df["first_name"].astype(str).str.strip() + " " + df["last_name"].astype(str).str.strip()
-        )
-    else:
-        possible_name_cols = ["company", "name", "place_name"]
-        name_col = next((col for col in possible_name_cols if col in df.columns), None)
-        if name_col:
-            df["clean_business_name"] = df[name_col].astype(str).str.strip()
-        else:
-            df["clean_business_name"] = "Unknown Business"
+    # --- Build contact name ---
+    df["contact_name"] = df.apply(build_contact_name, axis=1)
+    logger.info(f"📝 Sample contact names:\n{df['contact_name'].head(5).to_string(index=False)}")
 
-    print(f"📝 Sample business names:\n{df['clean_business_name'].head(5)}")
+    # --- Process numbers ---
+    results = df[phone_col].apply(clean_and_classify_number)
+    df["cleaned_number"] = [r[0] for r in results]
+    df["is_valid_mobile"] = [r[1] for r in results]
+    df["rejection_reason"] = [r[2] for r in results]
 
-    # --- Clean numbers ---
-    df["cleaned_whatsapp_number"] = df[phone_col].apply(clean_number)
+    # --- Generate WhatsApp links ---
+    df["whatsapp_link"] = df["cleaned_number"].apply(generate_wa_link)
 
-    print(f"\n📋 Number Cleaning Preview:")
-    sample_df = df[[phone_col, "cleaned_whatsapp_number"]].head(10)
-    print(sample_df.to_string(index=False))
+    # --- Split valid vs invalid ---
+    valid_df = df[df["is_valid_mobile"]].copy()
+    invalid_df = df[~df["is_valid_mobile"]].copy()
 
-    # --- Separate valid and invalid ---
-    invalid_df = df[df["cleaned_whatsapp_number"].isna()].copy()
-    valid_df = df.dropna(subset=["cleaned_whatsapp_number", "clean_business_name"]).copy()
-
-    print(f"\n⚠️ Invalid numbers removed: {len(invalid_df)}")
-
-    # --- Clean valid data ---
-    valid_df = valid_df[valid_df["clean_business_name"].str.strip() != ""]
-    valid_df = valid_df[valid_df["clean_business_name"] != "Unknown Business"]
-
-    # Replace original columns with cleaned versions
-    valid_df["whatsapp_number"] = valid_df["cleaned_whatsapp_number"]
-    valid_df["business_name"] = valid_df["clean_business_name"]
-
-    # Drop helper columns
-    valid_df = valid_df.drop(columns=["cleaned_whatsapp_number", "clean_business_name"], errors="ignore")
-    invalid_df = invalid_df.drop(columns=["cleaned_whatsapp_number", "clean_business_name"], errors="ignore")
-
-    # --- Deduplicate ---
-    valid_df = valid_df.drop_duplicates(subset=["whatsapp_number", "business_name"])
-
-    # --- Sort alphabetically ---
-    valid_df = valid_df.sort_values(by="business_name", ascending=True)
-
-    print(f"\n✅ Total valid contacts: {len(valid_df)}")
+    logger.info(f"✅ Valid mobile numbers: {len(valid_df)}")
+    logger.info(f"❌ Invalid/Landline: {len(invalid_df)}")
 
     if len(valid_df) == 0:
-        print("⚠️ No valid contacts to export!")
+        logger.warning("⚠️ No valid mobile numbers found!")
+        invalid_df.to_csv(invalid_file, index=False)
         return
 
-    # --- Save cleaned and invalid files ---
-    valid_df.to_csv(output_file, index=False)
+    # --- Final cleanup ---
+    valid_df = valid_df.drop_duplicates(subset=["cleaned_number"])
+    valid_df = valid_df.sort_values(by="contact_name", ascending=True)
+
+    # --- Select & reorder output columns ---
+    output_columns = []
+    # Essential for WhatsApp
+    output_columns.extend(["contact_name", "cleaned_number", "whatsapp_link"])
+    # Contextual info
+    for col in ["business_name", "category", "email", "website", "address", "lead_quality", "tags"]:
+        if col in valid_df.columns:
+            output_columns.append(col)
+    # Keep original phone for reference
+    output_columns.append(phone_col)
+
+    # Ensure all columns exist
+    final_df = valid_df.reindex(columns=output_columns, fill_value="")
+
+    # Rename for clarity
+    final_df = final_df.rename(columns={"cleaned_number": "mobile_9digit"})
+
+    # --- Save outputs ---
+    final_df.to_csv(output_file, index=False)
     invalid_df.to_csv(invalid_file, index=False)
 
-    print(f"\n✅ WhatsApp-ready file created: '{output_file}'")
-    print(f"📁 Location: {os.path.abspath(output_file)}")
+    # --- Summary stats ---
+    success_rate = len(valid_df) / len(df) * 100
+    top_rejections = invalid_df["rejection_reason"].value_counts().head(3)
 
-    print(f"\n⚠️ Invalid contacts saved to: '{invalid_file}'")
+    logger.info(f"\n✅ SUCCESS: WhatsApp-ready file saved to: {os.path.abspath(output_file)}")
+    logger.info(f"📁 Invalid/landline leads saved to: {os.path.abspath(invalid_file)}")
+    logger.info(f"\n📊 FINAL STATS:")
+    logger.info(f"   • Total input:        {len(df)}")
+    logger.info(f"   • Valid mobile:       {len(valid_df)}")
+    logger.info(f"   • Success rate:       {success_rate:.1f}%")
+    logger.info(f"   • Top rejections:     {dict(top_rejections)}")
 
     # --- Preview ---
-    print(f"\n📋 Final Preview (first 10 rows):")
-    print(valid_df.head(10).to_string(index=False))
-
-    # --- Stats ---
-    print(f"\n📊 Statistics:")
-    print(f"   • Original rows: {len(df)}")
-    print(f"   • Valid contacts: {len(valid_df)}")
-    print(f"   • Invalid contacts: {len(invalid_df)}")
-    print(f"   • Success rate: {len(valid_df)/(len(df))*100:.1f}%")
+    logger.info(f"\n📋 PREVIEW (first 5 valid leads):")
+    preview_cols = ["contact_name", "mobile_9digit", "whatsapp_link"]
+    if "lead_quality" in final_df.columns:
+        preview_cols.insert(1, "lead_quality")
+    logger.info(f"\n{final_df[preview_cols].head().to_string(index=False)}")
 
     return output_file
 
-
-# === Auto-run ===
+# ==============================
+# ▶️ EXECUTION
+# ==============================
 if __name__ == "__main__":
-    prepare_csv()
+    prepare_whatsapp_leads()

@@ -1,6 +1,25 @@
 "use client";
-import React, { useState, useRef, useEffect, JSX } from 'react';
-import { Upload, Phone, MapPin, Mail, User, Package, FileText, Download, Eye, Trash2, Calendar, Clock, CheckCircle, AlertCircle, XCircle, Loader, Settings, RefreshCw } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Upload,
+  Phone,
+  MapPin,
+  Mail,
+  User,
+  Package,
+  FileText,
+  Download,
+  Eye,
+  Trash2,
+  Calendar,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  XCircle,
+  Loader,
+  Settings,
+  RefreshCw,
+} from 'lucide-react';
 
 // TypeScript Types and Interfaces
 interface OrderImage {
@@ -23,7 +42,7 @@ interface Order {
   supplier_name: string;
   supplier_price?: string;
   supplier_description?: string;
-  customer_price?:string;
+  customer_price?: string;
 }
 
 interface OrderFormData {
@@ -45,13 +64,10 @@ interface SupabaseResponse<T> {
   };
 }
 
-type ViewType = 'customer' | 'admin';
-
-// Supabase configuration - Replace with your actual Supabase credentials
+// Supabase configuration
 const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Simple Supabase client implementation with TypeScript
 class SupabaseClient {
   private url: string;
   private key: string;
@@ -65,13 +81,13 @@ class SupabaseClient {
     const url = `${this.url}/rest/v1/${endpoint}`;
     const response = await fetch(url, {
       headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
+        apikey: this.key,
+        Authorization: `Bearer ${this.key}`,
         'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-        ...options.headers
+        Prefer: 'return=representation',
+        ...options.headers,
       },
-      ...options
+      ...options,
     });
 
     if (!response.ok) {
@@ -86,40 +102,39 @@ class SupabaseClient {
       select: (columns: string = '*') => ({
         execute: async (): Promise<Order[]> => {
           return this.request<Order[]>(`${table}?select=${columns}`);
-        }
+        },
       }),
       insert: (data: Partial<Order> | Partial<Order>[]) => ({
         execute: async (): Promise<Order[]> => {
           return this.request<Order[]>(table, {
             method: 'POST',
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
           });
-        }
+        },
       }),
       update: (data: Partial<Order>) => ({
         eq: (column: string, value: string | number) => ({
           execute: async (): Promise<Order[]> => {
             return this.request<Order[]>(`${table}?${column}=eq.${value}`, {
               method: 'PATCH',
-              body: JSON.stringify(data)
+              body: JSON.stringify(data),
             });
-          }
-        })
+          },
+        }),
       }),
       delete: () => ({
         eq: (column: string, value: string | number) => ({
           execute: async (): Promise<void> => {
             await this.request<void>(`${table}?${column}=eq.${value}`, {
-              method: 'DELETE'
+              method: 'DELETE',
             });
-          }
-        })
-      })
+          },
+        }),
+      }),
     };
   }
 }
 
-// Initialize Supabase client
 const supabase: SupabaseClient = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const OrderManagementApp: React.FC = () => {
@@ -139,19 +154,16 @@ const OrderManagementApp: React.FC = () => {
     images: [],
   });
 
-  // Load orders from Supabase
   const loadOrders = async (): Promise<void> => {
     setLoading(true);
     try {
       const data = await supabase.from('orders').select('*').execute();
-      // Sort by created_at descending
-      const sortedOrders = data.sort((a: Order, b: Order) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      const sortedOrders = data.sort(
+        (a: Order, b: Order) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       setOrders(sortedOrders);
     } catch (error) {
       console.error('Error loading orders:', error);
-      // Fallback to demo data if Supabase fails
       const demoOrders: Order[] = [
         {
           id: 1,
@@ -166,10 +178,7 @@ const OrderManagementApp: React.FC = () => {
           supplier_name: '',
           created_at: '2024-01-15T10:00:00Z',
           urgency: 'medium',
-          supplier_price: undefined,
-          supplier_description: undefined,
-          
-        }
+        },
       ];
       setOrders(demoOrders);
     } finally {
@@ -181,20 +190,22 @@ const OrderManagementApp: React.FC = () => {
     loadOrders();
   }, []);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>): void => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ): void => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const files = Array.from(e.target.files || []);
-    files.forEach(file => {
+    files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (event: ProgressEvent<FileReader>) => {
         if (event.target?.result) {
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
-            images: [...prev.images, { name: file.name, url: event.target!.result as string }]
+            images: [...prev.images, { name: file.name, url: event.target!.result as string }],
           }));
         }
       };
@@ -203,15 +214,20 @@ const OrderManagementApp: React.FC = () => {
   };
 
   const removeImage = (index: number): void => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      images: prev.images.filter((_, i) => i !== index)
+      images: prev.images.filter((_, i) => i !== index),
     }));
   };
 
-  // Create new order
   const submitOrder = async (): Promise<void> => {
-    if (!formData.customer_name || !formData.phone || !formData.location || !formData.description || !formData.moq) {
+    if (
+      !formData.customer_name ||
+      !formData.phone ||
+      !formData.location ||
+      !formData.description ||
+      !formData.moq
+    ) {
       alert('Please fill in all required fields');
       return;
     }
@@ -229,14 +245,14 @@ const OrderManagementApp: React.FC = () => {
         images: JSON.stringify(formData.images),
         status: 'pending',
         created_at: new Date().toISOString(),
-          supplier_price: '',
-    supplier_description: '',
+        supplier_price: '',
+        supplier_description: '',
         supplier_name: '',
-    customer_price:""
+        customer_price: '',
       };
 
       await supabase.from('orders').insert(orderData).execute();
-      
+
       setFormData({
         customer_name: '',
         email: '',
@@ -245,7 +261,7 @@ const OrderManagementApp: React.FC = () => {
         description: '',
         moq: '',
         urgency: 'medium',
-        images: []
+        images: [],
       });
 
       alert('Order submitted successfully! We will get back to you soon.');
@@ -258,18 +274,17 @@ const OrderManagementApp: React.FC = () => {
     }
   };
 
-  // Update order status
   const updateOrderStatus = async (orderId: number, newStatus: Order['status']): Promise<void> => {
     setLoading(true);
     try {
       await supabase.from('orders').update({ status: newStatus }).eq('id', orderId).execute();
-      
-      setOrders(prev => prev.map(order => 
-        order.id === orderId ? { ...order, status: newStatus } : order
-      ));
-      
+
+      setOrders((prev) =>
+        prev.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order))
+      );
+
       if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
+        setSelectedOrder((prev) => (prev ? { ...prev, status: newStatus } : null));
       }
     } catch (error) {
       console.error('Error updating order:', error);
@@ -279,23 +294,35 @@ const OrderManagementApp: React.FC = () => {
     }
   };
 
-  // Update supplier fields
-  const updateSupplierInfo = async (orderId: number, supplierPrice: string, supplierDescription: string): Promise<void> => {
+  const updateSupplierInfo = async (
+    orderId: number,
+    supplierPrice: string,
+    supplierDescription: string
+  ): Promise<void> => {
     setLoading(true);
     try {
-      await supabase.from('orders').update({ 
-        supplier_price: supplierPrice,
-        supplier_description: supplierDescription 
-      }).eq('id', orderId).execute();
-      
-      setOrders(prev => prev.map(order => 
-        order.id === orderId ? { ...order, supplier_price: supplierPrice, supplier_description: supplierDescription } : order
-      ));
-      
+      await supabase
+        .from('orders')
+        .update({ supplier_price: supplierPrice, supplier_description: supplierDescription })
+        .eq('id', orderId)
+        .execute();
+
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? { ...order, supplier_price: supplierPrice, supplier_description: supplierDescription }
+            : order
+        )
+      );
+
       if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder(prev => prev ? { ...prev, supplier_price: supplierPrice, supplier_description: supplierDescription } : null);
+        setSelectedOrder((prev) =>
+          prev
+            ? { ...prev, supplier_price: supplierPrice, supplier_description: supplierDescription }
+            : null
+        );
       }
-      
+
       alert('Supplier information updated successfully');
     } catch (error) {
       console.error('Error updating supplier info:', error);
@@ -305,17 +332,16 @@ const OrderManagementApp: React.FC = () => {
     }
   };
 
-  // Delete order
   const deleteOrder = async (orderId: number): Promise<void> => {
     if (!confirm('Are you sure you want to delete this order?')) return;
-    
+
     setLoading(true);
     try {
       await supabase.from('orders').delete().eq('id', orderId).execute();
-      
-      setOrders(prev => prev.filter(order => order.id !== orderId));
+
+      setOrders((prev) => prev.filter((order) => order.id !== orderId));
       setSelectedOrder(null);
-      
+
       alert('Order deleted successfully');
     } catch (error) {
       console.error('Error deleting order:', error);
@@ -326,10 +352,23 @@ const OrderManagementApp: React.FC = () => {
   };
 
   const exportToCSV = (): void => {
-    const headers: string[] = ['Order ID', 'Customer Name', 'Email', 'Phone', 'Location', 'Description', 'MOQ', 'Status', 'Urgency', 'Supplier Price', 'Supplier Description', 'Created Date'];
+    const headers: string[] = [
+      'Order ID',
+      'Customer Name',
+      'Email',
+      'Phone',
+      'Location',
+      'Description',
+      'MOQ',
+      'Status',
+      'Urgency',
+      'Supplier Price',
+      'Supplier Description',
+      'Created Date',
+    ];
     const csvContent = [
       headers.join(','),
-      ...orders.map(order => [
+      ...orders.map((order) => [
         order.id,
         `"${order.customer_name}"`,
         order.email || 'N/A',
@@ -341,8 +380,8 @@ const OrderManagementApp: React.FC = () => {
         order.urgency,
         order.supplier_price || 'N/A',
         `"${(order.supplier_description || '').replace(/"/g, '""')}"`,
-        new Date(order.created_at).toLocaleDateString()
-      ].join(','))
+        new Date(order.created_at).toLocaleDateString(),
+      ].join(',')),
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -356,29 +395,29 @@ const OrderManagementApp: React.FC = () => {
 
   const getStatusColor = (status: Order['status']): string => {
     const colors: Record<Order['status'], string> = {
-      'pending': 'bg-amber-100 text-amber-800 border-amber-300',
+      pending: 'bg-amber-100 text-amber-800 border-amber-300',
       'in-progress': 'bg-blue-100 text-blue-800 border-blue-300',
-      'completed': 'bg-green-100 text-green-800 border-green-300',
-      'cancelled': 'bg-red-100 text-red-800 border-red-300'
+      completed: 'bg-green-100 text-green-800 border-green-300',
+      cancelled: 'bg-red-100 text-red-800 border-red-300',
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-300';
   };
 
   const getStatusIcon = (status: Order['status']) => {
-    const icons: Record<Order['status'], JSX.Element> = {
-      'pending': <AlertCircle className="w-4 h-4" />,
+    const icons: Record<Order['status'], React.ReactNode> = {
+      pending: <AlertCircle className="w-4 h-4" />,
       'in-progress': <Loader className="w-4 h-4" />,
-      'completed': <CheckCircle className="w-4 h-4" />,
-      'cancelled': <XCircle className="w-4 h-4" />
+      completed: <CheckCircle className="w-4 h-4" />,
+      cancelled: <XCircle className="w-4 h-4" />,
     };
     return icons[status] || <AlertCircle className="w-4 h-4" />;
   };
 
   const getUrgencyColor = (urgency: Order['urgency']): string => {
     const colors: Record<Order['urgency'], string> = {
-      'low': 'text-green-600 bg-green-50',
-      'medium': 'text-yellow-600 bg-yellow-50',
-      'high': 'text-red-600 bg-red-50'
+      low: 'text-green-600 bg-green-50',
+      medium: 'text-yellow-600 bg-yellow-50',
+      high: 'text-red-600 bg-red-50',
     };
     return colors[urgency] || 'text-gray-600 bg-gray-50';
   };
@@ -398,17 +437,28 @@ const OrderManagementApp: React.FC = () => {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Place Your Order</h1>
           <p className="text-xl text-gray-600 mb-6">Submit your requirements and we'll get back to you</p>
+
+          {/* Admin Panel Button */}
+          <div className="flex justify-center mt-6">
+            <a
+              href="/admin"
+              className="inline-flex items-center space-x-2 bg-gray-900 text-white px-6 py-3 rounded-lg font-semibold text-lg hover:bg-gray-800 transition-all duration-200 shadow-md"
+            >
+              <Settings className="w-5 h-5" />
+              <span>Go to Admin Panel</span>
+            </a>
+          </div>
         </div>
 
         {/* Order Form */}
         <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6">
-            <h2 className="text-2xl font-bold text-white" style={{color:"white"}}>Order Details</h2>
+            <h2 className="text-2xl font-bold text-white">Order Details</h2>
           </div>
-          
+
           <div className="p-8 space-y-8">
             {/* Contact Info */}
-            <div style={{scrollBehavior: 'smooth',color: 'black'}}>
+            <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
@@ -460,7 +510,7 @@ const OrderManagementApp: React.FC = () => {
                   </select>
                 </div>
               </div>
-              
+
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Location *</label>
                 <input
@@ -476,10 +526,12 @@ const OrderManagementApp: React.FC = () => {
             </div>
 
             {/* Order Details */}
-            <div style={{scrollBehavior: 'smooth',color: 'black'}}>
+            <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h3>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Order Quantity (MOQ) *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Minimum Order Quantity (MOQ) *
+                </label>
                 <input
                   type="text"
                   name="moq"
@@ -490,7 +542,7 @@ const OrderManagementApp: React.FC = () => {
                   required
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Description *</label>
                 <textarea
@@ -524,13 +576,16 @@ const OrderManagementApp: React.FC = () => {
                 <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">Click to upload images</p>
               </button>
-              
+
               {formData.images.length > 0 && (
                 <div className="mt-6">
                   <h4 className="text-sm font-medium text-gray-700 mb-3">Uploaded Images:</h4>
                   <div className="space-y-4">
                     {formData.images.map((image, index) => (
-                      <div key={index} className="relative bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <div
+                        key={index}
+                        className="relative bg-gray-50 rounded-lg p-4 border border-gray-200"
+                      >
                         <div className="flex items-start justify-between mb-2">
                           <p className="text-sm font-medium text-gray-800 truncate pr-4">{image.name}</p>
                           <button
@@ -542,8 +597,8 @@ const OrderManagementApp: React.FC = () => {
                           </button>
                         </div>
                         <div className="flex justify-center">
-                          <img 
-                            src={image.url} 
+                          <img
+                            src={image.url}
                             alt={image.name}
                             className="max-w-full max-h-64 object-contain rounded-lg shadow-sm"
                           />
@@ -559,16 +614,15 @@ const OrderManagementApp: React.FC = () => {
             <button
               onClick={submitOrder}
               disabled={loading}
-              style={{scrollBehavior: 'smooth',color: 'white'}}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 px-8 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 flex items-center justify-center space-x-2"
             >
               {loading ? (
                 <>
                   <Loader className="w-5 h-5 animate-spin" />
-                  <span style={{scrollBehavior: 'smooth',color: 'white'}}>Submitting...</span>
+                  <span>Submitting...</span>
                 </>
               ) : (
-                <span style={{scrollBehavior: 'smooth',color: 'white'}}>Submit Order</span>
+                <span>Submit Order</span>
               )}
             </button>
           </div>
