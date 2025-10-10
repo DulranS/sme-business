@@ -1,9 +1,17 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { CheckCircle } from "lucide-react";
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  CheckCircle,
+  Package,
+  MapPin,
+  Calendar,
+  Download,
+  Image as ImageIcon,
+  AlertTriangle,
+} from "lucide-react";
 
 // ------------------------
-// Extended Order Interface (with "ship" status)
+// Extended Order Interface (with logistics fields)
 // ------------------------
 interface Order {
   id: number;
@@ -20,6 +28,15 @@ interface Order {
   supplier_price?: string;
   supplier_description?: string;
   customer_price?: string;
+
+  // === NEW: Logistics & Inventory Fields ===
+  inventory_status?: "in-stock" | "low-stock" | "out-of-stock" | "reorder-needed";
+  shipping_carrier?: string;
+  tracking_number?: string;
+  estimated_delivery?: string; // ISO date
+  logistics_cost?: string;
+  supplier_lead_time_days?: number;
+  route_optimized?: boolean;
 }
 
 interface OrderImage {
@@ -35,7 +52,7 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const DISCORD_WEBHOOK_URL = process.env.NEXT_PUBLIC_DISCORD_SHIP_WEBHOOK_URL || "";
 
 // ------------------------
-// Custom Supabase Client
+// Supabase Client
 // ------------------------
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
@@ -63,7 +80,6 @@ class SupabaseClient {
           execute: async (): Promise<Order[]> =>
             this.request<Order[]>(`${table}?select=${columns}&${column}=eq.${value}`),
         }),
-        execute: async (): Promise<Order[]> => this.request<Order[]>(`${table}?select=${columns}`),
       }),
     };
   }
@@ -72,27 +88,28 @@ class SupabaseClient {
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
-// Discord Webhook Helper
+// Discord Webhook (Only once per order)
 // ------------------------
 const sendDiscordWebhook = async (order: Order) => {
   if (!DISCORD_WEBHOOK_URL) return;
 
   const payload = {
-    username: "Order Bot",
+    username: "🚚 Shipping Bot",
     avatar_url: "https://i.imgur.com/AfFp7pu.png",
-content: `
+    content: `
 **---------------------------------------------------------------------------------------**
-🚚 **Shipping Order Notification - Ready to SHIP**
-**Order #${order.id}** - ${order.customer_name}
-Location: ${order.location}
-Phone: ${order.phone}
-MOQ: ${order.moq}
-Urgency: ${order.urgency}
-Description: ${order.description}
-Status: ${order.status}
+📦 **NEW SHIPPING ORDER – Ready for Dispatch!**
+**Order #${order.id}** – ${order.customer_name}
+📍 Location: ${order.location}
+📞 Phone: ${order.phone}
+📦 MOQ: ${order.moq}
+❗ Urgency: ${order.urgency}
+📝 Description: ${order.description}
+💰 Customer Price: ${order.customer_price || "N/A"}
+🚚 Carrier: ${order.shipping_carrier || "TBD"}
+📅 Est. Delivery: ${order.estimated_delivery ? new Date(order.estimated_delivery).toLocaleDateString() : "N/A"}
 **---------------------------------------------------------------------------------------**
 `,
-
   };
 
   try {
@@ -102,26 +119,70 @@ Status: ${order.status}
       body: JSON.stringify(payload),
     });
   } catch (err) {
-    console.error("Failed to send Discord webhook:", err);
+    console.error("Discord webhook failed:", err);
   }
 };
 
 // ------------------------
-// ShipOrdersPage Component
+// Helper: Parse Images
+// ------------------------
+const parseImages = (imagesJson: string): OrderImage[] => {
+  try {
+    return JSON.parse(imagesJson || "[]");
+  } catch {
+    return [];
+  }
+};
+
+// ------------------------
+// Image Gallery Component
+// ------------------------
+const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
+  const openImage = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
+
+  if (images.length === 0) return null;
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-2 mb-2">
+        <ImageIcon className="w-4 h-4 text-gray-600" />
+        <span className="text-xs font-medium text-gray-700">Attachments ({images.length})</span>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        {/* {images.slice(0, 3).map((image, i) => (
+          <img
+            key={i}
+            src={image.url}
+            alt={image.name}
+            className="w-16 h-16 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-80 transition"
+            onClick={() => openImage(image.url)}
+            title={image.name}
+          />
+        ))} */}
+        {images.length > 3 && (
+          <div className="w-16 h-16 bg-gray-100 rounded border border-dashed border-gray-400 flex items-center justify-center text-xs text-gray-500">
+            +{images.length - 3}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ------------------------
+// ShipOrdersPage Component (Optimized)
 // ------------------------
 const ShipOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(new Set());
 
-  // ------------------------
-  // Fetch Ship Orders
-  // ------------------------
+  // Fetch only "ship" orders on mount
   useEffect(() => {
     const fetchShipOrders = async () => {
       setLoading(true);
       setError(null);
-
       try {
         const shipOrders: Order[] = await supabase
           .from("orders")
@@ -129,15 +190,16 @@ const ShipOrdersPage: React.FC = () => {
           .eq("status", "ship")
           .execute();
 
-        // Identify new ship orders and send Discord webhook
-        const newOrders = shipOrders.filter(
-          (o) => !orders.some((existing) => existing.id === o.id)
-        );
-        newOrders.forEach((order) => sendDiscordWebhook(order));
+        // Notify only new orders not yet notified in this session
+        const newOrders = shipOrders.filter((o) => !notifiedOrderIds.has(o.id));
+        newOrders.forEach((order) => {
+          sendDiscordWebhook(order);
+          setNotifiedOrderIds((prev) => new Set(prev).add(order.id));
+        });
 
         setOrders(shipOrders);
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
         setError("Failed to load shipping orders.");
       } finally {
         setLoading(false);
@@ -147,179 +209,197 @@ const ShipOrdersPage: React.FC = () => {
     fetchShipOrders();
   }, []);
 
-  // ------------------------
-  // Parse Images
-  // ------------------------
-  const parseImages = (imagesJson: string): OrderImage[] => {
-    try {
-      return JSON.parse(imagesJson || "[]");
-    } catch {
-      return [];
-    }
-  };
-
-  const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
-    const openImage = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
-
-    if (images.length === 0) {
-      return (
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-4">Order Images</h3>
-          <p className="text-gray-500 text-sm">No images available</p>
-        </div>
-      );
-    }
-
-    return (
-      <div>
-        <h3 className="font-semibold text-gray-900 mb-4">
-          Order Images ({images.length})
-        </h3>
-        <div className="space-y-4">
-          {images.map((image, i) => (
-            <div
-              key={i}
-              className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-            >
-              <p className="text-sm font-medium text-gray-800 mb-2">
-                {image.name}
-              </p>
-              <div className="flex justify-center">
-                <img
-                  src={image.url}
-                  alt={image.name}
-                  className="w-full h-auto object-contain rounded-lg shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={() => openImage(image.url)}
-                  title="Click to view full size in new tab"
-                />
-              </div>
-              <div className="mt-2 text-center">
-                <button
-                  onClick={() => openImage(image.url)}
-                  className="text-blue-600 hover:text-blue-800 text-xs underline"
-                >
-                  View full size in new tab
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  // ------------------------
-  // Export to CSV
-  // ------------------------
+  // Export with strategic fields
   const exportToCSV = () => {
     if (orders.length === 0) return;
 
-    const headers = Object.keys(orders[0]);
-    const csvRows = [
-      headers.join(","), // header row
-      ...orders.map((order) =>
-        headers
-          .map((field) => `"${String((order as any)[field] ?? "").replace(/"/g, '""')}"`)
-          .join(",")
-      ),
+    const headers = [
+      "Order ID",
+      "Customer Name",
+      "Phone",
+      "Location",
+      "MOQ",
+      "Description",
+      "Customer Price",
+      "Supplier Price",
+      "Shipping Carrier",
+      "Tracking Number",
+      "Estimated Delivery",
+      "Logistics Cost",
+      "Inventory Status",
+      "Lead Time (days)",
+      "Route Optimized",
+      "Created At",
     ];
 
-    const csvContent = csvRows.join("\n");
+    const csvRows = orders.map((o) => [
+      o.id,
+      `"${o.customer_name.replace(/"/g, '""')}"`,
+      o.phone,
+      `"${o.location.replace(/"/g, '""')}"`,
+      `"${o.moq.replace(/"/g, '""')}"`,
+      `"${o.description.replace(/"/g, '""')}"`,
+      o.customer_price || "N/A",
+      o.supplier_price || "N/A",
+      o.shipping_carrier || "N/A",
+      o.tracking_number || "N/A",
+      o.estimated_delivery ? new Date(o.estimated_delivery).toISOString().split("T")[0] : "N/A",
+      o.logistics_cost || "N/A",
+      o.inventory_status || "N/A",
+      o.supplier_lead_time_days || "N/A",
+      o.route_optimized ? "Yes" : "No",
+      new Date(o.created_at).toISOString().split("T")[0],
+    ]);
+
+    const csvContent = [headers.join(","), ...csvRows.map((row) => row.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "shipping_orders.csv");
+    link.download = `shipping_orders_${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
-  // ------------------------
-  // Loading / Error / Empty States
-  // ------------------------
+  const getInventoryColor = (status?: string) => {
+    if (!status) return "bg-gray-100 text-gray-800";
+    const map: Record<string, string> = {
+      "in-stock": "bg-green-100 text-green-800",
+      "low-stock": "bg-yellow-100 text-yellow-800",
+      "out-of-stock": "bg-red-100 text-red-800",
+      "reorder-needed": "bg-orange-100 text-orange-800",
+    };
+    return map[status] || "bg-gray-100 text-gray-800";
+  };
+
   if (loading)
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-gray-500" style={{ color: "white" }}>Loading shipping orders...</p>
+      <div className="flex items-center justify-center h-screen bg-blue-50">
+        <p className="text-blue-700 font-medium">Loading shipping orders...</p>
       </div>
     );
 
   if (error)
     return (
-      <div className="flex items-center justify-center h-screen text-center">
+      <div className="flex items-center justify-center h-screen bg-blue-50">
         <p className="text-red-600 font-semibold">{error}</p>
       </div>
     );
 
   if (orders.length === 0)
     return (
-      <div className="flex items-center justify-center h-screen text-center">
-        <p className="text-gray-500 font-medium">No shipping orders available.</p>
+      <div className="flex flex-col items-center justify-center h-screen bg-blue-50 p-4 text-center">
+        <Package className="w-16 h-16 text-blue-400 mb-3" />
+        <h2 className="text-lg font-bold text-blue-800 mb-1">No Orders Ready to Ship</h2>
+        <p className="text-blue-600">Orders with status “ship” will appear here.</p>
       </div>
     );
 
-  // ------------------------
-  // Render Ship Orders
-  // ------------------------
   return (
-    <div className="p-4 space-y-2 bg-blue-50 min-h-screen">
-      <button
-        onClick={exportToCSV}
-        className="mb-3 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-      >
-        Export to CSV
-      </button>
+    <div className="p-4 space-y-4 bg-blue-50 min-h-screen">
+      <div className="flex justify-between items-center">
+        <h1 className="text-xl font-bold text-blue-900 flex items-center gap-2">
+          <Package className="w-6 h-6" />
+          Shipping Orders ({orders.length})
+        </h1>
+        <button
+          onClick={exportToCSV}
+          className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition"
+        >
+          <Download className="w-4 h-4" />
+          Export CSV
+        </button>
+      </div>
 
-      {orders.map((order) => {
-        const images = parseImages(order.images);
-        return (
-          <div
-            key={order.id}
-            className="bg-white p-3 rounded shadow border border-blue-200 hover:shadow-md transition"
-          >
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-bold text-blue-800 mb-1">
-                  Order #{order.id} - {order.customer_name}
-                </h2>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                  <p className="truncate"><span className="font-medium">Email:</span> {order.email || "N/A"}</p>
-                  <p className="truncate"><span className="font-medium">Phone:</span> {order.phone}</p>
-                  <p className="truncate"><span className="font-medium">Location:</span> {order.location}</p>
-                  <p className="truncate"><span className="font-medium">MOQ:</span> {order.moq}</p>
-                  <p className="truncate"><span className="font-medium">Urgency:</span> {order.urgency}</p>
-                  <p className="truncate"><span className="font-medium">Supplier Price:</span> {order.supplier_price || "N/A"}</p>
-                  <p className="truncate"><span className="font-medium">Customer Price:</span> {order.customer_price || "N/A"}</p>
-                  <p className="truncate"><span className="font-medium">Created:</span> {new Date(order.created_at).toLocaleDateString()}</p>
-                </div>
-                <p className="text-xs mt-1 line-clamp-2"><span className="font-medium">Description:</span> {order.description}</p>
-              </div>
-              {/* {images.length > 0 && (
-                <div className="flex gap-2 flex-shrink-0">
-                  {images.slice(0, 2).map((image, i) => (
-                    <img
-                      key={i}
-                      src={image.url}
-                      alt={image.name}
-                      className="w-24 h-24 object-contain rounded border border-gray-300 cursor-pointer hover:opacity-75 transition hover:scale-105 bg-gray-50"
-                      onClick={() => window.open(image.url, "_blank", "noopener,noreferrer")}
-                      title={`${image.name} - Click to view full size`}
-                    />
-                  ))}
-                  {images.length > 2 && (
-                    <div className="w-24 h-24 bg-gray-100 rounded border border-gray-300 flex items-center justify-center text-sm text-gray-600 font-medium cursor-pointer hover:bg-gray-200 transition">
-                      +{images.length - 2}
+      <div className="space-y-3">
+        {orders.map((order) => {
+          const images = parseImages(order.images);
+          const daysSinceCreated = Math.ceil(
+            (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24)
+          );
+
+          return (
+            <div
+              key={order.id}
+              className="bg-white p-4 rounded-lg shadow-sm border border-blue-200 hover:shadow-md transition"
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 p-2 bg-blue-100 rounded-full">
+                    <CheckCircle className="w-5 h-5 text-blue-700" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-bold text-blue-800 truncate">
+                      #{order.id} – {order.customer_name}
+                    </h2>
+                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{order.description}</p>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs">
+                      <div>
+                        <span className="font-medium">📍 Location:</span>{" "}
+                        <span className="text-gray-800">{order.location}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">📞 Phone:</span>{" "}
+                        <span className="text-gray-800">{order.phone}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">📦 MOQ:</span>{" "}
+                        <span className="text-gray-800">{order.moq}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">❗ Urgency:</span>{" "}
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          order.urgency === "high" ? "bg-red-100 text-red-800" :
+                          order.urgency === "medium" ? "bg-yellow-100 text-yellow-800" :
+                          "bg-green-100 text-green-800"
+                        }`}>
+                          {order.urgency}
+                        </span>
+                      </div>
+                      {order.inventory_status && (
+                        <div>
+                          <span className="font-medium">📊 Inventory:</span>{" "}
+                          <span className={`px-2 py-0.5 rounded text-xs ${getInventoryColor(order.inventory_status)}`}>
+                            {order.inventory_status.replace("-", " ")}
+                          </span>
+                        </div>
+                      )}
+                      {order.shipping_carrier && (
+                        <div>
+                          <span className="font-medium">🚚 Carrier:</span>{" "}
+                          <span className="text-gray-800">{order.shipping_carrier}</span>
+                        </div>
+                      )}
+                      {order.estimated_delivery && (
+                        <div>
+                          <span className="font-medium">📅 Est. Delivery:</span>{" "}
+                          <span className="text-gray-800">
+                            {new Date(order.estimated_delivery).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="font-medium">💰 Revenue:</span>{" "}
+                        <span className="text-green-700 font-medium">{order.customer_price || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">🕒 Age:</span>{" "}
+                        <span className="text-gray-800">{daysSinceCreated}d</span>
+                      </div>
                     </div>
-                  )}
+
+                    <ImageGallery images={images} />
+                  </div>
                 </div>
-              )} */}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };
