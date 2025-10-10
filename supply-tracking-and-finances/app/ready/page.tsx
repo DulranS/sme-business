@@ -1,9 +1,17 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { CheckCircle } from "lucide-react";
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  CheckCircle,
+  Package,
+  Download,
+  AlertTriangle,
+  Calendar,
+  DollarSign,
+  Truck,
+} from "lucide-react";
 
 // ------------------------
-// Order Interface
+// Enhanced Order Interface
 // ------------------------
 interface Order {
   id: number;
@@ -20,6 +28,10 @@ interface Order {
   supplier_price?: string;
   supplier_description?: string;
   customer_price?: string;
+
+  // Optional: future logistics fields (for consistency)
+  shipping_carrier?: string;
+  estimated_delivery?: string;
 }
 
 interface OrderImage {
@@ -63,7 +75,6 @@ class SupabaseClient {
           execute: async (): Promise<Order[]> =>
             this.request<Order[]>(`${table}?select=${columns}&${column}=eq.${value}`),
         }),
-        execute: async (): Promise<Order[]> => this.request<Order[]>(`${table}?select=${columns}`),
       }),
       update: (data: Partial<Order>) => ({
         eq: (column: string, value: string | number) => ({
@@ -86,33 +97,30 @@ class SupabaseClient {
   }
 }
 
-// ------------------------
-// Initialize Supabase
-// ------------------------
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
-// Discord Webhook Helper
+// Discord Webhook (Only for NEW orders)
 // ------------------------
 const sendDiscordWebhook = async (order: Order) => {
   if (!DISCORD_WEBHOOK_URL) return;
 
   const payload = {
-    username: "Order Bot",
+    username: "✅ Completed Orders Bot",
     avatar_url: "https://i.imgur.com/AfFp7pu.png",
-content: `
+    content: `
 **---------------------------------------------------------------------------------------**
-**📦 Ready Order Notification**
-**Order #${order.id}** - ${order.customer_name}
-Location: ${order.location}
-Phone: ${order.phone}
-MOQ: ${order.moq}
-Urgency: ${order.urgency}
-Description: ${order.description}
-Status: ${order.status}
+✅ **Order Completed – Ready for Shipping!**
+**Order #${order.id}** – ${order.customer_name}
+📍 Location: ${order.location}
+📞 Phone: ${order.phone}
+📦 MOQ: ${order.moq}
+💰 Revenue: ${order.customer_price || "N/A"}
+❗ Urgency: ${order.urgency}
+📝 Description: ${order.description}
+📅 Completed: ${new Date(order.created_at).toLocaleDateString()}
 **---------------------------------------------------------------------------------------**
 `,
-
   };
 
   try {
@@ -122,8 +130,28 @@ Status: ${order.status}
       body: JSON.stringify(payload),
     });
   } catch (err) {
-    console.error("Failed to send Discord webhook:", err);
+    console.error("Discord webhook failed:", err);
   }
+};
+
+// ------------------------
+// Helper: Parse Images
+// ------------------------
+const parseImages = (imagesJson: string): OrderImage[] => {
+  try {
+    return JSON.parse(imagesJson || "[]");
+  } catch {
+    return [];
+  }
+};
+
+// ------------------------
+// Helper: Extract Numeric Price
+// ------------------------
+const extractNumericValue = (priceString?: string): number => {
+  if (!priceString) return 0;
+  const match = priceString.match(/[\d,]+\.?\d*/);
+  return match ? parseFloat(match[0].replace(/,/g, "")) : 0;
 };
 
 // ------------------------
@@ -133,15 +161,13 @@ const CompletedOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(new Set());
 
-  // ------------------------
-  // Fetch Completed Orders
-  // ------------------------
+  // Fetch completed orders on mount
   useEffect(() => {
     const fetchCompletedOrders = async () => {
       setLoading(true);
       setError(null);
-
       try {
         const completedOrders: Order[] = await supabase
           .from("orders")
@@ -149,15 +175,16 @@ const CompletedOrdersPage: React.FC = () => {
           .eq("status", "completed")
           .execute();
 
-        // Identify new orders and send webhook
-        const newOrders = completedOrders.filter(
-          (o) => !orders.some((existing) => existing.id === o.id)
-        );
-        newOrders.forEach((order) => sendDiscordWebhook(order));
+        // Notify only newly completed orders (not seen in this session)
+        const newOrders = completedOrders.filter((o) => !notifiedOrderIds.has(o.id));
+        newOrders.forEach((order) => {
+          sendDiscordWebhook(order);
+          setNotifiedOrderIds((prev) => new Set(prev).add(order.id));
+        });
 
         setOrders(completedOrders);
       } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
         setError("Failed to load completed orders.");
       } finally {
         setLoading(false);
@@ -167,216 +194,211 @@ const CompletedOrdersPage: React.FC = () => {
     fetchCompletedOrders();
   }, []);
 
-  // ------------------------
-  // Mark Order as Shipping
-  // ------------------------
+  // Mark as shipping
   const markAsShipping = async (orderId: number) => {
-    if (!confirm("Are you sure you want to mark this order as shipping?")) return;
+    if (!confirm("Mark this order as shipping? It will move to the shipping queue.")) return;
 
     try {
       const order = orders.find((o) => o.id === orderId);
       if (!order) throw new Error("Order not found");
 
-      await supabase
-        .from("orders")
-        .update({ status: "ship" })
-        .eq("id", orderId)
-        .execute();
+      await supabase.from("orders").update({ status: "ship" }).eq("id", orderId).execute();
 
+      // Optimistically remove from list
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
 
-      await sendDiscordWebhook({ ...order, status: "ship" });
+      // Optional: notify shipping team
+      // await sendDiscordWebhook({ ...order, status: "ship" });
     } catch (err) {
-      console.error("Failed to update order status:", err);
-      alert("Failed to mark order as shipping. Please try again.");
+      console.error("Update failed:", err);
+      alert("Failed to update order status. Please try again.");
     }
   };
 
-  // ------------------------
-  // Parse Images
-  // ------------------------
-  const parseImages = (imagesJson: string): OrderImage[] => {
-    try {
-      return JSON.parse(imagesJson || "[]");
-    } catch {
-      return [];
-    }
-  };
-
-  const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
-    const openImage = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
-
-    if (images.length === 0) {
-      return (
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-4">Order Images</h3>
-          <p className="text-gray-500 text-sm">No images available</p>
-        </div>
-      );
-    }
-
-    return (
-      <div>
-        <h3 className="font-semibold text-gray-900 mb-4">
-          Order Images ({images.length})
-        </h3>
-        <div className="space-y-4">
-          {images.map((image, i) => (
-            <div
-              key={i}
-              className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-            >
-              <p className="text-sm font-medium text-gray-800 mb-2">{image.name}</p>
-              <div className="flex justify-center">
-                <img
-                  src={image.url}
-                  alt={image.name}
-                  className="w-full h-auto object-contain rounded-lg shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={() => openImage(image.url)}
-                  title="Click to view full size in new tab"
-                />
-              </div>
-              <div className="mt-2 text-center">
-                <button
-                  onClick={() => openImage(image.url)}
-                  className="text-blue-600 hover:text-blue-800 text-xs underline"
-                >
-                  View full size in new tab
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  // ------------------------
-  // Export CSV
-  // ------------------------
+  // Export with profit/margin
   const exportToCSV = () => {
     if (orders.length === 0) return;
 
-    const headers = Object.keys(orders[0]);
-    const csvRows = [
-      headers.join(","), // header row
-      ...orders.map((order) =>
-        headers
-          .map((field) => `"${String((order as any)[field] ?? "").replace(/"/g, '""')}"`)
-          .join(",")
-      ),
+    const headers = [
+      "Order ID",
+      "Customer Name",
+      "Phone",
+      "Location",
+      "MOQ",
+      "Description",
+      "Customer Price",
+      "Supplier Price",
+      "Profit",
+      "Margin %",
+      "Urgency",
+      "Completed Date",
     ];
 
-    const csvContent = csvRows.join("\n");
+    const csvRows = orders.map((o) => {
+      const cust = extractNumericValue(o.customer_price);
+      const supp = extractNumericValue(o.supplier_price);
+      const profit = cust - supp;
+      const margin = cust > 0 ? (profit / cust) * 100 : 0;
+      return [
+        o.id,
+        `"${o.customer_name.replace(/"/g, '""')}"`,
+        o.phone,
+        `"${o.location.replace(/"/g, '""')}"`,
+        `"${o.moq.replace(/"/g, '""')}"`,
+        `"${o.description.replace(/"/g, '""')}"`,
+        o.customer_price || "N/A",
+        o.supplier_price || "N/A",
+        profit > 0 ? profit.toFixed(2) : "N/A",
+        margin > 0 ? margin.toFixed(2) : "N/A",
+        o.urgency,
+        new Date(o.created_at).toISOString().split("T")[0],
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...csvRows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "completed_orders.csv");
+    link.download = `completed_orders_${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
-  // ------------------------
-  // Loading/Error States
-  // ------------------------
+  // Loading / Error / Empty
   if (loading)
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-gray-500" style={{color:'white'}}>Loading completed orders...</p>
+      <div className="flex items-center justify-center h-screen bg-green-50">
+        <p className="text-green-700 font-medium">Loading completed orders...</p>
       </div>
     );
+
   if (error)
     return (
-      <div className="flex items-center justify-center h-screen text-center">
+      <div className="flex items-center justify-center h-screen bg-green-50">
         <p className="text-red-600 font-semibold">{error}</p>
       </div>
     );
+
   if (orders.length === 0)
     return (
-      <div className="flex items-center justify-center h-screen text-center">
-        <p className="text-gray-500 font-medium">No completed orders available.</p>
+      <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4 text-center">
+        <CheckCircle className="w-16 h-16 text-green-400 mb-3" />
+        <h2 className="text-lg font-bold text-green-800 mb-1">No Completed Orders</h2>
+        <p className="text-green-600">Completed orders will appear here.</p>
       </div>
     );
 
-  // ------------------------
-  // Render Orders
-  // ------------------------
   return (
     <div className="p-4 space-y-4 bg-green-50 min-h-screen">
-      <button
-        onClick={exportToCSV}
-        className="mb-3 px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition"
-      >
-        Export to CSV
-      </button>
+      <div className="flex justify-between items-center">
+        <h1 className="text-xl font-bold text-green-900 flex items-center gap-2">
+          <CheckCircle className="w-6 h-6" />
+          Completed Orders ({orders.length})
+        </h1>
+        <button
+          onClick={exportToCSV}
+          className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm transition"
+        >
+          <Download className="w-4 h-4" />
+          Export CSV
+        </button>
+      </div>
 
-      {orders.map((order) => {
-        const images = parseImages(order.images);
-        return (
-          <div
-            key={order.id}
-            className="bg-white p-4 rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition relative"
-          >
-            {/* Status Badge */}
-            <div className="absolute top-2 right-2 px-2 py-0.5 text-xs font-semibold text-white bg-green-600 rounded">
-              Completed
-            </div>
+      <div className="space-y-4">
+        {orders.map((order) => {
+          const customerPrice = extractNumericValue(order.customer_price);
+          const supplierPrice = extractNumericValue(order.supplier_price);
+          const profit = customerPrice - supplierPrice;
+          const margin = customerPrice > 0 ? (profit / customerPrice) * 100 : 0;
+          const daysSince = Math.ceil(
+            (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24)
+          );
 
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600 mt-1 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-bold text-green-800 mb-2">
-                  Order #{order.id} - {order.customer_name}
-                </h2>
-                <div className="bg-green-50 p-2 rounded space-y-1 text-xs">
-                  <p><span className="font-medium">Email:</span> {order.email || "N/A"}</p>
-                  <p><span className="font-medium">Phone:</span> {order.phone}</p>
-                  <p><span className="font-medium">Location:</span> {order.location}</p>
-                  <p><span className="font-medium">MOQ:</span> {order.moq}</p>
-                  <p><span className="font-medium">Urgency:</span> {order.urgency}</p>
-                  <p><span className="font-medium">Supplier Price:</span> {order.supplier_price || "N/A"}</p>
-                  <p><span className="font-medium">Customer Price:</span> {order.customer_price || "N/A"}</p>
-                  <p><span className="font-medium">Created:</span> {new Date(order.created_at).toLocaleDateString()}</p>
-                  <p><span className="font-medium">Description:</span> {order.description}</p>
+          return (
+            <div
+              key={order.id}
+              className="bg-white p-4 rounded-lg shadow-sm border border-green-200 hover:shadow-md transition"
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 p-2 bg-green-100 rounded-full">
+                    <CheckCircle className="w-5 h-5 text-green-700" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-bold text-green-800 truncate">
+                      #{order.id} – {order.customer_name}
+                    </h2>
+                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{order.description}</p>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs">
+                      <div>
+                        <span className="font-medium">📍 Location:</span>{" "}
+                        <span className="text-gray-800">{order.location}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">📞 Phone:</span>{" "}
+                        <span className="text-gray-800">{order.phone}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">📦 MOQ:</span>{" "}
+                        <span className="text-gray-800">{order.moq}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium">❗ Urgency:</span>{" "}
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          order.urgency === "high" ? "bg-red-100 text-red-800" :
+                          order.urgency === "medium" ? "bg-yellow-100 text-yellow-800" :
+                          "bg-green-100 text-green-800"
+                        }`}>
+                          {order.urgency}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-medium">💰 Revenue:</span>{" "}
+                        <span className="text-green-700 font-medium">{order.customer_price || "N/A"}</span>
+                      </div>
+                      {profit > 0 && (
+                        <>
+                          <div>
+                            <span className="font-medium">📊 Profit:</span>{" "}
+                            <span className="text-blue-700 font-medium">+{profit.toFixed(0)}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium">📈 Margin:</span>{" "}
+                            <span className={`font-medium ${
+                              margin >= 30 ? "text-green-700" :
+                              margin >= 20 ? "text-yellow-700" : "text-red-700"
+                            }`}>
+                              {margin.toFixed(1)}%
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      <div>
+                        <span className="font-medium">🕒 Age:</span>{" "}
+                        <span className="text-gray-800">{daysSince}d</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="ml-4 flex flex-col justify-start space-y-2">
+                  <button
+                    onClick={() => markAsShipping(order.id)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                  >
+                    <Truck className="w-3 h-3" />
+                    Ship Now
+                  </button>
                 </div>
               </div>
-
-              {/* {images.length > 0 && (
-                <div className="flex gap-2 flex-shrink-0">
-                  {images.slice(0, 2).map((image, i) => (
-                    <img
-                      key={i}
-                      src={image.url}
-                      alt={image.name}
-                      className="w-24 h-24 object-contain rounded border border-gray-300 cursor-pointer hover:opacity-75 transition hover:scale-105 bg-gray-50"
-                      onClick={() => window.open(image.url, "_blank", "noopener,noreferrer")}
-                      title={`${image.name} - Click to view full size`}
-                    />
-                  ))}
-                  {images.length > 2 && (
-                    <div className="w-24 h-24 bg-gray-100 rounded border border-gray-300 flex items-center justify-center text-sm text-gray-600 font-medium cursor-pointer hover:bg-gray-200 transition">
-                      +{images.length - 2}
-                    </div>
-                  )}
-                </div>
-              )} */}
             </div>
-
-            {/* Mark as Shipping */}
-            <div className="mt-3 flex justify-end">
-              <button
-                onClick={() => markAsShipping(order.id)}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              >
-                Mark as Shipping
-              </button>
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };
