@@ -58,25 +58,31 @@ import {
   PolarRadiusAxis,
   Radar,
 } from "recharts";
-
-
-
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// ✅ Map internal categories to value-chain labels
+// ✅ Strategic category weights (higher = more business value)
+const STRATEGIC_WEIGHTS = {
+  "Inflow": 10,           // Revenue generation
+  "Reinvestment": 8,      // Growth investment
+  "Loan Received": 7,     // Liquidity boost
+  "Inventory Purchase": 5, // Asset building
+  "Outflow": -3,          // Cost (negative value)
+  "Overhead": -4,         // Fixed cost (higher negative)
+  "Loan Payment": -2,     // Obligation (lower negative)
+};
+
 const categoryLabels = {
   Inflow: "Revenue",
-  Outflow: "Payment", // was "Outflow"
-  Overhead: "Financial Control", // was "Overhead"
+  Outflow: "Payment",
+  Overhead: "Financial Control",
   Reinvestment: "Reinvestment",
   "Loan Payment": "Loan Payment",
   "Loan Received": "Loan Received",
   "Inventory Purchase": "Inventory Purchase",
 };
 
-// ✅ Keep original categories for data compatibility
 const internalCategories = [
   "Inflow",
   "Outflow",
@@ -84,7 +90,7 @@ const internalCategories = [
   "Overhead",
   "Loan Payment",
   "Loan Received",
-  "Inventory Purchase", // ✅ NEW
+  "Inventory Purchase",
 ];
 
 export default function BookkeepingApp() {
@@ -127,8 +133,9 @@ export default function BookkeepingApp() {
     "Overhead",
     "Loan Payment",
     "Loan Received",
-    "Inventory Purchase", // ✅ NEW
+    "Inventory Purchase",
   ];
+
   // --- Save Budget ---
   const saveBudget = async () => {
     if (!budgetAmount) {
@@ -196,7 +203,7 @@ export default function BookkeepingApp() {
       const { data, error } = await supabase
         .from("bookkeeping_records")
         .select("*")
-        .order("date", { ascending: false });
+        .order("date", { ascending: false }); // Already latest first
       if (error) throw error;
       setRecords(data || []);
     } catch (error) {
@@ -242,25 +249,21 @@ export default function BookkeepingApp() {
     const inventoryRecords = filteredRecords.filter(
       (r) => r.category === "Inventory Purchase"
     );
-
     inventoryRecords.forEach((r) => {
       const key = r.description;
       const qty = parseFloat(r.quantity) || 0;
       const cost = parseFloat(r.cost_per_unit) || 0;
       if (!key || qty <= 0 || cost <= 0) return;
-
       if (!map[key]) {
         map[key] = { totalCost: 0, totalQty: 0 };
       }
       map[key].totalCost += cost * qty;
       map[key].totalQty += qty;
     });
-
     Object.keys(map).forEach((key) => {
       map[key] =
         map[key].totalQty > 0 ? map[key].totalCost / map[key].totalQty : 0;
     });
-
     return map;
   }, [filteredRecords]);
 
@@ -270,14 +273,12 @@ export default function BookkeepingApp() {
       const amount = parseFloat(r.amount) || 0;
       const quantity = parseFloat(r.quantity) || 1;
       const revenue = amount * quantity;
-
       if (r.category === "Inflow") {
         let costPerUnit = parseFloat(r.cost_per_unit) || 0;
         if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
           costPerUnit = inventoryCostMap[r.description];
         }
         const cost = costPerUnit * quantity;
-
         acc.inflow += revenue;
         acc.inflowCost += cost;
         acc.inflowProfit += revenue - cost;
@@ -287,7 +288,6 @@ export default function BookkeepingApp() {
       if (r.category === "Overhead") acc.overhead += revenue;
       if (r.category === "Loan Payment") acc.loanPayment += revenue;
       if (r.category === "Loan Received") acc.loanReceived += revenue;
-      // "Inventory Purchase" is ignored (asset)
       return acc;
     },
     {
@@ -357,6 +357,46 @@ export default function BookkeepingApp() {
     });
     return Object.entries(groups).map(([group, items]) => ({ group, items }));
   }, [filteredRecords, groupBy]);
+
+  // --- Strategic Scoring ---
+  const recordsWithStrategicScore = useMemo(() => {
+    return filteredRecords.map((r) => {
+      const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
+      let marginImpact = 0;
+      let loanImpact = 0;
+
+      // Margin contribution for Inflow
+      if (r.category === "Inflow") {
+        const qty = parseFloat(r.quantity) || 1;
+        const price = parseFloat(r.amount) || 0;
+        let cost = parseFloat(r.cost_per_unit) || 0;
+        if (!cost && r.description && inventoryCostMap[r.description]) {
+          cost = inventoryCostMap[r.description];
+        }
+        const profit = (price - cost) * qty;
+        marginImpact = profit > 0 ? profit / 1000 : 0; // Normalize
+      }
+
+      // Loan coverage boost for recent inflows
+      if (r.category === "Inflow" && r.date.startsWith(currentMonth)) {
+        const qty = parseFloat(r.quantity) || 1;
+        const amount = parseFloat(r.amount) || 0;
+        loanImpact = (amount * qty) / 10000; // Normalize
+      }
+
+      const strategicScore = baseWeight + marginImpact + loanImpact;
+      return { ...r, strategicScore };
+    }).sort((a, b) => {
+      // Primary: Date (latest first)
+      // Secondary: Strategic score (highest first)
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      if (dateB.getTime() !== dateA.getTime()) {
+        return dateB.getTime() - dateA.getTime();
+      }
+      return b.strategicScore - a.strategicScore;
+    });
+  }, [filteredRecords, inventoryCostMap, currentMonth]);
 
   // --- Handle Form Submit ---
   const handleSubmit = async () => {
@@ -428,7 +468,10 @@ export default function BookkeepingApp() {
   };
 
   const handleEdit = (index) => {
-    const record = filteredRecords[index];
+    // Find actual record index in original records array
+    const recordId = recordsWithStrategicScore[index].id;
+    const originalIndex = records.findIndex(r => r.id === recordId);
+    const record = records[originalIndex];
     setFormData({
       date: record.date,
       paymentDate: record.payment_date || "",
@@ -444,7 +487,7 @@ export default function BookkeepingApp() {
       marketPrice: record.market_price ? record.market_price.toString() : "",
       suppliedBy: record.supplied_by || "",
     });
-    setIsEditing(index);
+    setIsEditing(originalIndex); // Use original index for editing
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -456,7 +499,7 @@ export default function BookkeepingApp() {
   const handleDelete = async (index) => {
     if (!window.confirm("Are you sure you want to delete this record?")) return;
     try {
-      const recordToDelete = filteredRecords[index];
+      const recordToDelete = recordsWithStrategicScore[index];
       const { error } = await supabase
         .from("bookkeeping_records")
         .delete()
@@ -470,11 +513,9 @@ export default function BookkeepingApp() {
   };
 
   const csvInputRef = useRef(null);
-
   const handleCsvImport = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -484,22 +525,18 @@ export default function BookkeepingApp() {
           alert("No valid records found in CSV.");
           return;
         }
-
         const mappedRecords = data
           .map((row) => {
             const parseNumber = (val) =>
               val === "" || val == null ? null : parseFloat(val);
             const parseString = (val) =>
               val === "" || val == null ? null : String(val).trim();
-
-            // Reverse map category label back to internal key
             const categoryKey =
               Object.entries(categoryLabels).find(
                 ([, label]) => label === row["Category"]
               )?.[0] ||
               row["Category"] ||
               "Inflow";
-
             return {
               date:
                 parseString(row["Date"]) ||
@@ -524,19 +561,15 @@ export default function BookkeepingApp() {
             };
           })
           .filter((r) => r.description && r.amount != null);
-
         if (mappedRecords.length === 0) {
           alert("No valid records to import.");
           return;
         }
-
         try {
           const { error } = await supabase
             .from("bookkeeping_records")
             .insert(mappedRecords);
-
           if (error) throw error;
-
           await loadRecords();
           alert(`Successfully imported ${mappedRecords.length} records.`);
           if (csvInputRef.current) csvInputRef.current.value = "";
@@ -1503,7 +1536,6 @@ export default function BookkeepingApp() {
                   />
                 </div>
               </div>
-
               {/* Profit Preview */}
               {formData.quantity &&
                 formData.amount &&
@@ -1561,7 +1593,6 @@ export default function BookkeepingApp() {
                     </div>
                   </div>
                 )}
-
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <input
                   type="text"
@@ -1810,13 +1841,13 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* All Records Tab with Grouping */}
+        {/* All Records Tab with Strategic Ranking */}
         {activeTab === "records" && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <FileText className="w-5 h-5" />
-                Complete Transaction History
+                Complete Transaction History (Strategically Ranked)
               </h2>
               <select
                 value={groupBy}
@@ -1829,7 +1860,6 @@ export default function BookkeepingApp() {
                 <option value="supplier">Group by Supplier</option>
               </select>
             </div>
-
             <div className="overflow-x-auto">
               {groupBy === "none" ? (
                 <table className="w-full">
@@ -1869,12 +1899,15 @@ export default function BookkeepingApp() {
                         Margin
                       </th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                        Strategic Rank
+                      </th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredRecords.map((record, index) => {
+                    {recordsWithStrategicScore.map((record, index) => {
                       const qty = record.quantity || 1;
                       const price = record.amount;
                       const cost = record.cost_per_unit || 0;
@@ -1964,6 +1997,11 @@ export default function BookkeepingApp() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
+                            <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-medium">
+                              #{index + 1}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
                             <button
                               onClick={() => handleEdit(index)}
                               className="text-blue-600 hover:text-blue-800 mx-1"
@@ -2049,7 +2087,7 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Other tabs (margins, products, customers, pricing, analytics, competitive) remain unchanged */}
+        {/* Other tabs remain unchanged (margins, products, customers, pricing, analytics, competitive) */}
         {activeTab === "margins" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
