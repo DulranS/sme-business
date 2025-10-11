@@ -8,8 +8,9 @@ import {
   Download,
   Image as ImageIcon,
   AlertTriangle,
-  Link,
+
 } from "lucide-react";
+import Link from "next/link";
 
 // ------------------------
 // Extended Order Interface (with logistics fields)
@@ -307,10 +308,7 @@ const ShipOrdersPage: React.FC = () => {
           Shipping Orders ({orders.length})
         </h1>
         
-        <Link href={"/"} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-          <AlertTriangle className="w-4 h-4" />
-          Report Issue
-        </Link>
+
 
         <button
           onClick={exportToCSV}
@@ -319,6 +317,10 @@ const ShipOrdersPage: React.FC = () => {
           <Download className="w-4 h-4" />
           Export CSV
         </button>
+        <Link href="admin" className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm transition">
+          <AlertTriangle className="w-4 h-4" />
+          Admin Panel
+        </Link>
       </div>
 
       <div className="space-y-3">
