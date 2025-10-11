@@ -1,8 +1,23 @@
+"""
+whatsapp_sender.py
+
+🎯 SAFE & RELIABLE WHATSAPP BULK SENDER — Sri Lanka Optimized
+✅ Uses E.164 numbers (9477...)
+✅ Resumes after crash
+✅ Avoids ban with safe delays
+✅ Works with output from whatsapp_lead_preparer.py
+✅ Detects invalid numbers & timeouts
+
+⚠️ Use responsibly: Max 80–100 messages/day per number.
+"""
+
 import os
 import pandas as pd
 import time
-from datetime import datetime
 import json
+import urllib.parse
+import sys
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -10,187 +25,251 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException
-import urllib.parse
-import validate
 
-# === Prepare CSV ===
-print("\n⚙️ Preparing WhatsApp-formatted leads file...")
-try:
-    csv_path = validate.prepare_csv()  # outputs: output_business_leads.csv
-    print("✓ CSV file ready for WhatsApp sender!\n")
-except Exception as e:
-    print(f"✗ Error preparing CSV: {str(e)}")
-    exit(1)
+# ==============================
+# 🔧 CONFIGURATION
+# ==============================
+CSV_FILE = "whatsapp_ready_leads.csv"  # Output from whatsapp_lead_preparer.py
+LOG_FILE = "whatsapp_sender.log"
 
-CSV_FILE = "output_business_leads.csv"
+# Setup basic logging to file + console
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("WhatsAppSender")
 
-# === Chrome WebDriver setup ===
+# ==============================
+# 🌐 CHROME DRIVER SETUP
+# ==============================
 def setup_driver(headless=False):
-    """
-    Setup Chrome WebDriver with Windows-friendly options.
-    """
     chrome_options = Options()
     
     if headless:
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--disable-gpu')
     
-    # Stability flags
+    # Stability & anti-detection
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-extensions')
     chrome_options.add_argument('--disable-notifications')
     chrome_options.add_argument('--disable-blink-features=AutomationControlled')
     chrome_options.add_argument('--start-maximized')
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
 
-    # Temporary user profile to avoid conflicts
+    # Temporary profile
     tmp_profile = os.path.join(os.path.expanduser("~"), "whatsapp_temp_profile")
     os.makedirs(tmp_profile, exist_ok=True)
     chrome_options.add_argument(f"--user-data-dir={tmp_profile}")
 
-    # Suppress logs
-    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-
     try:
         driver = webdriver.Chrome(options=chrome_options)
         driver.set_page_load_timeout(30)
+        # Anti-bot detection override
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
     except Exception as e:
-        print(f"✗ Failed to start Chrome WebDriver: {e}")
-        raise e
+        logger.error(f"Failed to start Chrome: {e}")
+        raise
 
-# === Wait for login ===
-def wait_for_whatsapp_login(driver, timeout=60):
-    print("\n⏳ Waiting for WhatsApp Web login... Scan QR code if needed.")
+# ==============================
+# 🔐 WAIT FOR LOGIN
+# ==============================
+def wait_for_whatsapp_login(driver, timeout=120):
+    logger.info("⏳ Waiting for WhatsApp Web login... Scan QR code if needed.")
     try:
         WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, '[aria-label*="Chat list"]'))
+            EC.presence_of_element_located((By.CSS_SELECTOR, '[aria-label*="Chat list"], [data-testid="chat-list"]'))
         )
-        print("✓ Logged into WhatsApp Web!\n")
+        logger.info("✅ Logged into WhatsApp Web!")
         return True
     except TimeoutException:
-        print("✗ Login timeout.")
+        logger.error("❌ Login timeout. Please scan QR code within 2 minutes.")
         return False
 
-# === Send message ===
-def send_message_fast(driver, phone_number, message, wait_time=3):
+# ==============================
+# 📤 SEND MESSAGE (SAFE & ROBUST)
+# ==============================
+def send_message_safe(driver, full_phone, message, wait_time=7):
     try:
-        url = f"https://web.whatsapp.com/send?phone={phone_number}&text={urllib.parse.quote(message)}"
+        encoded_msg = urllib.parse.quote(message)
+        url = f"https://web.whatsapp.com/send?phone={full_phone}&text={encoded_msg}"
         driver.get(url)
-        time.sleep(1)  # short pause
+        time.sleep(2)  # Let page load
 
-        # Invalid number check
+        # Check for invalid number error
         try:
-            page_text = driver.find_element(By.TAG_NAME, 'body').text.lower()
-            if 'phone number shared via url is invalid' in page_text:
+            body_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+            if "phone number shared via url is invalid" in body_text:
+                logger.warning(f"Invalid number: {full_phone}")
                 return False
         except:
-            pass
+            pass  # Ignore if can't read
 
-        # Wait for message box
-        try:
-            msg_box = WebDriverWait(driver, 8).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[contenteditable="true"][data-tab="10"]'))
-            )
-        except TimeoutException:
+        # Wait for message input (try multiple known selectors)
+        msg_box = None
+        selectors = [
+            'div[contenteditable="true"][data-tab="10"]',
+            'div[contenteditable="true"][data-tab="6"]',
+            '[data-testid="conversation-compose-box-input"]',
+            'footer div[contenteditable="true"]'
+        ]
+        for selector in selectors:
+            try:
+                msg_box = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                )
+                break
+            except TimeoutException:
+                continue
+
+        if not msg_box:
+            logger.warning(f"Message box not found for {full_phone}")
             return False
 
+        # Send
         msg_box.send_keys(Keys.ENTER)
-        time.sleep(wait_time)
+        time.sleep(wait_time)  # Critical: wait before next
         return True
-    except:
+
+    except Exception as e:
+        logger.debug(f"Send error for {full_phone}: {e}")
         return False
 
-# === Save/load progress ===
+# ==============================
+# 💾 PROGRESS TRACKING
+# ==============================
 def save_progress(csv_file, processed_indices):
     progress_file = csv_file.replace('.csv', '_progress.json')
     with open(progress_file, 'w') as f:
-        json.dump({'processed': list(processed_indices), 'last_updated': str(datetime.now())}, f)
+        json.dump({
+            'processed': list(processed_indices),
+            'last_updated': str(datetime.now())
+        }, f)
 
 def load_progress(csv_file):
     progress_file = csv_file.replace('.csv', '_progress.json')
     if os.path.exists(progress_file):
-        with open(progress_file, 'r') as f:
-            data = json.load(f)
-            return set(data.get('processed', []))
+        try:
+            with open(progress_file, 'r') as f:
+                data = json.load(f)
+                return set(data.get('processed', []))
+        except:
+            pass
     return set()
 
-# === Main ===
+# ==============================
+# 🚀 MAIN FUNCTION
+# ==============================
 def main():
     YOUR_NAME = os.getenv("YOUR_NAME", "Syndicate")
-    MESSAGE_TEMPLATE = os.getenv("MESSAGE",
+    MESSAGE_TEMPLATE = os.getenv(
+        "MESSAGE",
         "Hi! I'm {your_name} from a digital marketing agency. Noticed {business_name} could benefit from online marketing. Interested in a free consultation? Reply STOP to opt-out."
     )
-    WAIT_TIME = int(os.getenv("WAIT_TIME", "3"))
-    BATCH_SIZE = int(os.getenv("BATCH_SIZE", "50"))
-    BATCH_REST = int(os.getenv("BATCH_REST", "60"))
+    WAIT_TIME = int(os.getenv("WAIT_TIME", "7"))          # Increased for safety
+    BATCH_SIZE = int(os.getenv("BATCH_SIZE", "25"))       # Reduced batch
+    BATCH_REST = int(os.getenv("BATCH_REST", "150"))      # 2.5 min rest
     HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
 
-    # Load CSV
+    # Load leads
     if not os.path.exists(CSV_FILE):
-        print(f"✗ CSV file {CSV_FILE} not found.")
+        logger.error(f"CSV file not found: {CSV_FILE}")
         return
+
     df = pd.read_csv(CSV_FILE)
-    if 'whatsapp_number' not in df.columns or 'business_name' not in df.columns:
-        print("✗ CSV must contain 'whatsapp_number' and 'business_name'")
+    required_cols = ["mobile_9digit", "contact_name"]
+    if not all(col in df.columns for col in required_cols):
+        logger.error(f"CSV must contain: {required_cols}. Found: {list(df.columns)}")
         return
-    df = df.dropna(subset=['whatsapp_number', 'business_name']).reset_index(drop=True)
 
+    df = df.dropna(subset=["mobile_9digit", "contact_name"]).reset_index(drop=True)
+    logger.info(f"📥 Loaded {len(df)} leads from {CSV_FILE}")
+
+    # Resume support
     processed = load_progress(CSV_FILE)
-    remaining = len(df) - len(processed)
     if processed:
-        print(f"📂 Resuming: {len(processed)} already sent, {remaining} remaining")
+        logger.info(f"📂 Resuming: {len(processed)} sent, {len(df) - len(processed)} remaining")
 
-    # Setup driver
+    # Start browser
     driver = setup_driver(headless=HEADLESS)
-    driver.get("https://web.whatsapp.com")
-    if not wait_for_whatsapp_login(driver):
-        return
+    try:
+        driver.get("https://web.whatsapp.com")
+        if not wait_for_whatsapp_login(driver):
+            return
 
-    sent_count = 0
-    failed_count = 0
-    skipped_count = len(processed)
-    start_time = time.time()
+        sent, failed, skipped = 0, 0, len(processed)
+        start_time = time.time()
 
-    for idx, row in df.iterrows():
-        if idx in processed:
-            continue
+        for idx, row in df.iterrows():
+            if idx in processed:
+                continue
 
-        business_name = row['business_name']
-        phone_number = str(row['whatsapp_number'])  # send as-is from CSV
-        message = MESSAGE_TEMPLATE.format(your_name=YOUR_NAME, business_name=business_name)
+            business_name = str(row["contact_name"]).strip()
+            local_num = str(row["mobile_9digit"]).strip()
 
-        print(f"[{sent_count + skipped_count + 1}/{len(df)}] {business_name[:30]:<30} | {phone_number}", end=' ')
-        if send_message_fast(driver, phone_number, message, WAIT_TIME):
-            print("✓")
-            sent_count += 1
-        else:
-            print("✗ Skipped")
-            failed_count += 1
+            # Convert 9-digit → E.164 (94771234567)
+            if len(local_num) == 9 and local_num.isdigit():
+                full_phone = "94" + local_num
+            elif local_num.startswith("94") and len(local_num) == 11:
+                full_phone = local_num
+            else:
+                logger.warning(f"Skipping invalid number format: {local_num}")
+                failed += 1
+                processed.add(idx)
+                continue
 
-        processed.add(idx)
+            message = MESSAGE_TEMPLATE.format(your_name=YOUR_NAME, business_name=business_name)
+            logger.info(f"[{sent + skipped + 1}/{len(df)}] Sending to {business_name[:25]:<25} | {full_phone}")
 
-        if sent_count % 10 == 0:
-            save_progress(CSV_FILE, processed)
-        if sent_count % BATCH_SIZE == 0:
-            print(f"\n⏸️ Batch complete. Resting {BATCH_REST}s...")
-            time.sleep(BATCH_REST)
+            if send_message_safe(driver, full_phone, message, WAIT_TIME):
+                sent += 1
+                logger.info("✓ Sent")
+            else:
+                failed += 1
+                logger.info("✗ Failed or invalid")
 
-    save_progress(CSV_FILE, processed)
+            processed.add(idx)
 
-    elapsed = time.time() - start_time
-    print("\n=== SUMMARY ===")
-    print(f"✓ Sent: {sent_count}")
-    print(f"✗ Failed: {failed_count}")
-    print(f"⏭️ Skipped: {skipped_count}")
-    print(f"📝 Total: {len(df)}")
-    print(f"⏱️ Time: {elapsed//60:.0f}m {elapsed%60:.0f}s")
-    driver.quit()
-    print("👋 Browser closed. Done!")
+            # Save progress every 10 sends
+            if len(processed) % 10 == 0:
+                save_progress(CSV_FILE, processed)
 
+            # Batch rest
+            if sent % BATCH_SIZE == 0 and sent > 0:
+                logger.info(f"\n⏸️ Batch of {BATCH_SIZE} sent. Resting {BATCH_REST} seconds...\n")
+                time.sleep(BATCH_REST)
+
+        # Final save
+        save_progress(CSV_FILE, processed)
+
+        # Summary
+        elapsed = time.time() - start_time
+        logger.info("\n" + "="*50)
+        logger.info("✅ SENDING COMPLETE")
+        logger.info(f"✓ Sent:     {sent}")
+        logger.info(f"✗ Failed:   {failed}")
+        logger.info(f"⏭️ Skipped: {skipped}")
+        logger.info(f"⏱️ Time:    {int(elapsed // 60)}m {int(elapsed % 60)}s")
+        logger.info("="*50)
+
+    finally:
+        driver.quit()
+        logger.info("👋 Browser closed.")
+
+# ==============================
+# ▶️ RUN
+# ==============================
 if __name__ == "__main__":
     print("="*60)
-    print("WhatsApp Automated DM Sender - Fast & Windows Friendly")
+    print("🚀 WhatsApp Bulk Sender — Sri Lanka Optimized")
+    print("⚠️  Reminder: Stay under 100 messages/day to avoid bans")
     print("="*60)
     main()
