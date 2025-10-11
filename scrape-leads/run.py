@@ -21,8 +21,8 @@ from datetime import datetime
 # 🔧 CONFIGURATION
 # ==============================
 LOG_FILE = "lead_pipeline.log"
-SCRAPER_SCRIPT = "lean_business_scraper.py"
-PREPARER_SCRIPT = "whatsapp_lead_preparer.py"
+SCRAPER_SCRIPT = "scrape.py"
+PREPARER_SCRIPT = "validate.py"
 
 # Expected output from scraper → input for preparer
 LEADS_FILE = "colombo_b2b_leads.csv"
