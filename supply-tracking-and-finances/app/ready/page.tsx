@@ -163,7 +163,38 @@ const CompletedOrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(new Set());
+// ------------------------
+// Image Gallery Component (for Completed Orders)
+// ------------------------
+const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
+  if (images.length === 0) return null;
 
+  const openImage = (url: string) =>
+    window.open(url, "_blank", "noopener,noreferrer");
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      <h4 className="text-xs font-medium text-gray-700 mb-2">
+        Attached Images ({images.length})
+      </h4>
+      <div className="flex flex-wrap gap-2">
+        {images.map((image, i) => (
+          <div key={i} className="relative group">
+            <img
+              src={image.url}
+              alt={image.name || `Image ${i + 1}`}
+              className=" h-80 object-cover rounded border cursor-pointer hover:opacity-80"
+              onClick={() => openImage(image.url)}
+            />
+            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded transition opacity-0 group-hover:opacity-100 flex items-center justify-center">
+              <span className="text-white text-xs font-bold">View</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
   // Fetch completed orders on mount
   useEffect(() => {
     const fetchCompletedOrders = async () => {
@@ -389,6 +420,7 @@ const CompletedOrdersPage: React.FC = () => {
                         <span className="text-gray-800">{daysSince}d</span>
                       </div>
                     </div>
+                    <ImageGallery images={parseImages(order.images)} />
                   </div>
                 </div>
                 <div className="ml-4 flex flex-col justify-start space-y-2">

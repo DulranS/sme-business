@@ -139,6 +139,9 @@ const parseImages = (imagesJson: string): OrderImage[] => {
 // ------------------------
 // Image Gallery Component
 // ------------------------
+// ------------------------
+// Image Gallery Component
+// ------------------------
 const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
   const openImage = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
 
@@ -151,16 +154,16 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
         <span className="text-xs font-medium text-gray-700">Attachments ({images.length})</span>
       </div>
       <div className="flex gap-2 flex-wrap">
-        {/* {images.slice(0, 3).map((image, i) => (
+        {images.slice(0, 3).map((image, i) => (
           <img
             key={i}
             src={image.url}
             alt={image.name}
-            className="w-16 h-16 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-80 transition"
+            className=" h-80 object-cover rounded border cursor-pointer hover:opacity-80"
             onClick={() => openImage(image.url)}
             title={image.name}
           />
-        ))} */}
+        ))}
         {images.length > 3 && (
           <div className="w-16 h-16 bg-gray-100 rounded border border-dashed border-gray-400 flex items-center justify-center text-xs text-gray-500">
             +{images.length - 3}
