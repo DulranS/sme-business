@@ -655,14 +655,14 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
         Order Images ({images.length})
       </h3>
       <div className="space-y-4">
-        {/* {images.map((image, i) => (
+        {images.map((image, i) => (
           <div key={i} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
             <p className="text-sm font-medium text-gray-800 mb-2">{image.name}</p>
             <div className="flex justify-center">
               <img
                 src={image.url}
                 alt={image.name}
-                className="w-full h-auto object-contain rounded-lg shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
+                className=" h-80 object-cover rounded border cursor-pointer hover:opacity-80"
                 onClick={() => openImage(image.url)}
                 title="Click to view full size"
               />
@@ -676,7 +676,7 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
               </button>
             </div>
           </div>
-        ))} */}
+        ))}
       </div>
     </div>
   );
