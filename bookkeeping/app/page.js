@@ -1686,7 +1686,81 @@ const dailyData = useMemo(() => {
                 )}
               </ul>
             </div>
+{/* Payment Timing Risk */}
+<div className="bg-white rounded-lg shadow-md p-6">
+  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+    <Clock className="w-5 h-5 text-amber-600" />
+    Customer Payment Timing Risk
+  </h3>
+  {cashFlowGaps.length > 0 ? (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="text-center p-3 bg-amber-50 rounded-lg">
+          <p className="text-sm text-gray-600">Total Invoices Tracked</p>
+          <p className="text-xl font-bold text-amber-700">{cashFlowGaps.length}</p>
+        </div>
+        <div className="text-center p-3 bg-red-50 rounded-lg">
+          <p className="text-sm text-gray-600">Delayed Payments ({'>'}30d)</p>
+          <p className="text-xl font-bold text-red-600">
+            {cashFlowGaps.filter(g => g.status === "Delayed").length}
+          </p>
+        </div>
+        <div className="text-center p-3 bg-blue-50 rounded-lg">
+          <p className="text-sm text-gray-600">Avg Delay (All)</p>
+          <p className="text-xl font-bold text-blue-600">
+            {(
+              cashFlowGaps.reduce((sum, g) => sum + g.gapDays, 0) / cashFlowGaps.length
+            ).toFixed(1)} days
+          </p>
+        </div>
+      </div>
 
+      <h4 className="font-semibold mb-3">Top Delayed Customers</h4>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left">Customer</th>
+              <th className="px-3 py-2 text-left">Description</th>
+              <th className="px-3 py-2 text-right">Amount (LKR)</th>
+              <th className="px-3 py-2 text-right">Delay (Days)</th>
+              <th className="px-3 py-2 text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {cashFlowGaps
+              .filter(g => g.status === "Delayed")
+              .sort((a, b) => b.gapDays - a.gapDays)
+              .slice(0, 5)
+              .map((gap) => (
+                <tr key={gap.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 font-medium">{gap.customer || "—"} </td>
+                  <td className="px-3 py-2">{gap.description}</td>
+                  <td className="px-3 py-2 text-right">LKR {formatLKR(gap.amount)}</td>
+                  <td className="px-3 py-2 text-right font-bold text-red-600">
+                    {gap.gapDays}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                      Delayed
+                    </span>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  ) : (
+    <div className="text-center py-8 text-gray-500">
+      <Clock className="w-10 h-10 mx-auto mb-2 text-gray-400" />
+      <p>No payment date data available.</p>
+      <p className="text-sm mt-1">
+        Add <strong>Payment Date</strong> to your Inflow records to track cash flow timing.
+      </p>
+    </div>
+  )}
+</div>
 <div className="bg-white rounded-lg shadow-md p-6">
   <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
     <BarChart3 className="w-5 h-5 text-green-600" />
