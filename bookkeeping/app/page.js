@@ -165,6 +165,8 @@ export default function BookkeepingApp() {
     }
   };
 
+  
+
   // --- Save Loan Target ---
   const saveLoanTarget = () => {
     if (monthlyLoanTarget <= 0) {
