@@ -1686,7 +1686,26 @@ const dailyData = useMemo(() => {
                 )}
               </ul>
             </div>
-{/* Payment Timing Risk */}
+{/* Strategic Alert - Cash Flow Delay Risk */}
+{cashFlowGaps.length > 0 && 
+  cashFlowGaps.filter(g => g.status === "Delayed").length > 0 && (
+  <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-r-lg mb-6">
+    <div className="flex items-start gap-3">
+      <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+      <div>
+        <h3 className="font-semibold text-red-900 mb-2">Cash Flow Delay Risk</h3>
+        <p className="text-sm text-red-800">
+          {cashFlowGaps.filter(g => g.status === "Delayed").length} invoices paid late.
+          Avg delay: {(
+            cashFlowGaps.reduce((sum, g) => sum + g.gapDays, 0) / cashFlowGaps.length
+          ).toFixed(1)} days.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Payment Timing Risk Card */}
 <div className="bg-white rounded-lg shadow-md p-6">
   <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
     <Clock className="w-5 h-5 text-amber-600" />
