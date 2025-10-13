@@ -25,7 +25,7 @@ SCRAPER_SCRIPT = "scrape.py"
 PREPARER_SCRIPT = "validate.py"
 
 # Expected output from scraper → input for preparer
-LEADS_FILE = "colombo_b2b_leads.csv"
+LEADS_FILE = "finalized_b2b_leads.csv"
 
 # Setup logging
 logging.basicConfig(
