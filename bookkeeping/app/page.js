@@ -165,8 +165,6 @@ export default function BookkeepingApp() {
     }
   };
 
-  
-
   // --- Save Loan Target ---
   const saveLoanTarget = () => {
     if (monthlyLoanTarget <= 0) {
@@ -196,6 +194,16 @@ export default function BookkeepingApp() {
   useEffect(() => {
     const savedLoanTarget = localStorage.getItem("monthlyLoanTarget");
     if (savedLoanTarget) setMonthlyLoanTarget(parseFloat(savedLoanTarget));
+
+    // Set default date filter to last 30 days
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - 30);
+    setDateFilter({
+      start: start.toISOString().split("T")[0],
+      end: end.toISOString().split("T")[0],
+    });
+
     loadRecords();
     loadBudgets();
   }, []);
@@ -291,8 +299,8 @@ export default function BookkeepingApp() {
         if (r.category === "Overhead") acc.overhead += totalAmount;
         if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
         if (r.category === "Loan Received") acc.loanReceived += totalAmount;
-        if (r.category === "Logistics") acc.logistics += totalAmount;
-        if (r.category === "Refund") acc.refund += totalAmount;
+  if (r.category === "Logistics") acc.logistics += totalAmount;
+  if (r.category === "Refund") acc.refund += totalAmount;
       }
       return acc;
     },
@@ -320,9 +328,9 @@ export default function BookkeepingApp() {
     operatingProfit + netLoanImpact - totals.logistics - totals.refund;
 
   // ✅ Loan Coverage Logic (Rolling 30 days)
-  const today = new Date();
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(today.getDate() - 30);
+const today = new Date();
+const thirtyDaysAgo = new Date();
+thirtyDaysAgo.setDate(today.getDate() - 30);
   const rollingInflow = filteredRecords
     .filter(
       (r) =>
@@ -360,29 +368,29 @@ export default function BookkeepingApp() {
       : 0;
 
   // --- Supplier Analysis ---
-const supplierAnalysis = useMemo(() => {
-  const suppliers = {};
-  filteredRecords.forEach((r) => {
-    if (r.supplied_by && r.category !== "Inflow") {
-      const amount = parseFloat(r.amount) || 0;
-      const qty = parseFloat(r.quantity) || 1;
-      const totalCost = amount * qty; // 👈 critical fix
+  const supplierAnalysis = useMemo(() => {
+    const suppliers = {};
+    filteredRecords.forEach((r) => {
+      if (r.supplied_by && r.category !== "Inflow") {
+        const amount = parseFloat(r.amount) || 0;
+        const qty = parseFloat(r.quantity) || 1;
+        const totalCost = amount * qty; // 👈 critical fix
 
-      if (!suppliers[r.supplied_by]) {
-        suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
+        if (!suppliers[r.supplied_by]) {
+          suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
+        }
+        suppliers[r.supplied_by].cost += totalCost;
+        suppliers[r.supplied_by].transactions += 1;
       }
-      suppliers[r.supplied_by].cost += totalCost;
-      suppliers[r.supplied_by].transactions += 1;
-    }
-  });
-  return Object.entries(suppliers)
-    .map(([name, data]) => ({
-      name,
-      cost: data.cost,
-      transactions: data.transactions,
-    }))
-    .sort((a, b) => b.cost - a.cost);
-}, [filteredRecords]);
+    });
+    return Object.entries(suppliers)
+      .map(([name, data]) => ({
+        name,
+        cost: data.cost,
+        transactions: data.transactions,
+      }))
+      .sort((a, b) => b.cost - a.cost);
+  }, [filteredRecords]);
 
   // --- Strategic Scoring (Enhanced) ---
   const recordsWithStrategicScore = useMemo(() => {
@@ -574,27 +582,29 @@ const supplierAnalysis = useMemo(() => {
     });
   };
 
-  const handleEdit = (index) => {
-    const record = recordsWithStrategicScore[index];
-    setFormData({
-      date: record.date,
-      paymentDate: record.payment_date || "",
-      description: record.description,
-      category: record.category,
-      amount: record.amount.toString(),
-      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
-      quantity: record.quantity ? record.quantity.toString() : "",
-      notes: record.notes || "",
-      customer: record.customer || "",
-      project: record.project || "",
-      tags: record.tags || "",
-      marketPrice: record.market_price ? record.market_price.toString() : "",
-      supplied_by: formData.suppliedBy || null,
-    });
-    setIsEditing(record.id);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+const handleEdit = (index) => {
+  const record = recordsWithStrategicScore[index];
+  setFormData({
+    date: record.date,
+    paymentDate: record.payment_date || "",
+    description: record.description,
+    category: record.category,
+    amount: record.amount.toString(),
+    costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
+    quantity: record.quantity ? record.quantity.toString() : "",
+    notes: record.notes || "",
+    customer: record.customer || "",
+    project: record.project || "",
+    tags: record.tags || "",
+    marketPrice: record.market_price ? record.market_price.toString() : "",
+    suppliedBy: record.supplied_by || "", // ✅ FIXED: use record.supplied_by
+  });
+  setIsEditing(record.id);
+  setActiveTab("overview");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
+  
   const handleCancel = () => {
     setIsEditing(null);
     resetForm();
@@ -844,102 +854,111 @@ const supplierAnalysis = useMemo(() => {
     );
   }, [competitiveAnalysis]);
 
-const monthlyData = useMemo(() => {
-  if (!filteredRecords || filteredRecords.length === 0) return [];
+  const monthlyData = useMemo(() => {
+    if (!filteredRecords || filteredRecords.length === 0) return [];
 
-  // Get current year-month (e.g., "2024-06")
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    // Get current year-month (e.g., "2024-06")
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}`;
 
-  const grouped = {};
-  filteredRecords.forEach((r) => {
-    const date = new Date(r.date);
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    
-    // 👇 Only include current month
-    if (monthKey !== currentMonthKey) return;
+    const grouped = {};
+    filteredRecords.forEach((r) => {
+      const date = new Date(r.date);
+      const monthKey = `${date.getFullYear()}-${String(
+        date.getMonth() + 1
+      ).padStart(2, "0")}`;
 
-    if (!grouped[monthKey])
-      grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
-    
-    const qty = parseFloat(r.quantity) || 1;
-    const price = parseFloat(r.amount) || 0;
-    let cost = parseFloat(r.cost_per_unit) || 0;
-    if (!cost && r.description && inventoryCostMap[r.description]) {
-      cost = inventoryCostMap[r.description];
-    }
-    const revenue = price * qty;
-    const totalCost = cost * qty;
-    const profit = revenue - totalCost;
+      // 👇 Only include current month
+      if (monthKey !== currentMonthKey) return;
 
-    if (r.category === "Inflow") {
-      grouped[monthKey].revenue += revenue;
-      grouped[monthKey].cost += totalCost;
-      grouped[monthKey].profit += profit;
-    } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-      grouped[monthKey].cost += price;
-      grouped[monthKey].profit -= price;
-    }
-  });
+      if (!grouped[monthKey])
+        grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
 
-  return Object.entries(grouped)
-    .map(([month, vals]) => ({
-      month,
-      revenue: vals.revenue,
-      profit: vals.profit,
-      margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
-    }))
-    .sort((a, b) => new Date(a.month) - new Date(b.month));
-}, [filteredRecords, inventoryCostMap]);
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
 
-const dailyData = useMemo(() => {
-  if (!filteredRecords || filteredRecords.length === 0) return [];
+      if (r.category === "Inflow") {
+        grouped[monthKey].revenue += revenue;
+        grouped[monthKey].cost += totalCost;
+        grouped[monthKey].profit += profit;
+      } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+        grouped[monthKey].cost += price;
+        grouped[monthKey].profit -= price;
+      }
+    });
 
-  const today = new Date();
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(today.getDate() - 30);
+    return Object.entries(grouped)
+      .map(([month, vals]) => ({
+        month,
+        revenue: vals.revenue,
+        profit: vals.profit,
+        margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
+      }))
+      .sort((a, b) => new Date(a.month) - new Date(b.month));
+  }, [filteredRecords, inventoryCostMap]);
 
-  const dayMap = {};
-  // Initialize all days in last 30 days
-  for (let i = 30; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(today.getDate() - i);
-    const key = d.toISOString().split('T')[0]; // YYYY-MM-DD
-    dayMap[key] = { date: key, revenue: 0, profit: 0, cost: 0 };
-  }
+  const dailyData = useMemo(() => {
+    if (!filteredRecords || filteredRecords.length === 0) return [];
 
-  filteredRecords.forEach((r) => {
-    const recordDate = r.date; // assume format YYYY-MM-DD
-    if (recordDate < thirtyDaysAgo.toISOString().split('T')[0]) return;
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
 
-    if (!dayMap[recordDate]) {
-      dayMap[recordDate] = { date: recordDate, revenue: 0, profit: 0, cost: 0 };
+    const dayMap = {};
+    // Initialize all days in last 30 days
+    for (let i = 30; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const key = d.toISOString().split("T")[0]; // YYYY-MM-DD
+      dayMap[key] = { date: key, revenue: 0, profit: 0, cost: 0 };
     }
 
-    const qty = parseFloat(r.quantity) || 1;
-    const price = parseFloat(r.amount) || 0;
-    let cost = parseFloat(r.cost_per_unit) || 0;
-    if (!cost && r.description && inventoryCostMap[r.description]) {
-      cost = inventoryCostMap[r.description];
-    }
-    const revenue = price * qty;
-    const totalCost = cost * qty;
-    const profit = revenue - totalCost;
+    filteredRecords.forEach((r) => {
+      const recordDate = r.date; // assume format YYYY-MM-DD
+      if (recordDate < thirtyDaysAgo.toISOString().split("T")[0]) return;
 
-    if (r.category === "Inflow") {
-      dayMap[recordDate].revenue += revenue;
-      dayMap[recordDate].profit += profit;
-      dayMap[recordDate].cost += totalCost;
-    } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-      dayMap[recordDate].profit -= price;
-    }
-  });
+      if (!dayMap[recordDate]) {
+        dayMap[recordDate] = {
+          date: recordDate,
+          revenue: 0,
+          profit: 0,
+          cost: 0,
+        };
+      }
 
-  return Object.values(dayMap).map(day => ({
-    ...day,
-    margin: day.revenue > 0 ? (day.profit / day.revenue) * 100 : 0
-  }));
-}, [filteredRecords, inventoryCostMap]);
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+
+      if (r.category === "Inflow") {
+        dayMap[recordDate].revenue += revenue;
+        dayMap[recordDate].profit += profit;
+        dayMap[recordDate].cost += totalCost;
+      } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
+        dayMap[recordDate].profit -= price;
+      }
+    });
+
+    return Object.values(dayMap).map((day) => ({
+      ...day,
+      margin: day.revenue > 0 ? (day.profit / day.revenue) * 100 : 0,
+    }));
+  }, [filteredRecords, inventoryCostMap]);
 
   const cashFlowGaps = useMemo(() => {
     return filteredRecords
@@ -1286,11 +1305,15 @@ const dailyData = useMemo(() => {
     )
     .reduce((sum, r) => sum + parseFloat(r.amount), 0);
   const avgDailyOutflow = recentOutflow / 30;
-  const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
-    const day = i + 1;
-    const net = (avgDailyInflow - avgDailyOutflow) * day;
-    return { day, net };
-  });
+// Compute 30-day net cash position (inflow - all outflows)
+// Forecast shows CUMULATIVE NET CASH FLOW over next 30 days (starting from 0)
+const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
+  const date = new Date();
+  date.setDate(today.getDate() + i + 1);
+  const isoDate = date.toISOString().split("T")[0];
+  const net = (avgDailyInflow - avgDailyOutflow) * (i + 1);
+  return { date: isoDate, net };
+});
 
   if (loading) {
     return (
@@ -1610,7 +1633,9 @@ const dailyData = useMemo(() => {
                 <p className="text-2xl font-bold text-red-600">
                   LKR {formatLKR(monthlyBurn)}
                 </p>
-                <p className="text-black text-gray-500 mt-1">Monthly expenses</p>
+                <p className="text-black text-gray-500 mt-1">
+                  Monthly expenses
+                </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-5 text-center">
                 <h3 className="text-sm text-gray-600 mb-1">Liquidity Ratio</h3>
@@ -1691,182 +1716,225 @@ const dailyData = useMemo(() => {
                 )}
               </ul>
             </div>
-{/* Strategic Alert - Cash Flow Delay Risk */}
-{cashFlowGaps.length > 0 && 
-  cashFlowGaps.filter(g => g.status === "Delayed").length > 0 && (
-  <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-r-lg mb-6">
-    <div className="flex items-start gap-3">
-      <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-      <div>
-        <h3 className="font-semibold text-red-900 mb-2">Cash Flow Delay Risk</h3>
-        <p className="text-sm text-red-800">
-          {cashFlowGaps.filter(g => g.status === "Delayed").length} invoices paid late.
-          Avg delay: {(
-            cashFlowGaps.reduce((sum, g) => sum + g.gapDays, 0) / cashFlowGaps.length
-          ).toFixed(1)} days.
-        </p>
-      </div>
-    </div>
-  </div>
-)}
+            {/* Strategic Alert - Cash Flow Delay Risk */}
+            {cashFlowGaps.length > 0 &&
+              cashFlowGaps.filter((g) => g.status === "Delayed").length > 0 && (
+                <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-r-lg mb-6">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-red-900 mb-2">
+                        Cash Flow Delay Risk
+                      </h3>
+                      <p className="text-sm text-red-800">
+                        {
+                          cashFlowGaps.filter((g) => g.status === "Delayed")
+                            .length
+                        }{" "}
+                        invoices paid late. Avg delay:{" "}
+                        {(
+                          cashFlowGaps.reduce((sum, g) => sum + g.gapDays, 0) /
+                          cashFlowGaps.length
+                        ).toFixed(1)}{" "}
+                        days.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-{/* Payment Timing Risk Card */}
-<div className="bg-white rounded-lg shadow-md p-6">
-  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-    <Clock className="w-5 h-5 text-amber-600" />
-    Customer Payment Timing Risk
-  </h3>
-  {cashFlowGaps.length > 0 ? (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="text-center p-3 bg-amber-50 rounded-lg">
-          <p className="text-sm text-gray-600">Total Invoices Tracked</p>
-          <p className="text-xl font-bold text-amber-700">{cashFlowGaps.length}</p>
-        </div>
-        <div className="text-center p-3 bg-red-50 rounded-lg">
-          <p className="text-sm text-gray-600">Delayed Payments ({'>'}30d)</p>
-          <p className="text-xl font-bold text-red-600">
-            {cashFlowGaps.filter(g => g.status === "Delayed").length}
-          </p>
-        </div>
-        <div className="text-center p-3 bg-blue-50 rounded-lg">
-          <p className="text-sm text-gray-600">Avg Delay (All)</p>
-          <p className="text-xl font-bold text-blue-600">
-            {(
-              cashFlowGaps.reduce((sum, g) => sum + g.gapDays, 0) / cashFlowGaps.length
-            ).toFixed(1)} days
-          </p>
-        </div>
-      </div>
+            {/* Payment Timing Risk Card */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-600" />
+                Customer Payment Timing Risk
+              </h3>
+              {cashFlowGaps.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="text-center p-3 bg-amber-50 rounded-lg">
+                      <p className="text-sm text-gray-600">
+                        Total Invoices Tracked
+                      </p>
+                      <p className="text-xl font-bold text-amber-700">
+                        {cashFlowGaps.length}
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-red-50 rounded-lg">
+                      <p className="text-sm text-gray-600">
+                        Delayed Payments ({">"}30d)
+                      </p>
+                      <p className="text-xl font-bold text-red-600">
+                        {
+                          cashFlowGaps.filter((g) => g.status === "Delayed")
+                            .length
+                        }
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Avg Delay (All)</p>
+                      <p className="text-xl font-bold text-blue-600">
+                        {(
+                          cashFlowGaps.reduce((sum, g) => sum + g.gapDays, 0) /
+                          cashFlowGaps.length
+                        ).toFixed(1)}{" "}
+                        days
+                      </p>
+                    </div>
+                  </div>
 
-      <h4 className="font-semibold mb-3">Top Delayed Customers</h4>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-2 text-left">Customer</th>
-              <th className="px-3 py-2 text-left">Description</th>
-              <th className="px-3 py-2 text-right">Amount (LKR)</th>
-              <th className="px-3 py-2 text-right">Delay (Days)</th>
-              <th className="px-3 py-2 text-center">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {cashFlowGaps
-              .filter(g => g.status === "Delayed")
-              .sort((a, b) => b.gapDays - a.gapDays)
-              .slice(0, 5)
-              .map((gap) => (
-                <tr key={gap.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium">{gap.customer || "—"} </td>
-                  <td className="px-3 py-2">{gap.description}</td>
-                  <td className="px-3 py-2 text-right">LKR {formatLKR(gap.amount)}</td>
-                  <td className="px-3 py-2 text-right font-bold text-red-600">
-                    {gap.gapDays}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
-                      Delayed
-                    </span>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  ) : (
-    <div className="text-center py-8 text-gray-500">
-      <Clock className="w-10 h-10 mx-auto mb-2 text-gray-400" />
-      <p>No payment date data available.</p>
-      <p className="text-sm mt-1">
-        Add <strong>Payment Date</strong> to your Inflow records to track cash flow timing.
-      </p>
-    </div>
-  )}
-</div>
-<div className="bg-white rounded-lg shadow-md p-6">
-  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-    <BarChart3 className="w-5 h-5 text-green-600" />
-    Revenue & Profit Trends (Last 30 Days)
-  </h3>
-  {dailyData.length > 0 ? (
-    <>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={dailyData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-          <YAxis />
-          <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey="revenue"
-            stroke="#10b981"
-            strokeWidth={2}
-            name="Revenue"
-          />
-          <Line
-            type="monotone"
-            dataKey="profit"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            name="Profit"
-          />
-        </LineChart>
-      </ResponsiveContainer>
-      <div className="mt-4 grid grid-cols-3 gap-4">
-        <div className="text-center p-3 bg-green-50 rounded-lg">
-          <p className="text-sm text-gray-600">Avg Daily Revenue</p>
-          <p className="text-xl font-bold text-green-600">
-            LKR {formatLKR(dailyData.reduce((sum, d) => sum + d.revenue, 0) / dailyData.length)}
-          </p>
-        </div>
-        <div className="text-center p-3 bg-blue-50 rounded-lg">
-          <p className="text-sm text-gray-600">Avg Daily Profit</p>
-          <p className="text-xl font-bold text-blue-600">
-            LKR {formatLKR(dailyData.reduce((sum, d) => sum + d.profit, 0) / dailyData.length)}
-          </p>
-        </div>
-        <div className="text-center p-3 bg-purple-50 rounded-lg">
-          <p className="text-sm text-gray-600">Avg Margin</p>
-          <p className="text-xl font-bold text-purple-600">
-            {(
-              dailyData.reduce((sum, d) => sum + d.margin, 0) / dailyData.length
-            ).toFixed(1)}
-            %
-          </p>
-        </div>
-      </div>
-    </>
-  ) : (
-    <div className="text-center py-12 text-gray-500">
-      <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-      <p>Add records from the last 30 days to see trends</p>
-    </div>
-  )}
-</div>
+                  <h4 className="font-semibold mb-3">Top Delayed Customers</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Customer</th>
+                          <th className="px-3 py-2 text-left">Description</th>
+                          <th className="px-3 py-2 text-right">Amount (LKR)</th>
+                          <th className="px-3 py-2 text-right">Delay (Days)</th>
+                          <th className="px-3 py-2 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {cashFlowGaps
+                          .filter((g) => g.status === "Delayed")
+                          .sort((a, b) => b.gapDays - a.gapDays)
+                          .slice(0, 5)
+                          .map((gap) => (
+                            <tr key={gap.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 font-medium">
+                                {gap.customer || "—"}{" "}
+                              </td>
+                              <td className="px-3 py-2">{gap.description}</td>
+                              <td className="px-3 py-2 text-right">
+                                LKR {formatLKR(gap.amount)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-red-600">
+                                {gap.gapDays}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                                  Delayed
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Clock className="w-10 h-10 mx-auto mb-2 text-gray-400" />
+                  <p>No payment date data available.</p>
+                  <p className="text-sm mt-1">
+                    Add <strong>Payment Date</strong> to your Inflow records to
+                    track cash flow timing.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-green-600" />
+                Revenue & Profit Trends (Last 30 Days)
+              </h3>
+              {dailyData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={dailyData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value) => `LKR ${formatLKR(value)}`}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        name="Revenue"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="profit"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        name="Profit"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div className="mt-4 grid grid-cols-3 gap-4">
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Avg Daily Revenue</p>
+                      <p className="text-xl font-bold text-green-600">
+                        LKR{" "}
+                        {formatLKR(
+                          dailyData.reduce((sum, d) => sum + d.revenue, 0) /
+                            dailyData.length
+                        )}
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Avg Daily Profit</p>
+                      <p className="text-xl font-bold text-blue-600">
+                        LKR{" "}
+                        {formatLKR(
+                          dailyData.reduce((sum, d) => sum + d.profit, 0) /
+                            dailyData.length
+                        )}
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Avg Margin</p>
+                      <p className="text-xl font-bold text-purple-600">
+                        {(
+                          dailyData.reduce((sum, d) => sum + d.margin, 0) /
+                          dailyData.length
+                        ).toFixed(1)}
+                        %
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                  <p>Add records from the last 30 days to see trends</p>
+                </div>
+              )}
+            </div>
 
             {/* Cash Flow Forecast Chart */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4">
-                30-Day Cash Flow Forecast
-              </h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={projectedCash}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" />
-                  <YAxis />
-                  <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
-                  <Line
-                    type="monotone"
-                    dataKey="net"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+<div className="bg-white rounded-lg shadow-md p-6">
+  <h3 className="font-bold text-lg mb-4">
+    30-Day Cash Flow Forecast
+  </h3>
+  <ResponsiveContainer width="100%" height={250}>
+    <LineChart data={projectedCash}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis 
+        dataKey="date" 
+        tick={{ fontSize: 10 }}
+        tickFormatter={(date) => {
+          const d = new Date(date);
+          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }}
+      />
+      <YAxis />
+      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+      <Line
+        type="monotone"
+        dataKey="net"
+        stroke="#3b82f6"
+        strokeWidth={2}
+        name="Projected Net Cash"
+      />
+    </LineChart>
+  </ResponsiveContainer>
+</div>
           </div>
         )}
 
@@ -2220,10 +2288,10 @@ const dailyData = useMemo(() => {
                       const price = record.amount;
                       const cost = record.cost_per_unit || 0;
                       const total = price * qty;
-                      const margin =
-                        price > 0 && cost > 0
-                          ? ((price - cost) / price) * 100
-                          : null;
+const revenue = price * qty;
+const totalCost = cost * qty;
+const profit = revenue - totalCost;
+const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
                       return (
                         <tr key={record.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm text-gray-600">
@@ -2667,7 +2735,9 @@ const dailyData = useMemo(() => {
                 <p className="text-3xl font-bold text-red-600">
                   LKR {formatLKR(totals.inflowCost)}
                 </p>
-                <p className="text-black text-gray-500 mt-1">Cost of goods sold</p>
+                <p className="text-black text-gray-500 mt-1">
+                  Cost of goods sold
+                </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-sm text-gray-600 mb-2">Markup Ratio</h3>
@@ -3120,6 +3190,42 @@ const dailyData = useMemo(() => {
         {activeTab === "analytics" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-6">
+              {/* Strategic Opportunity Summary */}
+              <div className="bg-gradient-to-br from-rose-50 to-red-100 border-2 border-red-300 rounded-lg p-5">
+                <h3 className="font-bold text-red-900 mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  Top Strategic Risks & Opportunities
+                </h3>
+                <ul className="space-y-2 text-sm text-red-800">
+                  {recordsWithStrategicScore
+                    .filter((r) => r.strategicScore < 0)
+                    .sort((a, b) => a.strategicScore - b.strategicScore)
+                    .slice(0, 3)
+                    .map((r, idx) => (
+                      <li key={r.id} className="flex items-start gap-2">
+                        <span className="font-mono bg-red-200 text-red-900 px-2 py-0.5 rounded">
+                          {r.strategicScore.toFixed(1)}
+                        </span>
+                        <span>
+                          <strong>{r.description}</strong> ({r.category}) on{" "}
+                          {r.date} —
+                          {r.category === "Refund"
+                            ? " High customer dissatisfaction risk"
+                            : r.category === "Logistics"
+                            ? " Above-average logistics cost"
+                            : "Low strategic impact"}
+                        </span>
+                      </li>
+                    ))}
+                  {recordsWithStrategicScore.filter((r) => r.strategicScore < 0)
+                    .length === 0 && (
+                    <li className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      No high-risk transactions detected in the selected period.
+                    </li>
+                  )}
+                </ul>
+              </div>
               <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
                 <TrendingUp className="w-7 h-7" />
                 Strategic Business Analytics
@@ -3258,10 +3364,10 @@ const dailyData = useMemo(() => {
             </div>
             {/* Monthly Trend Analysis */}
             <div className="bg-white rounded-lg shadow-md p-6">
-<h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-  <BarChart3 className="w-5 h-5 text-green-600" />
-  Revenue & Profit Trends (This Month)
-</h3>
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-green-600" />
+                Revenue & Profit Trends (This Month)
+              </h3>
               {monthlyData.length > 0 ? (
                 <>
                   <ResponsiveContainer width="100%" height={300}>
