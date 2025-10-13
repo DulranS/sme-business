@@ -496,12 +496,12 @@ export default function BookkeepingApp() {
   );
 
   // --- Auto-trigger Strategy Modal if data is sparse ---
-  useEffect(() => {
-    if (dataCompletenessScore < 60 && !showStrategyModal) {
-      const timer = setTimeout(() => setShowStrategyModal(true), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [dataCompletenessScore]);
+  // useEffect(() => {
+  //   if (dataCompletenessScore < 60 && !showStrategyModal) {
+  //     const timer = setTimeout(() => setShowStrategyModal(true), 3000);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [dataCompletenessScore]);
 
   // --- Handle Form Submit ---
   const handleSubmit = async () => {
