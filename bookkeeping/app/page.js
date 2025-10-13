@@ -263,12 +263,12 @@ export default function BookkeepingApp() {
       const key = r.description;
       const qty = parseFloat(r.quantity) || 0;
       const cost = parseFloat(r.cost_per_unit) || 0;
-      if (!key || qty <= 0 || cost <= 0) return;
+if (!key || cost <= 0) return;
       if (!map[key]) {
         map[key] = { totalCost: 0, totalQty: 0 };
       }
-      map[key].totalCost += cost * qty;
-      map[key].totalQty += qty;
+map[key].totalCost += cost * qty; // qty can be negative
+map[key].totalQty += qty;
     });
     Object.keys(map).forEach((key) => {
       map[key] =
@@ -299,8 +299,8 @@ export default function BookkeepingApp() {
         if (r.category === "Overhead") acc.overhead += totalAmount;
         if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
         if (r.category === "Loan Received") acc.loanReceived += totalAmount;
-  if (r.category === "Logistics") acc.logistics += totalAmount;
-  if (r.category === "Refund") acc.refund += totalAmount;
+        if (r.category === "Logistics") acc.logistics += totalAmount;
+        if (r.category === "Refund") acc.refund += totalAmount;
       }
       return acc;
     },
@@ -328,11 +328,10 @@ export default function BookkeepingApp() {
     operatingProfit + netLoanImpact - totals.logistics - totals.refund;
 
   // ✅ Loan Coverage Logic (Rolling 30 days)
-const today = new Date();
-const thirtyDaysAgo = new Date();
-thirtyDaysAgo.setDate(today.getDate() - 30);
-  const rollingInflow = filteredRecords
-    .filter(
+  const today = new Date();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+  const rollingInflow =  records.filter(
       (r) =>
         r.category === "Inflow" &&
         new Date(r.date) >= thirtyDaysAgo &&
@@ -582,29 +581,28 @@ thirtyDaysAgo.setDate(today.getDate() - 30);
     });
   };
 
-const handleEdit = (index) => {
-  const record = recordsWithStrategicScore[index];
-  setFormData({
-    date: record.date,
-    paymentDate: record.payment_date || "",
-    description: record.description,
-    category: record.category,
-    amount: record.amount.toString(),
-    costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
-    quantity: record.quantity ? record.quantity.toString() : "",
-    notes: record.notes || "",
-    customer: record.customer || "",
-    project: record.project || "",
-    tags: record.tags || "",
-    marketPrice: record.market_price ? record.market_price.toString() : "",
-    suppliedBy: record.supplied_by || "", // ✅ FIXED: use record.supplied_by
-  });
-  setIsEditing(record.id);
-  setActiveTab("overview");
-  window.scrollTo({ top: 0, behavior: "smooth" });
-};
+  const handleEdit = (index) => {
+    const record = recordsWithStrategicScore[index];
+    setFormData({
+      date: record.date,
+      paymentDate: record.payment_date || "",
+      description: record.description,
+      category: record.category,
+      amount: record.amount.toString(),
+      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
+      quantity: record.quantity ? record.quantity.toString() : "",
+      notes: record.notes || "",
+      customer: record.customer || "",
+      project: record.project || "",
+      tags: record.tags || "",
+      marketPrice: record.market_price ? record.market_price.toString() : "",
+      suppliedBy: record.supplied_by || "", // ✅ FIXED: use record.supplied_by
+    });
+    setIsEditing(record.id);
+    setActiveTab("overview");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-  
   const handleCancel = () => {
     setIsEditing(null);
     resetForm();
@@ -733,7 +731,7 @@ const handleEdit = (index) => {
       const revenue = price * qty;
       const totalCost = cost * qty;
       const profit = revenue - totalCost;
-      const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : "0";
+      const margin = price > 0 ? ((price - cost) / price) * 100 : null;
       return [
         r.date,
         `"${r.description}"`,
@@ -1069,12 +1067,7 @@ const handleEdit = (index) => {
           (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
           (lastDate.getMonth() - firstDate.getMonth()) +
           1;
-        const clv =
-          monthsActive > 0
-            ? (data.revenue / monthsActive) *
-              12 *
-              (data.revenue > 0 ? (data.revenue - data.cost) / data.revenue : 0)
-            : 0;
+const clv = (data.revenue / monthsActive) * 12 * ((data.revenue - data.cost) / data.revenue);
         return {
           name,
           revenue: data.revenue,
@@ -1186,8 +1179,8 @@ const handleEdit = (index) => {
     return productMargins
       .filter((p) => p.cost > 0)
       .map((p) => {
-        const targetMargin = 50;
-        const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
+const targetMargin = 50;
+const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         const priceIncrease = recommendedPrice - p.avgPrice;
         const percentIncrease = (priceIncrease / p.avgPrice) * 100;
         return {
@@ -1296,24 +1289,32 @@ const handleEdit = (index) => {
   // --- Cash Flow Forecast (30-day) ---
   const forecastDays = 30;
   const avgDailyInflow = rollingInflow / 30;
+  const outflowCategories = [
+    "Outflow",
+    "Overhead",
+    "Reinvestment",
+    "Loan Payment",
+    "Logistics",
+    "Refund",
+  ];
   const recentOutflow = filteredRecords
     .filter(
       (r) =>
-        ["Outflow", "Overhead", "Reinvestment"].includes(r.category) &&
+        outflowCategories.includes(r.category) &&
         new Date(r.date) >= thirtyDaysAgo &&
         new Date(r.date) <= today
     )
     .reduce((sum, r) => sum + parseFloat(r.amount), 0);
   const avgDailyOutflow = recentOutflow / 30;
-// Compute 30-day net cash position (inflow - all outflows)
-// Forecast shows CUMULATIVE NET CASH FLOW over next 30 days (starting from 0)
-const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
-  const date = new Date();
-  date.setDate(today.getDate() + i + 1);
-  const isoDate = date.toISOString().split("T")[0];
-  const net = (avgDailyInflow - avgDailyOutflow) * (i + 1);
-  return { date: isoDate, net };
-});
+  // Compute 30-day net cash position (inflow - all outflows)
+  // Forecast shows CUMULATIVE NET CASH FLOW over next 30 days (starting from 0)
+  const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
+    const date = new Date();
+    date.setDate(today.getDate() + i + 1);
+    const isoDate = date.toISOString().split("T")[0];
+    const net = (avgDailyInflow - avgDailyOutflow) * (i + 1);
+    return { date: isoDate, net };
+  });
 
   if (loading) {
     return (
@@ -1908,33 +1909,36 @@ const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
             </div>
 
             {/* Cash Flow Forecast Chart */}
-<div className="bg-white rounded-lg shadow-md p-6">
-  <h3 className="font-bold text-lg mb-4">
-    30-Day Cash Flow Forecast
-  </h3>
-  <ResponsiveContainer width="100%" height={250}>
-    <LineChart data={projectedCash}>
-      <CartesianGrid strokeDasharray="3 3" />
-      <XAxis 
-        dataKey="date" 
-        tick={{ fontSize: 10 }}
-        tickFormatter={(date) => {
-          const d = new Date(date);
-          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        }}
-      />
-      <YAxis />
-      <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
-      <Line
-        type="monotone"
-        dataKey="net"
-        stroke="#3b82f6"
-        strokeWidth={2}
-        name="Projected Net Cash"
-      />
-    </LineChart>
-  </ResponsiveContainer>
-</div>
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="font-bold text-lg mb-4">
+                30-Day Cash Flow Forecast
+              </h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={projectedCash}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(date) => {
+                      const d = new Date(date);
+                      return d.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      });
+                    }}
+                  />
+                  <YAxis />
+                  <Tooltip formatter={(value) => `LKR ${formatLKR(value)}`} />
+                  <Line
+                    type="monotone"
+                    dataKey="net"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    name="Projected Net Cash"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )}
 
@@ -2288,10 +2292,10 @@ const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
                       const price = record.amount;
                       const cost = record.cost_per_unit || 0;
                       const total = price * qty;
-const revenue = price * qty;
-const totalCost = cost * qty;
-const profit = revenue - totalCost;
-const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+                      const revenue = price * qty;
+                      const totalCost = cost * qty;
+                      const profit = revenue - totalCost;
+                      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
                       return (
                         <tr key={record.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm text-gray-600">
