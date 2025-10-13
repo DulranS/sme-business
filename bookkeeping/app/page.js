@@ -360,26 +360,29 @@ export default function BookkeepingApp() {
       : 0;
 
   // --- Supplier Analysis ---
-  const supplierAnalysis = useMemo(() => {
-    const suppliers = {};
-    filteredRecords.forEach((r) => {
-      if (r.supplied_by && r.category !== "Inflow") {
-        const cost = parseFloat(r.amount) || 0;
-        if (!suppliers[r.supplied_by]) {
-          suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
-        }
-        suppliers[r.supplied_by].cost += cost;
-        suppliers[r.supplied_by].transactions += 1;
+const supplierAnalysis = useMemo(() => {
+  const suppliers = {};
+  filteredRecords.forEach((r) => {
+    if (r.supplied_by && r.category !== "Inflow") {
+      const amount = parseFloat(r.amount) || 0;
+      const qty = parseFloat(r.quantity) || 1;
+      const totalCost = amount * qty; // 👈 critical fix
+
+      if (!suppliers[r.supplied_by]) {
+        suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
       }
-    });
-    return Object.entries(suppliers)
-      .map(([name, data]) => ({
-        name,
-        cost: data.cost,
-        transactions: data.transactions,
-      }))
-      .sort((a, b) => b.cost - a.cost);
-  }, [filteredRecords]);
+      suppliers[r.supplied_by].cost += totalCost;
+      suppliers[r.supplied_by].transactions += 1;
+    }
+  });
+  return Object.entries(suppliers)
+    .map(([name, data]) => ({
+      name,
+      cost: data.cost,
+      transactions: data.transactions,
+    }))
+    .sort((a, b) => b.cost - a.cost);
+}, [filteredRecords]);
 
   // --- Strategic Scoring (Enhanced) ---
   const recordsWithStrategicScore = useMemo(() => {
@@ -586,7 +589,7 @@ export default function BookkeepingApp() {
       project: record.project || "",
       tags: record.tags || "",
       marketPrice: record.market_price ? record.market_price.toString() : "",
-      suppliedBy: record.supplied_by || "",
+      supplied_by: formData.suppliedBy || null,
     });
     setIsEditing(record.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
