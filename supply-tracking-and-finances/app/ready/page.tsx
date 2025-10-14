@@ -411,6 +411,13 @@ const CompletedOrdersPage: React.FC = () => {
           <Download className="w-4 h-4" />
           Export CSV
         </button>
+         <Link
+          href={"/ship"}
+          className="flex items-center gap-1 px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm transition"
+        >
+          <Package className="w-4 h-4" />
+          Visit Ship Page
+        </Link>
         <Link
           href={"/admin"}
           className="flex items-center gap-1 px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm transition"
