@@ -19,6 +19,7 @@ import {
   Loader,
   Settings,
   RefreshCw,
+  Tag,
 } from 'lucide-react';
 
 // TypeScript Types and Interfaces
@@ -43,6 +44,7 @@ interface Order {
   supplier_price?: string;
   supplier_description?: string;
   customer_price?: string;
+  category: string; // New category field
 }
 
 interface OrderFormData {
@@ -54,6 +56,7 @@ interface OrderFormData {
   moq: string;
   urgency: 'low' | 'medium' | 'high';
   images: OrderImage[];
+  category: string; // New category field
 }
 
 interface SupabaseResponse<T> {
@@ -63,6 +66,18 @@ interface SupabaseResponse<T> {
     details?: string;
   };
 }
+
+// Predefined categories
+const CATEGORIES = [
+  'Electronics',
+  'Furniture',
+  'Apparel',
+  'Food & Beverage',
+  'Industrial Equipment',
+  'Medical Supplies',
+  'Office Supplies',
+  'Other'
+];
 
 // Supabase configuration
 const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -142,6 +157,7 @@ const OrderManagementApp: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All'); // For admin filtering
 
   const [formData, setFormData] = useState<OrderFormData>({
     customer_name: '',
@@ -152,6 +168,7 @@ const OrderManagementApp: React.FC = () => {
     moq: '',
     urgency: 'medium',
     images: [],
+    category: '', // Initialize category
   });
 
   const loadOrders = async (): Promise<void> => {
@@ -178,6 +195,7 @@ const OrderManagementApp: React.FC = () => {
           supplier_name: '',
           created_at: '2024-01-15T10:00:00Z',
           urgency: 'medium',
+          category: 'Furniture', // Added category to demo data
         },
       ];
       setOrders(demoOrders);
@@ -226,7 +244,8 @@ const OrderManagementApp: React.FC = () => {
       !formData.phone ||
       !formData.location ||
       !formData.description ||
-      !formData.moq
+      !formData.moq ||
+      !formData.category // Added category validation
     ) {
       alert('Please fill in all required fields');
       return;
@@ -249,6 +268,7 @@ const OrderManagementApp: React.FC = () => {
         supplier_description: '',
         supplier_name: '',
         customer_price: '',
+        category: formData.category, // Include category in submission
       };
 
       await supabase.from('orders').insert(orderData).execute();
@@ -262,6 +282,7 @@ const OrderManagementApp: React.FC = () => {
         moq: '',
         urgency: 'medium',
         images: [],
+        category: '', // Reset category
       });
 
       alert('Order submitted successfully! We will get back to you soon.');
@@ -362,6 +383,7 @@ const OrderManagementApp: React.FC = () => {
       'MOQ',
       'Status',
       'Urgency',
+      'Category', // Added category to CSV
       'Supplier Price',
       'Supplier Description',
       'Created Date',
@@ -378,6 +400,7 @@ const OrderManagementApp: React.FC = () => {
         `"${order.moq}"`,
         order.status,
         order.urgency,
+        `"${order.category}"`, // Include category in CSV
         order.supplier_price || 'N/A',
         `"${(order.supplier_description || '').replace(/"/g, '""')}"`,
         new Date(order.created_at).toLocaleDateString(),
@@ -429,6 +452,11 @@ const OrderManagementApp: React.FC = () => {
       return [];
     }
   };
+
+  // Filter orders by category for admin panel
+  const filteredOrders = selectedCategory === 'All' 
+    ? orders 
+    : orders.filter(order => order.category === selectedCategory);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -528,19 +556,38 @@ const OrderManagementApp: React.FC = () => {
             {/* Order Details */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h3>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Minimum Order Quantity (MOQ) *
-                </label>
-                <input
-                  type="text"
-                  name="moq"
-                  value={formData.moq}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 100 units, 50 pieces"
-                  required
-                />
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Minimum Order Quantity (MOQ) *
+                  </label>
+                  <input
+                    type="text"
+                    name="moq"
+                    value={formData.moq}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 100 units, 50 pieces"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+                  <select
+                    name="category"
+                    value={formData.category}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    <option value="">Select a category</option>
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -625,6 +672,112 @@ const OrderManagementApp: React.FC = () => {
                 <span>Submit Order</span>
               )}
             </button>
+          </div>
+        </div>
+
+        {/* Admin Panel Section (for demonstration) */}
+        <div className="mt-12 bg-white rounded-2xl shadow-lg overflow-hidden">
+          <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 py-6">
+            <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
+          </div>
+          
+          <div className="p-6">
+            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
+              <div className="flex items-center space-x-2">
+                <Tag className="w-5 h-5 text-gray-600" />
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="All">All Categories</option>
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <button
+                onClick={exportToCSV}
+                className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Loader className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                No orders found for the selected category
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {filteredOrders.map((order) => (
+                  <div key={order.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex flex-wrap justify-between items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-bold text-lg truncate">{order.customer_name}</h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                            {getStatusIcon(order.status)}
+                            <span className="ml-1 capitalize">{order.status}</span>
+                          </span>
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
+                          <div className="flex items-center gap-1">
+                            <Package className="w-4 h-4" />
+                            <span>{order.moq}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Tag className="w-4 h-4" />
+                            <span>{order.category}</span>
+                          </div>
+                          <div className={`px-2 py-1 rounded-full text-xs ${getUrgencyColor(order.urgency)}`}>
+                            {order.urgency.charAt(0).toUpperCase() + order.urgency.slice(1)} Priority
+                          </div>
+                        </div>
+                        
+                        <p className="text-gray-800 mb-2">{order.description}</p>
+                        <div className="text-sm text-gray-600">
+                          <div className="flex items-center gap-1 mb-1">
+                            <MapPin className="w-4 h-4" />
+                            <span>{order.location}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Phone className="w-4 h-4" />
+                            <span>{order.phone}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span>View</span>
+                        </button>
+                        <button
+                          onClick={() => deleteOrder(order.id)}
+                          className="flex items-center gap-1 text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
