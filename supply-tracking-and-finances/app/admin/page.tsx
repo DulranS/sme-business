@@ -203,7 +203,13 @@ class SupabaseClient {
     };
   }
 }
-
+const parseCategories = (categoryString?: string): string[] => {
+  if (!categoryString) return [];
+  return categoryString
+    .split(",")
+    .map((cat) => cat.trim())
+    .filter(Boolean);
+};
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
@@ -596,11 +602,14 @@ const OrderCard: React.FC<{
         </span>
       </div>
       <p className="text-sm text-gray-600 mb-1">{order.moq}</p>
-      {order.category && (
-        <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800">
-          {order.category}
-        </span>
-      )}
+{parseCategories(order.category).map((cat, idx) => (
+  <span
+    key={idx}
+    className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800 mr-1"
+  >
+    {cat}
+  </span>
+))}
       <p className="text-xs text-gray-500 mt-1">
         {new Date(order.created_at).toLocaleDateString()} • {daysSince}d ago
       </p>
@@ -1513,27 +1522,30 @@ const OrderManagementApp: React.FC = () => {
   const [filter, setFilter] = useState<"all" | "low-margin" | "aging" | "refund">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  const loadOrders = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await supabase.from("orders").select("*").execute();
-      const urgencyPriority = { high: 3, medium: 2, low: 1 };
-      const sorted = data.sort((a, b) => {
-        const urgencyDiff = urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
-        if (urgencyDiff !== 0) return urgencyDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-      setOrders(sorted);
-      const cats = Array.from(new Set(sorted.map(o => o.category).filter(Boolean))) as string[];
-      setAvailableCategories(cats);
-    } catch (error) {
-      console.error("Failed to load orders:", error);
-      setOrders([]);
-      alert("Failed to load orders. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+const loadOrders = useCallback(async () => {
+  setLoading(true);
+  try {
+    const data = await supabase.from("orders").select("*").execute();
+    const urgencyPriority = { high: 3, medium: 2, low: 1 };
+    const sorted = data.sort((a, b) => {
+      const urgencyDiff = urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
+      if (urgencyDiff !== 0) return urgencyDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    setOrders(sorted);
+
+    // ✅ Extract all unique categories from comma-separated strings
+    const allCats = sorted.flatMap((o) => parseCategories(o.category));
+    const uniqueCats = Array.from(new Set(allCats));
+    setAvailableCategories(uniqueCats);
+  } catch (error) {
+    console.error("Failed to load orders:", error);
+    setOrders([]);
+    alert("Failed to load orders. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     loadOrders();
@@ -1542,7 +1554,12 @@ const OrderManagementApp: React.FC = () => {
   const financialSummary = calculateFinancials(orders);
 
   const filteredOrders = orders.filter((order) => {
-    if (categoryFilter !== "all" && order.category !== categoryFilter) return false;
+      const orderCategories = parseCategories(order.category);
+
+  // Category filter: match if "all" OR if selected category is in order's categories
+  if (categoryFilter !== "all" && !orderCategories.includes(categoryFilter)) {
+    return false;
+  }
     if (filter === "low-margin") {
       const margin =
         order.customer_price && order.supplier_price
@@ -2306,11 +2323,20 @@ const OrderManagementApp: React.FC = () => {
                     </button>
                   </div>
                 ) : (
-                  <p className="text-gray-800 mt-2">
-                    {selectedOrder.category || (
-                      <span className="text-gray-500 italic">Not assigned</span>
-                    )}
-                  </p>
+<div className="mt-2 flex flex-wrap gap-2">
+  {parseCategories(selectedOrder.category).length > 0 ? (
+    parseCategories(selectedOrder.category).map((cat, idx) => (
+      <span
+        key={idx}
+        className="text-sm px-2 py-1 rounded-full bg-indigo-100 text-indigo-800"
+      >
+        {cat}
+      </span>
+    ))
+  ) : (
+    <span className="text-gray-500 italic">Not assigned</span>
+  )}
+</div>
                 )}
               </div>
 

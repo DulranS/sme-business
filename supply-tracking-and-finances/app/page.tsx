@@ -572,21 +572,16 @@ const OrderManagementApp: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
-                  <select
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Categories *</label>
+                  <input
+                    type="text"
                     name="category"
                     value={formData.category}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter categories separated by commas (e.g., Electronics, Furniture)"
                     required
-                  >
-                    <option value="">Select a category</option>
-                    {CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 
@@ -676,7 +671,7 @@ const OrderManagementApp: React.FC = () => {
         </div>
 
         {/* Admin Panel Section (for demonstration) */}
-        <div className="mt-12 bg-white rounded-2xl shadow-lg overflow-hidden">
+        {/* <div className="mt-12 bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 py-6">
             <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
           </div>
@@ -779,7 +774,7 @@ const OrderManagementApp: React.FC = () => {
               </div>
             )}
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );
