@@ -211,11 +211,11 @@ export default function BookkeepingApp() {
 const loadRecords = async () => {
   try {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("bookkeeping_records")
-      .select("*")
-      .eq("approved", true) // 👈 only load approved records
-      .order("date", { ascending: false });
+const { data, error } = await supabase
+  .from("bookkeeping_records")
+  .select("*")
+  // .eq("approved", true) // 👈 THIS FILTER IS BREAKING EVERYTHING
+  .order("date", { ascending: false });
     if (error) throw error;
     setRecords(data || []);
   } catch (error) {
@@ -539,7 +539,7 @@ const handleSubmit = async () => {
         ? parseFloat(formData.marketPrice)
         : null,
       supplied_by: formData.suppliedBy || null,
-      approved: false, // 👈 NEW: mark as pending approval
+      approved: true, // 👈 NEW: mark as pending approval
     };
 
     if (isEditing !== null) {
