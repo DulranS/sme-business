@@ -29,6 +29,7 @@ interface Order {
   supplier_price?: string;
   supplier_description?: string;
   customer_price?: string;
+  shipped_quantity?: number; // 👈 NEW: tracks how much has been shipped
 
   // Optional: future logistics fields (for consistency)
   shipping_carrier?: string;
@@ -101,7 +102,7 @@ class SupabaseClient {
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
-// Discord Webhook (Only for NEW orders)
+// Discord Webhook (Only for NEW completed orders)
 // ------------------------
 const sendDiscordWebhook = async (order: Order) => {
   if (!DISCORD_WEBHOOK_URL) return;
@@ -156,15 +157,15 @@ const extractNumericValue = (priceString?: string): number => {
 };
 
 // ------------------------
-// CompletedOrdersPage Component
+// Helper: Extract Numeric MOQ
 // ------------------------
-const CompletedOrdersPage: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(new Set());
+const extractMOQNumber = (moq: string): number => {
+  const match = moq.match(/\d+/);
+  return match ? parseInt(match[0], 10) : 0;
+};
+
 // ------------------------
-// Image Gallery Component (for Completed Orders)
+// Image Gallery Component
 // ------------------------
 const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
   if (images.length === 0) return null;
@@ -183,7 +184,7 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
             <img
               src={image.url}
               alt={image.name || `Image ${i + 1}`}
-              className=" h-80 object-cover rounded border cursor-pointer hover:opacity-80"
+              className="h-80 object-cover rounded border cursor-pointer hover:opacity-80"
               onClick={() => openImage(image.url)}
             />
             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded transition opacity-0 group-hover:opacity-100 flex items-center justify-center">
@@ -195,6 +196,17 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
     </div>
   );
 };
+
+// ------------------------
+// CompletedOrdersPage Component
+// ------------------------
+const CompletedOrdersPage: React.FC = () => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(new Set());
+  const [shippingQuantities, setShippingQuantities] = useState<Record<number, number>>({});
+
   // Fetch completed orders on mount
   useEffect(() => {
     const fetchCompletedOrders = async () => {
@@ -226,24 +238,68 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
     fetchCompletedOrders();
   }, []);
 
-  // Mark as shipping
-  const markAsShipping = async (orderId: number) => {
-    if (!confirm("Mark this order as shipping? It will move to the shipping queue.")) return;
+  // Helper: Get remaining quantity to ship
+  const getRemaining = (order: Order): number => {
+    const total = extractMOQNumber(order.moq);
+    const shipped = order.shipped_quantity || 0;
+    return Math.max(0, total - shipped);
+  };
+
+  // Handle quantity input change
+  const handleQuantityChange = (orderId: number, value: string) => {
+    const num = value === "" ? 0 : parseInt(value, 10);
+    if (!isNaN(num)) {
+      setShippingQuantities((prev) => ({ ...prev, [orderId]: num }));
+    }
+  };
+
+  // Submit shipping quantity
+  const submitShipping = async (order: Order) => {
+    const totalMOQ = extractMOQNumber(order.moq);
+    const currentShipped = order.shipped_quantity || 0;
+    const toShip = shippingQuantities[order.id] || 0;
+    const newShipped = currentShipped + toShip;
+
+    if (toShip <= 0) {
+      alert("Please enter a valid quantity to ship.");
+      return;
+    }
+
+    if (newShipped > totalMOQ) {
+      if (
+        !confirm(
+          `Warning: You're shipping ${newShipped}, but only ${totalMOQ} were ordered. Proceed anyway?`
+        )
+      ) {
+        return;
+      }
+    }
 
     try {
-      const order = orders.find((o) => o.id === orderId);
-      if (!order) throw new Error("Order not found");
+      await supabase
+        .from("orders")
+        .update({ status: "ship", shipped_quantity: newShipped })
+        .eq("id", order.id)
+        .execute();
 
-      await supabase.from("orders").update({ status: "ship" }).eq("id", orderId).execute();
+      // Optimistically update UI
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === order.id
+            ? { ...o, shipped_quantity: newShipped, status: "ship" }
+            : o
+        )
+      );
 
-      // Optimistically remove from list
-      setOrders((prev) => prev.filter((o) => o.id !== orderId));
-
-      // Optional: notify shipping team
-      // await sendDiscordWebhook({ ...order, status: "ship" });
+      // Clear input
+      setShippingQuantities((prev) => {
+        const newQty = { ...prev };
+        delete newQty[order.id];
+        return newQty;
+      });
     } catch (err) {
-      console.error("Update failed:", err);
-      alert("Failed to update order status. Please try again.");
+      console.error("Shipping update failed:", err);
+      alert("Failed to update shipping quantity. Please try again.");
     }
   };
 
@@ -264,6 +320,8 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
       "Margin %",
       "Urgency",
       "Completed Date",
+      "Shipped Quantity",
+      "Remaining",
     ];
 
     const csvRows = orders.map((o) => {
@@ -271,6 +329,10 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
       const supp = extractNumericValue(o.supplier_price);
       const profit = cust - supp;
       const margin = cust > 0 ? (profit / cust) * 100 : 0;
+      const totalMOQ = extractMOQNumber(o.moq);
+      const shipped = o.shipped_quantity || 0;
+      const remaining = totalMOQ - shipped;
+
       return [
         o.id,
         `"${o.customer_name.replace(/"/g, '""')}"`,
@@ -284,6 +346,8 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
         margin > 0 ? margin.toFixed(2) : "N/A",
         o.urgency,
         new Date(o.created_at).toISOString().split("T")[0],
+        shipped,
+        remaining,
       ].join(",");
     });
 
@@ -321,11 +385,15 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
         <CheckCircle className="w-16 h-16 text-green-400 mb-3" />
         <h2 className="text-lg font-bold text-green-800 mb-1">No Completed Orders</h2>
         <p className="text-green-600">Completed orders will appear here.</p>
-         <br/>
-        <b><Link href={"/admin"}>Visit Admin Panel</Link></b>
-        <br/>
-        <h1>OR</h1> <br/>
-        <b><Link href={"/ship"}>Visit Shipped Panel</Link></b>
+        <br />
+        <b>
+          <Link href={"/admin"}>Visit Admin Panel</Link>
+        </b>
+        <br />
+        <h1>OR</h1> <br />
+        <b>
+          <Link href={"/ship"}>Visit Shipped Panel</Link>
+        </b>
       </div>
     );
 
@@ -343,6 +411,13 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
           <Download className="w-4 h-4" />
           Export CSV
         </button>
+        <Link
+          href={"/admin"}
+          className="flex items-center gap-1 px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm transition"
+        >
+          <Package className="w-4 h-4" />
+          Back to Admin
+        </Link>
       </div>
 
       <div className="space-y-4">
@@ -354,6 +429,8 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
           const daysSince = Math.ceil(
             (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24)
           );
+          const totalMOQ = extractMOQNumber(order.moq);
+          const remaining = getRemaining(order);
 
           return (
             <div
@@ -369,7 +446,9 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
                     <h2 className="text-sm font-bold text-green-800 truncate">
                       #{order.id} – {order.customer_name}
                     </h2>
-                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{order.description}</p>
+                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                      {order.description}
+                    </p>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs">
                       <div>
@@ -386,30 +465,43 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
                       </div>
                       <div>
                         <span className="font-medium">❗ Urgency:</span>{" "}
-                        <span className={`px-2 py-0.5 rounded text-xs ${
-                          order.urgency === "high" ? "bg-red-100 text-red-800" :
-                          order.urgency === "medium" ? "bg-yellow-100 text-yellow-800" :
-                          "bg-green-100 text-green-800"
-                        }`}>
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            order.urgency === "high"
+                              ? "bg-red-100 text-red-800"
+                              : order.urgency === "medium"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-green-100 text-green-800"
+                          }`}
+                        >
                           {order.urgency}
                         </span>
                       </div>
                       <div>
                         <span className="font-medium">💰 Revenue:</span>{" "}
-                        <span className="text-green-700 font-medium">{order.customer_price || "N/A"}</span>
+                        <span className="text-green-700 font-medium">
+                          {order.customer_price || "N/A"}
+                        </span>
                       </div>
                       {profit > 0 && (
                         <>
                           <div>
                             <span className="font-medium">📊 Profit:</span>{" "}
-                            <span className="text-blue-700 font-medium">+{profit.toFixed(0)}</span>
+                            <span className="text-blue-700 font-medium">
+                              +{profit.toFixed(0)}
+                            </span>
                           </div>
                           <div>
                             <span className="font-medium">📈 Margin:</span>{" "}
-                            <span className={`font-medium ${
-                              margin >= 30 ? "text-green-700" :
-                              margin >= 20 ? "text-yellow-700" : "text-red-700"
-                            }`}>
+                            <span
+                              className={`font-medium ${
+                                margin >= 30
+                                  ? "text-green-700"
+                                  : margin >= 20
+                                  ? "text-yellow-700"
+                                  : "text-red-700"
+                              }`}
+                            >
                               {margin.toFixed(1)}%
                             </span>
                           </div>
@@ -419,18 +511,47 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
                         <span className="font-medium">🕒 Age:</span>{" "}
                         <span className="text-gray-800">{daysSince}d</span>
                       </div>
+                      {/* Shipped/Remaining Summary */}
+                      <div>
+                        <span className="font-medium">🚚 Shipped:</span>{" "}
+                        <span className="text-blue-700">
+                          {order.shipped_quantity || 0}
+                        </span>
+                        {remaining > 0 && (
+                          <span className="text-yellow-600 ml-1">
+                            ({remaining} left)
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <ImageGallery images={parseImages(order.images)} />
                   </div>
                 </div>
+
+                {/* Shipping Control */}
                 <div className="ml-4 flex flex-col justify-start space-y-2">
-                  <button
-                    onClick={() => markAsShipping(order.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                  >
-                    <Truck className="w-3 h-3" />
-                    Ship Now
-                  </button>
+                  <div className="text-xs text-gray-600">
+                    <span className="font-medium">Ship Qty:</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max={remaining}
+                      value={shippingQuantities[order.id] ?? ""}
+                      onChange={(e) => handleQuantityChange(order.id, e.target.value)}
+                      className="w-20 px-2 py-1 text-xs border border-gray-300 rounded text-center"
+                      placeholder="0"
+                    />
+                    <button
+                      onClick={() => submitShipping(order)}
+                      disabled={!shippingQuantities[order.id]}
+                      className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      <Truck className="w-3 h-3" />
+                      Ship
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

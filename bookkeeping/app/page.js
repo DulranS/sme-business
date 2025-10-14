@@ -208,22 +208,26 @@ export default function BookkeepingApp() {
     loadBudgets();
   }, []);
 
-  const loadRecords = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("bookkeeping_records")
-        .select("*")
-        .order("date", { ascending: false });
-      if (error) throw error;
-      setRecords(data || []);
-    } catch (error) {
-      console.error("Error loading records:", error);
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+const loadRecords = async () => {
+  try {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("bookkeeping_records")
+      .select("*")
+      .eq("approved", true) // 👈 only load approved records
+      .order("date", { ascending: false });
+    if (error) throw error;
+    setRecords(data || []);
+  } catch (error) {
+    console.error("Error loading records:", error);
+    setRecords([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// In admin panel, when clicking "Approve"
+
 
   const loadBudgets = async () => {
     try {
@@ -514,54 +518,56 @@ map[key].totalQty += qty;
   // }, [dataCompletenessScore]);
 
   // --- Handle Form Submit ---
-  const handleSubmit = async () => {
-    if (!formData.description || !formData.amount) return;
-    try {
-      const recordData = {
-        date: formData.date,
-        payment_date: formData.paymentDate || formData.date,
-        description: formData.description,
-        category: formData.category,
-        amount: parseFloat(formData.amount),
-        cost_per_unit: formData.costPerUnit
-          ? parseFloat(formData.costPerUnit)
-          : null,
-        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
-        notes: formData.notes,
-        customer: formData.customer || null,
-        project: formData.project || null,
-        tags: formData.tags || null,
-        market_price: formData.marketPrice
-          ? parseFloat(formData.marketPrice)
-          : null,
-        supplied_by: formData.suppliedBy || null,
-      };
-      if (isEditing !== null) {
-        const { error } = await supabase
-          .from("bookkeeping_records")
-          .update(recordData)
-          .eq("id", isEditing);
-        if (error) throw error;
-        setRecords(
-          records.map((r) =>
-            r.id === isEditing ? { ...recordData, id: r.id } : r
-          )
-        );
-        setIsEditing(null);
-      } else {
-        const { data, error } = await supabase
-          .from("bookkeeping_records")
-          .insert([recordData])
-          .select();
-        if (error) throw error;
-        setRecords([data[0], ...records]);
-      }
-      resetForm();
-    } catch (error) {
-      console.error("Error saving record:", error);
-      alert("Failed to save record. Please check your Supabase configuration.");
+const handleSubmit = async () => {
+  if (!formData.description || !formData.amount) return;
+  try {
+    const recordData = {
+      date: formData.date,
+      payment_date: formData.paymentDate || formData.date,
+      description: formData.description,
+      category: formData.category,
+      amount: parseFloat(formData.amount),
+      cost_per_unit: formData.costPerUnit
+        ? parseFloat(formData.costPerUnit)
+        : null,
+      quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+      notes: formData.notes || null,
+      customer: formData.customer || null,
+      project: formData.project || null,
+      tags: formData.tags || null,
+      market_price: formData.marketPrice
+        ? parseFloat(formData.marketPrice)
+        : null,
+      supplied_by: formData.suppliedBy || null,
+      approved: false, // 👈 NEW: mark as pending approval
+    };
+
+    if (isEditing !== null) {
+      const { error } = await supabase
+        .from("bookkeeping_records")
+        .update(recordData)
+        .eq("id", isEditing);
+      if (error) throw error;
+      setRecords(
+        records.map((r) =>
+          r.id === isEditing ? { ...recordData, id: r.id } : r
+        )
+      );
+      setIsEditing(null);
+    } else {
+      const { data, error } = await supabase
+        .from("bookkeeping_records")
+        .insert([recordData])
+        .select();
+      if (error) throw error;
+      setRecords([data[0], ...records]);
     }
-  };
+    resetForm();
+  } catch (error) {
+    console.error("Error saving record:", error);
+    alert("Failed to save record.");
+  }
+};
 
   const resetForm = () => {
     setFormData({
@@ -958,26 +964,23 @@ map[key].totalQty += qty;
     }));
   }, [filteredRecords, inventoryCostMap]);
 
-  const cashFlowGaps = useMemo(() => {
-    return filteredRecords
-      .filter((r) => r.payment_date && r.category === "Inflow")
-      .map((r) => {
-        const issueDate = new Date(r.date);
-        const paidDate = new Date(r.payment_date);
-        const gapDays = Math.max(
-          0,
-          Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24))
-        );
-        return {
-          id: r.id,
-          description: r.description,
-          amount: r.amount,
-          customer: r.customer,
-          gapDays,
-          status: gapDays > 30 ? "Delayed" : "On Time",
-        };
-      });
-  }, [filteredRecords]);
+const cashFlowGaps = useMemo(() => {
+  return filteredRecords
+    .filter((r) => r.payment_date && r.category === "Inflow")
+    .map((r) => {
+      const issueDate = new Date(r.date);
+      const paidDate = new Date(r.payment_date);
+      const gapDays = Math.max(0, Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24)));
+      return {
+        id: r.id,
+        description: r.description,
+        amount: r.amount,
+        customer: r.customer,
+        gapDays,
+        status: gapDays > 30 ? "Delayed" : "On Time",
+      };
+    });
+}, [filteredRecords]);
 
   const roiTimeline = useMemo(() => {
     const grouped = {};
