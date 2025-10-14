@@ -33,6 +33,11 @@ import {
   RotateCcw,
   Warehouse,
   Timer,
+  Copy,
+  Tag,
+  Users2,
+  Shield,
+  Award,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -42,6 +47,14 @@ import Link from "next/link";
 interface OrderImage {
   name: string;
   url: string;
+}
+
+interface SupplierBid {
+  supplier_name: string;
+  price: string; // e.g., "5000 USD"
+  notes?: string;
+  submitted_at: string; // ISO
+  lead_time_days?: number;
 }
 
 interface Order {
@@ -61,17 +74,17 @@ interface Order {
   supplier_description?: string;
   customer_price?: string;
   last_contacted?: string;
-
-  // === NEW STRATEGIC FIELDS ===
   inventory_status?: "in-stock" | "low-stock" | "out-of-stock" | "reorder-needed";
   shipping_carrier?: string;
   tracking_number?: string;
-  estimated_delivery?: string; // ISO date string
-  actual_delivery?: string; // ISO date string
+  estimated_delivery?: string;
+  actual_delivery?: string;
   refund_status?: "none" | "requested" | "approved" | "processed";
-  logistics_cost?: string; // e.g., "1200 LKR"
-  supplier_lead_time_days?: number; // avg days from order to ready
+  logistics_cost?: string;
+  supplier_lead_time_days?: number;
   route_optimized?: boolean;
+  category?: string;
+  bids?: string;
 }
 
 interface FinancialSummary {
@@ -94,13 +107,11 @@ interface FinancialSummary {
   roi: number;
   projectedCashFlow30Days: number;
   lowMarginOrders: number;
-
-  // === NEW METRICS ===
   totalLogisticsCost: number;
-  onTimeDeliveryRate: number; // %
+  onTimeDeliveryRate: number;
   inventoryTurnover: number;
   avgSupplierLeadTime: number;
-  refundRate: number; // %
+  refundRate: number;
 }
 
 interface CSVRow {
@@ -125,6 +136,7 @@ interface CSVRow {
   logistics_cost?: string;
   supplier_lead_time_days?: string;
   route_optimized?: string;
+  category?: string;
 }
 
 // ------------------------
@@ -191,6 +203,7 @@ class SupabaseClient {
     };
   }
 }
+
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
@@ -246,16 +259,22 @@ const parseImages = (imagesJson: string): OrderImage[] => {
   }
 };
 
-const extractNumericValue = (priceString?: any): number => {
-  if (priceString == null) return 0; // handles null or undefined
-
-  const str = String(priceString); // ensure it's a string
-  const match = str.match(/[\d,]+\.?\d*/);
-  if (!match) return 0;
-
-  return parseFloat(match[0].replace(/,/g, ""));
+const parseBids = (bidsJson: string): SupplierBid[] => {
+  try {
+    return JSON.parse(bidsJson || "[]");
+  } catch {
+    console.warn("Failed to parse bids JSON:", bidsJson);
+    return [];
+  }
 };
 
+const extractNumericValue = (priceString?: any): number => {
+  if (priceString == null) return 0;
+  const str = String(priceString);
+  const match = str.match(/[\d,]+\.?\d*/);
+  if (!match) return 0;
+  return parseFloat(match[0].replace(/,/g, ""));
+};
 
 const formatCurrency = (value: number): string => {
   return new Intl.NumberFormat("en-US", {
@@ -298,19 +317,16 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
       cashOutflow += supplierPrice + logisticsCost;
       totalLogisticsCost += logisticsCost;
       if (margin < 0.2) lowMarginOrders++;
-
       if (order.estimated_delivery && order.actual_delivery) {
         totalDeliveries++;
         if (new Date(order.actual_delivery) <= new Date(order.estimated_delivery)) {
           onTimeDeliveries++;
         }
       }
-
       if (order.supplier_lead_time_days) {
         totalLeadTime += order.supplier_lead_time_days;
         supplierCount++;
       }
-
       if (order.refund_status && order.refund_status !== "none") {
         refunds++;
       }
@@ -392,6 +408,7 @@ MOQ: ${order.moq}
 Urgency: ${order.urgency}
 Description: ${order.description}
 Status: ${order.status}
+Category: ${order.category || "N/A"}
 Inventory: ${order.inventory_status || "N/A"}
 Shipping: ${order.shipping_carrier || "N/A"} | ${order.tracking_number || "N/A"}
 Est. Delivery: ${order.estimated_delivery ? new Date(order.estimated_delivery).toLocaleDateString() : "N/A"}
@@ -451,23 +468,13 @@ const StatusUpdater: React.FC<{
 };
 
 // ------------------------
-// Financial Dashboard Component (Enhanced with Logistics)
+// Financial Dashboard Component
 // ------------------------
 const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
   summary,
 }) => {
-  const operatingCashFlow = summary.totalProfit - summary.reinvestmentPool;
-  const cashFlowHealth = summary.netCashFlow >= 0 ? "positive" : "negative";
-  const marginHealth =
-    summary.profitMargin >= 30
-      ? "excellent"
-      : summary.profitMargin >= 20
-      ? "good"
-      : "poor";
-
   return (
     <div className="space-y-6">
-      {/* Alerts Banner */}
       {(summary.lowMarginOrders > 0 ||
         summary.netCashFlow < 0 ||
         summary.refundRate > 10 ||
@@ -503,8 +510,6 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
           </div>
         </div>
       )}
-
-      {/* Strategic KPIs Row */}
       <div className="bg-white p-6 rounded-lg border border-gray-200">
         <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
           <BarChart3 className="w-5 h-5 mr-2 text-gray-600" />
@@ -552,7 +557,7 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
 };
 
 // ------------------------
-// Order Card Component (Enhanced)
+// Order Card Component
 // ------------------------
 const OrderCard: React.FC<{
   order: Order;
@@ -590,10 +595,10 @@ const OrderCard: React.FC<{
           {order.status}
         </span>
       </div>
-      <p className="text-sm text-gray-600 mb-2">{order.moq}</p>
-      {order.inventory_status && (
-        <span className={`text-xs px-2 py-1 rounded-full ${getInventoryColor(order.inventory_status)}`}>
-          {order.inventory_status.replace("-", " ")}
+      <p className="text-sm text-gray-600 mb-1">{order.moq}</p>
+      {order.category && (
+        <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800">
+          {order.category}
         </span>
       )}
       <p className="text-xs text-gray-500 mt-1">
@@ -662,7 +667,7 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
               <img
                 src={image.url}
                 alt={image.name}
-                className=" h-80 object-cover rounded border cursor-pointer hover:opacity-80"
+                className="h-80 object-cover rounded border cursor-pointer hover:opacity-80"
                 onClick={() => openImage(image.url)}
                 title="Click to view full size"
               />
@@ -682,8 +687,253 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
   );
 };
 
+
+// ------------------------
+// Supplier Bidding Section (ENHANCED WITH APPROVAL LOCK)
+// ------------------------
+const SupplierBiddingSection: React.FC<{
+  order: Order;
+  onBidSubmit: (bid: Omit<SupplierBid, "submitted_at">) => void;
+  onApproveBid: (bid: SupplierBid, password: string) => void;
+  customerPrice: number;
+}> = ({ order, onBidSubmit, onApproveBid, customerPrice }) => {
+  const [supplierName, setSupplierName] = useState("");
+  const [price, setPrice] = useState("");
+  const [notes, setNotes] = useState("");
+  const [leadTime, setLeadTime] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showApprovalModal, setShowApprovalModal] = useState<SupplierBid | null>(null);
+  const [password, setPassword] = useState("");
+
+  // ✅ Check if supplier is already approved
+  const isAlreadyApproved = !!order.supplier_name || order.status !== "pending";
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supplierName || !price) return;
+    setIsSubmitting(true);
+    onBidSubmit({
+      supplier_name: supplierName,
+      price,
+      notes,
+      lead_time_days: leadTime ? parseInt(leadTime, 10) : undefined,
+    });
+    setSupplierName("");
+    setPrice("");
+    setNotes("");
+    setLeadTime("");
+    setIsSubmitting(false);
+  };
+
+  const bids = parseBids(order.bids || "[]");
+  const publicLink = `${window.location.origin}/bid/${order.id}`;
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(publicLink);
+    alert("Public bidding link copied to clipboard!");
+  };
+
+  const handleApprove = () => {
+    if (showApprovalModal) {
+      onApproveBid(showApprovalModal, password);
+      setShowApprovalModal(null);
+      setPassword("");
+    }
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-6">
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="font-semibold text-gray-900 flex items-center space-x-2">
+          <Users2 className="w-5 h-5 text-amber-600" />
+          <span>Supplier Bidding</span>
+        </h3>
+        {!isAlreadyApproved && (
+          <button
+            onClick={copyToClipboard}
+            className="flex items-center text-amber-700 hover:text-amber-900 text-sm"
+          >
+            <Copy className="w-4 h-4 mr-1" />
+            Copy Public Link
+          </button>
+        )}
+      </div>
+
+      {isAlreadyApproved ? (
+        <div className="mb-4 p-3 bg-green-100 rounded border border-green-300">
+          <p className="text-sm font-medium text-green-800 flex items-center">
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Supplier already approved: <span className="font-bold ml-1">{order.supplier_name}</span>
+          </p>
+          <p className="text-xs text-green-700 mt-1">
+            Bidding is closed for this order.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="mb-4 p-3 bg-white rounded border border-amber-200">
+            <p className="text-sm text-gray-700 mb-1">Share this link with suppliers:</p>
+            <code className="text-xs bg-gray-100 p-2 rounded break-all">{publicLink}</code>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-3 mb-6">
+            <input
+              type="text"
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+              placeholder="Your Company Name"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-amber-500"
+              required
+              disabled={isAlreadyApproved}
+            />
+            <input
+              type="text"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="Your Price (e.g., 5000 USD)"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-amber-500"
+              required
+              disabled={isAlreadyApproved}
+            />
+            <input
+              type="number"
+              value={leadTime}
+              onChange={(e) => setLeadTime(e.target.value)}
+              placeholder="Lead Time (days)"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-amber-500"
+              disabled={isAlreadyApproved}
+            />
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional notes (MOQ, terms, etc.)"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-amber-500"
+              rows={2}
+              disabled={isAlreadyApproved}
+            />
+            <button
+              type="submit"
+              disabled={isSubmitting || isAlreadyApproved}
+              className={`px-4 py-2 rounded text-sm w-full ${
+                isAlreadyApproved
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-amber-600 text-white hover:bg-amber-700"
+              }`}
+            >
+              {isAlreadyApproved ? "Bidding Closed" : isSubmitting ? "Submitting..." : "Submit Bid"}
+            </button>
+          </form>
+        </>
+      )}
+
+      {bids.length > 0 && (
+        <div>
+          <h4 className="font-medium text-gray-800 mb-3 flex items-center">
+            <Award className="w-4 h-4 mr-2 text-amber-600" />
+            Received Bids ({bids.length})
+          </h4>
+          <div className="space-y-3">
+            {bids.map((bid, i) => {
+              const bidPrice = extractNumericValue(bid.price);
+              const margin = customerPrice > 0 && bidPrice > 0 ? ((customerPrice - bidPrice) / customerPrice) * 100 : 0;
+              const isHighMargin = margin >= 30;
+              const isLowMargin = margin > 0 && margin < 20;
+
+              return (
+                <div
+                  key={i}
+                  className={`bg-white p-4 rounded-lg border ${
+                    isHighMargin ? "border-green-300" : isLowMargin ? "border-red-300" : "border-gray-200"
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-gray-900">{bid.supplier_name}</div>
+                      <div className="text-lg font-semibold text-green-600 mt-1">{bid.price}</div>
+                      {bid.lead_time_days && (
+                        <div className="text-sm text-gray-600 mt-1">Lead Time: {bid.lead_time_days} days</div>
+                      )}
+                      {bid.notes && <div className="text-sm text-gray-600 mt-1">{bid.notes}</div>}
+                      <div className="text-xs text-gray-500 mt-2">
+                        Submitted: {new Date(bid.submitted_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {customerPrice > 0 && (
+                        <div className="text-sm">
+                          <span className="font-medium">Margin:</span>{" "}
+                          <span
+                            className={`font-bold ${
+                              isHighMargin ? "text-green-600" : isLowMargin ? "text-red-600" : "text-blue-600"
+                            }`}
+                          >
+                            {margin.toFixed(1)}%
+                          </span>
+                        </div>
+                      )}
+                      {!isAlreadyApproved && (
+                        <button
+                          onClick={() => setShowApprovalModal(bid)}
+                          className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 flex items-center"
+                        >
+                          <Shield className="w-3 h-3 mr-1" />
+                          Approve as Supplier
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Approval Modal */}
+      {showApprovalModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-bold text-lg mb-4">Approve Supplier</h3>
+            <p className="mb-3">
+              Approve <span className="font-semibold">{showApprovalModal.supplier_name}</span> at{" "}
+              <span className="font-semibold">{showApprovalModal.price}</span>?
+            </p>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password: veloxalbaka"
+              className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowApprovalModal(null)}
+                className="px-4 py-2 bg-gray-300 rounded text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApprove}
+                disabled={password !== "veloxalbaka"}
+                className={`px-4 py-2 rounded text-white ${
+                  password === "veloxalbaka" ? "bg-green-600 hover:bg-green-700" : "bg-gray-400"
+                }`}
+              >
+                Confirm Approval
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ------------------------
 // Pricing Section Component
+// ------------------------
+// ------------------------
+// Pricing Section Component (WITH SUPPLIER REMOVAL + PASSWORD)
 // ------------------------
 const PricingSection: React.FC<{
   order: Order;
@@ -700,6 +950,7 @@ const PricingSection: React.FC<{
   onCancel: () => void;
   loading: boolean;
   onEdit: () => void;
+  onRemoveSupplier?: (password: string) => void; // NEW
 }> = ({
   order,
   isEditing,
@@ -715,7 +966,19 @@ const PricingSection: React.FC<{
   onCancel,
   loading,
   onEdit,
+  onRemoveSupplier,
 }) => {
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [removePassword, setRemovePassword] = useState("");
+
+  const handleRemove = () => {
+    if (onRemoveSupplier) {
+      onRemoveSupplier(removePassword);
+      setRemovePassword("");
+      setShowRemoveModal(false);
+    }
+  };
+
   const supplierCost = extractNumericValue(
     isEditing ? supplierPrice : order.supplier_price
   );
@@ -724,6 +987,7 @@ const PricingSection: React.FC<{
   );
   const profit = customerRevenue - supplierCost;
   const margin = customerRevenue > 0 ? (profit / customerRevenue) * 100 : 0;
+
   return (
     <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg p-6">
       <div className="flex justify-between items-start mb-4">
@@ -731,16 +995,28 @@ const PricingSection: React.FC<{
           <DollarSign className="w-5 h-5 text-green-600" />
           <span>Pricing & Financials</span>
         </h3>
-        {!isEditing && (
-          <button
-            onClick={onEdit}
-            className="text-blue-600 hover:text-blue-800 flex items-center space-x-1 text-sm"
-          >
-            <Edit2 className="w-4 h-4" />
-            <span>Edit</span>
-          </button>
-        )}
+        <div className="flex space-x-2">
+          {order.supplier_name && !isEditing && (
+            <button
+              onClick={() => setShowRemoveModal(true)}
+              className="text-red-600 hover:text-red-800 flex items-center space-x-1 text-sm"
+            >
+              <X className="w-4 h-4" />
+              <span>Remove Supplier</span>
+            </button>
+          )}
+          {!isEditing && (
+            <button
+              onClick={onEdit}
+              className="text-blue-600 hover:text-blue-800 flex items-center space-x-1 text-sm"
+            >
+              <Edit2 className="w-4 h-4" />
+              <span>Edit</span>
+            </button>
+          )}
+        </div>
       </div>
+
       {isEditing ? (
         <div className="space-y-4">
           <div>
@@ -902,6 +1178,42 @@ const PricingSection: React.FC<{
               No pricing information added yet
             </p>
           )}
+        </div>
+      )}
+
+      {/* Remove Supplier Modal */}
+      {showRemoveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-bold text-lg mb-3 text-red-600">Remove Supplier?</h3>
+            <p className="mb-4 text-sm text-gray-700">
+              You are about to remove <span className="font-semibold">{order.supplier_name}</span> as the supplier for this order. This cannot be undone.
+            </p>
+            <input
+              type="password"
+              value={removePassword}
+              onChange={(e) => setRemovePassword(e.target.value)}
+              placeholder="Enter admin password: veloxalbaka"
+              className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowRemoveModal(false)}
+                className="px-4 py-2 bg-gray-300 rounded text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRemove}
+                disabled={removePassword !== "veloxalbaka"}
+                className={`px-4 py-2 rounded text-white ${
+                  removePassword === "veloxalbaka" ? "bg-red-600 hover:bg-red-700" : "bg-gray-400"
+                }`}
+              >
+                Confirm Removal
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1178,13 +1490,14 @@ const OrderManagementApp: React.FC = () => {
   const [showOrdersList, setShowOrdersList] = useState(true);
   const [isEditingPricing, setIsEditingPricing] = useState(false);
   const [isEditingLogistics, setIsEditingLogistics] = useState(false);
-
+  const [isEditingCategory, setIsEditingCategory] = useState(false);
+  const [categoryInput, setCategoryInput] = useState("");
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   // Pricing state
   const [supplierName, setSupplierName] = useState("");
   const [supplierPrice, setSupplierPrice] = useState("");
   const [supplierDescription, setSupplierDescription] = useState("");
   const [customerPrice, setCustomerPrice] = useState("");
-
   // Logistics state
   const [inventoryStatus, setInventoryStatus] = useState("");
   const [shippingCarrier, setShippingCarrier] = useState("");
@@ -1195,10 +1508,10 @@ const OrderManagementApp: React.FC = () => {
   const [logisticsCost, setLogisticsCost] = useState("");
   const [supplierLeadTime, setSupplierLeadTime] = useState("");
   const [routeOptimized, setRouteOptimized] = useState(false);
-
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState<"all" | "low-margin" | "aging" | "refund">("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -1211,6 +1524,8 @@ const OrderManagementApp: React.FC = () => {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
       setOrders(sorted);
+      const cats = Array.from(new Set(sorted.map(o => o.category).filter(Boolean))) as string[];
+      setAvailableCategories(cats);
     } catch (error) {
       console.error("Failed to load orders:", error);
       setOrders([]);
@@ -1227,6 +1542,7 @@ const OrderManagementApp: React.FC = () => {
   const financialSummary = calculateFinancials(orders);
 
   const filteredOrders = orders.filter((order) => {
+    if (categoryFilter !== "all" && order.category !== categoryFilter) return false;
     if (filter === "low-margin") {
       const margin =
         order.customer_price && order.supplier_price
@@ -1271,12 +1587,10 @@ const OrderManagementApp: React.FC = () => {
       if (supplierPrice.trim() !== "") updatePayload.supplier_price = supplierPrice;
       if (supplierDescription.trim() !== "") updatePayload.supplier_description = supplierDescription;
       if (customerPrice.trim() !== "") updatePayload.customer_price = customerPrice;
-
       if (Object.keys(updatePayload).length === 0) {
         setIsEditingPricing(false);
         return;
       }
-
       await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
       if (selectedOrder?.id === orderId) {
@@ -1306,7 +1620,6 @@ const OrderManagementApp: React.FC = () => {
       if (logisticsCost) updatePayload.logistics_cost = logisticsCost;
       if (supplierLeadTime) updatePayload.supplier_lead_time_days = parseInt(supplierLeadTime, 10);
       updatePayload.route_optimized = routeOptimized;
-
       await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
       if (selectedOrder?.id === orderId) {
@@ -1320,6 +1633,73 @@ const OrderManagementApp: React.FC = () => {
       alert("Failed to update logistics info");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateCategory = async (orderId: number) => {
+    setLoading(true);
+    try {
+      const updatePayload: Partial<Order> = { category: categoryInput || undefined };
+      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+      }
+      setIsEditingCategory(false);
+      await loadOrders();
+      alert("Category updated");
+    } catch (error) {
+      console.error("Category update error:", error);
+      alert("Failed to update category");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitSupplierBid = async (orderId: number, bidData: Omit<SupplierBid, "submitted_at">) => {
+    try {
+      const existingBids = parseBids(selectedOrder?.bids || "[]");
+      const newBid: SupplierBid = {
+        ...bidData,
+        submitted_at: new Date().toISOString(),
+      };
+      const updatedBids = [...existingBids, newBid];
+      const updatePayload = { bids: JSON.stringify(updatedBids) };
+      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+      }
+      alert("Bid submitted successfully!");
+    } catch (err) {
+      console.error("Bid submission error:", err);
+      alert("Failed to submit bid");
+    }
+  };
+
+  const approveSupplierBid = async (orderId: number, bid: SupplierBid, password: string) => {
+    if (password !== "veloxalbaka") {
+      alert("Incorrect password. Supplier not approved.");
+      return;
+    }
+    try {
+      const updatePayload: Partial<Order> = {
+        supplier_name: bid.supplier_name,
+        supplier_price: bid.price,
+        supplier_description: bid.notes || "",
+        supplier_lead_time_days: bid.lead_time_days,
+        status: "in-progress",
+      };
+      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+      }
+      alert(`Supplier ${bid.supplier_name} approved successfully!`);
+      await sendOrderUpdateWebhook({ ...selectedOrder, ...updatePayload } as Order, "Supplier Approved");
+    } catch (err) {
+      console.error("Supplier approval error:", err);
+      alert("Failed to approve supplier");
     }
   };
 
@@ -1414,6 +1794,7 @@ const OrderManagementApp: React.FC = () => {
             logistics_cost: rowData.logistics_cost,
             supplier_lead_time_days: rowData.supplier_lead_time_days ? parseInt(rowData.supplier_lead_time_days, 10) : undefined,
             route_optimized: rowData.route_optimized?.toLowerCase() === "true",
+            category: rowData.category || undefined,
           };
           newOrders.push(order);
         }
@@ -1443,8 +1824,8 @@ const OrderManagementApp: React.FC = () => {
 
   const downloadCSVTemplate = () => {
     const template = [
-      "customer_name,email,phone,location,description,moq,urgency,status,supplier_name,supplier_price,supplier_description,customer_price,inventory_status,shipping_carrier,tracking_number,estimated_delivery,actual_delivery,refund_status,logistics_cost,supplier_lead_time_days,route_optimized",
-      '"John Doe","john@example.com","+1234567890","New York","Custom widgets","1000 units","high","pending","ABC Supplier","5000 USD","Fast shipping","8000 USD","in-stock","DHL","123456789","2024-07-10","","none","1200 LKR","5","true"',
+      "customer_name,email,phone,location,description,moq,urgency,status,supplier_name,supplier_price,supplier_description,customer_price,inventory_status,shipping_carrier,tracking_number,estimated_delivery,actual_delivery,refund_status,logistics_cost,supplier_lead_time_days,route_optimized,category",
+      '"John Doe","john@example.com","+1234567890","New York","Custom widgets","1000 units","high","pending","ABC Supplier","5000 USD","Fast shipping","8000 USD","in-stock","DHL","123456789","2024-07-10","","none","1200 LKR","5","true","Electronics"',
     ].join("\n");
     const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -1457,7 +1838,7 @@ const OrderManagementApp: React.FC = () => {
 
   const exportToCSV = () => {
     const headers = [
-      "Order ID","Customer Name","Email","Phone","Location","Description","MOQ","Status","Urgency",
+      "Order ID","Customer Name","Email","Phone","Location","Description","MOQ","Status","Urgency","Category",
       "Customer Price","Supplier Name","Supplier Price","Profit","Margin %","Inventory Status",
       "Shipping Carrier","Tracking #","Est. Delivery","Actual Delivery","Refund Status",
       "Logistics Cost","Lead Time (days)","Route Optimized","Created Date","Days Since Created"
@@ -1479,6 +1860,7 @@ const OrderManagementApp: React.FC = () => {
           `"${o.moq.replace(/"/g, '""')}"`,
           o.status,
           o.urgency,
+          o.category || "N/A",
           o.customer_price || "N/A",
           o.supplier_name || "N/A",
           o.supplier_price || "N/A",
@@ -1509,7 +1891,6 @@ const OrderManagementApp: React.FC = () => {
 
   const exportStrategicReport = () => {
     const summary = financialSummary;
-    const operatingCashFlow = summary.totalProfit - summary.reinvestmentPool;
     const date = new Date().toISOString().split("T")[0];
     const reportSections = [
       "STRATEGIC OPERATIONS & FINANCIAL REPORT",
@@ -1536,7 +1917,6 @@ const OrderManagementApp: React.FC = () => {
       `4. Reorder inventory for items marked "reorder-needed"`,
       "",
     ];
-
     const csv = reportSections.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -1552,14 +1932,12 @@ const OrderManagementApp: React.FC = () => {
     setShowOrdersList(false);
     setIsEditingPricing(false);
     setIsEditingLogistics(false);
-
-    // Pricing
+    setIsEditingCategory(false);
+    setCategoryInput(order.category || "");
     setSupplierName(order.supplier_name || "");
     setSupplierPrice(order.supplier_price || "");
     setSupplierDescription(order.supplier_description || "");
     setCustomerPrice(order.customer_price || "");
-
-    // Logistics
     setInventoryStatus(order.inventory_status || "");
     setShippingCarrier(order.shipping_carrier || "");
     setTrackingNumber(order.tracking_number || "");
@@ -1576,6 +1954,7 @@ const OrderManagementApp: React.FC = () => {
     setSelectedOrder(null);
     setIsEditingPricing(false);
     setIsEditingLogistics(false);
+    setIsEditingCategory(false);
   };
 
   const handleEditPricing = () => setIsEditingPricing(true);
@@ -1677,6 +2056,19 @@ const OrderManagementApp: React.FC = () => {
                 <RotateCcw className="w-3 h-3" />
                 <span>Refunds</span>
               </button>
+            </div>
+            <div className="mt-2 flex items-center space-x-2">
+              <Tag className="w-4 h-4 text-gray-500" />
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="text-xs border border-gray-300 rounded px-2 py-1"
+              >
+                <option value="all">All Categories</option>
+                {availableCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="flex space-x-2">
@@ -1791,10 +2183,7 @@ const OrderManagementApp: React.FC = () => {
                 </button>
               )}
             </div>
-          ) :  
-          //the status is not equal to shipped
-               
-          (
+          ) : (
             Object.entries(groupedOrders).map(([status, groupOrders]) => (
               <div key={status} className="border-b border-gray-100">
                 <div
@@ -1860,6 +2249,11 @@ const OrderManagementApp: React.FC = () => {
                     >
                       {selectedOrder.status}
                     </span>
+                    {selectedOrder.category && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800">
+                        {selectedOrder.category}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1873,6 +2267,52 @@ const OrderManagementApp: React.FC = () => {
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <FinancialDashboard summary={financialSummary} />
+
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-semibold text-gray-900">Category</h3>
+                  {!isEditingCategory && (
+                    <button
+                      onClick={() => setIsEditingCategory(true)}
+                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                    >
+                      <Edit2 className="w-4 h-4 mr-1" /> Edit
+                    </button>
+                  )}
+                </div>
+                {isEditingCategory ? (
+                  <div className="flex space-x-2 mt-2">
+                    <input
+                      type="text"
+                      value={categoryInput}
+                      onChange={(e) => setCategoryInput(e.target.value)}
+                      placeholder="e.g., Electronics, Textiles"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={() => updateCategory(selectedOrder.id)}
+                      className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingCategory(false);
+                        setCategoryInput(selectedOrder.category || "");
+                      }}
+                      className="bg-gray-300 text-gray-700 px-3 py-2 rounded hover:bg-gray-400 text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-gray-800 mt-2">
+                    {selectedOrder.category || (
+                      <span className="text-gray-500 italic">Not assigned</span>
+                    )}
+                  </p>
+                )}
+              </div>
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">Customer Information</h3>
@@ -1964,22 +2404,44 @@ const OrderManagementApp: React.FC = () => {
                 />
               </div>
 
-              <PricingSection
-                order={selectedOrder}
-                isEditing={isEditingPricing}
-                supplierName={supplierName}
-                supplierPrice={supplierPrice}
-                supplierDescription={supplierDescription}
-                customerPrice={customerPrice}
-                setSupplierName={setSupplierName}
-                setSupplierPrice={setSupplierPrice}
-                setSupplierDescription={setSupplierDescription}
-                setCustomerPrice={setCustomerPrice}
-                onSave={() => updatePricingInfo(selectedOrder.id)}
-                onCancel={handleCancelEditPricing}
-                loading={loading}
-                onEdit={handleEditPricing}
-              />
+<PricingSection
+  order={selectedOrder}
+  isEditing={isEditingPricing}
+  supplierName={supplierName}
+  supplierPrice={supplierPrice}
+  supplierDescription={supplierDescription}
+  customerPrice={customerPrice}
+  setSupplierName={setSupplierName}
+  setSupplierPrice={setSupplierPrice}
+  setSupplierDescription={setSupplierDescription}
+  setCustomerPrice={setCustomerPrice}
+  onSave={() => updatePricingInfo(selectedOrder.id)}
+  onCancel={handleCancelEditPricing}
+  loading={loading}
+  onEdit={handleEditPricing}
+  onRemoveSupplier={(pwd) => {
+    if (pwd !== "veloxalbaka") {
+      alert("Incorrect password. Supplier not removed.");
+      return;
+    }
+    // Clear supplier fields
+    const updatePayload: Partial<Order> = {
+      supplier_name: undefined,
+      supplier_price: undefined,
+      supplier_description: undefined,
+      supplier_lead_time_days: undefined,
+      status: "pending", // revert to pending
+    };
+    supabase.from("orders").update(updatePayload).eq("id", selectedOrder!.id).execute().then(() => {
+      setOrders(prev => prev.map(o => o.id === selectedOrder!.id ? { ...o, ...updatePayload } : o));
+      setSelectedOrder(prev => prev ? { ...prev, ...updatePayload } : null);
+      alert("Supplier removed successfully.");
+    }).catch(err => {
+      console.error("Remove supplier error:", err);
+      alert("Failed to remove supplier.");
+    });
+  }}
+/>
 
               <LogisticsSection
                 order={selectedOrder}
@@ -2006,6 +2468,13 @@ const OrderManagementApp: React.FC = () => {
                 onCancel={handleCancelEditLogistics}
                 loading={loading}
                 onEdit={handleEditLogistics}
+              />
+
+              <SupplierBiddingSection
+                order={selectedOrder}
+                onBidSubmit={(bid) => submitSupplierBid(selectedOrder.id, bid)}
+                onApproveBid={(bid, pwd) => approveSupplierBid(selectedOrder.id, bid, pwd)}
+                customerPrice={extractNumericValue(selectedOrder.customer_price)}
               />
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
