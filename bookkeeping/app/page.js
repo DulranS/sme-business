@@ -112,7 +112,7 @@ export default function BookkeepingApp() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
-  const [searchQuery, setSearchQuery] = useState<string>('');
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
     paymentDate: "",
