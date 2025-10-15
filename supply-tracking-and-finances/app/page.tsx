@@ -20,9 +20,11 @@ import {
   Settings,
   RefreshCw,
   Tag,
+  Plus,
+  X,
 } from 'lucide-react';
 
-// TypeScript Types and Interfaces
+// ... (interfaces remain the same)
 interface OrderImage {
   name: string;
   url: string;
@@ -38,13 +40,13 @@ interface Order {
   moq: string;
   urgency: 'low' | 'medium' | 'high';
   status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
-  images: string; // JSON string of OrderImage[]
+  images: string;
   created_at: string;
   supplier_name: string;
   supplier_price?: string;
   supplier_description?: string;
   customer_price?: string;
-  category: string; // New category field
+  category: string;
 }
 
 interface OrderFormData {
@@ -56,18 +58,10 @@ interface OrderFormData {
   moq: string;
   urgency: 'low' | 'medium' | 'high';
   images: OrderImage[];
-  category: string; // New category field
+  category: string;
 }
 
-interface SupabaseResponse<T> {
-  data?: T;
-  error?: {
-    message: string;
-    details?: string;
-  };
-}
-
-// Predefined categories
+// ✅ Use predefined categories as dropdown
 const CATEGORIES = [
   'Electronics',
   'Furniture',
@@ -79,10 +73,10 @@ const CATEGORIES = [
   'Other'
 ];
 
-// Supabase configuration
 const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+// ... (SupabaseClient class unchanged)
 class SupabaseClient {
   private url: string;
   private key: string;
@@ -157,7 +151,7 @@ const OrderManagementApp: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('All'); // For admin filtering
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   const [formData, setFormData] = useState<OrderFormData>({
     customer_name: '',
@@ -168,8 +162,12 @@ const OrderManagementApp: React.FC = () => {
     moq: '',
     urgency: 'medium',
     images: [],
-    category: '', // Initialize category
+    category: '',
   });
+
+  // 💡 Order Stats
+  const pendingCount = orders.filter(o => o.status === 'pending').length;
+  const highUrgencyCount = orders.filter(o => o.urgency === 'high').length;
 
   const loadOrders = async (): Promise<void> => {
     setLoading(true);
@@ -195,7 +193,7 @@ const OrderManagementApp: React.FC = () => {
           supplier_name: '',
           created_at: '2024-01-15T10:00:00Z',
           urgency: 'medium',
-          category: 'Furniture', // Added category to demo data
+          category: 'Furniture',
         },
       ];
       setOrders(demoOrders);
@@ -238,6 +236,20 @@ const OrderManagementApp: React.FC = () => {
     }));
   };
 
+  const clearForm = () => {
+    setFormData({
+      customer_name: '',
+      email: '',
+      phone: '',
+      location: '',
+      description: '',
+      moq: '',
+      urgency: 'medium',
+      images: [],
+      category: '',
+    });
+  };
+
   const submitOrder = async (): Promise<void> => {
     if (
       !formData.customer_name ||
@@ -245,7 +257,7 @@ const OrderManagementApp: React.FC = () => {
       !formData.location ||
       !formData.description ||
       !formData.moq ||
-      !formData.category // Added category validation
+      !formData.category
     ) {
       alert('Please fill in all required fields');
       return;
@@ -268,42 +280,32 @@ const OrderManagementApp: React.FC = () => {
         supplier_description: '',
         supplier_name: '',
         customer_price: '',
-        category: formData.category, // Include category in submission
+        category: formData.category,
       };
 
       await supabase.from('orders').insert(orderData).execute();
 
-      setFormData({
-        customer_name: '',
-        email: '',
-        phone: '',
-        location: '',
-        description: '',
-        moq: '',
-        urgency: 'medium',
-        images: [],
-        category: '', // Reset category
-      });
+      clearForm();
 
-      alert('Order submitted successfully! We will get back to you soon.');
+      // ✅ Better success feedback
+      alert('✅ Order submitted successfully! We will get back to you soon.');
       await loadOrders();
     } catch (error) {
       console.error('Error submitting order:', error);
-      alert('Error submitting order. Please try again.');
+      alert('❌ Error submitting order. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ... (updateOrderStatus, updateSupplierInfo, deleteOrder, exportToCSV unchanged)
   const updateOrderStatus = async (orderId: number, newStatus: Order['status']): Promise<void> => {
     setLoading(true);
     try {
       await supabase.from('orders').update({ status: newStatus }).eq('id', orderId).execute();
-
       setOrders((prev) =>
         prev.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order))
       );
-
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder((prev) => (prev ? { ...prev, status: newStatus } : null));
       }
@@ -359,10 +361,8 @@ const OrderManagementApp: React.FC = () => {
     setLoading(true);
     try {
       await supabase.from('orders').delete().eq('id', orderId).execute();
-
       setOrders((prev) => prev.filter((order) => order.id !== orderId));
       setSelectedOrder(null);
-
       alert('Order deleted successfully');
     } catch (error) {
       console.error('Error deleting order:', error);
@@ -383,7 +383,7 @@ const OrderManagementApp: React.FC = () => {
       'MOQ',
       'Status',
       'Urgency',
-      'Category', // Added category to CSV
+      'Category',
       'Supplier Price',
       'Supplier Description',
       'Created Date',
@@ -400,7 +400,7 @@ const OrderManagementApp: React.FC = () => {
         `"${order.moq}"`,
         order.status,
         order.urgency,
-        `"${order.category}"`, // Include category in CSV
+        `"${order.category}"`,
         order.supplier_price || 'N/A',
         `"${(order.supplier_description || '').replace(/"/g, '""')}"`,
         new Date(order.created_at).toLocaleDateString(),
@@ -453,7 +453,6 @@ const OrderManagementApp: React.FC = () => {
     }
   };
 
-  // Filter orders by category for admin panel
   const filteredOrders = selectedCategory === 'All' 
     ? orders 
     : orders.filter(order => order.category === selectedCategory);
@@ -461,13 +460,25 @@ const OrderManagementApp: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Place Your Order</h1>
-          <p className="text-xl text-gray-600 mb-6">Submit your requirements and we'll get back to you</p>
+        {/* Header with Stats */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Place Your Order</h1>
+          <p className="text-xl text-gray-600 mb-4">Submit your requirements and we'll get back to you</p>
+          
+          {/* Stats Badges */}
+          <div className="flex justify-center gap-4 mb-6">
+            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm">
+              <span className="font-medium">Total Orders:</span> <span className="text-blue-600">{orders.length}</span>
+            </div>
+            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm">
+              <span className="font-medium">Pending:</span> <span className="text-amber-600">{pendingCount}</span>
+            </div>
+            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm">
+              <span className="font-medium">High Urgency:</span> <span className="text-red-600">{highUrgencyCount}</span>
+            </div>
+          </div>
 
-          {/* Admin Panel Button */}
-          <div className="flex justify-center mt-6">
+          <div className="flex justify-center">
             <a
               href="/admin"
               className="inline-flex items-center space-x-2 bg-gray-900 text-white px-6 py-3 rounded-lg font-semibold text-lg hover:bg-gray-800 transition-all duration-200 shadow-md"
@@ -567,21 +578,28 @@ const OrderManagementApp: React.FC = () => {
                     value={formData.moq}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., 100 units, 50 pieces"
+                    placeholder="e.g., 100 units, 50 kg, 20 boxes"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">Be specific about units and packaging</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Categories *</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+                  {/* ✅ Dropdown instead of free text */}
+                  <select
                     name="category"
                     value={formData.category}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter categories separated by commas (e.g., Electronics, Furniture)"
                     required
-                  />
+                  >
+                    <option value="">Select a category</option>
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -593,7 +611,7 @@ const OrderManagementApp: React.FC = () => {
                   onChange={handleInputChange}
                   rows={4}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Describe what you need..."
+                  placeholder="Describe what you need in detail..."
                   required
                 />
               </div>
@@ -616,35 +634,36 @@ const OrderManagementApp: React.FC = () => {
                 className="w-full py-8 border-2 border-dashed border-gray-300 rounded-lg text-center hover:border-blue-400 hover:bg-blue-50 transition-colors"
               >
                 <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">Click to upload images</p>
+                <p className="text-gray-600">Click to upload images (max 5)</p>
               </button>
 
               {formData.images.length > 0 && (
                 <div className="mt-6">
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Uploaded Images:</h4>
-                  <div className="space-y-4">
-                    {formData.images.map((image, index) => (
-                      <div
-                        key={index}
-                        className="relative bg-gray-50 rounded-lg p-4 border border-gray-200"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <p className="text-sm font-medium text-gray-800 truncate pr-4">{image.name}</p>
-                          <button
-                            onClick={() => removeImage(index)}
-                            className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600 transition-colors flex-shrink-0"
-                            title="Remove image"
-                          >
-                            ×
-                          </button>
-                        </div>
-                        <div className="flex justify-center">
-                          <img
-                            src={image.url}
-                            alt={image.name}
-                            className="max-w-full max-h-64 object-contain rounded-lg shadow-sm"
-                          />
-                        </div>
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-medium text-gray-700">Uploaded Images:</h4>
+                    <button
+                      onClick={clearForm}
+                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {formData.images.slice(0, 5).map((image, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={image.url}
+                          alt={image.name}
+                          className="w-full h-32 object-cover rounded-lg border"
+                        />
+                        <button
+                          onClick={() => removeImage(index)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Remove"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -652,129 +671,35 @@ const OrderManagementApp: React.FC = () => {
               )}
             </div>
 
-            {/* Submit Button */}
-            <button
-              onClick={submitOrder}
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 px-8 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 flex items-center justify-center space-x-2"
-            >
-              {loading ? (
-                <>
-                  <Loader className="w-5 h-5 animate-spin" />
-                  <span>Submitting...</span>
-                </>
-              ) : (
-                <span>Submit Order</span>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Admin Panel Section (for demonstration) */}
-        {/* <div className="mt-12 bg-white rounded-2xl shadow-lg overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 py-6">
-            <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
-          </div>
-          
-          <div className="p-6">
-            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-              <div className="flex items-center space-x-2">
-                <Tag className="w-5 h-5 text-gray-600" />
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="All">All Categories</option>
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
+            {/* Submit & Clear Buttons */}
+            <div className="flex gap-4">
               <button
-                onClick={exportToCSV}
-                className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                type="button"
+                onClick={clearForm}
+                className="flex-1 bg-gray-200 text-gray-800 py-3 px-6 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
-                <Download className="w-4 h-4" />
-                <span>Export CSV</span>
+                Clear Form
+              </button>
+              <button
+                onClick={submitOrder}
+                disabled={loading}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Submit Order
+                  </>
+                )}
               </button>
             </div>
-
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Loader className="w-8 h-8 animate-spin text-blue-600" />
-              </div>
-            ) : filteredOrders.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No orders found for the selected category
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {filteredOrders.map((order) => (
-                  <div key={order.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex flex-wrap justify-between items-start gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-bold text-lg truncate">{order.customer_name}</h3>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                            {getStatusIcon(order.status)}
-                            <span className="ml-1 capitalize">{order.status}</span>
-                          </span>
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
-                          <div className="flex items-center gap-1">
-                            <Package className="w-4 h-4" />
-                            <span>{order.moq}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Tag className="w-4 h-4" />
-                            <span>{order.category}</span>
-                          </div>
-                          <div className={`px-2 py-1 rounded-full text-xs ${getUrgencyColor(order.urgency)}`}>
-                            {order.urgency.charAt(0).toUpperCase() + order.urgency.slice(1)} Priority
-                          </div>
-                        </div>
-                        
-                        <p className="text-gray-800 mb-2">{order.description}</p>
-                        <div className="text-sm text-gray-600">
-                          <div className="flex items-center gap-1 mb-1">
-                            <MapPin className="w-4 h-4" />
-                            <span>{order.location}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Phone className="w-4 h-4" />
-                            <span>{order.phone}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-col gap-2">
-                        <button
-                          onClick={() => setSelectedOrder(order)}
-                          className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
-                        >
-                          <Eye className="w-4 h-4" />
-                          <span>View</span>
-                        </button>
-                        <button
-                          onClick={() => deleteOrder(order.id)}
-                          className="flex items-center gap-1 text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-        </div> */}
+        </div>
       </div>
     </div>
   );
