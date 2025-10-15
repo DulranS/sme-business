@@ -1,0 +1,13 @@
+2025-10-16 00:03:44,202 | INFO     | 🚀 STRATEGIC B2B LEAD ENGINE — STARTED
+2025-10-16 00:03:44,202 | INFO     | ============================================================
+2025-10-16 00:03:44,202 | INFO     | API queries_quota: 60
+2025-10-16 00:03:44,202 | INFO     | 📍 Starting B2B lead scrape in Colombo (radius: 8000m)
+2025-10-16 00:03:44,202 | INFO     | 📊 Budget: 3 queries | Max 25 leads
+2025-10-16 00:03:44,202 | INFO     | [1] Searching: 'marketing agency Colombo'
+2025-10-16 00:03:44,457 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-10-16 00:03:44,457 | INFO     | [2] Searching: 'law firm Colombo'
+2025-10-16 00:03:44,532 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-10-16 00:03:44,532 | INFO     | [3] Searching: 'IT company Colombo'
+2025-10-16 00:03:44,583 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-10-16 00:03:44,583 | INFO     | ✅ Scraping done. Total places: 0 | API calls: 0
+2025-10-16 00:03:44,584 | WARNING  | 🔍 No qualifying businesses found.

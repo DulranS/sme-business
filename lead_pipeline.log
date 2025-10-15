@@ -10,3 +10,18 @@
 2025-10-12 04:33:24,565 | INFO     | 🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)
 2025-10-12 04:33:24,565 | INFO     | ============================================================
 2025-10-12 04:33:24,565 | ERROR    | ❌ Scraper script not found: scrape.py
+2025-10-16 00:02:42,569 | INFO     | ============================================================
+2025-10-16 00:02:42,570 | INFO     | 🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)
+2025-10-16 00:02:42,570 | INFO     | ============================================================
+2025-10-16 00:02:42,570 | ERROR    | ❌ Scraper script not found: scrape.py
+2025-10-16 00:03:43,469 | INFO     | ============================================================
+2025-10-16 00:03:43,470 | INFO     | 🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)
+2025-10-16 00:03:43,470 | INFO     | ============================================================
+2025-10-16 00:03:43,470 | INFO     | ▶️ Launching: c:\Users\dulra\sme-business\scrape-leads\scrape.py
+2025-10-16 00:03:44,610 | INFO     | ✅ c:\Users\dulra\sme-business\scrape-leads\scrape.py completed successfully
+2025-10-16 00:03:44,611 | WARNING  | ⚠️ Scraper ran but did not produce 'finalized_b2b_leads.csv'
+2025-10-16 00:03:44,611 | INFO     |    → Proceeding to preparer anyway (it will handle missing file gracefully)
+2025-10-16 00:03:44,611 | INFO     | ▶️ Launching: c:\Users\dulra\sme-business\scrape-leads\validate.py
+2025-10-16 00:03:47,076 | INFO     | ✅ c:\Users\dulra\sme-business\scrape-leads\validate.py completed successfully
+2025-10-16 00:03:47,076 | WARNING  | ⚠️ WhatsApp output file not found — check preparer logs.
+2025-10-16 00:03:47,076 | INFO     | 🔚 Lead pipeline completed.
