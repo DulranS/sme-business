@@ -72,12 +72,14 @@ const STRATEGIC_WEIGHTS = {
   Reinvestment: 8,
   "Loan Received": 7,
   "Inventory Purchase": 5,
-  Logistics: -2, // ← new: operational cost
-  Refund: -6, // ← new: customer dissatisfaction + lost margin
+  Logistics: -2,
+  Refund: -6,
   Outflow: -3,
   Overhead: -4,
   "Loan Payment": -2,
+  "Cash Flow Gap": -5, // ← ADDED: strategic penalty for delays
 };
+
 const categoryLabels = {
   Inflow: "Revenue",
   Outflow: "Payment",
@@ -86,8 +88,9 @@ const categoryLabels = {
   "Loan Payment": "Loan Payment",
   "Loan Received": "Loan Received",
   "Inventory Purchase": "Inventory Purchase",
-  Logistics: "Logistics", // ← new
-  Refund: "Refund", // ← new
+  Logistics: "Logistics",
+  Refund: "Refund",
+  "Cash Flow Gap": "Cash Flow Gap (Delayed)", // ← ADDED
 };
 
 const internalCategories = [
@@ -98,8 +101,9 @@ const internalCategories = [
   "Loan Payment",
   "Loan Received",
   "Inventory Purchase",
-  "Logistics", // ← new
-  "Refund", // ← new
+  "Logistics",
+  "Refund",
+  "Cash Flow Gap", // ← ADDED
 ];
 
 export default function BookkeepingApp() {
@@ -275,8 +279,11 @@ map[key].totalCost += cost * qty; // qty can be negative
 map[key].totalQty += qty;
     });
     Object.keys(map).forEach((key) => {
-      map[key] =
-        map[key].totalQty > 0 ? map[key].totalCost / map[key].totalQty : 0;
+if (map[key].totalQty <= 0) {
+  delete map[key]; // or skip
+} else {
+  map[key] = map[key].totalCost / map[key].totalQty;
+}
     });
     return map;
   }, [filteredRecords]);
@@ -286,6 +293,7 @@ map[key].totalQty += qty;
     (acc, r) => {
       const amount = parseFloat(r.amount) || 0;
       let totalAmount = amount;
+      if (r.category === "Cash Flow Gap") return acc;
       if (r.category === "Inflow") {
         const quantity = parseFloat(r.quantity) || 1;
         totalAmount = amount * quantity;
@@ -328,8 +336,7 @@ map[key].totalQty += qty;
   const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
   const netLoanImpact = totals.loanReceived - totals.loanPayment;
   // Example: Net Profit should subtract logistics & refunds
-  const netProfit =
-    operatingProfit + netLoanImpact - totals.logistics - totals.refund;
+const netProfit = operatingProfit + netLoanImpact;
 
   // ✅ Loan Coverage Logic (Rolling 30 days)
   const today = new Date();
@@ -409,6 +416,13 @@ map[key].totalQty += qty;
           (new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24)
         );
         recencyBonus = Math.max(0, 5 - daysOld / 30);
+
+        // Special handling for Cash Flow Gap
+if (r.category === "Cash Flow Gap") {
+  // Assume amount = delay in days or impact score
+  recencyBonus = -2;
+  customerPenalty = -3;
+}
 
         if (r.category === "Refund") {
           customerPenalty = -4; // stronger penalty
@@ -650,13 +664,13 @@ const handleSubmit = async () => {
             const parseString = (val) =>
               val === "" || val == null ? null : String(val).trim();
             // In handleCsvImport, improve category resolution:
-            const categoryKey =
-              Object.entries(categoryLabels).find(
-                ([, label]) => label === row["Category"]
-              )?.[0] ||
-              (internalCategories.includes(row["Category"])
-                ? row["Category"]
-                : "Inflow");
+const categoryKey =
+  Object.entries(categoryLabels).find(
+    ([, label]) => label === row["Category"]
+  )?.[0] ||
+  (internalCategories.includes(row["Category"])
+    ? row["Category"]
+    : "Inflow");
             return {
               date:
                 parseString(row["Date"]) ||
@@ -761,10 +775,10 @@ const handleSubmit = async () => {
       dateFilter.start || dateFilter.end
         ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
         : "";
-    const csvContent = [
-      headers.join(","),
-      ...csvData.map((row) => row.join(",")),
-    ].join("\n");
+const csvContent = [
+  headers.join(","),
+  ...csvData.map((row) => row.join(",")),
+].join("\r\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -836,6 +850,9 @@ const handleSubmit = async () => {
       })
       .sort((a, b) => b.competitiveEdge - a.competitiveEdge);
   }, [filteredRecords, inventoryCostMap]);
+
+  const isPositiveCategory = (cat) => 
+  ["Inflow", "Loan Received"].includes(cat);
 
   const competitiveTotals = useMemo(() => {
     return competitiveAnalysis.reduce(
@@ -2326,16 +2343,18 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                           <td className="px-4 py-3 text-sm text-right text-gray-600">
                             LKR {formatLKR(price)}
                           </td>
-                          <td
-                            className={`px-4 py-3 text-sm text-right font-semibold ${
-                              record.category === "Inflow"
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {record.category === "Inflow" ? "+" : "−"} LKR{" "}
-                            {formatLKR(total)}
-                          </td>
+<td
+  className={`px-4 py-3 text-sm text-right font-semibold ${
+    record.category === "Inflow" || record.category === "Loan Received"
+      ? "text-green-600"
+      : "text-red-600"
+  }`}
+>
+  {record.category === "Inflow" || record.category === "Loan Received"
+    ? "+"
+    : "−"}{" "}
+  LKR {formatLKR(total)}
+</td>
                           <td className="px-4 py-3 text-sm text-right">
                             {margin !== null ? (
                               <span
@@ -2855,49 +2874,45 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {productMargins.map((product, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                            {product.name}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            {product.quantity.toFixed(0)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            LKR {formatLKR(product.avgPrice)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            LKR {formatLKR(product.avgCost)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
-                            LKR {formatLKR(product.avgProfit)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
-                            LKR {formatLKR(product.profit)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right">
-                            <span
-                              className={`font-bold ${
-                                product.margin >= 50
-                                  ? "text-green-600"
-                                  : product.margin >= 30
-                                  ? "text-blue-600"
-                                  : product.margin >= 15
-                                  ? "text-orange-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {product.margin.toFixed(1)}%
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            {product.customers}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
-                            {product.inventoryTurnover.toFixed(1)}x
-                          </td>
-                        </tr>
-                      ))}
+{productMargins.map((product, idx) => (
+  <tr key={idx} className="hover:bg-gray-50">
+    <td className="px-4 py-3 text-sm font-medium text-gray-900">{product.name}</td>
+    <td className="px-4 py-3 text-sm text-right text-gray-600">{product.quantity.toFixed(0)}</td>
+    <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgPrice)}</td>
+    <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgCost)}</td>
+<td className="px-4 py-3 text-sm text-right font-semibold">
+  {product.avgProfit >= 0 ? (
+    <span className="text-green-600">+ LKR {formatLKR(product.avgProfit)}</span>
+  ) : (
+    <span className="text-red-600">− LKR {formatLKR(Math.abs(product.avgProfit))}</span>
+  )}
+</td>
+<td className="px-4 py-3 text-sm text-right font-semibold">
+  {product.profit >= 0 ? (
+    <span className="text-green-600">+ LKR {formatLKR(product.profit)}</span>
+  ) : (
+    <span className="text-red-600">− LKR {formatLKR(Math.abs(product.profit))}</span>
+  )}
+</td>
+    <td className="px-4 py-3 text-sm text-right">
+      <span
+        className={`font-bold ${
+          product.margin >= 50
+            ? "text-green-600"
+            : product.margin >= 30
+            ? "text-blue-600"
+            : product.margin >= 15
+            ? "text-orange-600"
+            : "text-red-600"
+        }`}
+      >
+        {product.margin.toFixed(1)}%
+      </span>
+    </td>
+    <td className="px-4 py-3 text-sm text-right text-gray-600">{product.customers}</td>
+    <td className="px-4 py-3 text-sm text-right text-gray-600">{product.inventoryTurnover.toFixed(1)}x</td>
+  </tr>
+))}
                     </tbody>
                   </table>
                 </div>
