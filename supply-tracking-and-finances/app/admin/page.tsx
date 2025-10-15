@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
+import Papa from "papaparse";
 import {
   RefreshCw,
   Download,
@@ -74,7 +75,11 @@ interface Order {
   supplier_description?: string;
   customer_price?: string;
   last_contacted?: string;
-  inventory_status?: "in-stock" | "low-stock" | "out-of-stock" | "reorder-needed";
+  inventory_status?:
+    | "in-stock"
+    | "low-stock"
+    | "out-of-stock"
+    | "reorder-needed";
   shipping_carrier?: string;
   tracking_number?: string;
   estimated_delivery?: string;
@@ -138,6 +143,53 @@ interface CSVRow {
   route_optimized?: string;
   category?: string;
 }
+
+const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
+  // From your exportToCSV() headers:
+  "Customer Name": "customer_name",
+  Email: "email",
+  Phone: "phone",
+  Location: "location",
+  Description: "description",
+  MOQ: "moq",
+  Status: "status",
+  Urgency: "urgency",
+  Category: "category",
+  "Supplier Name": "supplier_name",
+  "Supplier Price": "supplier_price",
+  "Customer Price": "customer_price",
+  "Inventory Status": "inventory_status",
+  "Shipping Carrier": "shipping_carrier",
+  "Tracking #": "tracking_number",
+  "Est. Delivery": "estimated_delivery",
+  "Actual Delivery": "actual_delivery",
+  "Refund Status": "refund_status",
+  "Logistics Cost": "logistics_cost",
+  "Lead Time (days)": "supplier_lead_time_days",
+  "Route Optimized": "route_optimized",
+  // Also support direct machine names (for template users)
+  customer_name: "customer_name",
+  email: "email",
+  phone: "phone",
+  location: "location",
+  description: "description",
+  moq: "moq",
+  status: "status",
+  urgency: "urgency",
+  category: "category",
+  supplier_name: "supplier_name",
+  supplier_price: "supplier_price",
+  customer_price: "customer_price",
+  inventory_status: "inventory_status",
+  shipping_carrier: "shipping_carrier",
+  tracking_number: "tracking_number",
+  estimated_delivery: "estimated_delivery",
+  actual_delivery: "actual_delivery",
+  refund_status: "refund_status",
+  logistics_cost: "logistics_cost",
+  supplier_lead_time_days: "supplier_lead_time_days",
+  route_optimized: "route_optimized",
+};
 
 // ------------------------
 // Supabase Client (Enhanced)
@@ -325,7 +377,9 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
       if (margin < 0.2) lowMarginOrders++;
       if (order.estimated_delivery && order.actual_delivery) {
         totalDeliveries++;
-        if (new Date(order.actual_delivery) <= new Date(order.estimated_delivery)) {
+        if (
+          new Date(order.actual_delivery) <= new Date(order.estimated_delivery)
+        ) {
           onTimeDeliveries++;
         }
       }
@@ -349,19 +403,27 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   });
 
   const totalProfit = totalRevenue - totalCost;
-  const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
-  const grossMargin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
+  const profitMargin =
+    totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+  const grossMargin =
+    totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
   const cogs = totalCost;
   const roi = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
   const netCashFlow = cashInflow - cashOutflow;
   const reinvestmentPool = totalProfit > 0 ? totalProfit * 0.3 : 0;
-  const averageOrderValue = completedOrders > 0 ? totalRevenue / completedOrders : 0;
+  const averageOrderValue =
+    completedOrders > 0 ? totalRevenue / completedOrders : 0;
   const averageProfit = completedOrders > 0 ? totalProfit / completedOrders : 0;
-  const projectedCashFlow30Days = cashInflow + inProgressValue * 0.5 - shippedValue * 0.3;
-  const onTimeDeliveryRate = totalDeliveries > 0 ? (onTimeDeliveries / totalDeliveries) * 100 : 0;
-  const avgSupplierLeadTime = supplierCount > 0 ? totalLeadTime / supplierCount : 0;
-  const refundRate = completedOrders > 0 ? (refunds / completedOrders) * 100 : 0;
-  const inventoryTurnover = completedOrders > 0 ? totalRevenue / (totalCost || 1) : 0;
+  const projectedCashFlow30Days =
+    cashInflow + inProgressValue * 0.5 - shippedValue * 0.3;
+  const onTimeDeliveryRate =
+    totalDeliveries > 0 ? (onTimeDeliveries / totalDeliveries) * 100 : 0;
+  const avgSupplierLeadTime =
+    supplierCount > 0 ? totalLeadTime / supplierCount : 0;
+  const refundRate =
+    completedOrders > 0 ? (refunds / completedOrders) * 100 : 0;
+  const inventoryTurnover =
+    completedOrders > 0 ? totalRevenue / (totalCost || 1) : 0;
 
   return {
     totalRevenue,
@@ -417,7 +479,11 @@ Status: ${order.status}
 Category: ${order.category || "N/A"}
 Inventory: ${order.inventory_status || "N/A"}
 Shipping: ${order.shipping_carrier || "N/A"} | ${order.tracking_number || "N/A"}
-Est. Delivery: ${order.estimated_delivery ? new Date(order.estimated_delivery).toLocaleDateString() : "N/A"}
+Est. Delivery: ${
+      order.estimated_delivery
+        ? new Date(order.estimated_delivery).toLocaleDateString()
+        : "N/A"
+    }
 Refund: ${order.refund_status || "None"}
 Created At: ${new Date(order.created_at).toLocaleString()}
 Supplied By: ${order.supplier_name || "N/A"}
@@ -495,7 +561,8 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
               <div className="mt-2 text-sm text-yellow-700 space-y-1">
                 {summary.lowMarginOrders > 0 && (
                   <p>
-                    ⚠️ {summary.lowMarginOrders} order(s) have profit margin below 20%
+                    ⚠️ {summary.lowMarginOrders} order(s) have profit margin
+                    below 20%
                   </p>
                 )}
                 {summary.netCashFlow < 0 && (
@@ -508,7 +575,8 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
                 )}
                 {summary.onTimeDeliveryRate < 90 && (
                   <p>
-                    ⚠️ On-time delivery rate: {summary.onTimeDeliveryRate.toFixed(1)}% (below 90%)
+                    ⚠️ On-time delivery rate:{" "}
+                    {summary.onTimeDeliveryRate.toFixed(1)}% (below 90%)
                   </p>
                 )}
               </div>
@@ -524,9 +592,13 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="text-center p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500 mb-1">On-Time Delivery</p>
-            <p className={`text-lg font-bold ${
-              summary.onTimeDeliveryRate >= 90 ? "text-green-600" : "text-red-600"
-            }`}>
+            <p
+              className={`text-lg font-bold ${
+                summary.onTimeDeliveryRate >= 90
+                  ? "text-green-600"
+                  : "text-red-600"
+              }`}
+            >
               {summary.onTimeDeliveryRate.toFixed(1)}%
             </p>
           </div>
@@ -538,9 +610,11 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
           </div>
           <div className="text-center p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500 mb-1">Refund Rate</p>
-            <p className={`text-lg font-bold ${
-              summary.refundRate > 10 ? "text-red-600" : "text-green-600"
-            }`}>
+            <p
+              className={`text-lg font-bold ${
+                summary.refundRate > 10 ? "text-red-600" : "text-green-600"
+              }`}
+            >
               {summary.refundRate.toFixed(1)}%
             </p>
           </div>
@@ -602,14 +676,14 @@ const OrderCard: React.FC<{
         </span>
       </div>
       <p className="text-sm text-gray-600 mb-1">{order.moq}</p>
-{parseCategories(order.category).map((cat, idx) => (
-  <span
-    key={idx}
-    className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800 mr-1"
-  >
-    {cat}
-  </span>
-))}
+      {parseCategories(order.category).map((cat, idx) => (
+        <span
+          key={idx}
+          className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-800 mr-1"
+        >
+          {cat}
+        </span>
+      ))}
       <p className="text-xs text-gray-500 mt-1">
         {new Date(order.created_at).toLocaleDateString()} • {daysSince}d ago
       </p>
@@ -670,8 +744,13 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
       </h3>
       <div className="space-y-4">
         {images.map((image, i) => (
-          <div key={i} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <p className="text-sm font-medium text-gray-800 mb-2">{image.name}</p>
+          <div
+            key={i}
+            className="bg-gray-50 rounded-lg p-4 border border-gray-200"
+          >
+            <p className="text-sm font-medium text-gray-800 mb-2">
+              {image.name}
+            </p>
             <div className="flex justify-center">
               <img
                 src={image.url}
@@ -696,7 +775,6 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
   );
 };
 
-
 // ------------------------
 // Supplier Bidding Section (ENHANCED WITH APPROVAL LOCK)
 // ------------------------
@@ -711,7 +789,8 @@ const SupplierBiddingSection: React.FC<{
   const [notes, setNotes] = useState("");
   const [leadTime, setLeadTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showApprovalModal, setShowApprovalModal] = useState<SupplierBid | null>(null);
+  const [showApprovalModal, setShowApprovalModal] =
+    useState<SupplierBid | null>(null);
   const [password, setPassword] = useState("");
 
   // ✅ Check if supplier is already approved
@@ -772,7 +851,8 @@ const SupplierBiddingSection: React.FC<{
         <div className="mb-4 p-3 bg-green-100 rounded border border-green-300">
           <p className="text-sm font-medium text-green-800 flex items-center">
             <CheckCircle className="w-4 h-4 mr-2" />
-            Supplier already approved: <span className="font-bold ml-1">{order.supplier_name}</span>
+            Supplier already approved:{" "}
+            <span className="font-bold ml-1">{order.supplier_name}</span>
           </p>
           <p className="text-xs text-green-700 mt-1">
             Bidding is closed for this order.
@@ -781,8 +861,12 @@ const SupplierBiddingSection: React.FC<{
       ) : (
         <>
           <div className="mb-4 p-3 bg-white rounded border border-amber-200">
-            <p className="text-sm text-gray-700 mb-1">Share this link with suppliers:</p>
-            <code className="text-xs bg-gray-100 p-2 rounded break-all">{publicLink}</code>
+            <p className="text-sm text-gray-700 mb-1">
+              Share this link with suppliers:
+            </p>
+            <code className="text-xs bg-gray-100 p-2 rounded break-all">
+              {publicLink}
+            </code>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3 mb-6">
@@ -829,7 +913,11 @@ const SupplierBiddingSection: React.FC<{
                   : "bg-amber-600 text-white hover:bg-amber-700"
               }`}
             >
-              {isAlreadyApproved ? "Bidding Closed" : isSubmitting ? "Submitting..." : "Submit Bid"}
+              {isAlreadyApproved
+                ? "Bidding Closed"
+                : isSubmitting
+                ? "Submitting..."
+                : "Submit Bid"}
             </button>
           </form>
         </>
@@ -844,7 +932,10 @@ const SupplierBiddingSection: React.FC<{
           <div className="space-y-3">
             {bids.map((bid, i) => {
               const bidPrice = extractNumericValue(bid.price);
-              const margin = customerPrice > 0 && bidPrice > 0 ? ((customerPrice - bidPrice) / customerPrice) * 100 : 0;
+              const margin =
+                customerPrice > 0 && bidPrice > 0
+                  ? ((customerPrice - bidPrice) / customerPrice) * 100
+                  : 0;
               const isHighMargin = margin >= 30;
               const isLowMargin = margin > 0 && margin < 20;
 
@@ -852,17 +943,31 @@ const SupplierBiddingSection: React.FC<{
                 <div
                   key={i}
                   className={`bg-white p-4 rounded-lg border ${
-                    isHighMargin ? "border-green-300" : isLowMargin ? "border-red-300" : "border-gray-200"
+                    isHighMargin
+                      ? "border-green-300"
+                      : isLowMargin
+                      ? "border-red-300"
+                      : "border-gray-200"
                   }`}
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <div className="font-bold text-gray-900">{bid.supplier_name}</div>
-                      <div className="text-lg font-semibold text-green-600 mt-1">{bid.price}</div>
+                      <div className="font-bold text-gray-900">
+                        {bid.supplier_name}
+                      </div>
+                      <div className="text-lg font-semibold text-green-600 mt-1">
+                        {bid.price}
+                      </div>
                       {bid.lead_time_days && (
-                        <div className="text-sm text-gray-600 mt-1">Lead Time: {bid.lead_time_days} days</div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          Lead Time: {bid.lead_time_days} days
+                        </div>
                       )}
-                      {bid.notes && <div className="text-sm text-gray-600 mt-1">{bid.notes}</div>}
+                      {bid.notes && (
+                        <div className="text-sm text-gray-600 mt-1">
+                          {bid.notes}
+                        </div>
+                      )}
                       <div className="text-xs text-gray-500 mt-2">
                         Submitted: {new Date(bid.submitted_at).toLocaleString()}
                       </div>
@@ -873,7 +978,11 @@ const SupplierBiddingSection: React.FC<{
                           <span className="font-medium">Margin:</span>{" "}
                           <span
                             className={`font-bold ${
-                              isHighMargin ? "text-green-600" : isLowMargin ? "text-red-600" : "text-blue-600"
+                              isHighMargin
+                                ? "text-green-600"
+                                : isLowMargin
+                                ? "text-red-600"
+                                : "text-blue-600"
                             }`}
                           >
                             {margin.toFixed(1)}%
@@ -904,7 +1013,11 @@ const SupplierBiddingSection: React.FC<{
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <h3 className="font-bold text-lg mb-4">Approve Supplier</h3>
             <p className="mb-3">
-              Approve <span className="font-semibold">{showApprovalModal.supplier_name}</span> at{" "}
+              Approve{" "}
+              <span className="font-semibold">
+                {showApprovalModal.supplier_name}
+              </span>{" "}
+              at{" "}
               <span className="font-semibold">{showApprovalModal.price}</span>?
             </p>
             <input
@@ -925,7 +1038,9 @@ const SupplierBiddingSection: React.FC<{
                 onClick={handleApprove}
                 disabled={password !== "veloxalbaka"}
                 className={`px-4 py-2 rounded text-white ${
-                  password === "veloxalbaka" ? "bg-green-600 hover:bg-green-700" : "bg-gray-400"
+                  password === "veloxalbaka"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-gray-400"
                 }`}
               >
                 Confirm Approval
@@ -1194,9 +1309,13 @@ const PricingSection: React.FC<{
       {showRemoveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="font-bold text-lg mb-3 text-red-600">Remove Supplier?</h3>
+            <h3 className="font-bold text-lg mb-3 text-red-600">
+              Remove Supplier?
+            </h3>
             <p className="mb-4 text-sm text-gray-700">
-              You are about to remove <span className="font-semibold">{order.supplier_name}</span> as the supplier for this order. This cannot be undone.
+              You are about to remove{" "}
+              <span className="font-semibold">{order.supplier_name}</span> as
+              the supplier for this order. This cannot be undone.
             </p>
             <input
               type="password"
@@ -1216,7 +1335,9 @@ const PricingSection: React.FC<{
                 onClick={handleRemove}
                 disabled={removePassword !== "veloxalbaka"}
                 className={`px-4 py-2 rounded text-white ${
-                  removePassword === "veloxalbaka" ? "bg-red-600 hover:bg-red-700" : "bg-gray-400"
+                  removePassword === "veloxalbaka"
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-gray-400"
                 }`}
               >
                 Confirm Removal
@@ -1409,7 +1530,10 @@ const LogisticsSection: React.FC<{
               onChange={(e) => setRouteOptimized(e.target.checked)}
               className="h-4 w-4 text-blue-600 rounded"
             />
-            <label htmlFor="routeOptimized" className="ml-2 text-sm text-gray-700">
+            <label
+              htmlFor="routeOptimized"
+              className="ml-2 text-sm text-gray-700"
+            >
               Route Optimized
             </label>
           </div>
@@ -1436,7 +1560,11 @@ const LogisticsSection: React.FC<{
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded-lg border border-gray-200">
               <p className="text-xs text-gray-500 mb-1">Inventory</p>
-              <span className={`text-sm font-medium px-2 py-1 rounded-full ${getInventoryColor(inventoryStatus as any)}`}>
+              <span
+                className={`text-sm font-medium px-2 py-1 rounded-full ${getInventoryColor(
+                  inventoryStatus as any
+                )}`}
+              >
                 {inventoryStatus || "Not set"}
               </span>
             </div>
@@ -1451,13 +1579,17 @@ const LogisticsSection: React.FC<{
             <div className="bg-white p-4 rounded-lg border border-gray-200">
               <p className="text-xs text-gray-500 mb-1">Est. Delivery</p>
               <p className="text-gray-900">
-                {estimatedDelivery ? new Date(estimatedDelivery).toLocaleDateString() : "N/A"}
+                {estimatedDelivery
+                  ? new Date(estimatedDelivery).toLocaleDateString()
+                  : "N/A"}
               </p>
             </div>
             <div className="bg-white p-4 rounded-lg border border-gray-200">
               <p className="text-xs text-gray-500 mb-1">Actual Delivery</p>
               <p className="text-gray-900">
-                {actualDelivery ? new Date(actualDelivery).toLocaleDateString() : "N/A"}
+                {actualDelivery
+                  ? new Date(actualDelivery).toLocaleDateString()
+                  : "N/A"}
               </p>
             </div>
             <div className="bg-white p-4 rounded-lg border border-gray-200">
@@ -1472,7 +1604,9 @@ const LogisticsSection: React.FC<{
             </div>
             <div className="bg-white p-4 rounded-lg border border-gray-200">
               <p className="text-xs text-gray-500 mb-1">Lead Time</p>
-              <p className="text-gray-900">{supplierLeadTime ? `${supplierLeadTime} days` : "N/A"}</p>
+              <p className="text-gray-900">
+                {supplierLeadTime ? `${supplierLeadTime} days` : "N/A"}
+              </p>
             </div>
           </div>
           {routeOptimized && (
@@ -1518,34 +1652,41 @@ const OrderManagementApp: React.FC = () => {
   const [supplierLeadTime, setSupplierLeadTime] = useState("");
   const [routeOptimized, setRouteOptimized] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-  const [filter, setFilter] = useState<"all" | "low-margin" | "aging" | "refund">("all");
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
+  const [filter, setFilter] = useState<
+    "all" | "low-margin" | "aging" | "refund"
+  >("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-const loadOrders = useCallback(async () => {
-  setLoading(true);
-  try {
-    const data = await supabase.from("orders").select("*").execute();
-    const urgencyPriority = { high: 3, medium: 2, low: 1 };
-    const sorted = data.sort((a, b) => {
-      const urgencyDiff = urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
-      if (urgencyDiff !== 0) return urgencyDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-    setOrders(sorted);
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await supabase.from("orders").select("*").execute();
+      const urgencyPriority = { high: 3, medium: 2, low: 1 };
+      const sorted = data.sort((a, b) => {
+        const urgencyDiff =
+          urgencyPriority[b.urgency] - urgencyPriority[a.urgency];
+        if (urgencyDiff !== 0) return urgencyDiff;
+        return (
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      });
+      setOrders(sorted);
 
-    // ✅ Extract all unique categories from comma-separated strings
-    const allCats = sorted.flatMap((o) => parseCategories(o.category));
-    const uniqueCats = Array.from(new Set(allCats));
-    setAvailableCategories(uniqueCats);
-  } catch (error) {
-    console.error("Failed to load orders:", error);
-    setOrders([]);
-    alert("Failed to load orders. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-}, []);
+      // ✅ Extract all unique categories from comma-separated strings
+      const allCats = sorted.flatMap((o) => parseCategories(o.category));
+      const uniqueCats = Array.from(new Set(allCats));
+      setAvailableCategories(uniqueCats);
+    } catch (error) {
+      console.error("Failed to load orders:", error);
+      setOrders([]);
+      alert("Failed to load orders. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadOrders();
@@ -1554,16 +1695,17 @@ const loadOrders = useCallback(async () => {
   const financialSummary = calculateFinancials(orders);
 
   const filteredOrders = orders.filter((order) => {
-      const orderCategories = parseCategories(order.category);
+    const orderCategories = parseCategories(order.category);
 
-  // Category filter: match if "all" OR if selected category is in order's categories
-  if (categoryFilter !== "all" && !orderCategories.includes(categoryFilter)) {
-    return false;
-  }
+    // Category filter: match if "all" OR if selected category is in order's categories
+    if (categoryFilter !== "all" && !orderCategories.includes(categoryFilter)) {
+      return false;
+    }
     if (filter === "low-margin") {
       const margin =
         order.customer_price && order.supplier_price
-          ? (extractNumericValue(order.customer_price) - extractNumericValue(order.supplier_price)) /
+          ? (extractNumericValue(order.customer_price) -
+              extractNumericValue(order.supplier_price)) /
             extractNumericValue(order.customer_price)
           : 0;
       return order.status === "completed" && margin < 0.2;
@@ -1577,10 +1719,17 @@ const loadOrders = useCallback(async () => {
     return true;
   });
 
-  const updateOrderStatus = async (orderId: number, status: Order["status"]) => {
+  const updateOrderStatus = async (
+    orderId: number,
+    status: Order["status"]
+  ) => {
     setLoading(true);
     try {
-      await supabase.from("orders").update({ status }).eq("id", orderId).execute();
+      await supabase
+        .from("orders")
+        .update({ status })
+        .eq("id", orderId)
+        .execute();
       const updatedOrder = orders.find((o) => o.id === orderId);
       if (updatedOrder) {
         const newOrder = { ...updatedOrder, status };
@@ -1600,22 +1749,37 @@ const loadOrders = useCallback(async () => {
     setLoading(true);
     try {
       const updatePayload: Partial<Order> = {};
-      if (supplierName.trim() !== "") updatePayload.supplier_name = supplierName;
-      if (supplierPrice.trim() !== "") updatePayload.supplier_price = supplierPrice;
-      if (supplierDescription.trim() !== "") updatePayload.supplier_description = supplierDescription;
-      if (customerPrice.trim() !== "") updatePayload.customer_price = customerPrice;
+      if (supplierName.trim() !== "")
+        updatePayload.supplier_name = supplierName;
+      if (supplierPrice.trim() !== "")
+        updatePayload.supplier_price = supplierPrice;
+      if (supplierDescription.trim() !== "")
+        updatePayload.supplier_description = supplierDescription;
+      if (customerPrice.trim() !== "")
+        updatePayload.customer_price = customerPrice;
       if (Object.keys(updatePayload).length === 0) {
         setIsEditingPricing(false);
         return;
       }
-      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      await supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", orderId)
+        .execute();
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o))
+      );
       if (selectedOrder?.id === orderId) {
-        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+        setSelectedOrder((prev) =>
+          prev ? { ...prev, ...updatePayload } : null
+        );
       }
       setIsEditingPricing(false);
       alert("Pricing updated successfully");
-      await sendOrderUpdateWebhook({ ...selectedOrder, ...updatePayload } as Order, "Pricing Updated");
+      await sendOrderUpdateWebhook(
+        { ...selectedOrder, ...updatePayload } as Order,
+        "Pricing Updated"
+      );
     } catch (error) {
       console.error("Pricing update error:", error);
       alert("Failed to update pricing");
@@ -1628,23 +1792,38 @@ const loadOrders = useCallback(async () => {
     setLoading(true);
     try {
       const updatePayload: Partial<Order> = {};
-      if (inventoryStatus) updatePayload.inventory_status = inventoryStatus as any;
+      if (inventoryStatus)
+        updatePayload.inventory_status = inventoryStatus as any;
       if (shippingCarrier) updatePayload.shipping_carrier = shippingCarrier;
       if (trackingNumber) updatePayload.tracking_number = trackingNumber;
-      if (estimatedDelivery) updatePayload.estimated_delivery = estimatedDelivery;
+      if (estimatedDelivery)
+        updatePayload.estimated_delivery = estimatedDelivery;
       if (actualDelivery) updatePayload.actual_delivery = actualDelivery;
-      if (refundStatus !== "none") updatePayload.refund_status = refundStatus as any;
+      if (refundStatus !== "none")
+        updatePayload.refund_status = refundStatus as any;
       if (logisticsCost) updatePayload.logistics_cost = logisticsCost;
-      if (supplierLeadTime) updatePayload.supplier_lead_time_days = parseInt(supplierLeadTime, 10);
+      if (supplierLeadTime)
+        updatePayload.supplier_lead_time_days = parseInt(supplierLeadTime, 10);
       updatePayload.route_optimized = routeOptimized;
-      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      await supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", orderId)
+        .execute();
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o))
+      );
       if (selectedOrder?.id === orderId) {
-        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+        setSelectedOrder((prev) =>
+          prev ? { ...prev, ...updatePayload } : null
+        );
       }
       setIsEditingLogistics(false);
       alert("Logistics updated successfully");
-      await sendOrderUpdateWebhook({ ...selectedOrder, ...updatePayload } as Order, "Logistics Updated");
+      await sendOrderUpdateWebhook(
+        { ...selectedOrder, ...updatePayload } as Order,
+        "Logistics Updated"
+      );
     } catch (error) {
       console.error("Logistics update error:", error);
       alert("Failed to update logistics info");
@@ -1656,11 +1835,21 @@ const loadOrders = useCallback(async () => {
   const updateCategory = async (orderId: number) => {
     setLoading(true);
     try {
-      const updatePayload: Partial<Order> = { category: categoryInput || undefined };
-      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      const updatePayload: Partial<Order> = {
+        category: categoryInput || undefined,
+      };
+      await supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", orderId)
+        .execute();
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o))
+      );
       if (selectedOrder?.id === orderId) {
-        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+        setSelectedOrder((prev) =>
+          prev ? { ...prev, ...updatePayload } : null
+        );
       }
       setIsEditingCategory(false);
       await loadOrders();
@@ -1673,7 +1862,10 @@ const loadOrders = useCallback(async () => {
     }
   };
 
-  const submitSupplierBid = async (orderId: number, bidData: Omit<SupplierBid, "submitted_at">) => {
+  const submitSupplierBid = async (
+    orderId: number,
+    bidData: Omit<SupplierBid, "submitted_at">
+  ) => {
     try {
       const existingBids = parseBids(selectedOrder?.bids || "[]");
       const newBid: SupplierBid = {
@@ -1682,10 +1874,18 @@ const loadOrders = useCallback(async () => {
       };
       const updatedBids = [...existingBids, newBid];
       const updatePayload = { bids: JSON.stringify(updatedBids) };
-      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      await supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", orderId)
+        .execute();
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o))
+      );
       if (selectedOrder?.id === orderId) {
-        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+        setSelectedOrder((prev) =>
+          prev ? { ...prev, ...updatePayload } : null
+        );
       }
       alert("Bid submitted successfully!");
     } catch (err) {
@@ -1694,7 +1894,11 @@ const loadOrders = useCallback(async () => {
     }
   };
 
-  const approveSupplierBid = async (orderId: number, bid: SupplierBid, password: string) => {
+  const approveSupplierBid = async (
+    orderId: number,
+    bid: SupplierBid,
+    password: string
+  ) => {
     if (password !== "veloxalbaka") {
       alert("Incorrect password. Supplier not approved.");
       return;
@@ -1707,13 +1911,24 @@ const loadOrders = useCallback(async () => {
         supplier_lead_time_days: bid.lead_time_days,
         status: "in-progress",
       };
-      await supabase.from("orders").update(updatePayload).eq("id", orderId).execute();
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o)));
+      await supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", orderId)
+        .execute();
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, ...updatePayload } : o))
+      );
       if (selectedOrder?.id === orderId) {
-        setSelectedOrder((prev) => (prev ? { ...prev, ...updatePayload } : null));
+        setSelectedOrder((prev) =>
+          prev ? { ...prev, ...updatePayload } : null
+        );
       }
       alert(`Supplier ${bid.supplier_name} approved successfully!`);
-      await sendOrderUpdateWebhook({ ...selectedOrder, ...updatePayload } as Order, "Supplier Approved");
+      await sendOrderUpdateWebhook(
+        { ...selectedOrder, ...updatePayload } as Order,
+        "Supplier Approved"
+      );
     } catch (err) {
       console.error("Supplier approval error:", err);
       alert("Failed to approve supplier");
@@ -1736,113 +1951,241 @@ const loadOrders = useCallback(async () => {
     }
   };
 
-  const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const text = e.target?.result as string;
-        const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line);
-        if (lines.length < 2) {
-          alert("CSV must contain headers and at least one data row");
-          return;
-        }
-        const headers = lines[0].split(",").map((h) =>
-          h.trim().replace(/^"(.*)"$/, "$1").toLowerCase()
-        );
-        const newOrders: Partial<Order>[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i];
-          if (!line) continue;
-          const values: string[] = [];
-          let current = "";
-          let inQuotes = false;
-          for (let char of line) {
-            if (char === '"') {
-              inQuotes = !inQuotes;
-            } else if (char === "," && !inQuotes) {
-              values.push(current.trim().replace(/^"(.*)"$/, "$1"));
-              current = "";
-            } else {
-              current += char;
-            }
-          }
-          values.push(current.trim().replace(/^"(.*)"$/, "$1"));
-          if (values.length !== headers.length) {
-            console.warn(`Skipping row ${i + 1}: column count mismatch`);
-            continue;
-          }
-          const rowData: CSVRow = {};
-          headers.forEach((header, index) => {
-            if (values[index] !== undefined) {
-              rowData[header as keyof CSVRow] = values[index] || undefined;
-            }
-          });
-          if (!rowData.customer_name || !rowData.phone || !rowData.location || !rowData.description || !rowData.moq) {
-            console.warn(`Skipping row ${i + 1}: missing required fields`);
-            continue;
-          }
-          const order: Partial<Order> = {
-            customer_name: rowData.customer_name,
-            email: rowData.email || undefined,
-            phone: rowData.phone,
-            location: rowData.location,
-            description: rowData.description,
-            moq: rowData.moq,
-            urgency: (["low", "medium", "high"].includes(rowData.urgency?.toLowerCase() || "")
-              ? rowData.urgency?.toLowerCase()
-              : "medium") as Order["urgency"],
-            status: (["pending", "in-progress", "completed", "cancelled", "ship"].includes(rowData.status?.toLowerCase() || "")
-              ? rowData.status?.toLowerCase()
-              : "pending") as Order["status"],
-            created_at: new Date().toISOString(),
-            supplier_name: rowData.supplier_name || undefined,
-            supplier_price: rowData.supplier_price || undefined,
-            supplier_description: rowData.supplier_description || undefined,
-            customer_price: rowData.customer_price || undefined,
-            images: "[]",
-            inventory_status: rowData.inventory_status as any,
-            shipping_carrier: rowData.shipping_carrier,
-            tracking_number: rowData.tracking_number,
-            estimated_delivery: rowData.estimated_delivery,
-            actual_delivery: rowData.actual_delivery,
-            refund_status: rowData.refund_status as any,
-            logistics_cost: rowData.logistics_cost,
-            supplier_lead_time_days: rowData.supplier_lead_time_days ? parseInt(rowData.supplier_lead_time_days, 10) : undefined,
-            route_optimized: rowData.route_optimized?.toLowerCase() === "true",
-            category: rowData.category || undefined,
-          };
-          newOrders.push(order);
-        }
-        if (newOrders.length === 0) {
-          alert("No valid orders found in CSV");
-          return;
-        }
-        setLoading(true);
-        try {
-          await supabase.from("orders").insert(newOrders).execute();
-          await loadOrders();
-          alert(`Successfully imported ${newOrders.length} order(s)`);
-        } catch (error) {
-          console.error("Import error:", error);
-          alert("Failed to import orders. Check CSV format and required fields.");
-        } finally {
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error("CSV parsing error:", error);
-        alert("Error parsing CSV file");
+const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const text = e.target?.result as string;
+      const lines = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line);
+      if (lines.length < 2) {
+        alert("CSV must contain headers and at least one data row");
+        return;
       }
-    };
-    reader.readAsText(file);
-    event.target.value = "";
+
+      // Parse raw headers (first line)
+      const rawHeaders = lines[0].split(",").map((h) => h.trim());
+      const headerMap: (keyof CSVRow | null)[] = [];
+
+      for (const raw of rawHeaders) {
+        const clean = raw.replace(/^"(.*)"$/, "$1").trim();
+        let key: keyof CSVRow | null = null;
+
+        // Map export-style headers
+        if (clean === "Customer Name") key = "customer_name";
+        else if (clean === "Email") key = "email";
+        else if (clean === "Phone") key = "phone";
+        else if (clean === "Location") key = "location";
+        else if (clean === "Description") key = "description";
+        else if (clean === "MOQ") key = "moq";
+        else if (clean === "Urgency") key = "urgency";
+        else if (clean === "Status") key = "status";
+        else if (clean === "Category") key = "category";
+        else if (clean === "Supplier Name") key = "supplier_name";
+        else if (clean === "Supplier Price") key = "supplier_price";
+        else if (clean === "Customer Price") key = "customer_price";
+        else if (clean === "Inventory Status") key = "inventory_status";
+        else if (clean === "Shipping Carrier") key = "shipping_carrier";
+        else if (clean === "Tracking #") key = "tracking_number";
+        else if (clean === "Est. Delivery") key = "estimated_delivery";
+        else if (clean === "Actual Delivery") key = "actual_delivery";
+        else if (clean === "Refund Status") key = "refund_status";
+        else if (clean === "Logistics Cost") key = "logistics_cost";
+        else if (clean === "Lead Time (days)") key = "supplier_lead_time_days";
+        else if (clean === "Route Optimized") key = "route_optimized";
+        // Also support template-style lowercase headers
+        else if (
+          [
+            "customer_name",
+            "email",
+            "phone",
+            "location",
+            "description",
+            "moq",
+            "urgency",
+            "status",
+            "category",
+            "supplier_name",
+            "supplier_price",
+            "customer_price",
+            "inventory_status",
+            "shipping_carrier",
+            "tracking_number",
+            "estimated_delivery",
+            "actual_delivery",
+            "refund_status",
+            "logistics_cost",
+            "supplier_lead_time_days",
+            "route_optimized",
+          ].includes(clean)
+        ) {
+          key = clean as keyof CSVRow;
+        }
+
+        headerMap.push(key);
+      }
+
+      const newOrders: Partial<Order>[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line) continue;
+
+        // ✅ CORRECTED CSV PARSER (handles quotes at start, escaped quotes)
+        const values: string[] = [];
+        let current = "";
+        let inQuotes = false;
+
+        for (let j = 0; j < line.length; j++) {
+          const char = line[j];
+          if (char === '"') {
+            if (inQuotes && line[j + 1] === '"') {
+              // Escaped quote: ""
+              current += '"';
+              j++; // skip next "
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === "," && !inQuotes) {
+            values.push(current);
+            current = "";
+          } else {
+            current += char;
+          }
+        }
+        values.push(current);
+
+        // Build row object
+        const rowData: CSVRow = {};
+        for (
+          let idx = 0;
+          idx < headerMap.length && idx < values.length;
+          idx++
+        ) {
+          const key = headerMap[idx];
+          if (key !== null) {
+            let val = values[idx].trim();
+            // Remove surrounding quotes and handle escaped quotes
+            if (val.startsWith('"') && val.endsWith('"')) {
+              val = val.slice(1, -1).replace(/""/g, '"');
+            }
+            rowData[key] = val || undefined;
+          }
+        }
+
+        // Validate required fields
+        if (
+          !rowData.customer_name ||
+          !rowData.phone ||
+          !rowData.location ||
+          !rowData.description ||
+          !rowData.moq
+        ) {
+          console.warn(
+            `Skipping row ${i + 1}: missing required fields`,
+            rowData
+          );
+          continue;
+        }
+
+        // ✅ Helper: clean date fields
+        const cleanDate = (val: string | undefined): string | undefined => {
+          return val && val !== "N/A" ? val : undefined;
+        };
+
+        // ✅ Helper: clean numeric fields
+        const cleanInt = (val: string | undefined): number | undefined => {
+          if (!val || val === "none" || val === "N/A" || val.trim() === "")
+            return undefined;
+          const num = parseInt(val.trim(), 10);
+          return isNaN(num) ? undefined : num;
+        };
+
+        // Parse and validate fields
+        const urgency = ["low", "medium", "high"].includes(
+          rowData.urgency?.toLowerCase() || ""
+        )
+          ? (rowData.urgency?.toLowerCase() as Order["urgency"])
+          : "medium";
+
+        const status = [
+          "pending",
+          "in-progress",
+          "completed",
+          "cancelled",
+          "ship",
+        ].includes(rowData.status?.toLowerCase() || "")
+          ? (rowData.status?.toLowerCase() as Order["status"])
+          : "pending";
+
+        const order: Partial<Order> = {
+          customer_name: rowData.customer_name,
+          email: rowData.email || undefined,
+          phone: rowData.phone,
+          location: rowData.location,
+          description: rowData.description,
+          moq: rowData.moq,
+          urgency,
+          status,
+          created_at: new Date().toISOString(),
+          supplier_name: rowData.supplier_name || undefined,
+          supplier_price: rowData.supplier_price || undefined,
+          supplier_description: rowData.supplier_description || undefined,
+          customer_price: rowData.customer_price || undefined,
+          images: "[]",
+          inventory_status: rowData.inventory_status as any,
+          shipping_carrier: rowData.shipping_carrier,
+          tracking_number: rowData.tracking_number,
+          // ✅ Fix date fields
+          estimated_delivery: cleanDate(rowData.estimated_delivery),
+          actual_delivery: cleanDate(rowData.actual_delivery),
+          refund_status: rowData.refund_status as any,
+          logistics_cost: rowData.logistics_cost,
+          // ✅ Fix numeric field
+          supplier_lead_time_days: cleanInt(rowData.supplier_lead_time_days),
+          route_optimized: rowData.route_optimized?.toLowerCase() === "true",
+          category: rowData.category || undefined,
+        };
+
+        newOrders.push(order);
+      }
+
+      if (newOrders.length === 0) {
+        alert("No valid orders found in CSV");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        await supabase.from("orders").insert(newOrders).execute();
+        await loadOrders();
+        alert(`Successfully imported ${newOrders.length} order(s)`);
+      } catch (error) {
+        console.error("Import error:", error);
+        alert(
+          "Failed to import orders. Check CSV format and required fields."
+        );
+      } finally {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error("CSV parsing error:", error);
+      alert("Error parsing CSV file");
+    }
   };
+  reader.readAsText(file);
+  event.target.value = ""; // reset input to allow re-upload
+};
 
   const downloadCSVTemplate = () => {
     const template = [
-      "customer_name,email,phone,location,description,moq,urgency,status,supplier_name,supplier_price,supplier_description,customer_price,inventory_status,shipping_carrier,tracking_number,estimated_delivery,actual_delivery,refund_status,logistics_cost,supplier_lead_time_days,route_optimized,category",
-      '"John Doe","john@example.com","+1234567890","New York","Custom widgets","1000 units","high","pending","ABC Supplier","5000 USD","Fast shipping","8000 USD","in-stock","DHL","123456789","2024-07-10","","none","1200 LKR","5","true","Electronics"',
+      '"Customer Name",Email,Phone,Location,Description,MOQ,Urgency,Status,Category,"Supplier Name","Supplier Price","Customer Price","Inventory Status","Shipping Carrier","Tracking #","Est. Delivery","Actual Delivery","Refund Status","Logistics Cost","Lead Time (days)","Route Optimized"',
+      '"John Doe","john@example.com","+1234567890","New York","Custom widgets","1000 units","high","pending","Electronics","ABC Supplier","5000 USD","8000 USD","in-stock","DHL","123456789","2024-07-10","","none","1200 LKR","5","true"',
     ].join("\n");
     const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -1855,10 +2198,32 @@ const loadOrders = useCallback(async () => {
 
   const exportToCSV = () => {
     const headers = [
-      "Order ID","Customer Name","Email","Phone","Location","Description","MOQ","Status","Urgency","Category",
-      "Customer Price","Supplier Name","Supplier Price","Profit","Margin %","Inventory Status",
-      "Shipping Carrier","Tracking #","Est. Delivery","Actual Delivery","Refund Status",
-      "Logistics Cost","Lead Time (days)","Route Optimized","Created Date","Days Since Created"
+      "Order ID",
+      "Customer Name",
+      "Email",
+      "Phone",
+      "Location",
+      "Description",
+      "MOQ",
+      "Status",
+      "Urgency",
+      "Category",
+      "Customer Price",
+      "Supplier Name",
+      "Supplier Price",
+      "Profit",
+      "Margin %",
+      "Inventory Status",
+      "Shipping Carrier",
+      "Tracking #",
+      "Est. Delivery",
+      "Actual Delivery",
+      "Refund Status",
+      "Logistics Cost",
+      "Lead Time (days)",
+      "Route Optimized",
+      "Created Date",
+      "Days Since Created",
     ];
     const csv = [
       headers.join(","),
@@ -1886,8 +2251,12 @@ const loadOrders = useCallback(async () => {
           o.inventory_status || "N/A",
           o.shipping_carrier || "N/A",
           o.tracking_number || "N/A",
-          o.estimated_delivery ? new Date(o.estimated_delivery).toISOString().split("T")[0] : "N/A",
-          o.actual_delivery ? new Date(o.actual_delivery).toISOString().split("T")[0] : "N/A",
+          o.estimated_delivery
+            ? new Date(o.estimated_delivery).toISOString().split("T")[0]
+            : "",
+          o.actual_delivery
+            ? new Date(o.actual_delivery).toISOString().split("T")[0]
+            : "N/A",
           o.refund_status || "none",
           o.logistics_cost || "N/A",
           o.supplier_lead_time_days || "N/A",
@@ -1925,12 +2294,24 @@ const loadOrders = useCallback(async () => {
       "",
       "=== LOGISTICS PERFORMANCE ===",
       `Total Logistics Cost,${summary.totalLogisticsCost.toFixed(2)}`,
-      `Logistics Cost / Order,${summary.completedOrders > 0 ? (summary.totalLogisticsCost / summary.completedOrders).toFixed(2) : "0"}`,
+      `Logistics Cost / Order,${
+        summary.completedOrders > 0
+          ? (summary.totalLogisticsCost / summary.completedOrders).toFixed(2)
+          : "0"
+      }`,
       "",
       "=== RECOMMENDATIONS ===",
-      `1. Optimize suppliers with lead time > ${Math.ceil(summary.avgSupplierLeadTime * 1.5)} days`,
-      `2. Investigate refund causes if rate > 10% (${summary.refundRate.toFixed(1)}%)`,
-      `3. Negotiate logistics rates – current avg: ${summary.completedOrders > 0 ? formatCurrency(summary.totalLogisticsCost / summary.completedOrders) : "N/A"}`,
+      `1. Optimize suppliers with lead time > ${Math.ceil(
+        summary.avgSupplierLeadTime * 1.5
+      )} days`,
+      `2. Investigate refund causes if rate > 10% (${summary.refundRate.toFixed(
+        1
+      )}%)`,
+      `3. Negotiate logistics rates – current avg: ${
+        summary.completedOrders > 0
+          ? formatCurrency(summary.totalLogisticsCost / summary.completedOrders)
+          : "N/A"
+      }`,
       `4. Reorder inventory for items marked "reorder-needed"`,
       "",
     ];
@@ -1996,7 +2377,9 @@ const loadOrders = useCallback(async () => {
       setActualDelivery(selectedOrder.actual_delivery || "");
       setRefundStatus(selectedOrder.refund_status || "none");
       setLogisticsCost(selectedOrder.logistics_cost || "");
-      setSupplierLeadTime(selectedOrder.supplier_lead_time_days?.toString() || "");
+      setSupplierLeadTime(
+        selectedOrder.supplier_lead_time_days?.toString() || ""
+      );
       setRouteOptimized(!!selectedOrder.route_optimized);
     }
   };
@@ -2082,8 +2465,10 @@ const loadOrders = useCallback(async () => {
                 className="text-xs border border-gray-300 rounded px-2 py-1"
               >
                 <option value="all">All Categories</option>
-                {availableCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
                 ))}
               </select>
             </div>
@@ -2323,31 +2708,37 @@ const loadOrders = useCallback(async () => {
                     </button>
                   </div>
                 ) : (
-<div className="mt-2 flex flex-wrap gap-2">
-  {parseCategories(selectedOrder.category).length > 0 ? (
-    parseCategories(selectedOrder.category).map((cat, idx) => (
-      <span
-        key={idx}
-        className="text-sm px-2 py-1 rounded-full bg-indigo-100 text-indigo-800"
-      >
-        {cat}
-      </span>
-    ))
-  ) : (
-    <span className="text-gray-500 italic">Not assigned</span>
-  )}
-</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {parseCategories(selectedOrder.category).length > 0 ? (
+                      parseCategories(selectedOrder.category).map(
+                        (cat, idx) => (
+                          <span
+                            key={idx}
+                            className="text-sm px-2 py-1 rounded-full bg-indigo-100 text-indigo-800"
+                          >
+                            {cat}
+                          </span>
+                        )
+                      )
+                    ) : (
+                      <span className="text-gray-500 italic">Not assigned</span>
+                    )}
+                  </div>
                 )}
               </div>
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Customer Information</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  Customer Information
+                </h3>
                 <div className="space-y-3">
                   <div className="flex items-start">
                     <Users className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
                     <div>
                       <p className="text-sm text-gray-500">Customer Name</p>
-                      <p className="font-medium text-gray-900">{selectedOrder.customer_name}</p>
+                      <p className="font-medium text-gray-900">
+                        {selectedOrder.customer_name}
+                      </p>
                     </div>
                   </div>
                   {selectedOrder.email && (
@@ -2355,7 +2746,9 @@ const loadOrders = useCallback(async () => {
                       <Mail className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
                       <div>
                         <p className="text-sm text-gray-500">Email</p>
-                        <p className="font-medium text-gray-900">{selectedOrder.email}</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedOrder.email}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -2363,20 +2756,26 @@ const loadOrders = useCallback(async () => {
                     <Phone className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
                     <div>
                       <p className="text-sm text-gray-500">Phone</p>
-                      <p className="font-medium text-gray-900">{selectedOrder.phone}</p>
+                      <p className="font-medium text-gray-900">
+                        {selectedOrder.phone}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-start">
                     <Package className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
                     <div>
                       <p className="text-sm text-gray-500">Location</p>
-                      <p className="font-medium text-gray-900">{selectedOrder.location}</p>
+                      <p className="font-medium text-gray-900">
+                        {selectedOrder.location}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-start">
                     <Calendar className="w-5 h-5 text-gray-400 mt-0.5 mr-3" />
                     <div>
-                      <p className="text-sm text-gray-500">Days Since Created</p>
+                      <p className="text-sm text-gray-500">
+                        Days Since Created
+                      </p>
                       <p className="font-medium text-gray-900">
                         {getDaysSince(selectedOrder.created_at)} days
                       </p>
@@ -2392,14 +2791,18 @@ const loadOrders = useCallback(async () => {
               </div>
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Order Details</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  Order Details
+                </h3>
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Description</p>
                     <p className="text-gray-900">{selectedOrder.description}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 mb-1">Minimum Order Quantity</p>
+                    <p className="text-sm text-gray-500 mb-1">
+                      Minimum Order Quantity
+                    </p>
                     <p className="text-gray-900">{selectedOrder.moq}</p>
                   </div>
                   <div>
@@ -2422,52 +2825,70 @@ const loadOrders = useCallback(async () => {
               </div>
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Update Status</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  Update Status
+                </h3>
                 <StatusUpdater
                   currentStatus={selectedOrder.status}
-                  onUpdate={(status) => updateOrderStatus(selectedOrder.id, status)}
+                  onUpdate={(status) =>
+                    updateOrderStatus(selectedOrder.id, status)
+                  }
                   loading={loading}
                 />
               </div>
 
-<PricingSection
-  order={selectedOrder}
-  isEditing={isEditingPricing}
-  supplierName={supplierName}
-  supplierPrice={supplierPrice}
-  supplierDescription={supplierDescription}
-  customerPrice={customerPrice}
-  setSupplierName={setSupplierName}
-  setSupplierPrice={setSupplierPrice}
-  setSupplierDescription={setSupplierDescription}
-  setCustomerPrice={setCustomerPrice}
-  onSave={() => updatePricingInfo(selectedOrder.id)}
-  onCancel={handleCancelEditPricing}
-  loading={loading}
-  onEdit={handleEditPricing}
-  onRemoveSupplier={(pwd) => {
-    if (pwd !== "veloxalbaka") {
-      alert("Incorrect password. Supplier not removed.");
-      return;
-    }
-    // Clear supplier fields
-    const updatePayload: Partial<Order> = {
-      supplier_name: undefined,
-      supplier_price: undefined,
-      supplier_description: undefined,
-      supplier_lead_time_days: undefined,
-      status: "pending", // revert to pending
-    };
-    supabase.from("orders").update(updatePayload).eq("id", selectedOrder!.id).execute().then(() => {
-      setOrders(prev => prev.map(o => o.id === selectedOrder!.id ? { ...o, ...updatePayload } : o));
-      setSelectedOrder(prev => prev ? { ...prev, ...updatePayload } : null);
-      alert("Supplier removed successfully.");
-    }).catch(err => {
-      console.error("Remove supplier error:", err);
-      alert("Failed to remove supplier.");
-    });
-  }}
-/>
+              <PricingSection
+                order={selectedOrder}
+                isEditing={isEditingPricing}
+                supplierName={supplierName}
+                supplierPrice={supplierPrice}
+                supplierDescription={supplierDescription}
+                customerPrice={customerPrice}
+                setSupplierName={setSupplierName}
+                setSupplierPrice={setSupplierPrice}
+                setSupplierDescription={setSupplierDescription}
+                setCustomerPrice={setCustomerPrice}
+                onSave={() => updatePricingInfo(selectedOrder.id)}
+                onCancel={handleCancelEditPricing}
+                loading={loading}
+                onEdit={handleEditPricing}
+                onRemoveSupplier={(pwd) => {
+                  if (pwd !== "veloxalbaka") {
+                    alert("Incorrect password. Supplier not removed.");
+                    return;
+                  }
+                  // Clear supplier fields
+                  const updatePayload: Partial<Order> = {
+                    supplier_name: undefined,
+                    supplier_price: undefined,
+                    supplier_description: undefined,
+                    supplier_lead_time_days: undefined,
+                    status: "pending", // revert to pending
+                  };
+                  supabase
+                    .from("orders")
+                    .update(updatePayload)
+                    .eq("id", selectedOrder!.id)
+                    .execute()
+                    .then(() => {
+                      setOrders((prev) =>
+                        prev.map((o) =>
+                          o.id === selectedOrder!.id
+                            ? { ...o, ...updatePayload }
+                            : o
+                        )
+                      );
+                      setSelectedOrder((prev) =>
+                        prev ? { ...prev, ...updatePayload } : null
+                      );
+                      alert("Supplier removed successfully.");
+                    })
+                    .catch((err) => {
+                      console.error("Remove supplier error:", err);
+                      alert("Failed to remove supplier.");
+                    });
+                }}
+              />
 
               <LogisticsSection
                 order={selectedOrder}
@@ -2499,8 +2920,12 @@ const loadOrders = useCallback(async () => {
               <SupplierBiddingSection
                 order={selectedOrder}
                 onBidSubmit={(bid) => submitSupplierBid(selectedOrder.id, bid)}
-                onApproveBid={(bid, pwd) => approveSupplierBid(selectedOrder.id, bid, pwd)}
-                customerPrice={extractNumericValue(selectedOrder.customer_price)}
+                onApproveBid={(bid, pwd) =>
+                  approveSupplierBid(selectedOrder.id, bid, pwd)
+                }
+                customerPrice={extractNumericValue(
+                  selectedOrder.customer_price
+                )}
               />
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
