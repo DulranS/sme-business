@@ -23,7 +23,13 @@ interface Order {
   description: string;
   moq: string;
   urgency: "low" | "medium" | "high";
-  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship" | "shipped"; // 👈 added "shipped"
+  status:
+    | "pending"
+    | "in-progress"
+    | "completed"
+    | "cancelled"
+    | "ship"
+    | "shipped"; // 👈 added "shipped"
   images: string;
   created_at: string;
   supplier_price?: string;
@@ -31,6 +37,7 @@ interface Order {
   customer_price?: string;
   shipped_quantity?: number;
   shipped_at?: string; // 👈 NEW
+  supplier_name?: string; // 👈 FIXED
 
   // Optional logistics
   shipping_carrier?: string;
@@ -48,12 +55,16 @@ interface OrderImage {
 // ------------------------
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const DISCORD_WEBHOOK_URL = process.env.NEXT_PUBLIC_DISCORD_READY_WEBHOOK_URL || "";
+const DISCORD_WEBHOOK_URL =
+  process.env.NEXT_PUBLIC_DISCORD_READY_WEBHOOK_URL || "";
 
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
     const response = await fetch(`${this.url}/rest/v1/${endpoint}`, {
       headers: {
         apikey: this.key,
@@ -74,25 +85,47 @@ class SupabaseClient {
       select: (columns: string = "*") => ({
         eq: (column: string, value: string | number) => ({
           execute: async (): Promise<Order[]> =>
-            this.request<Order[]>(`${table}?select=${columns}&${column}=eq.${value}`),
+            this.request<Order[]>(
+              `${table}?select=${columns}&${column}=eq.${value}`
+            ),
         }),
       }),
       update: (data: Partial<Order>) => ({
         eq: (column: string, value: string | number) => ({
           execute: async (): Promise<void> => {
-            const response = await fetch(`${this.url}/rest/v1/${table}?${column}=eq.${value}`, {
-              method: "PATCH",
-              headers: {
-                apikey: this.key,
-                Authorization: `Bearer ${this.key}`,
-                "Content-Type": "application/json",
-                Prefer: "return=minimal",
-              },
-              body: JSON.stringify(data),
-            });
-            if (!response.ok) throw new Error(`Update failed: ${response.status}`);
+            const response = await fetch(
+              `${this.url}/rest/v1/${table}?${column}=eq.${value}`,
+              {
+                method: "PATCH",
+                headers: {
+                  apikey: this.key,
+                  Authorization: `Bearer ${this.key}`,
+                  "Content-Type": "application/json",
+                  Prefer: "return=minimal",
+                },
+                body: JSON.stringify(data),
+              }
+            );
+            if (!response.ok)
+              throw new Error(`Update failed: ${response.status}`);
           },
         }),
+      }),
+      insert: (data: any) => ({
+        execute: async (): Promise<void> => {
+          const response = await fetch(`${this.url}/rest/v1/${table}`, {
+            method: "POST",
+            headers: {
+              apikey: this.key,
+              Authorization: `Bearer ${this.key}`,
+              "Content-Type": "application/json",
+              Prefer: "return=minimal",
+            },
+            body: JSON.stringify(Array.isArray(data) ? data : [data]),
+          });
+          if (!response.ok)
+            throw new Error(`Insert failed: ${response.status}`);
+        },
       }),
     };
   }
@@ -128,15 +161,25 @@ const extractMOQNumber = (moq: string): number => {
 const StatusBadge: React.FC<{ status: Order["status"] }> = ({ status }) => {
   const config = {
     pending: { bg: "bg-gray-100", text: "text-gray-800", label: "Pending" },
-    "in-progress": { bg: "bg-yellow-100", text: "text-yellow-800", label: "In Progress" },
-    completed: { bg: "bg-green-100", text: "text-green-800", label: "Completed" },
+    "in-progress": {
+      bg: "bg-yellow-100",
+      text: "text-yellow-800",
+      label: "In Progress",
+    },
+    completed: {
+      bg: "bg-green-100",
+      text: "text-green-800",
+      label: "Completed",
+    },
     ship: { bg: "bg-blue-100", text: "text-blue-800", label: "Partial Ship" },
     shipped: { bg: "bg-purple-100", text: "text-purple-800", label: "Shipped" },
     cancelled: { bg: "bg-red-100", text: "text-red-800", label: "Cancelled" },
   }[status] || { bg: "bg-gray-100", text: "text-gray-800", label: status };
 
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${config.bg} ${config.text}`}>
+    <span
+      className={`px-2 py-0.5 rounded text-xs font-medium ${config.bg} ${config.text}`}
+    >
       {config.label}
     </span>
   );
@@ -182,8 +225,15 @@ const CompletedOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(new Set());
-  const [shippingQuantities, setShippingQuantities] = useState<Record<number, number>>({});
+  const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(
+    new Set()
+  );
+  const [shippingQuantities, setShippingQuantities] = useState<
+    Record<number, number>
+  >({});
+  const [shippingInProgress, setShippingInProgress] = useState<
+    Record<number, boolean>
+  >({});
 
   // Fetch orders
   useEffect(() => {
@@ -197,7 +247,9 @@ const CompletedOrdersPage: React.FC = () => {
           .eq("status", "completed")
           .execute();
 
-        const newOrders = completedOrders.filter((o) => !notifiedOrderIds.has(o.id));
+        const newOrders = completedOrders.filter(
+          (o) => !notifiedOrderIds.has(o.id)
+        );
         newOrders.forEach((order) => {
           sendDiscordWebhook(order);
           setNotifiedOrderIds((prev) => new Set(prev).add(order.id));
@@ -216,15 +268,19 @@ const CompletedOrdersPage: React.FC = () => {
   }, []);
 
   // Profitability Summary
-  const totalRevenue = useMemo(() =>
-    orders.reduce((sum, o) => sum + extractNumericValue(o.customer_price), 0), [orders]
+  const totalRevenue = useMemo(
+    () =>
+      orders.reduce((sum, o) => sum + extractNumericValue(o.customer_price), 0),
+    [orders]
   );
-  const totalProfit = useMemo(() =>
-    orders.reduce((sum, o) => {
-      const cust = extractNumericValue(o.customer_price);
-      const supp = extractNumericValue(o.supplier_price);
-      return sum + (cust - supp);
-    }, 0), [orders]
+  const totalProfit = useMemo(
+    () =>
+      orders.reduce((sum, o) => {
+        const cust = extractNumericValue(o.customer_price);
+        const supp = extractNumericValue(o.supplier_price);
+        return sum + (cust - supp);
+      }, 0),
+    [orders]
   );
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
@@ -241,7 +297,37 @@ const CompletedOrdersPage: React.FC = () => {
     }
   };
 
+  const createBookkeepingRecord = async (
+    date: string,
+    description: string,
+    category: string,
+    amount: number,
+    customer?: string,
+    project?: string,
+    suppliedBy?: string,
+    orderId?: number
+  ) => {
+    try {
+      const record = {
+        date,
+        description,
+        category,
+        amount,
+        customer: customer || null,
+        project: project || null,
+        supplied_by: suppliedBy || null,
+        tags: orderId ? `order-${orderId}` : null,
+      };
+      await supabase.from("bookkeeping_records").insert([record]).execute();
+    } catch (err) {
+      console.error("Failed to create bookkeeping record:", err);
+    }
+  };
+
   const submitShipping = async (order: Order) => {
+    if (shippingInProgress[order.id]) return;
+
+    setShippingInProgress((prev) => ({ ...prev, [order.id]: true }));
     const totalMOQ = extractMOQNumber(order.moq);
     const currentShipped = order.shipped_quantity || 0;
     const toShip = shippingQuantities[order.id] || 0;
@@ -258,39 +344,95 @@ const CompletedOrdersPage: React.FC = () => {
       return;
     }
 
+    setShippingInProgress((prev) => ({ ...prev, [order.id]: true }));
+
     const now = new Date().toISOString();
     const finalStatus = newShipped >= totalMOQ ? "shipped" : "ship";
 
     try {
+      // 🔥 FINANCIAL RECONCILIATION: Only on first transition from "completed"
+      const isFirstShip = order.status === "completed";
+      if (isFirstShip) {
+        // Record revenue and costs in bookkeeping
+        const baseDate = now.split("T")[0];
+
+        // Revenue (Inflow)
+        if (order.customer_price) {
+          await createBookkeepingRecord(
+            baseDate,
+            `Order #${order.id}: ${order.description}`,
+            "Inflow",
+            extractNumericValue(order.customer_price),
+            order.customer_name,
+            undefined,
+            undefined,
+            order.id
+          );
+        }
+
+        // Supplier Cost (Outflow)
+        if (order.supplier_price) {
+          await createBookkeepingRecord(
+            baseDate,
+            `Supplier payment for Order #${order.id} - ${order.description} - ${order.supplier_name} - ${order.supplier_price}`,
+            "Outflow",
+            extractNumericValue(order.supplier_price),
+            order.customer_name,
+            undefined,
+            order.supplier_name,
+            order.id
+          );
+        }
+
+        // Optional: Add logistics cost if you include it later
+      }
+
+      // Update order in Supabase
       await supabase
         .from("orders")
         .update({
           status: finalStatus,
           shipped_quantity: newShipped,
-          shipped_at: order.shipped_at || now, // only set first time
+          shipped_at: order.shipped_at || now, // set only once
         })
         .eq("id", order.id)
         .execute();
 
+      // Optimistically update local state
       setOrders((prev) =>
         prev.map((o) =>
           o.id === order.id
-            ? { ...o, shipped_quantity: newShipped, status: finalStatus, shipped_at: o.shipped_at || now }
+            ? {
+                ...o,
+                shipped_quantity: newShipped,
+                status: finalStatus,
+                shipped_at: o.shipped_at || now,
+              }
             : o
         )
       );
 
+      // Clear input
       setShippingQuantities((prev) => {
         const newQty = { ...prev };
         delete newQty[order.id];
         return newQty;
       });
+
+      if (isFirstShip) {
+        alert("✅ Order shipped and financials recorded in bookkeeping!");
+      }
     } catch (err) {
       console.error("Shipping update failed:", err);
       alert("Failed to update shipping. Please try again.");
+    } finally {
+      setShippingInProgress((prev) => {
+        const copy = { ...prev };
+        delete copy[order.id];
+        return copy;
+      });
     }
   };
-
   const shipRemaining = (orderId: number, remaining: number) => {
     setShippingQuantities((prev) => ({ ...prev, [orderId]: remaining }));
   };
@@ -341,7 +483,9 @@ const CompletedOrdersPage: React.FC = () => {
         new Date(o.created_at).toISOString().split("T")[0],
         shipped,
         remaining,
-        o.shipped_at ? new Date(o.shipped_at).toISOString().split("T")[0] : "N/A",
+        o.shipped_at
+          ? new Date(o.shipped_at).toISOString().split("T")[0]
+          : "N/A",
         o.status,
       ].join(",");
     });
@@ -351,7 +495,9 @@ const CompletedOrdersPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `completed_orders_${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `completed_orders_${
+      new Date().toISOString().split("T")[0]
+    }.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -362,7 +508,9 @@ const CompletedOrdersPage: React.FC = () => {
   if (loading)
     return (
       <div className="flex items-center justify-center h-screen bg-green-50">
-        <p className="text-green-700 font-medium">Loading completed orders...</p>
+        <p className="text-green-700 font-medium">
+          Loading completed orders...
+        </p>
       </div>
     );
 
@@ -377,7 +525,9 @@ const CompletedOrdersPage: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-green-50 p-4 text-center">
         <CheckCircle className="w-16 h-16 text-green-400 mb-3" />
-        <h2 className="text-lg font-bold text-green-800 mb-1">No Completed Orders</h2>
+        <h2 className="text-lg font-bold text-green-800 mb-1">
+          No Completed Orders
+        </h2>
         <p className="text-green-600">Completed orders will appear here.</p>
         <br />
         <b>
@@ -395,11 +545,15 @@ const CompletedOrdersPage: React.FC = () => {
     <div className="p-4 space-y-6 bg-green-50 min-h-screen">
       {/* Profitability Summary */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-green-200">
-        <h2 className="text-lg font-bold text-gray-800 mb-3">Performance Summary</h2>
+        <h2 className="text-lg font-bold text-gray-800 mb-3">
+          Performance Summary
+        </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="text-center">
             <p className="text-sm text-gray-600">Total Revenue</p>
-            <p className="font-bold text-green-700">${totalRevenue.toFixed(0)}</p>
+            <p className="font-bold text-green-700">
+              ${totalRevenue.toFixed(0)}
+            </p>
           </div>
           <div className="text-center">
             <p className="text-sm text-gray-600">Total Profit</p>
@@ -407,10 +561,15 @@ const CompletedOrdersPage: React.FC = () => {
           </div>
           <div className="text-center">
             <p className="text-sm text-gray-600">Avg Margin</p>
-            <p className={`font-bold ${
-              avgMargin >= 30 ? 'text-green-700' :
-              avgMargin >= 20 ? 'text-yellow-700' : 'text-red-700'
-            }`}>
+            <p
+              className={`font-bold ${
+                avgMargin >= 30
+                  ? "text-green-700"
+                  : avgMargin >= 20
+                  ? "text-yellow-700"
+                  : "text-red-700"
+              }`}
+            >
               {avgMargin.toFixed(1)}%
             </p>
           </div>
@@ -456,7 +615,8 @@ const CompletedOrdersPage: React.FC = () => {
           const profit = customerPrice - supplierPrice;
           const margin = customerPrice > 0 ? (profit / customerPrice) * 100 : 0;
           const daysSince = Math.ceil(
-            (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24)
+            (Date.now() - new Date(order.created_at).getTime()) /
+              (1000 * 60 * 60 * 24)
           );
           const remaining = getRemaining(order);
           const toShip = shippingQuantities[order.id] || 0;
@@ -485,39 +645,75 @@ const CompletedOrdersPage: React.FC = () => {
                     </p>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs">
-                      <div><span className="font-medium">📍 Location:</span> {order.location}</div>
-                      <div><span className="font-medium">📞 Phone:</span> {order.phone}</div>
-                      <div><span className="font-medium">📦 MOQ:</span> {order.moq}</div>
+                      <div>
+                        <span className="font-medium">📍 Location:</span>{" "}
+                        {order.location}
+                      </div>
+                      <div>
+                        <span className="font-medium">📞 Phone:</span>{" "}
+                        {order.phone}
+                      </div>
+                      <div>
+                        <span className="font-medium">📦 MOQ:</span> {order.moq}
+                      </div>
                       <div>
                         <span className="font-medium">❗ Urgency:</span>{" "}
-                        <span className={`px-2 py-0.5 rounded text-xs ${
-                          order.urgency === "high" ? "bg-red-100 text-red-800" :
-                          order.urgency === "medium" ? "bg-yellow-100 text-yellow-800" :
-                          "bg-green-100 text-green-800"
-                        }`}>
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            order.urgency === "high"
+                              ? "bg-red-100 text-red-800"
+                              : order.urgency === "medium"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-green-100 text-green-800"
+                          }`}
+                        >
                           {order.urgency}
                         </span>
                       </div>
-                      <div><span className="font-medium">💰 Revenue:</span> <span className="text-green-700 font-medium">{order.customer_price || "N/A"}</span></div>
+                      <div>
+                        <span className="font-medium">💰 Revenue:</span>{" "}
+                        <span className="text-green-700 font-medium">
+                          {order.customer_price || "N/A"}
+                        </span>
+                      </div>
                       {profit > 0 && (
                         <>
-                          <div><span className="font-medium">📊 Profit:</span> <span className="text-blue-700 font-medium">+{profit.toFixed(0)}</span></div>
+                          <div>
+                            <span className="font-medium">📊 Profit:</span>{" "}
+                            <span className="text-blue-700 font-medium">
+                              +{profit.toFixed(0)}
+                            </span>
+                          </div>
                           <div>
                             <span className="font-medium">📈 Margin:</span>{" "}
-                            <span className={`font-medium ${
-                              margin >= 30 ? "text-green-700" :
-                              margin >= 20 ? "text-yellow-700" : "text-red-700"
-                            }`}>
+                            <span
+                              className={`font-medium ${
+                                margin >= 30
+                                  ? "text-green-700"
+                                  : margin >= 20
+                                  ? "text-yellow-700"
+                                  : "text-red-700"
+                              }`}
+                            >
                               {margin.toFixed(1)}%
                             </span>
                           </div>
                         </>
                       )}
-                      <div><span className="font-medium">🕒 Age:</span> {daysSince}d</div>
+                      <div>
+                        <span className="font-medium">🕒 Age:</span> {daysSince}
+                        d
+                      </div>
                       <div>
                         <span className="font-medium">🚚 Shipped:</span>{" "}
-                        <span className="text-blue-700">{order.shipped_quantity || 0}</span>
-                        {remaining > 0 && <span className="text-yellow-600 ml-1">({remaining} left)</span>}
+                        <span className="text-blue-700">
+                          {order.shipped_quantity || 0}
+                        </span>
+                        {remaining > 0 && (
+                          <span className="text-yellow-600 ml-1">
+                            ({remaining} left)
+                          </span>
+                        )}
                       </div>
                     </div>
                     <ImageGallery images={parseImages(order.images)} />
@@ -536,13 +732,15 @@ const CompletedOrdersPage: React.FC = () => {
                         min="0"
                         max={remaining}
                         value={shippingQuantities[order.id] ?? ""}
-                        onChange={(e) => handleQuantityChange(order.id, e.target.value)}
+                        onChange={(e) =>
+                          handleQuantityChange(order.id, e.target.value)
+                        }
                         className="w-20 px-2 py-1 text-xs border border-gray-300 rounded text-center"
                         placeholder="0"
                       />
                       <button
                         onClick={() => submitShipping(order)}
-                        disabled={isShipDisabled}
+                        disabled={isShipDisabled || shippingInProgress[order.id]}
                         className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
                         <Truck className="w-3 h-3" />
@@ -550,7 +748,9 @@ const CompletedOrdersPage: React.FC = () => {
                       </button>
                     </div>
                     {isOverShipping && (
-                      <p className="text-xs text-red-600 mt-1">⚠️ Max: {remaining}</p>
+                      <p className="text-xs text-red-600 mt-1">
+                        ⚠️ Max: {remaining}
+                      </p>
                     )}
                     {remaining > 0 && (
                       <button
