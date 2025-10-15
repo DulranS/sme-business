@@ -1036,9 +1036,9 @@ const SupplierBiddingSection: React.FC<{
               </button>
               <button
                 onClick={handleApprove}
-                disabled={password !== process.env?.NEXT_ADMIN_KEY && password !== "admin123"}
+                disabled={password !== process.env?.NEXT_ADMIN_KEY}
                 className={`px-4 py-2 rounded text-white ${
-                  password === "admin123" || process.env?.NEXT_ADMIN_KEY
+                  process.env?.NEXT_ADMIN_KEY
                     ? "bg-green-600 hover:bg-green-700"
                     : "bg-gray-400"
                 }`}
@@ -1435,9 +1435,9 @@ const sendToBookkeeping = async (order: Order) => {
               </button>
               <button
                 onClick={handleRemove}
-                disabled={removePassword !== process.env?.NEXT_ADMIN_KEY && removePassword !== "admin123"}
+                disabled={removePassword !== process.env?.NEXT_ADMIN_KEY}
                 className={`px-4 py-2 rounded text-white ${
-                  removePassword === process.env?.NEXT_ADMIN_KEY || removePassword === "admin123"
+                  removePassword === process.env?.NEXT_ADMIN_KEY
                     ? "bg-red-600 hover:bg-red-700"
                     : "bg-gray-400"
                 }`}
@@ -2026,7 +2026,7 @@ const updateOrderStatus = async (
     // Inside approveSupplierBid, after successful supabase update:
 const supplierCost = extractNumericValue(bid.price);
 
-    if (password !== process.env?.ADMIN_KEY && password !== "admin123") {
+    if (password !== process.env?.ADMIN_KEY) {
       alert("Incorrect password. Supplier not approved.");
       return;
     }
@@ -2982,7 +2982,7 @@ const cleanInt = (val: string | undefined): number | undefined => {
                 loading={loading}
                 onEdit={handleEditPricing}
                 onRemoveSupplier={(pwd) => {
-                  if (pwd !== process.env?.ADMIN_KEY && pwd !== "admin123") {
+                  if (pwd !== process.env?.ADMIN_KEY) {
                     alert("Incorrect password. Supplier not removed.");
                     return;
                   }
