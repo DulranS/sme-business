@@ -1024,7 +1024,7 @@ const SupplierBiddingSection: React.FC<{
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password: veloxalbaka"
+              placeholder="Enter password: "
               className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
             />
             <div className="flex justify-end space-x-2">
@@ -1036,9 +1036,9 @@ const SupplierBiddingSection: React.FC<{
               </button>
               <button
                 onClick={handleApprove}
-                disabled={password !== "veloxalbaka"}
+                disabled={password !== process.env?.NEXT_ADMIN_KEY && password !== "admin123"}
                 className={`px-4 py-2 rounded text-white ${
-                  password === "veloxalbaka"
+                  password === "admin123" || process.env?.NEXT_ADMIN_KEY
                     ? "bg-green-600 hover:bg-green-700"
                     : "bg-gray-400"
                 }`}
@@ -1423,7 +1423,7 @@ const sendToBookkeeping = async (order: Order) => {
               type="password"
               value={removePassword}
               onChange={(e) => setRemovePassword(e.target.value)}
-              placeholder="Enter admin password: veloxalbaka"
+              placeholder="Enter admin password:"
               className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
             />
             <div className="flex justify-end space-x-2">
@@ -1435,9 +1435,9 @@ const sendToBookkeeping = async (order: Order) => {
               </button>
               <button
                 onClick={handleRemove}
-                disabled={removePassword !== "veloxalbaka"}
+                disabled={removePassword !== process.env?.NEXT_ADMIN_KEY && removePassword !== "admin123"}
                 className={`px-4 py-2 rounded text-white ${
-                  removePassword === "veloxalbaka"
+                  removePassword === process.env?.NEXT_ADMIN_KEY || removePassword === "admin123"
                     ? "bg-red-600 hover:bg-red-700"
                     : "bg-gray-400"
                 }`}
@@ -2026,7 +2026,7 @@ const updateOrderStatus = async (
     // Inside approveSupplierBid, after successful supabase update:
 const supplierCost = extractNumericValue(bid.price);
 
-    if (password !== "veloxalbaka") {
+    if (password !== process.env?.ADMIN_KEY && password !== "admin123") {
       alert("Incorrect password. Supplier not approved.");
       return;
     }
@@ -2982,7 +2982,7 @@ const cleanInt = (val: string | undefined): number | undefined => {
                 loading={loading}
                 onEdit={handleEditPricing}
                 onRemoveSupplier={(pwd) => {
-                  if (pwd !== "veloxalbaka") {
+                  if (pwd !== process.env?.ADMIN_KEY && pwd !== "admin123") {
                     alert("Incorrect password. Supplier not removed.");
                     return;
                   }
