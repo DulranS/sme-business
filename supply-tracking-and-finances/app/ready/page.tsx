@@ -831,6 +831,8 @@ const submitShipping = async (order: Order) => {
 const sendDiscordWebhook = async (order: Order) => {
   if (!DISCORD_WEBHOOK_URL) return;
 
+  const shippedQty = order.shipped_quantity ?? 0;
+
   const payload = {
     username: "✅ Completed Orders Bot",
     avatar_url: "https://i.imgur.com/AfFp7pu.png",
@@ -841,6 +843,7 @@ const sendDiscordWebhook = async (order: Order) => {
 📍 Location: ${order.location}
 📞 Phone: ${order.phone}
 📦 MOQ: ${order.moq}
+🚚 Shipped Quantity: ${shippedQty}
 💰 Revenue: ${order.customer_price || "N/A"}
 ❗ Urgency: ${order.urgency}
 📝 Description: ${order.description}
@@ -859,5 +862,6 @@ const sendDiscordWebhook = async (order: Order) => {
     console.error("Discord webhook failed:", err);
   }
 };
+// ...existing code...
 
 export default CompletedOrdersPage;
