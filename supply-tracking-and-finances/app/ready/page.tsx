@@ -32,7 +32,8 @@ interface Order {
     | "shipped";
   images: string;
   created_at: string;
-  supplier_price?: string;
+  supplier_price?: string;          // 👈 product cost (scales with quantity)
+  supplier_delivery_fee?: string;   // 👈 NEW: flat delivery fee (quantity = 1)
   supplier_description?: string;
   customer_price?: string;
   shipped_quantity?: number;
@@ -358,30 +359,28 @@ const submitShipping = async (order: Order) => {
 
   try {
     // Only re-calculate bookkeeping if prices exist AND MOQ > 0
-    if ((order.customer_price || order.supplier_price) && totalMOQ > 0) {
+    if ((order.customer_price || order.supplier_price || order.supplier_delivery_fee) && totalMOQ > 0) {
       const custTotal = extractNumericValue(order.customer_price) || 0;
       const suppTotal = extractNumericValue(order.supplier_price) || 0;
+      const deliveryFee = extractNumericValue(order.supplier_delivery_fee) || 0;
 
       const custPerUnit = custTotal / totalMOQ;
       const suppPerUnit = suppTotal / totalMOQ;
 
-      if (isFinite(custPerUnit) && isFinite(suppPerUnit)) {
+      // 💡 STRATEGY: Delete old records and re-create
+      try {
+        await supabase
+          .from("bookkeeping_records")
+          .delete()
+          .eq("tags", `order-${order.id}`)
+          .execute();
+      } catch (err) {
+        console.warn("Could not delete old bookkeeping records:", err);
+      }
+
+      // --- Revenue Entry (Inflow) ---
+      if (custTotal > 0 && isFinite(custPerUnit)) {
         const revenueTotal = custPerUnit * newShipped;
-        const costTotal = suppPerUnit * newShipped;
-
-        // 💡 STRATEGY: Delete old records and re-create
-        // (Simpler than tracking partial shipments)
-        try {
-          await supabase
-            .from("bookkeeping_records")
-            .delete()
-            .eq("tags", `order-${order.id}`)
-            .execute();
-        } catch (err) {
-          console.warn("Could not delete old bookkeeping records:", err);
-        }
-
-        // Create new revenue record
         if (revenueTotal > 0) {
           const revenueRecord = {
             date: baseDate,
@@ -394,34 +393,58 @@ const submitShipping = async (order: Order) => {
             notes: `Edited shipped quantity for order #${order.id}. Customer: ${order.customer_name}.`,
             customer: order.customer_name || null,
             project: order.description || null,
-            tags: `order-${order.id}`,
+            tags: `order-${order.id},revenue`,
             market_price: parseFloat(custPerUnit.toFixed(2)),
             supplied_by: null,
             approved: true,
           };
           await supabase.from("bookkeeping_records").insert([revenueRecord]).execute();
         }
+      }
 
-        // Create new cost record
-        if (costTotal > 0 && order.supplier_name) {
+      // --- Supplier PRODUCT Cost (Outflow, scales with quantity) ---
+      if (suppTotal > 0 && order.supplier_name && isFinite(suppPerUnit)) {
+        const costTotal = suppPerUnit * newShipped;
+        if (costTotal > 0) {
           const costRecord = {
             date: baseDate,
             payment_date: baseDate,
-            description: `Supplier cost for ${newShipped} units – Order #${order.id} – ${order.supplier_name}`,
+            description: `Supplier product cost for ${newShipped} units – Order #${order.id} – ${order.supplier_name}`,
             category: "Outflow",
             amount: parseFloat(costTotal.toFixed(2)),
             cost_per_unit: parseFloat(suppPerUnit.toFixed(2)),
             quantity: newShipped,
-            notes: `Edited shipped quantity for order #${order.id}. Supplier: ${order.supplier_name}.`,
+            notes: `Product cost only (excl. delivery) for order #${order.id}. Supplier: ${order.supplier_name}.`,
             customer: order.customer_name || null,
             project: order.description || null,
-            tags: `order-${order.id}`,
+            tags: `order-${order.id},supplier,product`,
             market_price: null,
             supplied_by: order.supplier_name || null,
             approved: true,
           };
           await supabase.from("bookkeeping_records").insert([costRecord]).execute();
         }
+      }
+
+      // --- Supplier DELIVERY FEE (Outflow, quantity = 1) ---
+      if (deliveryFee > 0 && order.supplier_name) {
+        const deliveryRecord = {
+          date: baseDate,
+          payment_date: baseDate,
+          description: `Delivery fee for Order #${order.id} – ${order.supplier_name}`,
+          category: "Outflow",
+          amount: parseFloat(deliveryFee.toFixed(2)),
+          cost_per_unit: parseFloat(deliveryFee.toFixed(2)), // same as amount (qty=1)
+          quantity: 1, // ✅ ALWAYS 1
+          notes: `Flat delivery/shipping fee for order #${order.id}. Supplier: ${order.supplier_name}.`,
+          customer: order.customer_name || null,
+          project: order.description || null,
+          tags: `order-${order.id},delivery`,
+          market_price: null,
+          supplied_by: order.supplier_name || null,
+          approved: true,
+        };
+        await supabase.from("bookkeeping_records").insert([deliveryRecord]).execute();
       }
     }
 
@@ -456,7 +479,7 @@ const submitShipping = async (order: Order) => {
       return newQty;
     });
 
-    alert("✅ Shipped quantity updated!");
+    alert("✅ Shipped quantity and financials updated!");
   } catch (err) {
     console.error("Update failed:", err);
     alert("❌ Failed to update. Please try again.");

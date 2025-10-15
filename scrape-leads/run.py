@@ -26,7 +26,7 @@ SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "scrape.py")
 PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "validate.py")
 
 # Expected output from scraper → input for preparer
-LEADS_FILE = "finalized_b2b_leads.csv"
+LEADS_FILE = "b2b_leads.csv"
 
 # Setup logging
 logging.basicConfig(
