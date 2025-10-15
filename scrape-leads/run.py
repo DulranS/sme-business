@@ -49,7 +49,8 @@ def run_script(script_name):
             [sys.executable, script_name],
             capture_output=True,
             text=True,
-            cwd=os.getcwd()
+            cwd=os.getcwd(),
+            timeout=300  # 5 minutes
         )
         if result.returncode != 0:
             logger.error(f"❌ {script_name} FAILED with exit code {result.returncode}")

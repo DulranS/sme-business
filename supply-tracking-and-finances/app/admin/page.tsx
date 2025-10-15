@@ -503,7 +503,37 @@ Logistics Cost: ${order.logistics_cost || "N/A"}
     console.error("Failed to send Discord webhook:", err);
   }
 };
+const createBookkeepingRecord = async (
+  date: string,
+  description: string,
+  category: string,
+  amount: number,
+  customer?: string,
+  project?: string,
+  suppliedBy?: string,
+  orderId?: number
+) => {
+  try {
+    const record = {
+      date,
+      description,
+      category,
+      amount,
+      customer: customer || null,
+      project: project || null,
+      supplied_by: suppliedBy || null,
+      tags: orderId ? `order-${orderId}` : null,
+      // Optional: add cost_per_unit if needed for margin tracking
+    };
 
+    await supabase.from("bookkeeping_records").insert([record]).execute().catch((err) => {
+      throw err;
+    });
+  } catch (err) {
+    console.error("Failed to create bookkeeping record:", err);
+    // Optional: show toast or log to admin panel
+  }
+};
 // ------------------------
 // Status Updater Component
 // ------------------------
@@ -1074,6 +1104,7 @@ const PricingSection: React.FC<{
   onCancel: () => void;
   loading: boolean;
   onEdit: () => void;
+  setLoading: (val: boolean) => void; // NEW
   onRemoveSupplier?: (password: string) => void; // NEW
 }> = ({
   order,
@@ -1091,9 +1122,12 @@ const PricingSection: React.FC<{
   loading,
   onEdit,
   onRemoveSupplier,
+  setLoading,
 }) => {
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [removePassword, setRemovePassword] = useState("");
+  const [bookkeepingLoading, setBookkeepingLoading] = useState(false);
+  
 
   const handleRemove = () => {
     if (onRemoveSupplier) {
@@ -1102,6 +1136,70 @@ const PricingSection: React.FC<{
       setShowRemoveModal(false);
     }
   };
+
+const sendToBookkeeping = async (orderId: number) => {
+  if (!order || !order.customer_price) {
+    alert("Order must be completed with customer price to record in bookkeeping.");
+    return;
+  }
+
+  if (!order.supplier_price && !order.logistics_cost) {
+    if (!confirm("This order has no cost data. Record only revenue?")) return;
+  }
+
+  try {
+    setLoading(true);
+
+    // === 1. Record Customer Revenue (Inflow) ===
+    if (order.customer_price) {
+      await createBookkeepingRecord(
+        order.created_at.split("T")[0],
+        `Order #${order.id}: ${order.description}`,
+        "Inflow",
+        extractNumericValue(order.customer_price),
+        order.customer_name,
+        order.category || undefined,
+        undefined,
+        order.id
+      );
+    }
+
+    // === 2. Record Supplier Cost (Outflow) ===
+    if (order.supplier_price) {
+      await createBookkeepingRecord(
+        order.created_at.split("T")[0],
+        `Supplier payment for Order #${order.id}`,
+        "Outflow",
+        extractNumericValue(order.supplier_price),
+        order.customer_name,
+        order.category || undefined,
+        order.supplier_name,
+        order.id
+      );
+    }
+
+    // === 3. Record Logistics Cost (Outflow) ===
+    if (order.logistics_cost) {
+      await createBookkeepingRecord(
+        order.created_at.split("T")[0],
+        `Logistics for Order #${order.id}`,
+        "Logistics",
+        extractNumericValue(order.logistics_cost),
+        order.customer_name,
+        order.category || undefined,
+        undefined,
+        order.id
+      );
+    }
+
+    alert("✅ Financial records successfully added to bookkeeping!");
+  } catch (err) {
+    console.error("Bookkeeping sync failed:", err);
+    alert("❌ Failed to record in bookkeeping. Check console for details.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const supplierCost = extractNumericValue(
     isEditing ? supplierPrice : order.supplier_price
@@ -1119,6 +1217,30 @@ const PricingSection: React.FC<{
           <DollarSign className="w-5 h-5 text-green-600" />
           <span>Pricing & Financials</span>
         </h3>
+        {/* Bookkeeping Export Button */}
+{order.status === "completed" && (
+  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+    <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+      <Wallet className="w-5 h-5 text-blue-600" />
+      Financial Reconciliation
+    </h3>
+    <p className="text-sm text-gray-600 mb-3">
+      Send this order's financials to your bookkeeping system.
+    </p>
+    <button
+  onClick={async () => {
+    setBookkeepingLoading(true);
+    await sendToBookkeeping(order.id);
+    setBookkeepingLoading(false);
+  }}
+  disabled={bookkeepingLoading}
+      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2 disabled:opacity-50 text-sm"
+    >
+      <Save className="w-4 h-4" />
+      <span>Record in Bookkeeping</span>
+    </button>
+  </div>
+)}
         <div className="flex space-x-2">
           {order.supplier_name && !isEditing && (
             <button
@@ -1719,31 +1841,53 @@ const OrderManagementApp: React.FC = () => {
     return true;
   });
 
-  const updateOrderStatus = async (
-    orderId: number,
-    status: Order["status"]
-  ) => {
-    setLoading(true);
-    try {
-      await supabase
-        .from("orders")
-        .update({ status })
-        .eq("id", orderId)
-        .execute();
-      const updatedOrder = orders.find((o) => o.id === orderId);
-      if (updatedOrder) {
-        const newOrder = { ...updatedOrder, status };
-        setOrders((prev) => prev.map((o) => (o.id === orderId ? newOrder : o)));
-        if (selectedOrder?.id === orderId) setSelectedOrder(newOrder);
-        await sendOrderUpdateWebhook(newOrder, "Status Updated");
+const updateOrderStatus = async (
+  orderId: number,
+  status: Order["status"]
+) => {
+  setLoading(true);
+  try {
+    // Update status in the database
+    const updatedOrders = await supabase
+      .from("orders")
+      .update({ status })
+      .eq("id", orderId)
+      .execute();
+
+    const updatedOrder = updatedOrders[0] as Order;
+
+    // Optimistically update local state
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? updatedOrder : o))
+    );
+    if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
+
+    // Send webhook
+    await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
+
+    // Handle bookkeeping if order is completed
+    if (status === "completed" && updatedOrder.customer_price) {
+      const revenue = extractNumericValue(updatedOrder.customer_price);
+      if (revenue > 0) {
+        await createBookkeepingRecord(
+          new Date().toISOString().split("T")[0],
+          `Order #${orderId} completed: ${updatedOrder.description || ""}`,
+          "Inflow",
+          revenue,
+          updatedOrder.customer_name || "",
+          updatedOrder.category || "",
+          updatedOrder.supplier_name || "",
+          orderId
+        );
       }
-    } catch (error) {
-      console.error("Status update error:", error);
-      alert("Failed to update status");
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error("Status update error:", error);
+    alert("Failed to update status");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const updatePricingInfo = async (orderId: number) => {
     setLoading(true);
@@ -1899,6 +2043,9 @@ const OrderManagementApp: React.FC = () => {
     bid: SupplierBid,
     password: string
   ) => {
+    // Inside approveSupplierBid, after successful supabase update:
+const supplierCost = extractNumericValue(bid.price);
+
     if (password !== "veloxalbaka") {
       alert("Incorrect password. Supplier not approved.");
       return;
@@ -2093,18 +2240,19 @@ const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
           continue;
         }
 
-        // ✅ Helper: clean date fields
-        const cleanDate = (val: string | undefined): string | undefined => {
-          return val && val !== "N/A" ? val : undefined;
-        };
+// ✅ Helper: clean date fields
+const cleanDate = (val: string | undefined): string | undefined => {
+  return val && val !== "N/A" ? val : undefined;
+};
 
-        // ✅ Helper: clean numeric fields
-        const cleanInt = (val: string | undefined): number | undefined => {
-          if (!val || val === "none" || val === "N/A" || val.trim() === "")
-            return undefined;
-          const num = parseInt(val.trim(), 10);
-          return isNaN(num) ? undefined : num;
-        };
+// ✅ Helper: clean numeric fields
+const cleanInt = (val: string | undefined): number | undefined => {
+  if (!val || val === "none" || val === "N/A" || val.trim() === "")
+    return undefined;
+  const num = parseInt(val.trim(), 10);
+  return isNaN(num) ? undefined : num;
+};
+
 
         // Parse and validate fields
         const urgency = ["low", "medium", "high"].includes(
@@ -2838,6 +2986,7 @@ const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
               </div>
 
               <PricingSection
+                setLoading={setLoading}
                 order={selectedOrder}
                 isEditing={isEditingPricing}
                 supplierName={supplierName}
