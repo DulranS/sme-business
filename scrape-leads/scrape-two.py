@@ -42,7 +42,7 @@ DEFAULT_LNG = float(os.getenv("DEFAULT_LNG", "79.912990"))
 SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km
 
 # I/O
-LEADS_FILE = os.getenv("LEADS_FILE", "colombo_b2b_leads.csv")
+LEADS_FILE = os.getenv("LEADS_FILE", "b2b_leads.csv")
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
 
 # Budget Guardrails (Google Places: Text=$32/1k, Details=$17/1k)

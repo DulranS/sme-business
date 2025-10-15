@@ -19,7 +19,7 @@
 2025-10-16 00:03:43,470 | INFO     | ============================================================
 2025-10-16 00:03:43,470 | INFO     | ▶️ Launching: c:\Users\dulra\sme-business\scrape-leads\scrape.py
 2025-10-16 00:03:44,610 | INFO     | ✅ c:\Users\dulra\sme-business\scrape-leads\scrape.py completed successfully
-2025-10-16 00:03:44,611 | WARNING  | ⚠️ Scraper ran but did not produce 'finalized_b2b_leads.csv'
+2025-10-16 00:03:44,611 | WARNING  | ⚠️ Scraper ran but did not produce 'b2b_leads.csv'
 2025-10-16 00:03:44,611 | INFO     |    → Proceeding to preparer anyway (it will handle missing file gracefully)
 2025-10-16 00:03:44,611 | INFO     | ▶️ Launching: c:\Users\dulra\sme-business\scrape-leads\validate.py
 2025-10-16 00:03:47,076 | INFO     | ✅ c:\Users\dulra\sme-business\scrape-leads\validate.py completed successfully
