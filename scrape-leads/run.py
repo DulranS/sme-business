@@ -21,8 +21,9 @@ from datetime import datetime
 # 🔧 CONFIGURATION
 # ==============================
 LOG_FILE = "lead_pipeline.log"
-SCRAPER_SCRIPT = "scrape.py"
-PREPARER_SCRIPT = "validate.py"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "scrape.py")
+PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "validate.py")
 
 # Expected output from scraper → input for preparer
 LEADS_FILE = "finalized_b2b_leads.csv"
