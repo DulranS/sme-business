@@ -603,8 +603,10 @@ const ShipOrdersPage: React.FC = () => {
 // ------------------------
 // Discord Webhook (unchanged)
 // ------------------------
+// ...existing code...
 const sendDiscordWebhook = async (order: Order) => {
   if (!DISCORD_WEBHOOK_URL) return;
+  if (order.status !== "ship") return; // Only send for shipping orders
 
   const payload = {
     username: "🚚 Shipping Bot",
