@@ -503,37 +503,7 @@ Logistics Cost: ${order.logistics_cost || "N/A"}
     console.error("Failed to send Discord webhook:", err);
   }
 };
-const createBookkeepingRecord = async (
-  date: string,
-  description: string,
-  category: string,
-  amount: number,
-  customer?: string,
-  project?: string,
-  suppliedBy?: string,
-  orderId?: number
-) => {
-  try {
-    const record = {
-      date,
-      description,
-      category,
-      amount,
-      customer: customer || null,
-      project: project || null,
-      supplied_by: suppliedBy || null,
-      tags: orderId ? `order-${orderId}` : null,
-      // Optional: add cost_per_unit if needed for margin tracking
-    };
 
-    await supabase.from("bookkeeping_records").insert([record]).execute().catch((err) => {
-      throw err;
-    });
-  } catch (err) {
-    console.error("Failed to create bookkeeping record:", err);
-    // Optional: show toast or log to admin panel
-  }
-};
 // ------------------------
 // Status Updater Component
 // ------------------------
@@ -1089,6 +1059,34 @@ const SupplierBiddingSection: React.FC<{
 // ------------------------
 // Pricing Section Component (WITH SUPPLIER REMOVAL + PASSWORD)
 // ------------------------
+const createBookkeepingRecord = async (
+  date: string,
+  description: string,
+  category: string,
+  amount: number,
+  customer?: string,
+  project?: string,
+  suppliedBy?: string,
+  orderId?: number
+) => {
+  try {
+    const record = {
+      date,
+      description,
+      category,
+      amount,
+      customer: customer || null,
+      project: project || null,
+      supplied_by: suppliedBy || null,
+      tags: orderId ? `order-${orderId}` : null,
+    };
+    await supabase.from("bookkeeping_records").insert([record]).execute();
+  } catch (err) {
+    console.error("Failed to create bookkeeping record:", err);
+    // Optionally show toast or alert
+  }
+};
+
 const PricingSection: React.FC<{
   order: Order;
   isEditing: boolean;
@@ -1127,7 +1125,6 @@ const PricingSection: React.FC<{
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [removePassword, setRemovePassword] = useState("");
   const [bookkeepingLoading, setBookkeepingLoading] = useState(false);
-  
 
   const handleRemove = () => {
     if (onRemoveSupplier) {
@@ -1137,67 +1134,50 @@ const PricingSection: React.FC<{
     }
   };
 
-const sendToBookkeeping = async (orderId: number) => {
-  if (!order || !order.customer_price) {
-    alert("Order must be completed with customer price to record in bookkeeping.");
+const sendToBookkeeping = async (order: Order) => {
+  if (!order.customer_price) {
+    console.warn("No customer price — skipping bookkeeping sync");
     return;
   }
 
-  if (!order.supplier_price && !order.logistics_cost) {
-    if (!confirm("This order has no cost data. Record only revenue?")) return;
-  }
+  const baseDate = (order.actual_delivery || new Date().toISOString()).split("T")[0];
 
   try {
-    setLoading(true);
-
-    // === 1. Record Customer Revenue (Inflow) ===
+    // 1. Record Revenue (Inflow)
     if (order.customer_price) {
       await createBookkeepingRecord(
-        order.created_at.split("T")[0],
+        baseDate,
         `Order #${order.id}: ${order.description}`,
         "Inflow",
         extractNumericValue(order.customer_price),
         order.customer_name,
-        order.category || undefined,
+        undefined,
         undefined,
         order.id
       );
     }
 
-    // === 2. Record Supplier Cost (Outflow) ===
+    // 2. Record Supplier Cost (Outflow)
     if (order.supplier_price) {
       await createBookkeepingRecord(
-        order.created_at.split("T")[0],
-        `Supplier payment for Order #${order.id}`,
+        baseDate,
+        `Supplier payment for Order #${order.id} - ${order.description} - ${order.supplier_name} - ${order.supplier_price}`,
         "Outflow",
         extractNumericValue(order.supplier_price),
         order.customer_name,
-        order.category || undefined,
+        undefined,
         order.supplier_name,
         order.id
       );
     }
 
-    // === 3. Record Logistics Cost (Outflow) ===
-    if (order.logistics_cost) {
-      await createBookkeepingRecord(
-        order.created_at.split("T")[0],
-        `Logistics for Order #${order.id}`,
-        "Logistics",
-        extractNumericValue(order.logistics_cost),
-        order.customer_name,
-        order.category || undefined,
-        undefined,
-        order.id
-      );
-    }
+    // 3. Record Logistics (if you had it — optional)
+    // You don't have logistics_cost in this page’s Order type,
+    // so skip unless you add it later.
 
-    alert("✅ Financial records successfully added to bookkeeping!");
   } catch (err) {
     console.error("Bookkeeping sync failed:", err);
-    alert("❌ Failed to record in bookkeeping. Check console for details.");
-  } finally {
-    setLoading(false);
+    alert("⚠️ Financial sync to bookkeeping failed. Check console.");
   }
 };
 
@@ -1230,7 +1210,7 @@ const sendToBookkeeping = async (orderId: number) => {
     <button
   onClick={async () => {
     setBookkeepingLoading(true);
-    await sendToBookkeeping(order.id);
+    await sendToBookkeeping(order);
     setBookkeepingLoading(false);
   }}
   disabled={bookkeepingLoading}
