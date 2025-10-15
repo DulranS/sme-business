@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   CheckCircle,
   Package,
@@ -14,7 +14,7 @@ import {
 import Link from "next/link";
 
 // ------------------------
-// Extended Order Interface
+// Extended Order Interface (unchanged)
 // ------------------------
 interface Order {
   id: number;
@@ -32,7 +32,6 @@ interface Order {
   supplier_description?: string;
   customer_price?: string;
 
-  // Logistics & Inventory
   inventory_status?: "in-stock" | "low-stock" | "out-of-stock" | "reorder-needed";
   shipping_carrier?: string;
   tracking_number?: string;
@@ -40,9 +39,8 @@ interface Order {
   logistics_cost?: string;
   supplier_lead_time_days?: number;
   route_optimized?: boolean;
-
-  // 👇 NEW
-  shipped_quantity?: number; // how much has been shipped so far
+  shipped_quantity?: number;
+  shipped_at?: string; // 👈 NEW
 }
 
 interface OrderImage {
@@ -58,7 +56,7 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const DISCORD_WEBHOOK_URL = process.env.NEXT_PUBLIC_DISCORD_SHIP_WEBHOOK_URL || "";
 
 // ------------------------
-// Supabase Client (with update support)
+// Supabase Client (same)
 // ------------------------
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
@@ -111,42 +109,6 @@ class SupabaseClient {
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
-// Discord Webhook
-// ------------------------
-const sendDiscordWebhook = async (order: Order) => {
-  if (!DISCORD_WEBHOOK_URL) return;
-
-  const payload = {
-    username: "🚚 Shipping Bot",
-    avatar_url: "https://i.imgur.com/AfFp7pu.png",
-    content: `
-**---------------------------------------------------------------------------------------**
-📦 **NEW SHIPPING ORDER – Ready for Dispatch!**
-**Order #${order.id}** – ${order.customer_name}
-📍 Location: ${order.location}
-📞 Phone: ${order.phone}
-📦 MOQ: ${order.moq}
-❗ Urgency: ${order.urgency}
-📝 Description: ${order.description}
-💰 Customer Price: ${order.customer_price || "N/A"}
-🚚 Carrier: ${order.shipping_carrier || "TBD"}
-📅 Est. Delivery: ${order.estimated_delivery ? new Date(order.estimated_delivery).toLocaleDateString() : "N/A"}
-**---------------------------------------------------------------------------------------**
-`,
-  };
-
-  try {
-    await fetch(DISCORD_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    console.error("Discord webhook failed:", err);
-  }
-};
-
-// ------------------------
 // Helpers
 // ------------------------
 const parseImages = (imagesJson: string): OrderImage[] => {
@@ -162,8 +124,14 @@ const extractMOQNumber = (moq: string): number => {
   return match ? parseInt(match[0], 10) : 0;
 };
 
+const extractNumericValue = (priceString?: string): number => {
+  if (!priceString) return 0;
+  const match = priceString.match(/[\d,]+\.?\d*/);
+  return match ? parseFloat(match[0].replace(/,/g, "")) : 0;
+};
+
 // ------------------------
-// Image Gallery
+// Image Gallery (slightly optimized)
 // ------------------------
 const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
   const openImage = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
@@ -182,13 +150,13 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
             key={i}
             src={image.url}
             alt={image.name}
-            className="h-80 object-cover rounded border cursor-pointer hover:opacity-80"
+            className="h-24 w-24 object-cover rounded border cursor-pointer hover:opacity-80"
             onClick={() => openImage(image.url)}
             title={image.name}
           />
         ))}
         {images.length > 3 && (
-          <div className="w-16 h-16 bg-gray-100 rounded border border-dashed border-gray-400 flex items-center justify-center text-xs text-gray-500">
+          <div className="w-10 h-10 bg-gray-100 rounded border border-dashed border-gray-400 flex items-center justify-center text-xs text-gray-500">
             +{images.length - 3}
           </div>
         )}
@@ -205,12 +173,10 @@ const ShipOrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(new Set());
-
-  // Form state for dispatch
   const [dispatchData, setDispatchData] = useState<Record<number, { carrier: string; tracking: string }>>({});
   const [shippingQuantities, setShippingQuantities] = useState<Record<number, number>>({});
 
-  // Fetch ship orders
+  // Fetch orders
   useEffect(() => {
     const fetchShipOrders = async () => {
       setLoading(true);
@@ -222,7 +188,6 @@ const ShipOrdersPage: React.FC = () => {
           .eq("status", "ship")
           .execute();
 
-        // Notify new orders
         const newOrders = shipOrders.filter((o) => !notifiedOrderIds.has(o.id));
         newOrders.forEach((order) => {
           sendDiscordWebhook(order);
@@ -240,6 +205,19 @@ const ShipOrdersPage: React.FC = () => {
 
     fetchShipOrders();
   }, []);
+
+  // 💰 Profitability Summary
+  const totalRevenue = useMemo(() =>
+    orders.reduce((sum, o) => sum + extractNumericValue(o.customer_price), 0), [orders]
+  );
+  const totalProfit = useMemo(() =>
+    orders.reduce((sum, o) => {
+      const cust = extractNumericValue(o.customer_price);
+      const supp = extractNumericValue(o.supplier_price);
+      return sum + (cust - supp);
+    }, 0), [orders]
+  );
+  const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
   // Helpers
   const getRemaining = (order: Order): number => {
@@ -259,7 +237,6 @@ const ShipOrdersPage: React.FC = () => {
     return map[status] || "bg-gray-100 text-gray-800";
   };
 
-  // Handle input changes
   const handleDispatchChange = (orderId: number, field: "carrier" | "tracking", value: string) => {
     setDispatchData((prev) => ({
       ...prev,
@@ -274,7 +251,10 @@ const ShipOrdersPage: React.FC = () => {
     }
   };
 
-  // Mark as dispatched
+  const shipRemaining = (orderId: number, remaining: number) => {
+    setShippingQuantities((prev) => ({ ...prev, [orderId]: remaining }));
+  };
+
   const markAsDispatched = async (order: Order) => {
     const toShip = shippingQuantities[order.id] || 0;
     const remaining = getRemaining(order);
@@ -282,23 +262,24 @@ const ShipOrdersPage: React.FC = () => {
     const newShipped = (order.shipped_quantity || 0) + toShip;
 
     if (toShip <= 0) {
-      alert("Please enter a valid quantity to ship.");
+      alert("Please enter a quantity greater than 0.");
       return;
     }
 
-    if (newShipped > totalMOQ) {
-      if (!confirm(`You're shipping ${newShipped}, but only ${totalMOQ} were ordered. Proceed?`)) {
-        return;
-      }
+    if (toShip > remaining) {
+      alert(`Cannot ship more than remaining quantity (${remaining}).`);
+      return;
     }
 
     const carrier = dispatchData[order.id]?.carrier?.trim();
     const tracking = dispatchData[order.id]?.tracking?.trim();
 
-    if (!carrier || !tracking) {
-      alert("Please enter both carrier and tracking number.");
+    if (!carrier || !tracking || tracking.length < 4) {
+      alert("Please enter valid carrier and tracking number (min 4 characters).");
       return;
     }
+
+    const now = new Date().toISOString();
 
     try {
       await supabase
@@ -308,14 +289,14 @@ const ShipOrdersPage: React.FC = () => {
           shipping_carrier: carrier,
           tracking_number: tracking,
           shipped_quantity: newShipped,
+          shipped_at: order.shipped_at || now,
         })
         .eq("id", order.id)
         .execute();
 
-      // Optimistic UI update
       setOrders((prev) => prev.filter((o) => o.id !== order.id));
 
-      // Clear local state
+      // Clean up local state
       setDispatchData((prev) => {
         const newD = { ...prev };
         delete newD[order.id];
@@ -332,7 +313,7 @@ const ShipOrdersPage: React.FC = () => {
     }
   };
 
-  // Export
+  // Enhanced CSV Export
   const exportToCSV = () => {
     if (orders.length === 0) return;
 
@@ -345,6 +326,8 @@ const ShipOrdersPage: React.FC = () => {
       "Description",
       "Customer Price",
       "Supplier Price",
+      "Profit",
+      "Margin %",
       "Shipping Carrier",
       "Tracking Number",
       "Estimated Delivery",
@@ -358,6 +341,10 @@ const ShipOrdersPage: React.FC = () => {
     ];
 
     const csvRows = orders.map((o) => {
+      const cust = extractNumericValue(o.customer_price);
+      const supp = extractNumericValue(o.supplier_price);
+      const profit = cust - supp;
+      const margin = cust > 0 ? (profit / cust) * 100 : 0;
       const totalMOQ = extractMOQNumber(o.moq);
       const shipped = o.shipped_quantity || 0;
       const remaining = totalMOQ - shipped;
@@ -371,6 +358,8 @@ const ShipOrdersPage: React.FC = () => {
         `"${o.description.replace(/"/g, '""')}"`,
         o.customer_price || "N/A",
         o.supplier_price || "N/A",
+        profit > 0 ? profit.toFixed(2) : "N/A",
+        margin > 0 ? margin.toFixed(2) : "N/A",
         o.shipping_carrier || "N/A",
         o.tracking_number || "N/A",
         o.estimated_delivery ? new Date(o.estimated_delivery).toISOString().split("T")[0] : "N/A",
@@ -426,7 +415,31 @@ const ShipOrdersPage: React.FC = () => {
     );
 
   return (
-    <div className="p-4 space-y-4 bg-blue-50 min-h-screen">
+    <div className="p-4 space-y-6 bg-blue-50 min-h-screen">
+      {/* Profitability Summary */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
+        <h2 className="text-lg font-bold text-gray-800 mb-3">Shipping Queue Value</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="text-center">
+            <p className="text-sm text-gray-600">Total Revenue</p>
+            <p className="font-bold text-green-700">${totalRevenue.toFixed(0)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-600">Total Profit</p>
+            <p className="font-bold text-blue-700">${totalProfit.toFixed(0)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-600">Avg Margin</p>
+            <p className={`font-bold ${
+              avgMargin >= 30 ? 'text-green-700' :
+              avgMargin >= 20 ? 'text-yellow-700' : 'text-red-700'
+            }`}>
+              {avgMargin.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex justify-between items-center flex-wrap gap-2">
         <h1 className="text-xl font-bold text-blue-900 flex items-center gap-2">
           <Package className="w-6 h-6" />
@@ -458,6 +471,11 @@ const ShipOrdersPage: React.FC = () => {
           );
           const remaining = getRemaining(order);
           const totalMOQ = extractMOQNumber(order.moq);
+          const toShip = shippingQuantities[order.id] || 0;
+          const isOverShipping = toShip > remaining;
+          const isDispatchDisabled = toShip <= 0 || isOverShipping || 
+            !dispatchData[order.id]?.carrier?.trim() || 
+            !dispatchData[order.id]?.tracking?.trim();
 
           return (
             <div
@@ -476,62 +494,36 @@ const ShipOrdersPage: React.FC = () => {
                     <p className="text-xs text-gray-600 mt-1 line-clamp-2">{order.description}</p>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs">
-                      <div>
-                        <span className="font-medium">📍 Location:</span>{" "}
-                        <span className="text-gray-800">{order.location}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">📞 Phone:</span>{" "}
-                        <span className="text-gray-800">{order.phone}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium">📦 MOQ:</span>{" "}
-                        <span className="text-gray-800">{order.moq}</span>
-                      </div>
+                      <div><span className="font-medium">📍 Location:</span> {order.location}</div>
+                      <div><span className="font-medium">📞 Phone:</span> {order.phone}</div>
+                      <div><span className="font-medium">📦 MOQ:</span> {order.moq}</div>
                       <div>
                         <span className="font-medium">❗ Urgency:</span>{" "}
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs ${
-                            order.urgency === "high"
-                              ? "bg-red-100 text-red-800"
-                              : order.urgency === "medium"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          order.urgency === "high" ? "bg-red-100 text-red-800" :
+                          order.urgency === "medium" ? "bg-yellow-100 text-yellow-800" :
+                          "bg-green-100 text-green-800"
+                        }`}>
                           {order.urgency}
                         </span>
                       </div>
                       {order.inventory_status && (
                         <div>
                           <span className="font-medium">📊 Inventory:</span>{" "}
-                          <span
-                            className={`px-2 py-0.5 rounded text-xs ${getInventoryColor(
-                              order.inventory_status
-                            )}`}
-                          >
-                            {order.inventory_status.replace("-", " ")}
+                          <span className={`px-2 py-0.5 rounded text-xs ${getInventoryColor(order.inventory_status)}`}>
+                            {order.inventory_status.replace(/-/g, " ")}
                           </span>
                         </div>
                       )}
                       <div>
                         <span className="font-medium">💰 Revenue:</span>{" "}
-                        <span className="text-green-700 font-medium">
-                          {order.customer_price || "N/A"}
-                        </span>
+                        <span className="text-green-700 font-medium">{order.customer_price || "N/A"}</span>
                       </div>
-                      <div>
-                        <span className="font-medium">🕒 Age:</span>{" "}
-                        <span className="text-gray-800">{daysSinceCreated}d</span>
-                      </div>
+                      <div><span className="font-medium">🕒 Age:</span> {daysSinceCreated}d</div>
                       <div>
                         <span className="font-medium">🚚 Shipped:</span>{" "}
-                        <span className="text-blue-700">
-                          {order.shipped_quantity || 0}
-                        </span>
-                        {remaining > 0 && (
-                          <span className="text-yellow-600 ml-1">({remaining} left)</span>
-                        )}
+                        <span className="text-blue-700">{order.shipped_quantity || 0}</span>
+                        {remaining > 0 && <span className="text-yellow-600 ml-1">({remaining} left)</span>}
                       </div>
                     </div>
 
@@ -540,18 +532,32 @@ const ShipOrdersPage: React.FC = () => {
                 </div>
 
                 {/* Dispatch Controls */}
-                <div className="ml-4 w-64 flex flex-col gap-2 text-xs">
+                <div className="ml-4 w-60 flex flex-col gap-2 text-xs">
                   <div>
                     <label className="block text-gray-700 mb-1">Ship Qty</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={remaining}
-                      value={shippingQuantities[order.id] ?? ""}
-                      onChange={(e) => handleQuantityChange(order.id, e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
-                      placeholder="0"
-                    />
+                    <div className="flex gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max={remaining}
+                        value={shippingQuantities[order.id] ?? ""}
+                        onChange={(e) => handleQuantityChange(order.id, e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
+                        placeholder="0"
+                      />
+                      {remaining > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => shipRemaining(order.id, remaining)}
+                          className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                        >
+                          Max
+                        </button>
+                      )}
+                    </div>
+                    {isOverShipping && (
+                      <p className="text-red-600 text-xs mt-1">Max: {remaining}</p>
+                    )}
                   </div>
 
                   <div>
@@ -578,11 +584,7 @@ const ShipOrdersPage: React.FC = () => {
 
                   <button
                     onClick={() => markAsDispatched(order)}
-                    disabled={
-                      !shippingQuantities[order.id] ||
-                      !dispatchData[order.id]?.carrier ||
-                      !dispatchData[order.id]?.tracking
-                    }
+                    disabled={isDispatchDisabled}
                     className="mt-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                   >
                     <ClipboardList className="w-3 h-3" />
@@ -596,6 +598,42 @@ const ShipOrdersPage: React.FC = () => {
       </div>
     </div>
   );
+};
+
+// ------------------------
+// Discord Webhook (unchanged)
+// ------------------------
+const sendDiscordWebhook = async (order: Order) => {
+  if (!DISCORD_WEBHOOK_URL) return;
+
+  const payload = {
+    username: "🚚 Shipping Bot",
+    avatar_url: "https://i.imgur.com/AfFp7pu.png",
+    content: `
+**---------------------------------------------------------------------------------------**
+📦 **NEW SHIPPING ORDER – Ready for Dispatch!**
+**Order #${order.id}** – ${order.customer_name}
+📍 Location: ${order.location}
+📞 Phone: ${order.phone}
+📦 MOQ: ${order.moq}
+❗ Urgency: ${order.urgency}
+📝 Description: ${order.description}
+💰 Customer Price: ${order.customer_price || "N/A"}
+🚚 Carrier: ${order.shipping_carrier || "TBD"}
+📅 Est. Delivery: ${order.estimated_delivery ? new Date(order.estimated_delivery).toLocaleDateString() : "N/A"}
+**---------------------------------------------------------------------------------------**
+`,
+  };
+
+  try {
+    await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Discord webhook failed:", err);
+  }
 };
 
 export default ShipOrdersPage;
