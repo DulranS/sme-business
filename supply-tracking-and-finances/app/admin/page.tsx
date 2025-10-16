@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import {
   RefreshCw,
@@ -39,6 +39,7 @@ import {
   Users2,
   Shield,
   Award,
+  Info,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -49,7 +50,6 @@ interface OrderImage {
   name: string;
   url: string;
 }
-
 interface SupplierBid {
   supplier_name: string;
   price: string; // e.g., "5000 USD"
@@ -57,7 +57,6 @@ interface SupplierBid {
   submitted_at: string; // ISO
   lead_time_days?: number;
 }
-
 interface Order {
   id: number;
   customer_name: string;
@@ -91,7 +90,6 @@ interface Order {
   category?: string;
   bids?: string;
 }
-
 interface FinancialSummary {
   totalRevenue: number;
   totalCost: number;
@@ -118,7 +116,6 @@ interface FinancialSummary {
   avgSupplierLeadTime: number;
   refundRate: number;
 }
-
 interface CSVRow {
   customer_name?: string;
   email?: string;
@@ -145,7 +142,6 @@ interface CSVRow {
 }
 
 const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
-  // From your exportToCSV() headers:
   "Customer Name": "customer_name",
   Email: "email",
   Phone: "phone",
@@ -167,7 +163,6 @@ const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
   "Logistics Cost": "logistics_cost",
   "Lead Time (days)": "supplier_lead_time_days",
   "Route Optimized": "route_optimized",
-  // Also support direct machine names (for template users)
   customer_name: "customer_name",
   email: "email",
   phone: "phone",
@@ -228,14 +223,14 @@ class SupabaseClient {
         execute: async (): Promise<Order[]> =>
           this.request<Order[]>(`${table}?select=${columns}`),
       }),
-      insert: (data: Partial<Order> | Partial<Order>[]) => ({
+      insert: ( Partial<Order> | Partial<Order>[]) => ({
         execute: async (): Promise<Order[]> =>
           this.request<Order[]>(table, {
             method: "POST",
             body: JSON.stringify(Array.isArray(data) ? data : [data]),
           }),
       }),
-      update: (data: Partial<Order>) => ({
+      update: ( Partial<Order>) => ({
         eq: (column: string, value: string | number) => ({
           execute: async (): Promise<Order[]> =>
             this.request<Order[]>(`${table}?${column}=eq.${value}`, {
@@ -255,6 +250,7 @@ class SupabaseClient {
     };
   }
 }
+
 const parseCategories = (categoryString?: string): string[] => {
   if (!categoryString) return [];
   return categoryString
@@ -262,6 +258,7 @@ const parseCategories = (categoryString?: string): string[] => {
     .map((cat) => cat.trim())
     .filter(Boolean);
 };
+
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
@@ -307,6 +304,9 @@ const getInventoryColor = (inv: Order["inventory_status"]) => {
   };
   return map[inv || ""] || "bg-gray-100 text-gray-800";
 };
+
+const isInventoryCritical = (inv: Order["inventory_status"]) =>
+  inv === "low-stock" || inv === "out-of-stock" || inv === "reorder-needed";
 
 const parseImages = (imagesJson: string): OrderImage[] => {
   try {
@@ -359,14 +359,12 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let totalLeadTime = 0;
   let supplierCount = 0;
   let refunds = 0;
-
   orders.forEach((order) => {
     const customerPrice = extractNumericValue(order.customer_price);
     const supplierPrice = extractNumericValue(order.supplier_price);
     const logisticsCost = extractNumericValue(order.logistics_cost);
     const margin =
       customerPrice > 0 ? (customerPrice - supplierPrice) / customerPrice : 0;
-
     if (order.status === "completed") {
       totalRevenue += customerPrice;
       totalCost += supplierPrice;
@@ -401,7 +399,6 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
       inProgressValue += customerPrice;
     }
   });
-
   const totalProfit = totalRevenue - totalCost;
   const profitMargin =
     totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -424,7 +421,6 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
     completedOrders > 0 ? (refunds / completedOrders) * 100 : 0;
   const inventoryTurnover =
     completedOrders > 0 ? totalRevenue / (totalCost || 1) : 0;
-
   return {
     totalRevenue,
     totalCost,
@@ -651,6 +647,7 @@ const OrderCard: React.FC<{
   const daysSince = getDaysSince(order.created_at);
   const isAging = daysSince > 14 && order.status === "pending";
   const isLowMargin = margin < 20 && order.status === "completed";
+  const isInventoryLow = isInventoryCritical(order.inventory_status);
 
   return (
     <div
@@ -661,6 +658,8 @@ const OrderCard: React.FC<{
           ? "bg-red-50"
           : isLowMargin
           ? "bg-yellow-50"
+          : isInventoryLow
+          ? "bg-orange-50"
           : ""
       }`}
       onClick={onClick}
@@ -698,6 +697,7 @@ const OrderCard: React.FC<{
           </span>
           {isAging && <Clock className="w-3 h-3 text-red-500" />}
           {isLowMargin && <AlertTriangle className="w-3 h-3 text-yellow-500" />}
+          {isInventoryLow && <Warehouse className="w-3 h-3 text-orange-500" />}
           {order.refund_status && order.refund_status !== "none" && (
             <RotateCcw className="w-3 h-3 text-red-500" />
           )}
@@ -776,14 +776,15 @@ const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
 };
 
 // ------------------------
-// Supplier Bidding Section (ENHANCED WITH APPROVAL LOCK)
+// Supplier Bidding Section
 // ------------------------
 const SupplierBiddingSection: React.FC<{
   order: Order;
   onBidSubmit: (bid: Omit<SupplierBid, "submitted_at">) => void;
   onApproveBid: (bid: SupplierBid, password: string) => void;
   customerPrice: number;
-}> = ({ order, onBidSubmit, onApproveBid, customerPrice }) => {
+  biddingRef?: React.RefObject<HTMLDivElement>; // ← add this
+}> = ({ order, onBidSubmit, onApproveBid, customerPrice, biddingRef }) => {
   const [supplierName, setSupplierName] = useState("");
   const [price, setPrice] = useState("");
   const [notes, setNotes] = useState("");
@@ -793,8 +794,8 @@ const SupplierBiddingSection: React.FC<{
     useState<SupplierBid | null>(null);
   const [password, setPassword] = useState("");
 
-  // ✅ Check if supplier is already approved
   const isAlreadyApproved = !!order.supplier_name || order.status !== "pending";
+  const bids = parseBids(order.bids || "[]");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -813,9 +814,7 @@ const SupplierBiddingSection: React.FC<{
     setIsSubmitting(false);
   };
 
-  const bids = parseBids(order.bids || "[]");
-  const publicLink = `${window.location.origin}/bid/${order.id}`;
-
+  const publicLink = `${window.location.origin}${window.location.pathname}?bid=${order.id}`;
   const copyToClipboard = () => {
     navigator.clipboard.writeText(publicLink);
     alert("Public bidding link copied to clipboard!");
@@ -830,7 +829,10 @@ const SupplierBiddingSection: React.FC<{
   };
 
   return (
-    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-6">
+    <div
+      ref={biddingRef}
+      className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-6"
+    >
       <div className="flex justify-between items-start mb-4">
         <h3 className="font-semibold text-gray-900 flex items-center space-x-2">
           <Users2 className="w-5 h-5 text-amber-600" />
@@ -846,7 +848,6 @@ const SupplierBiddingSection: React.FC<{
           </button>
         )}
       </div>
-
       {isAlreadyApproved ? (
         <div className="mb-4 p-3 bg-green-100 rounded border border-green-300">
           <p className="text-sm font-medium text-green-800 flex items-center">
@@ -868,7 +869,6 @@ const SupplierBiddingSection: React.FC<{
               {publicLink}
             </code>
           </div>
-
           <form onSubmit={handleSubmit} className="space-y-3 mb-6">
             <input
               type="text"
@@ -922,7 +922,6 @@ const SupplierBiddingSection: React.FC<{
           </form>
         </>
       )}
-
       {bids.length > 0 && (
         <div>
           <h4 className="font-medium text-gray-800 mb-3 flex items-center">
@@ -938,7 +937,6 @@ const SupplierBiddingSection: React.FC<{
                   : 0;
               const isHighMargin = margin >= 30;
               const isLowMargin = margin > 0 && margin < 20;
-
               return (
                 <div
                   key={i}
@@ -1006,7 +1004,6 @@ const SupplierBiddingSection: React.FC<{
           </div>
         </div>
       )}
-
       {/* Approval Modal */}
       {showApprovalModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1024,7 +1021,7 @@ const SupplierBiddingSection: React.FC<{
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password: "
+              placeholder="Enter password"
               className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
             />
             <div className="flex justify-end space-x-2">
@@ -1056,9 +1053,6 @@ const SupplierBiddingSection: React.FC<{
 // ------------------------
 // Pricing Section Component
 // ------------------------
-// ------------------------
-// Pricing Section Component (WITH SUPPLIER REMOVAL + PASSWORD)
-// ------------------------
 const createBookkeepingRecord = async (
   date: string,
   description: string,
@@ -1083,7 +1077,6 @@ const createBookkeepingRecord = async (
     await supabase.from("bookkeeping_records").insert([record]).execute();
   } catch (err) {
     console.error("Failed to create bookkeeping record:", err);
-    // Optionally show toast or alert
   }
 };
 
@@ -1102,8 +1095,8 @@ const PricingSection: React.FC<{
   onCancel: () => void;
   loading: boolean;
   onEdit: () => void;
-  setLoading: (val: boolean) => void; // NEW
-  onRemoveSupplier?: (password: string) => void; // NEW
+  setLoading: (val: boolean) => void;
+  onRemoveSupplier?: (password: string) => void;
 }> = ({
   order,
   isEditing,
@@ -1134,52 +1127,42 @@ const PricingSection: React.FC<{
     }
   };
 
-const sendToBookkeeping = async (order: Order) => {
-  if (!order.customer_price) {
-    console.warn("No customer price — skipping bookkeeping sync");
-    return;
-  }
-
-  const baseDate = (order.actual_delivery || new Date().toISOString()).split("T")[0];
-
-  try {
-    // 1. Record Revenue (Inflow)
-    if (order.customer_price) {
-      await createBookkeepingRecord(
-        baseDate,
-        `Order #${order.id}: ${order.description}`,
-        "Inflow",
-        extractNumericValue(order.customer_price),
-        order.customer_name,
-        undefined,
-        undefined,
-        order.id
-      );
+  const sendToBookkeeping = async (order: Order) => {
+    if (!order.customer_price) {
+      console.warn("No customer price — skipping bookkeeping sync");
+      return;
     }
-
-    // 2. Record Supplier Cost (Outflow)
-    if (order.supplier_price) {
-      await createBookkeepingRecord(
-        baseDate,
-        `Supplier payment for Order #${order.id} - ${order.description} - ${order.supplier_name} - ${order.supplier_price}`,
-        "Outflow",
-        extractNumericValue(order.supplier_price),
-        order.customer_name,
-        undefined,
-        order.supplier_name,
-        order.id
-      );
+    const baseDate = (order.actual_delivery || new Date().toISOString()).split("T")[0];
+    try {
+      if (order.customer_price) {
+        await createBookkeepingRecord(
+          baseDate,
+          `Order #${order.id}: ${order.description}`,
+          "Inflow",
+          extractNumericValue(order.customer_price),
+          order.customer_name,
+          undefined,
+          undefined,
+          order.id
+        );
+      }
+      if (order.supplier_price) {
+        await createBookkeepingRecord(
+          baseDate,
+          `Supplier payment for Order #${order.id} - ${order.description} - ${order.supplier_name} - ${order.supplier_price}`,
+          "Outflow",
+          extractNumericValue(order.supplier_price),
+          order.customer_name,
+          undefined,
+          order.supplier_name,
+          order.id
+        );
+      }
+    } catch (err) {
+      console.error("Bookkeeping sync failed:", err);
+      alert("⚠️ Financial sync to bookkeeping failed. Check console.");
     }
-
-    // 3. Record Logistics (if you had it — optional)
-    // You don't have logistics_cost in this page’s Order type,
-    // so skip unless you add it later.
-
-  } catch (err) {
-    console.error("Bookkeeping sync failed:", err);
-    alert("⚠️ Financial sync to bookkeeping failed. Check console.");
-  }
-};
+  };
 
   const supplierCost = extractNumericValue(
     isEditing ? supplierPrice : order.supplier_price
@@ -1197,30 +1180,29 @@ const sendToBookkeeping = async (order: Order) => {
           <DollarSign className="w-5 h-5 text-green-600" />
           <span>Pricing & Financials</span>
         </h3>
-        {/* Bookkeeping Export Button */}
-{order.status === "completed" && (
-  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-    <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
-      <Wallet className="w-5 h-5 text-blue-600" />
-      Financial Reconciliation
-    </h3>
-    <p className="text-sm text-gray-600 mb-3">
-      Send this order's financials to your bookkeeping system.
-    </p>
-    <button
-  onClick={async () => {
-    setBookkeepingLoading(true);
-    await sendToBookkeeping(order);
-    setBookkeepingLoading(false);
-  }}
-  disabled={bookkeepingLoading}
-      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2 disabled:opacity-50 text-sm"
-    >
-      <Save className="w-4 h-4" />
-      <span>Record in Bookkeeping</span>
-    </button>
-  </div>
-)}
+        {order.status === "completed" && (
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-blue-600" />
+              Financial Reconciliation
+            </h3>
+            <p className="text-sm text-gray-600 mb-3">
+              Send this order's financials to your bookkeeping system.
+            </p>
+            <button
+              onClick={async () => {
+                setBookkeepingLoading(true);
+                await sendToBookkeeping(order);
+                setBookkeepingLoading(false);
+              }}
+              disabled={bookkeepingLoading}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2 disabled:opacity-50 text-sm"
+            >
+              <Save className="w-4 h-4" />
+              <span>Record in Bookkeeping</span>
+            </button>
+          </div>
+        )}
         <div className="flex space-x-2">
           {order.supplier_name && !isEditing && (
             <button
@@ -1242,7 +1224,6 @@ const sendToBookkeeping = async (order: Order) => {
           )}
         </div>
       </div>
-
       {isEditing ? (
         <div className="space-y-4">
           <div>
@@ -1406,7 +1387,6 @@ const sendToBookkeeping = async (order: Order) => {
           )}
         </div>
       )}
-
       {/* Remove Supplier Modal */}
       {showRemoveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1738,11 +1718,14 @@ const OrderManagementApp: React.FC = () => {
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [categoryInput, setCategoryInput] = useState("");
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const biddingSectionRef = useRef<HTMLDivElement>(null);
+
   // Pricing state
   const [supplierName, setSupplierName] = useState("");
   const [supplierPrice, setSupplierPrice] = useState("");
   const [supplierDescription, setSupplierDescription] = useState("");
   const [customerPrice, setCustomerPrice] = useState("");
+
   // Logistics state
   const [inventoryStatus, setInventoryStatus] = useState("");
   const [shippingCarrier, setShippingCarrier] = useState("");
@@ -1753,12 +1736,13 @@ const OrderManagementApp: React.FC = () => {
   const [logisticsCost, setLogisticsCost] = useState("");
   const [supplierLeadTime, setSupplierLeadTime] = useState("");
   const [routeOptimized, setRouteOptimized] = useState(false);
+
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
   const [filter, setFilter] = useState<
-    "all" | "low-margin" | "aging" | "refund"
+    "all" | "low-margin" | "aging" | "refund" | "inventory"
   >("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
@@ -1776,8 +1760,6 @@ const OrderManagementApp: React.FC = () => {
         );
       });
       setOrders(sorted);
-
-      // ✅ Extract all unique categories from comma-separated strings
       const allCats = sorted.flatMap((o) => parseCategories(o.category));
       const uniqueCats = Array.from(new Set(allCats));
       setAvailableCategories(uniqueCats);
@@ -1790,16 +1772,54 @@ const OrderManagementApp: React.FC = () => {
     }
   }, []);
 
+  // Add this ref for smooth scroll (optional but nice)
+const biddingSectionRef = useRef<HTMLDivElement>(null);
+
+// Add this effect AFTER loadOrders runs
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const bidId = urlParams.get("bid");
+  if (bidId && !isNaN(Number(bidId))) {
+    const orderId = Number(bidId);
+    const order = orders.find((o) => o.id === orderId);
+    if (order) {
+      handleSelectOrder(order);
+      setShowOrdersList(false);
+      // Optional: scroll to bidding section after render
+      setTimeout(() => {
+        biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
+    }
+  }
+}, [orders]); // Only run when orders are loaded
+
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  
+
+  // Handle ?bid=<id> on initial load
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const bidId = urlParams.get("bid");
+    if (bidId && !isNaN(Number(bidId))) {
+      const orderId = Number(bidId);
+      const order = orders.find((o) => o.id === orderId);
+      if (order) {
+        handleSelectOrder(order);
+        setShowOrdersList(false);
+        setTimeout(() => {
+          biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 300);
+      }
+    }
+  }, [orders]);
 
   const financialSummary = calculateFinancials(orders);
 
   const filteredOrders = orders.filter((order) => {
     const orderCategories = parseCategories(order.category);
-
-    // Category filter: match if "all" OR if selected category is in order's categories
     if (categoryFilter !== "all" && !orderCategories.includes(categoryFilter)) {
       return false;
     }
@@ -1818,56 +1838,51 @@ const OrderManagementApp: React.FC = () => {
     if (filter === "refund") {
       return order.refund_status && order.refund_status !== "none";
     }
+    if (filter === "inventory") {
+      return isInventoryCritical(order.inventory_status);
+    }
     return true;
   });
 
-const updateOrderStatus = async (
-  orderId: number,
-  status: Order["status"]
-) => {
-  setLoading(true);
-  try {
-    // Update status in the database
-    const updatedOrders = await supabase
-      .from("orders")
-      .update({ status })
-      .eq("id", orderId)
-      .execute();
-
-    const updatedOrder = updatedOrders[0] as Order;
-
-    // Optimistically update local state
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? updatedOrder : o))
-    );
-    if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
-
-    // Send webhook
-    await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
-
-    // Handle bookkeeping if order is completed
-    if (status === "completed" && updatedOrder.customer_price) {
-      const revenue = extractNumericValue(updatedOrder.customer_price);
-      if (revenue > 0) {
-        await createBookkeepingRecord(
-          new Date().toISOString().split("T")[0],
-          `Order #${orderId} completed: ${updatedOrder.description || ""}`,
-          "Inflow",
-          revenue,
-          updatedOrder.customer_name || "",
-          updatedOrder.category || "",
-          updatedOrder.supplier_name || "",
-          orderId
-        );
+  const updateOrderStatus = async (
+    orderId: number,
+    status: Order["status"]
+  ) => {
+    setLoading(true);
+    try {
+      const updatedOrders = await supabase
+        .from("orders")
+        .update({ status })
+        .eq("id", orderId)
+        .execute();
+      const updatedOrder = updatedOrders[0] as Order;
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? updatedOrder : o))
+      );
+      if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
+      await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
+      if (status === "completed" && updatedOrder.customer_price) {
+        const revenue = extractNumericValue(updatedOrder.customer_price);
+        if (revenue > 0) {
+          await createBookkeepingRecord(
+            new Date().toISOString().split("T")[0],
+            `Order #${orderId} completed: ${updatedOrder.description || ""}`,
+            "Inflow",
+            revenue,
+            updatedOrder.customer_name || "",
+            updatedOrder.category || "",
+            updatedOrder.supplier_name || "",
+            orderId
+          );
+        }
       }
+    } catch (error) {
+      console.error("Status update error:", error);
+      alert("Failed to update status");
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Status update error:", error);
-    alert("Failed to update status");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const updatePricingInfo = async (orderId: number) => {
     setLoading(true);
@@ -2023,10 +2038,7 @@ const updateOrderStatus = async (
     bid: SupplierBid,
     password: string
   ) => {
-    // Inside approveSupplierBid, after successful supabase update:
-const supplierCost = extractNumericValue(bid.price);
-
-    if (password !== process.env?.ADMIN_KEY) {
+    if (password !== process.env?.NEXT_ADMIN_KEY) {
       alert("Incorrect password. Supplier not approved.");
       return;
     }
@@ -2078,237 +2090,204 @@ const supplierCost = extractNumericValue(bid.price);
     }
   };
 
-const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    try {
-      const text = e.target?.result as string;
-      const lines = text
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line);
-      if (lines.length < 2) {
-        alert("CSV must contain headers and at least one data row");
-        return;
-      }
-
-      // Parse raw headers (first line)
-      const rawHeaders = lines[0].split(",").map((h) => h.trim());
-      const headerMap: (keyof CSVRow | null)[] = [];
-
-      for (const raw of rawHeaders) {
-        const clean = raw.replace(/^"(.*)"$/, "$1").trim();
-        let key: keyof CSVRow | null = null;
-
-        // Map export-style headers
-        if (clean === "Customer Name") key = "customer_name";
-        else if (clean === "Email") key = "email";
-        else if (clean === "Phone") key = "phone";
-        else if (clean === "Location") key = "location";
-        else if (clean === "Description") key = "description";
-        else if (clean === "MOQ") key = "moq";
-        else if (clean === "Urgency") key = "urgency";
-        else if (clean === "Status") key = "status";
-        else if (clean === "Category") key = "category";
-        else if (clean === "Supplier Name") key = "supplier_name";
-        else if (clean === "Supplier Price") key = "supplier_price";
-        else if (clean === "Customer Price") key = "customer_price";
-        else if (clean === "Inventory Status") key = "inventory_status";
-        else if (clean === "Shipping Carrier") key = "shipping_carrier";
-        else if (clean === "Tracking #") key = "tracking_number";
-        else if (clean === "Est. Delivery") key = "estimated_delivery";
-        else if (clean === "Actual Delivery") key = "actual_delivery";
-        else if (clean === "Refund Status") key = "refund_status";
-        else if (clean === "Logistics Cost") key = "logistics_cost";
-        else if (clean === "Lead Time (days)") key = "supplier_lead_time_days";
-        else if (clean === "Route Optimized") key = "route_optimized";
-        // Also support template-style lowercase headers
-        else if (
-          [
-            "customer_name",
-            "email",
-            "phone",
-            "location",
-            "description",
-            "moq",
-            "urgency",
-            "status",
-            "category",
-            "supplier_name",
-            "supplier_price",
-            "customer_price",
-            "inventory_status",
-            "shipping_carrier",
-            "tracking_number",
-            "estimated_delivery",
-            "actual_delivery",
-            "refund_status",
-            "logistics_cost",
-            "supplier_lead_time_days",
-            "route_optimized",
-          ].includes(clean)
-        ) {
-          key = clean as keyof CSVRow;
-        }
-
-        headerMap.push(key);
-      }
-
-      const newOrders: Partial<Order>[] = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line) continue;
-
-        // ✅ CORRECTED CSV PARSER (handles quotes at start, escaped quotes)
-        const values: string[] = [];
-        let current = "";
-        let inQuotes = false;
-
-        for (let j = 0; j < line.length; j++) {
-          const char = line[j];
-          if (char === '"') {
-            if (inQuotes && line[j + 1] === '"') {
-              // Escaped quote: ""
-              current += '"';
-              j++; // skip next "
-            } else {
-              inQuotes = !inQuotes;
-            }
-          } else if (char === "," && !inQuotes) {
-            values.push(current);
-            current = "";
-          } else {
-            current += char;
-          }
-        }
-        values.push(current);
-
-        // Build row object
-        const rowData: CSVRow = {};
-        for (
-          let idx = 0;
-          idx < headerMap.length && idx < values.length;
-          idx++
-        ) {
-          const key = headerMap[idx];
-          if (key !== null) {
-            let val = values[idx].trim();
-            // Remove surrounding quotes and handle escaped quotes
-            if (val.startsWith('"') && val.endsWith('"')) {
-              val = val.slice(1, -1).replace(/""/g, '"');
-            }
-            rowData[key] = val || undefined;
-          }
-        }
-
-        // Validate required fields
-        if (
-          !rowData.customer_name ||
-          !rowData.phone ||
-          !rowData.location ||
-          !rowData.description ||
-          !rowData.moq
-        ) {
-          console.warn(
-            `Skipping row ${i + 1}: missing required fields`,
-            rowData
-          );
-          continue;
-        }
-
-// ✅ Helper: clean date fields
-const cleanDate = (val: string | undefined): string | undefined => {
-  return val && val !== "N/A" ? val : undefined;
-};
-
-// ✅ Helper: clean numeric fields
-const cleanInt = (val: string | undefined): number | undefined => {
-  if (!val || val === "none" || val === "N/A" || val.trim() === "")
-    return undefined;
-  const num = parseInt(val.trim(), 10);
-  return isNaN(num) ? undefined : num;
-};
-
-
-        // Parse and validate fields
-        const urgency = ["low", "medium", "high"].includes(
-          rowData.urgency?.toLowerCase() || ""
-        )
-          ? (rowData.urgency?.toLowerCase() as Order["urgency"])
-          : "medium";
-
-        const status = [
-          "pending",
-          "in-progress",
-          "completed",
-          "cancelled",
-          "ship",
-        ].includes(rowData.status?.toLowerCase() || "")
-          ? (rowData.status?.toLowerCase() as Order["status"])
-          : "pending";
-
-        const order: Partial<Order> = {
-          customer_name: rowData.customer_name,
-          email: rowData.email || undefined,
-          phone: rowData.phone,
-          location: rowData.location,
-          description: rowData.description,
-          moq: rowData.moq,
-          urgency,
-          status,
-          created_at: new Date().toISOString(),
-          supplier_name: rowData.supplier_name || undefined,
-          supplier_price: rowData.supplier_price || undefined,
-          supplier_description: rowData.supplier_description || undefined,
-          customer_price: rowData.customer_price || undefined,
-          images: "[]",
-          inventory_status: rowData.inventory_status as any,
-          shipping_carrier: rowData.shipping_carrier,
-          tracking_number: rowData.tracking_number,
-          // ✅ Fix date fields
-          estimated_delivery: cleanDate(rowData.estimated_delivery),
-          actual_delivery: cleanDate(rowData.actual_delivery),
-          refund_status: rowData.refund_status as any,
-          logistics_cost: rowData.logistics_cost,
-          // ✅ Fix numeric field
-          supplier_lead_time_days: cleanInt(rowData.supplier_lead_time_days),
-          route_optimized: rowData.route_optimized?.toLowerCase() === "true",
-          category: rowData.category || undefined,
-        };
-
-        newOrders.push(order);
-      }
-
-      if (newOrders.length === 0) {
-        alert("No valid orders found in CSV");
-        return;
-      }
-
-      setLoading(true);
+  const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
       try {
-        await supabase.from("orders").insert(newOrders).execute();
-        await loadOrders();
-        alert(`Successfully imported ${newOrders.length} order(s)`);
+        const text = e.target?.result as string;
+        const lines = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line);
+        if (lines.length < 2) {
+          alert("CSV must contain headers and at least one data row");
+          return;
+        }
+        const rawHeaders = lines[0].split(",").map((h) => h.trim());
+        const headerMap: (keyof CSVRow | null)[] = [];
+        for (const raw of rawHeaders) {
+          const clean = raw.replace(/^"(.*)"$/, "$1").trim();
+          let key: keyof CSVRow | null = null;
+          if (clean === "Customer Name") key = "customer_name";
+          else if (clean === "Email") key = "email";
+          else if (clean === "Phone") key = "phone";
+          else if (clean === "Location") key = "location";
+          else if (clean === "Description") key = "description";
+          else if (clean === "MOQ") key = "moq";
+          else if (clean === "Urgency") key = "urgency";
+          else if (clean === "Status") key = "status";
+          else if (clean === "Category") key = "category";
+          else if (clean === "Supplier Name") key = "supplier_name";
+          else if (clean === "Supplier Price") key = "supplier_price";
+          else if (clean === "Customer Price") key = "customer_price";
+          else if (clean === "Inventory Status") key = "inventory_status";
+          else if (clean === "Shipping Carrier") key = "shipping_carrier";
+          else if (clean === "Tracking #") key = "tracking_number";
+          else if (clean === "Est. Delivery") key = "estimated_delivery";
+          else if (clean === "Actual Delivery") key = "actual_delivery";
+          else if (clean === "Refund Status") key = "refund_status";
+          else if (clean === "Logistics Cost") key = "logistics_cost";
+          else if (clean === "Lead Time (days)") key = "supplier_lead_time_days";
+          else if (clean === "Route Optimized") key = "route_optimized";
+          else if (
+            [
+              "customer_name",
+              "email",
+              "phone",
+              "location",
+              "description",
+              "moq",
+              "urgency",
+              "status",
+              "category",
+              "supplier_name",
+              "supplier_price",
+              "customer_price",
+              "inventory_status",
+              "shipping_carrier",
+              "tracking_number",
+              "estimated_delivery",
+              "actual_delivery",
+              "refund_status",
+              "logistics_cost",
+              "supplier_lead_time_days",
+              "route_optimized",
+            ].includes(clean)
+          ) {
+            key = clean as keyof CSVRow;
+          }
+          headerMap.push(key);
+        }
+        const newOrders: Partial<Order>[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i];
+          if (!line) continue;
+          const values: string[] = [];
+          let current = "";
+          let inQuotes = false;
+          for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+            if (char === '"') {
+              if (inQuotes && line[j + 1] === '"') {
+                current += '"';
+                j++;
+              } else {
+                inQuotes = !inQuotes;
+              }
+            } else if (char === "," && !inQuotes) {
+              values.push(current);
+              current = "";
+            } else {
+              current += char;
+            }
+          }
+          values.push(current);
+          const rowData: CSVRow = {};
+          for (
+            let idx = 0;
+            idx < headerMap.length && idx < values.length;
+            idx++
+          ) {
+            const key = headerMap[idx];
+            if (key !== null) {
+              let val = values[idx].trim();
+              if (val.startsWith('"') && val.endsWith('"')) {
+                val = val.slice(1, -1).replace(/""/g, '"');
+              }
+              rowData[key] = val || undefined;
+            }
+          }
+          if (
+            !rowData.customer_name ||
+            !rowData.phone ||
+            !rowData.location ||
+            !rowData.description ||
+            !rowData.moq
+          ) {
+            console.warn(
+              `Skipping row ${i + 1}: missing required fields`,
+              rowData
+            );
+            continue;
+          }
+          const cleanDate = (val: string | undefined): string | undefined => {
+            return val && val !== "N/A" ? val : undefined;
+          };
+          const cleanInt = (val: string | undefined): number | undefined => {
+            if (!val || val === "none" || val === "N/A" || val.trim() === "")
+              return undefined;
+            const num = parseInt(val.trim(), 10);
+            return isNaN(num) ? undefined : num;
+          };
+          const urgency = ["low", "medium", "high"].includes(
+            rowData.urgency?.toLowerCase() || ""
+          )
+            ? (rowData.urgency?.toLowerCase() as Order["urgency"])
+            : "medium";
+          const status = [
+            "pending",
+            "in-progress",
+            "completed",
+            "cancelled",
+            "ship",
+          ].includes(rowData.status?.toLowerCase() || "")
+            ? (rowData.status?.toLowerCase() as Order["status"])
+            : "pending";
+          const order: Partial<Order> = {
+            customer_name: rowData.customer_name,
+            email: rowData.email || undefined,
+            phone: rowData.phone,
+            location: rowData.location,
+            description: rowData.description,
+            moq: rowData.moq,
+            urgency,
+            status,
+            created_at: new Date().toISOString(),
+            supplier_name: rowData.supplier_name || undefined,
+            supplier_price: rowData.supplier_price || undefined,
+            supplier_description: rowData.supplier_description || undefined,
+            customer_price: rowData.customer_price || undefined,
+            images: "[]",
+            inventory_status: rowData.inventory_status as any,
+            shipping_carrier: rowData.shipping_carrier,
+            tracking_number: rowData.tracking_number,
+            estimated_delivery: cleanDate(rowData.estimated_delivery),
+            actual_delivery: cleanDate(rowData.actual_delivery),
+            refund_status: rowData.refund_status as any,
+            logistics_cost: rowData.logistics_cost,
+            supplier_lead_time_days: cleanInt(rowData.supplier_lead_time_days),
+            route_optimized: rowData.route_optimized?.toLowerCase() === "true",
+            category: rowData.category || undefined,
+          };
+          newOrders.push(order);
+        }
+        if (newOrders.length === 0) {
+          alert("No valid orders found in CSV");
+          return;
+        }
+        setLoading(true);
+        try {
+          await supabase.from("orders").insert(newOrders).execute();
+          await loadOrders();
+          alert(`Successfully imported ${newOrders.length} order(s)`);
+        } catch (error) {
+          console.error("Import error:", error);
+          alert(
+            "Failed to import orders. Check CSV format and required fields."
+          );
+        } finally {
+          setLoading(false);
+        }
       } catch (error) {
-        console.error("Import error:", error);
-        alert(
-          "Failed to import orders. Check CSV format and required fields."
-        );
-      } finally {
-        setLoading(false);
+        console.error("CSV parsing error:", error);
+        alert("Error parsing CSV file");
       }
-    } catch (error) {
-      console.error("CSV parsing error:", error);
-      alert("Error parsing CSV file");
-    }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
   };
-  reader.readAsText(file);
-  event.target.value = ""; // reset input to allow re-upload
-};
 
   const downloadCSVTemplate = () => {
     const template = [
@@ -2481,6 +2460,8 @@ const cleanInt = (val: string | undefined): number | undefined => {
     setIsEditingPricing(false);
     setIsEditingLogistics(false);
     setIsEditingCategory(false);
+    // Clean URL
+    window.history.replaceState({}, "", window.location.pathname);
   };
 
   const handleEditPricing = () => setIsEditingPricing(true);
@@ -2527,6 +2508,27 @@ const cleanInt = (val: string | undefined): number | undefined => {
 
   const groupedOrders = groupOrdersByStatus();
 
+  // Strategic Alerts Summary
+  const lowMarginCount = orders.filter((o) => {
+    if (o.status !== "completed") return false;
+    const margin =
+      o.customer_price && o.supplier_price
+        ? (extractNumericValue(o.customer_price) -
+            extractNumericValue(o.supplier_price)) /
+          extractNumericValue(o.customer_price)
+        : 0;
+    return margin < 0.2;
+  }).length;
+  const agingCount = orders.filter(
+    (o) => o.status === "pending" && getDaysSince(o.created_at) > 14
+  ).length;
+  const inventoryAlertCount = orders.filter((o) =>
+    isInventoryCritical(o.inventory_status)
+  ).length;
+  const refundCount = orders.filter(
+    (o) => o.refund_status && o.refund_status !== "none"
+  ).length;
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       {/* Orders List Sidebar */}
@@ -2560,7 +2562,7 @@ const cleanInt = (val: string | undefined): number | undefined => {
                 }`}
               >
                 <AlertTriangle className="w-3 h-3" />
-                <span>Low Margin</span>
+                <span>Low Margin ({lowMarginCount})</span>
               </button>
               <button
                 onClick={() => setFilter("aging")}
@@ -2571,7 +2573,7 @@ const cleanInt = (val: string | undefined): number | undefined => {
                 }`}
               >
                 <Clock className="w-3 h-3" />
-                <span>Aging</span>
+                <span>Aging ({agingCount})</span>
               </button>
               <button
                 onClick={() => setFilter("refund")}
@@ -2582,7 +2584,18 @@ const cleanInt = (val: string | undefined): number | undefined => {
                 }`}
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Refunds</span>
+                <span>Refunds ({refundCount})</span>
+              </button>
+              <button
+                onClick={() => setFilter("inventory")}
+                className={`px-3 py-1 text-xs rounded flex items-center space-x-1 ${
+                  filter === "inventory"
+                    ? "bg-orange-100 text-orange-800"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                <Warehouse className="w-3 h-3" />
+                <span>Inventory ({inventoryAlertCount})</span>
               </button>
             </div>
             <div className="mt-2 flex items-center space-x-2">
@@ -2691,6 +2704,34 @@ const cleanInt = (val: string | undefined): number | undefined => {
             </div>
           </div>
         </div>
+
+        {/* Strategic Alerts Banner */}
+        {(lowMarginCount > 0 ||
+          agingCount > 0 ||
+          inventoryAlertCount > 0 ||
+          refundCount > 0) && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 p-3 text-sm">
+            <div className="flex items-center">
+              <Info className="w-4 h-4 text-blue-600 mr-2" />
+              <span className="font-medium text-blue-800">Strategic Alerts:</span>
+            </div>
+            <ul className="mt-1 text-blue-700 list-disc list-inside text-xs space-y-1">
+              {lowMarginCount > 0 && (
+                <li>{lowMarginCount} low-margin completed order(s)</li>
+              )}
+              {agingCount > 0 && (
+                <li>{agingCount} aging pending order(s) (>14 days)</li>
+              )}
+              {inventoryAlertCount > 0 && (
+                <li>{inventoryAlertCount} order(s) need inventory action</li>
+              )}
+              {refundCount > 0 && (
+                <li>{refundCount} order(s) with refund requests</li>
+              )}
+            </ul>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-full">
@@ -2784,6 +2825,12 @@ const cleanInt = (val: string | undefined): number | undefined => {
                         {selectedOrder.category}
                       </span>
                     )}
+                    {isInventoryCritical(selectedOrder.inventory_status) && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-800 flex items-center">
+                        <Warehouse className="w-3 h-3 mr-1" />
+                        Inventory Alert
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2797,6 +2844,24 @@ const cleanInt = (val: string | undefined): number | undefined => {
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <FinancialDashboard summary={financialSummary} />
+
+              {isInventoryCritical(selectedOrder.inventory_status) && (
+                <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
+                  <div className="flex items-start">
+                    <Warehouse className="w-5 h-5 text-orange-600 mt-0.5 mr-3" />
+                    <div>
+                      <h3 className="text-sm font-medium text-orange-800">
+                        Inventory Alert
+                      </h3>
+                      <p className="mt-1 text-sm text-orange-700">
+                        This order’s inventory status is{" "}
+                        <strong>{selectedOrder.inventory_status}</strong>. Take
+                        action to avoid stockouts.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-2">
@@ -2982,17 +3047,16 @@ const cleanInt = (val: string | undefined): number | undefined => {
                 loading={loading}
                 onEdit={handleEditPricing}
                 onRemoveSupplier={(pwd) => {
-                  if (pwd !== process.env?.ADMIN_KEY) {
+                  if (pwd !== process.env?.NEXT_ADMIN_KEY) {
                     alert("Incorrect password. Supplier not removed.");
                     return;
                   }
-                  // Clear supplier fields
                   const updatePayload: Partial<Order> = {
                     supplier_name: undefined,
                     supplier_price: undefined,
                     supplier_description: undefined,
                     supplier_lead_time_days: undefined,
-                    status: "pending", // revert to pending
+                    status: "pending",
                   };
                   supabase
                     .from("orders")
@@ -3055,6 +3119,7 @@ const cleanInt = (val: string | undefined): number | undefined => {
                 customerPrice={extractNumericValue(
                   selectedOrder.customer_price
                 )}
+                biddingRef={biddingSectionRef}
               />
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
