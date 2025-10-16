@@ -22,9 +22,12 @@ import {
   Tag,
   Plus,
   X,
+  Shield,
+  MessageSquare,
+  Clock as ClockIcon,
 } from 'lucide-react';
 
-// ... (interfaces remain the same)
+// Interfaces remain unchanged
 interface OrderImage {
   name: string;
   url: string;
@@ -61,7 +64,7 @@ interface OrderFormData {
   category: string;
 }
 
-// ✅ Use predefined categories as dropdown
+// Predefined categories kept for potential future use or hints
 const CATEGORIES = [
   'Electronics',
   'Furniture',
@@ -76,7 +79,6 @@ const CATEGORIES = [
 const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// ... (SupabaseClient class unchanged)
 class SupabaseClient {
   private url: string;
   private key: string;
@@ -165,7 +167,6 @@ const OrderManagementApp: React.FC = () => {
     category: '',
   });
 
-  // 💡 Order Stats
   const pendingCount = orders.filter(o => o.status === 'pending').length;
   const highUrgencyCount = orders.filter(o => o.urgency === 'high').length;
 
@@ -287,7 +288,6 @@ const OrderManagementApp: React.FC = () => {
 
       clearForm();
 
-      // ✅ Better success feedback
       alert('✅ Order submitted successfully! We will get back to you soon.');
       await loadOrders();
     } catch (error) {
@@ -298,7 +298,6 @@ const OrderManagementApp: React.FC = () => {
     }
   };
 
-  // ... (updateOrderStatus, updateSupplierInfo, deleteOrder, exportToCSV unchanged)
   const updateOrderStatus = async (orderId: number, newStatus: Order['status']): Promise<void> => {
     setLoading(true);
     try {
@@ -460,21 +459,40 @@ const OrderManagementApp: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-8">
-        {/* Header with Stats */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Place Your Order</h1>
-          <p className="text-xl text-gray-600 mb-4">Submit your requirements and we'll get back to you</p>
-          
+        {/* Header with Strategic Value Proposition */}
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-bold text-gray-900 mb-3">Submit Your Sourcing Request</h1>
+          <p className="text-lg text-gray-700 max-w-3xl mx-auto mb-6">
+            We connect you with verified suppliers worldwide. Get competitive quotes within <strong>24–48 hours</strong>. 
+            Your data is secure, and there’s <strong>no obligation</strong> to proceed.
+          </p>
+
+          {/* Trust & Value Badges */}
+          <div className="flex flex-wrap justify-center gap-6 mb-8 text-sm">
+            <div className="flex items-center gap-2 text-green-700 font-medium">
+              <Shield className="w-4 h-4" />
+              <span>Secure & Confidential</span>
+            </div>
+            <div className="flex items-center gap-2 text-blue-700 font-medium">
+              <ClockIcon className="w-4 h-4" />
+              <span>Response in 1–2 Business Days</span>
+            </div>
+            <div className="flex items-center gap-2 text-purple-700 font-medium">
+              <MessageSquare className="w-4 h-4" />
+              <span>Dedicated Supplier Matching</span>
+            </div>
+          </div>
+
           {/* Stats Badges */}
           <div className="flex justify-center gap-4 mb-6">
-            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm">
-              <span className="font-medium">Total Orders:</span> <span className="text-blue-600">{orders.length}</span>
+            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm border border-gray-200">
+              <span className="font-medium">Total Requests:</span> <span className="text-blue-600">{orders.length}</span>
             </div>
-            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm">
-              <span className="font-medium">Pending:</span> <span className="text-amber-600">{pendingCount}</span>
+            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm border border-gray-200">
+              <span className="font-medium">Pending Review:</span> <span className="text-amber-600">{pendingCount}</span>
             </div>
-            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm">
-              <span className="font-medium">High Urgency:</span> <span className="text-red-600">{highUrgencyCount}</span>
+            <div className="bg-white px-4 py-2 rounded-lg shadow text-sm border border-gray-200">
+              <span className="font-medium">High Priority:</span> <span className="text-red-600">{highUrgencyCount}</span>
             </div>
           </div>
 
@@ -490,83 +508,88 @@ const OrderManagementApp: React.FC = () => {
         </div>
 
         {/* Order Form */}
-        <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
+        <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6">
-            <h2 className="text-2xl font-bold text-white">Order Details</h2>
+            <h2 className="text-2xl font-bold text-white">Your Sourcing Details</h2>
+            <p className="text-blue-100 mt-1 text-sm">
+              Provide as much detail as possible to receive the most accurate supplier matches.
+            </p>
           </div>
 
           <div className="p-8 space-y-8">
             {/* Contact Info */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Contact Information</h3>
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
                   <input
                     type="text"
                     name="customer_name"
                     value={formData.customer_name}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Your full name"
+                    placeholder="e.g., Sarah Johnson"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email (Optional but Recommended)</label>
                   <input
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="your@email.com (optional)"
+                    placeholder="you@company.com"
                   />
+                  <p className="text-xs text-gray-500 mt-1">We’ll send updates here</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
                   <input
                     type="tel"
                     name="phone"
                     value={formData.phone}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="+947xxxxxxxx"
+                    placeholder="+1 234 567 8900"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Priority Level</label>
                   <select
                     name="urgency"
                     value={formData.urgency}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
+                    <option value="low">Standard (5–7 days)</option>
+                    <option value="medium">Medium (3–5 days)</option>
+                    <option value="high">Urgent (1–2 days)</option>
                   </select>
                 </div>
               </div>
 
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Location *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Location *</label>
                 <input
                   type="text"
                   name="location"
                   value={formData.location}
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Your address"
+                  placeholder="Full address or city, country"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Helps us find local or regionally compliant suppliers</p>
               </div>
             </div>
 
             {/* Order Details */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Product or Service Requirements</h3>
               <div className="grid md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -578,48 +601,50 @@ const OrderManagementApp: React.FC = () => {
                     value={formData.moq}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., 100 units, 50 kg, 20 boxes"
+                    placeholder="e.g., 500 units, 2 tons, 100 sets"
                     required
                   />
-                  <p className="text-xs text-gray-500 mt-1">Be specific about units and packaging</p>
+                  <p className="text-xs text-gray-500 mt-1">Be specific about units, packaging, and tolerances</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
-                  {/* ✅ Dropdown instead of free text */}
-                  <select
+                  <input
+                    type="text"
                     name="category"
                     value={formData.category}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., Solar Panels, Lab Coats, CNC Machined Parts..."
                     required
-                  >
-                    <option value="">Select a category</option>
-                    {CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Be as specific as possible (e.g., “Biodegradable Food Containers” vs. “Packaging”)
+                  </p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Description *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Detailed Description *
+                </label>
                 <textarea
                   name="description"
                   value={formData.description}
                   onChange={handleInputChange}
-                  rows={4}
+                  rows={5}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Describe what you need in detail..."
+                  placeholder="Describe materials, dimensions, certifications, standards, samples needed, etc."
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  The more detail you provide, the better we can match you with qualified suppliers.
+                </p>
               </div>
             </div>
 
             {/* Image Upload */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Images (Optional)</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Reference Images (Optional but Helpful)</h3>
               <input
                 type="file"
                 ref={fileInputRef}
@@ -634,7 +659,7 @@ const OrderManagementApp: React.FC = () => {
                 className="w-full py-8 border-2 border-dashed border-gray-300 rounded-lg text-center hover:border-blue-400 hover:bg-blue-50 transition-colors"
               >
                 <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">Click to upload images (max 5)</p>
+                <p className="text-gray-600">Upload sketches, samples, or reference photos (max 5)</p>
               </button>
 
               {formData.images.length > 0 && (
@@ -672,7 +697,7 @@ const OrderManagementApp: React.FC = () => {
             </div>
 
             {/* Submit & Clear Buttons */}
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <button
                 type="button"
                 onClick={clearForm}
@@ -688,15 +713,22 @@ const OrderManagementApp: React.FC = () => {
                 {loading ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin" />
-                    Submitting...
+                    Processing Request...
                   </>
                 ) : (
                   <>
                     <Plus className="w-4 h-4" />
-                    Submit Order
+                    Submit Sourcing Request
                   </>
                 )}
               </button>
+            </div>
+
+            {/* Final Reassurance */}
+            <div className="pt-4 text-center text-sm text-gray-600 border-t border-gray-100">
+              <p>
+                ✅ <strong>No cost to submit.</strong> We’ll contact you with supplier options within 1–2 business days.
+              </p>
             </div>
           </div>
         </div>

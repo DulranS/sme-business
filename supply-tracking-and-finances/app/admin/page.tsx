@@ -140,7 +140,6 @@ interface CSVRow {
   route_optimized?: string;
   category?: string;
 }
-
 const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
   "Customer Name": "customer_name",
   Email: "email",
@@ -196,6 +195,7 @@ const DISCORD_WEBHOOK_URL =
 
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -217,20 +217,21 @@ class SupabaseClient {
     }
     return response.json() as Promise<T>;
   }
+
   from(table: string) {
     return {
       select: (columns: string = "*") => ({
         execute: async (): Promise<Order[]> =>
           this.request<Order[]>(`${table}?select=${columns}`),
       }),
-      insert: ( Partial<Order> | Partial<Order>[]) => ({
+      insert: (data: Partial<Order> | Partial<Order>[]) => ({
         execute: async (): Promise<Order[]> =>
           this.request<Order[]>(table, {
             method: "POST",
             body: JSON.stringify(Array.isArray(data) ? data : [data]),
           }),
       }),
-      update: ( Partial<Order>) => ({
+      update: (data: Partial<Order>) => ({
         eq: (column: string, value: string | number) => ({
           execute: async (): Promise<Order[]> =>
             this.request<Order[]>(`${table}?${column}=eq.${value}`, {
@@ -359,12 +360,14 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let totalLeadTime = 0;
   let supplierCount = 0;
   let refunds = 0;
+
   orders.forEach((order) => {
     const customerPrice = extractNumericValue(order.customer_price);
     const supplierPrice = extractNumericValue(order.supplier_price);
     const logisticsCost = extractNumericValue(order.logistics_cost);
     const margin =
       customerPrice > 0 ? (customerPrice - supplierPrice) / customerPrice : 0;
+
     if (order.status === "completed") {
       totalRevenue += customerPrice;
       totalCost += supplierPrice;
@@ -399,6 +402,7 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
       inProgressValue += customerPrice;
     }
   });
+
   const totalProfit = totalRevenue - totalCost;
   const profitMargin =
     totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -421,6 +425,7 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
     completedOrders > 0 ? (refunds / completedOrders) * 100 : 0;
   const inventoryTurnover =
     completedOrders > 0 ? totalRevenue / (totalCost || 1) : 0;
+
   return {
     totalRevenue,
     totalCost,
@@ -648,7 +653,6 @@ const OrderCard: React.FC<{
   const isAging = daysSince > 14 && order.status === "pending";
   const isLowMargin = margin < 20 && order.status === "completed";
   const isInventoryLow = isInventoryCritical(order.inventory_status);
-
   return (
     <div
       className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
@@ -783,7 +787,7 @@ const SupplierBiddingSection: React.FC<{
   onBidSubmit: (bid: Omit<SupplierBid, "submitted_at">) => void;
   onApproveBid: (bid: SupplierBid, password: string) => void;
   customerPrice: number;
-  biddingRef?: React.RefObject<HTMLDivElement>; // ← add this
+  biddingRef?: React.RefObject<HTMLDivElement | null>;
 }> = ({ order, onBidSubmit, onApproveBid, customerPrice, biddingRef }) => {
   const [supplierName, setSupplierName] = useState("");
   const [price, setPrice] = useState("");
@@ -793,7 +797,6 @@ const SupplierBiddingSection: React.FC<{
   const [showApprovalModal, setShowApprovalModal] =
     useState<SupplierBid | null>(null);
   const [password, setPassword] = useState("");
-
   const isAlreadyApproved = !!order.supplier_name || order.status !== "pending";
   const bids = parseBids(order.bids || "[]");
 
@@ -1718,14 +1721,11 @@ const OrderManagementApp: React.FC = () => {
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [categoryInput, setCategoryInput] = useState("");
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
-  const biddingSectionRef = useRef<HTMLDivElement>(null);
-
   // Pricing state
   const [supplierName, setSupplierName] = useState("");
   const [supplierPrice, setSupplierPrice] = useState("");
   const [supplierDescription, setSupplierDescription] = useState("");
   const [customerPrice, setCustomerPrice] = useState("");
-
   // Logistics state
   const [inventoryStatus, setInventoryStatus] = useState("");
   const [shippingCarrier, setShippingCarrier] = useState("");
@@ -1736,7 +1736,6 @@ const OrderManagementApp: React.FC = () => {
   const [logisticsCost, setLogisticsCost] = useState("");
   const [supplierLeadTime, setSupplierLeadTime] = useState("");
   const [routeOptimized, setRouteOptimized] = useState(false);
-
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
@@ -1772,34 +1771,8 @@ const OrderManagementApp: React.FC = () => {
     }
   }, []);
 
-  // Add this ref for smooth scroll (optional but nice)
-const biddingSectionRef = useRef<HTMLDivElement>(null);
+  const biddingSectionRef = useRef<HTMLDivElement>(null);
 
-// Add this effect AFTER loadOrders runs
-useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const bidId = urlParams.get("bid");
-  if (bidId && !isNaN(Number(bidId))) {
-    const orderId = Number(bidId);
-    const order = orders.find((o) => o.id === orderId);
-    if (order) {
-      handleSelectOrder(order);
-      setShowOrdersList(false);
-      // Optional: scroll to bidding section after render
-      setTimeout(() => {
-        biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 300);
-    }
-  }
-}, [orders]); // Only run when orders are loaded
-
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
-
-  
-
-  // Handle ?bid=<id> on initial load
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const bidId = urlParams.get("bid");
@@ -1815,6 +1788,10 @@ useEffect(() => {
       }
     }
   }, [orders]);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
 
   const financialSummary = calculateFinancials(orders);
 
@@ -2704,7 +2681,6 @@ useEffect(() => {
             </div>
           </div>
         </div>
-
         {/* Strategic Alerts Banner */}
         {(lowMarginCount > 0 ||
           agingCount > 0 ||
@@ -2720,7 +2696,7 @@ useEffect(() => {
                 <li>{lowMarginCount} low-margin completed order(s)</li>
               )}
               {agingCount > 0 && (
-                <li>{agingCount} aging pending order(s) (>14 days)</li>
+                <li>{agingCount} aging pending order(s) ({'>'}14 days)</li>
               )}
               {inventoryAlertCount > 0 && (
                 <li>{inventoryAlertCount} order(s) need inventory action</li>
@@ -2731,7 +2707,6 @@ useEffect(() => {
             </ul>
           </div>
         )}
-
         <div className="flex-1 overflow-y-auto">
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-full">
@@ -2790,7 +2765,6 @@ useEffect(() => {
           )}
         </div>
       </div>
-
       {/* Order Details Panel */}
       <div
         className={`flex-1 flex flex-col overflow-hidden ${
@@ -2844,7 +2818,6 @@ useEffect(() => {
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <FinancialDashboard summary={financialSummary} />
-
               {isInventoryCritical(selectedOrder.inventory_status) && (
                 <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
                   <div className="flex items-start">
@@ -2862,7 +2835,6 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="font-semibold text-gray-900">Category</h3>
@@ -2919,7 +2891,6 @@ useEffect(() => {
                   </div>
                 )}
               </div>
-
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Customer Information
@@ -2982,7 +2953,6 @@ useEffect(() => {
                   </div>
                 </div>
               </div>
-
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Order Details
@@ -3016,7 +2986,6 @@ useEffect(() => {
                   </div>
                 </div>
               </div>
-
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Update Status
@@ -3029,7 +2998,6 @@ useEffect(() => {
                   loading={loading}
                 />
               </div>
-
               <PricingSection
                 setLoading={setLoading}
                 order={selectedOrder}
@@ -3082,7 +3050,6 @@ useEffect(() => {
                     });
                 }}
               />
-
               <LogisticsSection
                 order={selectedOrder}
                 isEditing={isEditingLogistics}
@@ -3109,7 +3076,6 @@ useEffect(() => {
                 loading={loading}
                 onEdit={handleEditLogistics}
               />
-
               <SupplierBiddingSection
                 order={selectedOrder}
                 onBidSubmit={(bid) => submitSupplierBid(selectedOrder.id, bid)}
@@ -3121,7 +3087,6 @@ useEffect(() => {
                 )}
                 biddingRef={biddingSectionRef}
               />
-
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <ImageGallery images={parseImages(selectedOrder.images)} />
               </div>
