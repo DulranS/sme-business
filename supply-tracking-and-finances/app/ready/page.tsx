@@ -32,12 +32,12 @@ interface Order {
     | "shipped";
   images: string;
   created_at: string;
-  supplier_price?: string;          // 👈 product cost (scales with quantity)
-  supplier_delivery_fee?: string;   // 👈 NEW: flat delivery fee (quantity = 1)
+  supplier_price?: string; // 👈 product cost (scales with quantity)
+  supplier_delivery_fee?: string; // 👈 NEW: flat delivery fee (quantity = 1)
   supplier_description?: string;
   customer_price?: string;
   shipped_quantity?: number;
-  shipped_at?: string;
+  shipped_at?: string | null;
   supplier_name?: string;
 
   // Optional logistics
@@ -172,7 +172,8 @@ const extractNumericValue = (priceString?: string): number => {
 };
 
 const extractMOQNumber = (moq: string): number => {
-  const match = moq.match(/\d+/);
+  const cleaned = moq.replace(/,/g, '');
+  const match = cleaned.match(/\d+/);
   return match ? parseInt(match[0], 10) : 0;
 };
 
@@ -318,16 +319,17 @@ const CompletedOrdersPage: React.FC = () => {
     }
   };
 
-  // ✅ FIXED: submitShipping with full bookkeeping support
+  // ✅ STRATEGIC: Only this page sends bookkeeping records for completed orders
 const submitShipping = async (order: Order) => {
   if (shippingInProgress[order.id]) return;
 
   setShippingInProgress((prev) => ({ ...prev, [order.id]: true }));
 
   const totalMOQ = extractMOQNumber(order.moq);
-  const newShipped = shippingQuantities[order.id] ?? (order.shipped_quantity || 0);
-  
-  // Validation: shipped quantity can't be negative
+  const currentShipped = order.shipped_quantity || 0;
+  const newShipped = shippingQuantities[order.id] ?? currentShipped;
+
+  // Validation
   if (newShipped < 0) {
     alert("Shipped quantity cannot be negative.");
     setShippingInProgress((prev) => {
@@ -338,7 +340,6 @@ const submitShipping = async (order: Order) => {
     return;
   }
 
-  // Optional: Warn if shipping more than MOQ (allow it for corrections)
   if (totalMOQ > 0 && newShipped > totalMOQ) {
     const confirm = window.confirm(
       `You're marking ${newShipped} units shipped, but MOQ is ${totalMOQ}. Proceed anyway?`
@@ -353,98 +354,121 @@ const submitShipping = async (order: Order) => {
     }
   }
 
-  const finalStatus = totalMOQ === 0 ? newShipped > 0 ? "shipped" : "completed" : newShipped >= totalMOQ ? "shipped" : "ship";
+  if (newShipped === 0 && totalMOQ > 0) {
+    const confirmZero = window.confirm(
+      "You're setting shipped quantity to 0. This will clear all financial records. Proceed?"
+    );
+    if (!confirmZero) {
+      setShippingInProgress((prev) => {
+        const copy = { ...prev };
+        delete copy[order.id];
+        return copy;
+      });
+      return;
+    }
+  }
+
+  const finalStatus =
+    totalMOQ === 0
+      ? newShipped > 0 ? "shipped" : "completed"
+      : newShipped >= totalMOQ ? "shipped" : "ship";
+
   const now = new Date().toISOString();
   const baseDate = now.split("T")[0];
 
   try {
-    // Only re-calculate bookkeeping if prices exist AND MOQ > 0
-    if ((order.customer_price || order.supplier_price || order.supplier_delivery_fee) && totalMOQ > 0) {
-      const custTotal = extractNumericValue(order.customer_price) || 0;
-      const suppTotal = extractNumericValue(order.supplier_price) || 0;
-      const deliveryFee = extractNumericValue(order.supplier_delivery_fee) || 0;
+    // 🔥 Always clean up existing bookkeeping records for this order
+    if (currentShipped !== newShipped) {
+      await supabase
+        .from("bookkeeping_records")
+        .delete()
+        .eq("tags", `order-${order.id}`)
+        .execute();
+    }
 
-      const custPerUnit = custTotal / totalMOQ;
-      const suppPerUnit = suppTotal / totalMOQ;
+    // Only insert new records if shipping something
+    if (newShipped > 0) {
+      const hasFinancials = order.customer_price || order.supplier_price || order.supplier_delivery_fee;
+      if (hasFinancials) {
+        const custTotal = extractNumericValue(order.customer_price) || 0;
+        const suppTotal = extractNumericValue(order.supplier_price) || 0;
+        const deliveryFee = extractNumericValue(order.supplier_delivery_fee) || 0;
 
-      // 💡 STRATEGY: Delete old records and re-create
-      try {
-        await supabase
-          .from("bookkeeping_records")
-          .delete()
-          .eq("tags", `order-${order.id}`)
-          .execute();
-      } catch (err) {
-        console.warn("Could not delete old bookkeeping records:", err);
-      }
+        const custPerUnit = custTotal > 0 && totalMOQ > 0 ? custTotal / totalMOQ : 0;
+        const suppPerUnit = suppTotal > 0 && totalMOQ > 0 ? suppTotal / totalMOQ : 0;
 
-      // --- Revenue Entry (Inflow) ---
-      if (custTotal > 0 && isFinite(custPerUnit)) {
-        const revenueTotal = custPerUnit * newShipped;
-        if (revenueTotal > 0) {
-          const revenueRecord = {
-            date: baseDate,
-            payment_date: baseDate,
-            description: `Order #${order.id} shipped ${newShipped} units: ${order.description}`,
-            category: "Inflow",
-            amount: parseFloat(revenueTotal.toFixed(2)),
-            cost_per_unit: null,
-            quantity: newShipped,
-            notes: `Edited shipped quantity for order #${order.id}. Customer: ${order.customer_name}.`,
-            customer: order.customer_name || null,
-            project: order.description || null,
-            tags: `order-${order.id},revenue`,
-            market_price: parseFloat(custPerUnit.toFixed(2)),
-            supplied_by: null,
-            approved: true,
-          };
-          await supabase.from("bookkeeping_records").insert([revenueRecord]).execute();
+        const recordsToInsert: any[] = [];
+
+        // 💰 Revenue (What you earned)
+        if (custTotal > 0 && isFinite(custPerUnit)) {
+          const revenueTotal = custPerUnit * newShipped;
+          if (revenueTotal > 0) {
+            recordsToInsert.push({
+              date: baseDate,
+              payment_date: baseDate,
+              description: `Order #${order.id} shipped ${newShipped} units: ${order.description}`,
+              category: "Inflow",
+              amount: parseFloat(revenueTotal.toFixed(2)),
+              cost_per_unit: null,
+              quantity: newShipped,
+              notes: `Revenue from shipping ${newShipped} units for order #${order.id}.`,
+              customer: order.customer_name || null,
+              project: order.description || null,
+              tags: `order-${order.id},revenue`,
+              market_price: parseFloat(custPerUnit.toFixed(2)), // your selling price/unit
+              supplied_by: null,
+              approved: true,
+            });
+          }
         }
-      }
 
-      // --- Supplier PRODUCT Cost (Outflow, scales with quantity) ---
-      if (suppTotal > 0 && order.supplier_name && isFinite(suppPerUnit)) {
-        const costTotal = suppPerUnit * newShipped;
-        if (costTotal > 0) {
-          const costRecord = {
+        // 📦 Supplier Product Cost (What you paid for goods)
+        if (suppTotal > 0 && order.supplier_name && isFinite(suppPerUnit)) {
+          const costTotal = suppPerUnit * newShipped;
+          if (costTotal > 0) {
+            recordsToInsert.push({
+              date: baseDate,
+              payment_date: baseDate,
+              description: `Supplier product cost for ${newShipped} units – Order #${order.id} – ${order.supplier_name}`,
+              category: "Outflow",
+              amount: parseFloat(costTotal.toFixed(2)),
+              cost_per_unit: parseFloat(suppPerUnit.toFixed(2)), // true unit cost
+              quantity: 1, // ✅ match actual shipped units
+              notes: `Product cost for ${newShipped} units (excl. delivery) for order #${order.id}.`,
+              customer: order.customer_name || null,
+              project: order.description || null,
+              tags: `order-${order.id},supplier,product`,
+              market_price: null,
+              supplied_by: order.supplier_name || null,
+              approved: true,
+            });
+          }
+        }
+
+        // 🚚 Delivery Fee – ONE-TIME ONLY (on first shipment)
+        const wasPreviouslyUnshipped = currentShipped === 0;
+        if (deliveryFee > 0 && order.supplier_name && wasPreviouslyUnshipped) {
+          recordsToInsert.push({
             date: baseDate,
             payment_date: baseDate,
-            description: `Supplier product cost for ${newShipped} units – Order #${order.id} – ${order.supplier_name}`,
+            description: `Delivery fee for Order #${order.id} – ${order.supplier_name}`,
             category: "Outflow",
-            amount: parseFloat(costTotal.toFixed(2)),
-            cost_per_unit: parseFloat(suppPerUnit.toFixed(2)),
-            quantity: newShipped,
-            notes: `Product cost only (excl. delivery) for order #${order.id}. Supplier: ${order.supplier_name}.`,
+            amount: parseFloat(deliveryFee.toFixed(2)),
+            cost_per_unit: parseFloat(deliveryFee.toFixed(2)),
+            quantity: 1,
+            notes: `Flat delivery/shipping fee for order #${order.id}. Supplier: ${order.supplier_name}.`,
             customer: order.customer_name || null,
             project: order.description || null,
-            tags: `order-${order.id},supplier,product`,
+            tags: `order-${order.id},delivery`,
             market_price: null,
             supplied_by: order.supplier_name || null,
             approved: true,
-          };
-          await supabase.from("bookkeeping_records").insert([costRecord]).execute();
+          });
         }
-      }
 
-      // --- Supplier DELIVERY FEE (Outflow, quantity = 1) ---
-      if (deliveryFee > 0 && order.supplier_name) {
-        const deliveryRecord = {
-          date: baseDate,
-          payment_date: baseDate,
-          description: `Delivery fee for Order #${order.id} – ${order.supplier_name}`,
-          category: "Outflow",
-          amount: parseFloat(deliveryFee.toFixed(2)),
-          cost_per_unit: parseFloat(deliveryFee.toFixed(2)), // same as amount (qty=1)
-          quantity: 1, // ✅ ALWAYS 1
-          notes: `Flat delivery/shipping fee for order #${order.id}. Supplier: ${order.supplier_name}.`,
-          customer: order.customer_name || null,
-          project: order.description || null,
-          tags: `order-${order.id},delivery`,
-          market_price: null,
-          supplied_by: order.supplier_name || null,
-          approved: true,
-        };
-        await supabase.from("bookkeeping_records").insert([deliveryRecord]).execute();
+        if (recordsToInsert.length > 0) {
+          await supabase.from("bookkeeping_records").insert(recordsToInsert).execute();
+        }
       }
     }
 
@@ -454,7 +478,7 @@ const submitShipping = async (order: Order) => {
       .update({
         status: finalStatus,
         shipped_quantity: newShipped,
-        shipped_at: order.shipped_at || now, // Keep original shipped_at
+        shipped_at: newShipped > 0 ? (order.shipped_at || now) : null,
       })
       .eq("id", order.id)
       .execute();
@@ -463,16 +487,12 @@ const submitShipping = async (order: Order) => {
     setOrders((prev) =>
       prev.map((o) =>
         o.id === order.id
-          ? {
-              ...o,
-              shipped_quantity: newShipped,
-              status: finalStatus,
-            }
+          ? { ...o, shipped_quantity: newShipped, status: finalStatus, shipped_at: newShipped > 0 ? (o.shipped_at || now) : null }
           : o
       )
     );
 
-    // Clear input
+    // Clean up local state
     setShippingQuantities((prev) => {
       const newQty = { ...prev };
       delete newQty[order.id];
@@ -788,8 +808,7 @@ const submitShipping = async (order: Order) => {
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        min="0"
-                        // ⚠️ Allow editing beyond remaining (for corrections)
+                        min="1"
                         value={
                           shippingQuantities[order.id] ??
                           (order.shipped_quantity || 0)
@@ -798,14 +817,14 @@ const submitShipping = async (order: Order) => {
                           handleQuantityChange(order.id, e.target.value)
                         }
                         className="w-20 px-2 py-1 text-xs border border-gray-300 rounded text-center"
-                        placeholder="0"
+                        placeholder="1"
                       />
                       <button
                         onClick={() => submitShipping(order)}
                         disabled={shippingInProgress[order.id]}
                         className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
-<Truck className="w-3 h-3" /> Save
+                        <Truck className="w-3 h-3" /> Save
                       </button>
                     </div>
                     <button
@@ -862,6 +881,5 @@ const sendDiscordWebhook = async (order: Order) => {
     console.error("Discord webhook failed:", err);
   }
 };
-// ...existing code...
 
 export default CompletedOrdersPage;

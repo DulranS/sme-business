@@ -25,3 +25,22 @@
 2025-10-16 00:03:47,076 | INFO     | ✅ c:\Users\dulra\sme-business\scrape-leads\validate.py completed successfully
 2025-10-16 00:03:47,076 | WARNING  | ⚠️ WhatsApp output file not found — check preparer logs.
 2025-10-16 00:03:47,076 | INFO     | 🔚 Lead pipeline completed.
+2025-10-17 19:58:37,373 | INFO     | ============================================================
+2025-10-17 19:58:37,373 | INFO     | 🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)
+2025-10-17 19:58:37,374 | INFO     | ============================================================
+2025-10-17 19:58:37,374 | INFO     | ▶️ Launching: c:\Users\dulra\sme-business\scrape-leads\scrape.py
+2025-10-17 20:03:37,389 | ERROR    | 💥 Failed to execute c:\Users\dulra\sme-business\scrape-leads\scrape.py: Command '['C:\\Python312\\python.exe', 'c:\\Users\\dulra\\sme-business\\scrape-leads\\scrape.py']' timed out after 300 seconds
+Traceback (most recent call last):
+  File "c:\Users\dulra\sme-business\scrape-leads\run.py", line 55, in run_script
+    result = subprocess.run(
+             ^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\subprocess.py", line 1209, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\subprocess.py", line 1630, in _communicate
+    raise TimeoutExpired(self.args, orig_timeout)
+subprocess.TimeoutExpired: Command '['C:\\Python312\\python.exe', 'c:\\Users\\dulra\\sme-business\\scrape-leads\\scrape.py']' timed out after 300 seconds
+2025-10-17 20:03:37,394 | CRITICAL | 🛑 Pipeline halted: Scraper failed.
