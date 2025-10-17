@@ -35,8 +35,12 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise EnvironmentError("❌ Missing GOOGLE_API_KEY in .env")
 
-DEFAULT_LAT = float(os.getenv("DEFAULT_LAT", "6.86026115"))  # Colombo center
-DEFAULT_LNG = float(os.getenv("DEFAULT_LNG", "79.912990"))
+# Accept a human-friendly location name (env or runtime input).
+LOCATION_NAME = os.getenv("LOCATION_NAME", "").strip()
+
+# Default fallback center (Colombo) used only if geocoding fails.
+DEFAULT_CENTER = (6.86026115, 79.912990)  # (lat, lng)
+
 SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km around Colombo
 
 # I/O
@@ -238,15 +242,18 @@ class RateLimiter:
 # ==============================
 # 🕵️ SCRAPING & PROCESSING
 # ==============================
-def scrape_businesses():
+def scrape_businesses(location, location_label="Location"):
+    """
+    location: (lat, lng) tuple
+    location_label: human-friendly string for logs (e.g., "Colombo, Sri Lanka")
+    """
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
-    location = (DEFAULT_LAT, DEFAULT_LNG)
     all_places = []
     seen_place_ids = set()
     rate_limiter = RateLimiter()
     api_calls = 0
 
-    logger.info(f"📍 Starting B2B lead scrape in Colombo (radius: {SEARCH_RADIUS}m)")
+    logger.info(f"📍 Starting B2B lead scrape in {location_label} (radius: {SEARCH_RADIUS}m)")
     logger.info(f"📊 Budget: {MAX_SEARCH_QUERIES} queries | Max {MAX_TOTAL_BUSINESSES} leads")
 
     for i, query in enumerate(SEARCH_TERMS[:MAX_SEARCH_QUERIES], 1):
@@ -400,8 +407,36 @@ def main():
     start_time = time.time()
 
     try:
+        # Resolve human-friendly location name to coordinates
+        gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
+        location_label = "Colombo (default)"
+        if LOCATION_NAME:
+            location_query = LOCATION_NAME
+        else:
+            # interactive prompt for convenience
+            location_query = input("Enter location (e.g., 'Colombo, Sri Lanka') [Default: Colombo]: ").strip()
+
+        if location_query:
+            try:
+                geocode_results = gmaps.geocode(location_query)
+                if geocode_results:
+                    geom = geocode_results[0]["geometry"]["location"]
+                    location = (geom["lat"], geom["lng"])
+                    location_label = geocode_results[0].get("formatted_address", location_query)
+                    logger.info(f"🔎 Resolved '{location_query}' → {location_label} @ {location}")
+                else:
+                    logger.warning(f"⚠️ Geocode returned no results for '{location_query}', using default center.")
+                    location = DEFAULT_CENTER
+                # small delay guard
+                time.sleep(0.2)
+            except Exception as e:
+                logger.warning(f"⚠️ Geocoding failed for '{location_query}': {e}. Using default center.")
+                location = DEFAULT_CENTER
+        else:
+            location = DEFAULT_CENTER
+
         # Phase 1: Discover
-        places, search_calls = scrape_businesses()
+        places, search_calls = scrape_businesses(location, location_label)
         if not places:
             logger.warning("🔍 No qualifying businesses found.")
             return
