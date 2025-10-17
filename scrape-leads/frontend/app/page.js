@@ -13,10 +13,11 @@ export default function LeadDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [qualityFilter, setQualityFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
-  const [contactFilter, setContactFilter] = useState('ALL'); // 'EMAIL', 'PHONE', 'BOTH'
+  const [contactFilter, setContactFilter] = useState('ALL');
   const [minRating, setMinRating] = useState('');
   const [minReviews, setMinReviews] = useState('');
   const [tagFilter, setTagFilter] = useState('ALL');
+  const [showFilters, setShowFilters] = useState(false); // Mobile toggle
 
   useEffect(() => {
     const fetchLeads = async () => {
@@ -123,8 +124,8 @@ export default function LeadDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <p className="text-black">Loading leads...</p>
+      <div className="min-h-screen flex items-center justify-center bg-white px-4">
+        <p className="text-black text-center">Loading leads...</p>
       </div>
     );
   }
@@ -132,7 +133,7 @@ export default function LeadDashboard() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white p-4">
-        <div className="text-center max-w-md">
+        <div className="text-center">
           <p className="text-black mb-2">⚠️ Failed to load leads</p>
           <p className="text-black text-sm">{error}</p>
         </div>
@@ -141,7 +142,7 @@ export default function LeadDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-32">
+    <div className="min-h-screen bg-white pb-24">
       <Head>
         <title>Colombo B2B Lead Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -149,141 +150,150 @@ export default function LeadDashboard() {
 
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-black mb-4">Colombo B2B Lead Dashboard</h1>
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex justify-between items-center mb-3">
+            <h1 className="text-lg font-bold text-black">Colombo B2B Leads</h1>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="text-sm text-blue-600 md:hidden"
+            >
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </button>
+          </div>
 
           {/* Search */}
           <input
             type="text"
-            placeholder="Search: business, contact, phone, email..."
+            placeholder="Search business, contact, phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-2.5 border border-gray-300 rounded mb-4 text-black text-sm"
+            className="w-full p-2.5 border border-gray-300 rounded mb-3 text-black text-sm"
           />
 
-          {/* Advanced Filters - Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <select
-              value={qualityFilter}
-              onChange={(e) => setQualityFilter(e.target.value)}
-              className="p-2 border border-gray-300 rounded text-black text-sm"
-            >
-              <option value="ALL">All Qualities</option>
-              <option value="HOT">🔥 HOT</option>
-              <option value="WARM">🔸 WARM</option>
-              <option value="COLD">❄️ COLD</option>
-            </select>
+          {/* Filters (Collapsible on mobile) */}
+          <div className={`${showFilters ? 'block' : 'hidden'} md:block mb-4`}>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <select
+                value={qualityFilter}
+                onChange={(e) => setQualityFilter(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
+              >
+                <option value="ALL">All Qualities</option>
+                <option value="HOT">🔥 HOT</option>
+                <option value="WARM">🔸 WARM</option>
+                <option value="COLD">❄️ COLD</option>
+              </select>
 
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="p-2 border border-gray-300 rounded text-black text-sm"
-            >
-              <option value="ALL">All Categories</option>
-              {uniqueCategories.map(cat => (
-                <option key={cat} value={cat} className="text-black">{cat}</option>
-              ))}
-            </select>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
+              >
+                <option value="ALL">All Categories</option>
+                {uniqueCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
 
-            <select
-              value={contactFilter}
-              onChange={(e) => setContactFilter(e.target.value)}
-              className="p-2 border border-gray-300 rounded text-black text-sm"
-            >
-              <option value="ALL">Any Contact</option>
-              <option value="EMAIL">WithEmail</option>
-              <option value="PHONE">With Phone</option>
-              <option value="BOTH">WithEmail + Phone</option>
-            </select>
+              <select
+                value={contactFilter}
+                onChange={(e) => setContactFilter(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
+              >
+                <option value="ALL">Any Contact</option>
+                <option value="EMAIL">WithEmail</option>
+                <option value="PHONE">With Phone</option>
+                <option value="BOTH">WithEmail + Phone</option>
+              </select>
 
-            <select
-              value={tagFilter}
-              onChange={(e) => setTagFilter(e.target.value)}
-              className="p-2 border border-gray-300 rounded text-black text-sm"
-            >
-              <option value="ALL">All Tags</option>
-              {allTags.map(tag => (
-                <option key={tag} value={tag} className="text-black">{tag}</option>
-              ))}
-            </select>
-          </div>
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
+              >
+                <option value="ALL">All Tags</option>
+                {allTags.map(tag => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+              </select>
+            </div>
 
-          {/* Numeric Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            <input
-              type="number"
-              placeholder="Min Rating (e.g. 4.0)"
-              value={minRating}
-              onChange={(e) => setMinRating(e.target.value)}
-              min="0"
-              max="5"
-              step="0.1"
-              className="p-2 border border-gray-300 rounded text-black text-sm"
-            />
-            <input
-              type="number"
-              placeholder="Min Reviews (e.g. 50)"
-              value={minReviews}
-              onChange={(e) => setMinReviews(e.target.value)}
-              min="0"
-              className="p-2 border border-gray-300 rounded text-black text-sm"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                placeholder="Min Rating"
+                value={minRating}
+                onChange={(e) => setMinRating(e.target.value)}
+                min="0"
+                max="5"
+                step="0.1"
+                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
+              />
+              <input
+                type="number"
+                placeholder="Min Reviews"
+                value={minReviews}
+                onChange={(e) => setMinReviews(e.target.value)}
+                min="0"
+                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
+              />
+            </div>
           </div>
 
           {/* Summary & Export */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex flex-wrap justify-between items-center gap-2 pt-2">
             <p className="text-black text-sm">
-              Showing <span className="font-semibold">{filteredLeads.length}</span> of <span className="font-semibold">{leads.length}</span> leads
+              {filteredLeads.length} of {leads.length} leads
             </p>
             <button
               onClick={exportToCSV}
               disabled={filteredLeads.length === 0}
-              className={`px-4 py-2 rounded font-medium text-sm ${
+              className={`px-3 py-1.5 rounded text-sm font-medium whitespace-nowrap ${
                 filteredLeads.length === 0
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  ? 'bg-gray-200 text-gray-500'
                   : 'bg-green-600 hover:bg-green-700 text-white'
               }`}
             >
-              📥 Export Filtered Leads
+              📥 Export
             </button>
           </div>
         </div>
       </header>
 
       {/* Leads List */}
-      <main className="container mx-auto px-4 pt-6">
+      <main className="container mx-auto px-4 pt-4 pb-20">
         {filteredLeads.length === 0 ? (
-          <div className="text-center py-10">
+          <div className="text-center py-8">
             <p className="text-black">No leads match your filters.</p>
-            <p className="text-black text-sm mt-2">Try adjusting your criteria.</p>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {filteredLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
+              // 🔥 CRITICAL FIX: NO SPACE in WhatsApp URL
               const mobile9Digit = (lead.whatsapp_number || '').toString().replace(/\D/g, '').slice(0, 9);
               const waLink = mobile9Digit ? `https://wa.me/94${mobile9Digit}` : '';
 
               return (
-                <div key={i} className="border border-gray-200 rounded-lg p-5 bg-white">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h2 className="font-bold text-black text-lg">{contactName}</h2>
+                <div key={i} className="border border-gray-200 rounded-lg p-4 bg-white">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <h2 className="font-bold text-black text-base truncate">{contactName}</h2>
                       {lead.business_name && lead.business_name !== contactName && (
-                        <p className="text-black text-sm mt-0.5">{lead.business_name}</p>
+                        <p className="text-black text-sm mt-0.5 truncate">{lead.business_name}</p>
                       )}
-                      <div className="flex flex-wrap gap-2 mt-2">
+                      <div className="flex flex-wrap gap-1.5 mt-2">
                         {lead.lead_quality && (
-                          <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
                             lead.lead_quality.includes('HOT') ? 'bg-red-100 text-red-800' :
                             lead.lead_quality.includes('WARM') ? 'bg-yellow-100 text-yellow-800' :
                             'bg-gray-100 text-gray-800'
-                          } text-black`}>
+                          }`}>
                             {lead.lead_quality}
                           </span>
                         )}
                         {lead.category && (
-                          <span className="px-2.5 py-1 text-xs bg-blue-100 text-blue-800 rounded-full text-black">
+                          <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
                             {lead.category}
                           </span>
                         )}
@@ -294,20 +304,20 @@ export default function LeadDashboard() {
                         href={waLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0"
+                        className="flex-shrink-0 w-10 h-10 rounded-full bg-green-600 flex items-center justify-center"
                         aria-label="WhatsApp"
                       >
-                        <span className="text-white text-xl">💬</span>
+                        <span className="text-white text-lg">💬</span>
                       </a>
                     )}
                   </div>
 
-                  <div className="mt-4 space-y-1.5 text-black text-sm">
-                    {lead.email && <div>📧 {lead.email}</div>}
+                  <div className="mt-3 space-y-1 text-black text-sm">
+                    {lead.email && <div className="truncate">📧 {lead.email}</div>}
                     {lead.phone_raw && <div>📱 {lead.phone_raw}</div>}
-                    {lead.address && <div>📍 {lead.address}</div>}
+                    {lead.address && <div className="truncate">📍 {lead.address}</div>}
                     {lead.website && (
-                      <div>
+                      <div className="truncate">
                         🌐{' '}
                         <a
                           href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
@@ -322,15 +332,15 @@ export default function LeadDashboard() {
                   </div>
 
                   {(lead.rating || lead.review_count) && (
-                    <div className="mt-3 text-black text-sm">
+                    <div className="mt-2 text-black text-sm">
                       ⭐ {lead.rating || 'N/A'} ({lead.review_count || 0} reviews)
                     </div>
                   )}
 
                   {lead.tags && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-2 flex flex-wrap gap-1">
                       {lead.tags.split(';').map((tag, idx) => (
-                        <span key={idx} className="px-2 py-0.5 bg-gray-100 text-black text-xs rounded">
+                        <span key={idx} className="px-1.5 py-0.5 bg-gray-100 text-black text-xs rounded">
                           {tag.trim()}
                         </span>
                       ))}
@@ -342,10 +352,6 @@ export default function LeadDashboard() {
           </div>
         )}
       </main>
-
-      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 text-center text-black text-xs">
-        Strategic B2B Lead Dashboard — Colombo • Tap 💬 to message on WhatsApp
-      </footer>
     </div>
   );
 }
