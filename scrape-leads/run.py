@@ -15,6 +15,7 @@ import os
 import sys
 import subprocess
 import logging
+import shutil
 from datetime import datetime
 
 # ==============================
@@ -26,7 +27,12 @@ SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "scrape.py")
 PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "validate.py")
 
 # Expected output from scraper → input for preparer
-LEADS_FILE = "b2b_leads.csv"
+DEFAULT_LEADS_NAME = "output_business_leads.csv"
+# target directory under project root: ./frontend/app/api/leads
+FRONTEND_LEADS_DIR = os.path.normpath(
+    os.path.join(SCRIPT_DIR, "..", "frontend", "app", "api", "leads")
+)
+TARGET_LEADS_PATH = os.path.join(FRONTEND_LEADS_DIR, DEFAULT_LEADS_NAME)
 
 # Setup logging
 logging.basicConfig(
@@ -79,16 +85,39 @@ def main():
         logger.critical("🛑 Pipeline halted: Scraper failed.")
         return False
 
-    # Verify leads file was created
-    if not os.path.exists(LEADS_FILE):
-        logger.warning(f"⚠️ Scraper ran but did not produce '{LEADS_FILE}'")
-        logger.info("   → Proceeding to preparer anyway (it will handle missing file gracefully)")
+    # Ensure frontend target directory exists
+    try:
+        os.makedirs(FRONTEND_LEADS_DIR, exist_ok=True)
+    except Exception:
+        logger.exception(f"💥 Failed to create leads directory: {FRONTEND_LEADS_DIR}")
+
+    # Try to locate the scraper output in common locations and copy to frontend folder
+    possible_sources = [
+        os.path.join(os.getcwd(), DEFAULT_LEADS_NAME),
+        os.path.join(SCRIPT_DIR, DEFAULT_LEADS_NAME),
+        os.path.join(os.path.dirname(SCRAPER_SCRIPT), DEFAULT_LEADS_NAME),
+    ]
+    source_path = next((p for p in possible_sources if os.path.exists(p)), None)
+
+    if source_path:
+        try:
+            shutil.copy2(source_path, TARGET_LEADS_PATH)
+            logger.info(f"📥 Copied leads file to frontend API dir: {TARGET_LEADS_PATH}")
+        except Exception:
+            logger.exception(f"💥 Failed to copy leads file from {source_path} to {TARGET_LEADS_PATH}")
     else:
-        file_size = os.path.getsize(LEADS_FILE)
+        logger.warning(f"⚠️ Could not find '{DEFAULT_LEADS_NAME}' after scraping. Expected one of: {possible_sources}")
+        logger.info("   → Proceeding to preparer anyway (it will handle missing file gracefully)")
+
+    # Verify leads file was created in the frontend target
+    if not os.path.exists(TARGET_LEADS_PATH):
+        logger.warning(f"⚠️ Scraper did not produce '{TARGET_LEADS_PATH}'")
+    else:
+        file_size = os.path.getsize(TARGET_LEADS_PATH)
         if file_size == 0:
             logger.warning("EmptyEntries: Leads file is empty.")
         else:
-            with open(LEADS_FILE, "r", encoding="utf-8") as f:
+            with open(TARGET_LEADS_PATH, "r", encoding="utf-8") as f:
                 line_count = sum(1 for _ in f)
             logger.info(f"📥 Scraper output: {line_count - 1} leads (excluding header)")
 
