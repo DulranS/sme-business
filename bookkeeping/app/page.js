@@ -410,6 +410,16 @@ export default function BookkeepingApp() {
     return map;
   }, [filteredRecords]);
 
+// Detect if we have at least 90 days of transaction history
+const hasSufficientHistory = useMemo(() => {
+  if (records.length === 0) return false;
+  const dates = records.map(r => new Date(r.date));
+  const minDate = new Date(Math.min(...dates));
+  const maxDate = new Date(Math.max(...dates));
+  const daysSpan = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+  return daysSpan >= 90;
+}, [records]);
+
   // --- Totals & Loan Coverage ---
   const totals = filteredRecords.reduce(
     (acc, r) => {
@@ -1121,93 +1131,95 @@ export default function BookkeepingApp() {
     return Object.values(grouped);
   }, [filteredRecords]);
 
-  const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
-    let breakEvenMonth = null;
-    let paybackMonth = null;
-    let totalInvestment = 0;
-    let totalReturn = 0;
-    let cumulativeNet = 0;
-    roiTimeline.forEach((point) => {
-      totalInvestment += point.investment;
-      totalReturn += point.return;
-      cumulativeNet += point.net;
-      if (!breakEvenMonth && point.return >= point.investment) {
-        breakEvenMonth = point.month;
-      }
-      if (!paybackMonth && cumulativeNet >= 0) {
-        paybackMonth = point.month;
-      }
-    });
-    return {
-      breakEvenMonth,
-      paybackMonth,
-      roiPercentage:
-        totalInvestment > 0
-          ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(
-              0
-            )
-          : 0,
-    };
-  }, [roiTimeline]);
+const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
+  if (!hasSufficientHistory) {
+    return { breakEvenMonth: null, paybackMonth: null, roiPercentage: null };
+  }
 
-  const customerAnalysis = useMemo(() => {
-    const customers = {};
-    filteredRecords.forEach((r) => {
-      if (r.customer && r.category === "Inflow") {
-        if (!customers[r.customer]) {
-          customers[r.customer] = {
-            revenue: 0,
-            cost: 0,
-            transactions: 0,
-            projects: new Set(),
-            dates: [],
-          };
-        }
-        const qty = parseFloat(r.quantity) || 1;
-        customers[r.customer].revenue += parseFloat(r.amount) * qty;
-        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
-        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-          costPerUnit = inventoryCostMap[r.description];
-        }
-        customers[r.customer].cost += costPerUnit * qty;
-        customers[r.customer].transactions += 1;
-        if (r.project) customers[r.customer].projects.add(r.project);
-        customers[r.customer].dates.push(new Date(r.date));
-      }
-    });
-    return Object.entries(customers)
-      .map(([name, data]) => {
-        const firstDate = new Date(
-          Math.min(...data.dates.map((d) => d.getTime()))
-        );
-        const lastDate = new Date(
-          Math.max(...data.dates.map((d) => d.getTime()))
-        );
-        const monthsActive =
-          (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
-          (lastDate.getMonth() - firstDate.getMonth()) +
-          1;
-        const clv =
-          (data.revenue / monthsActive) *
-          12 *
-          ((data.revenue - data.cost) / data.revenue);
-        return {
-          name,
-          revenue: data.revenue,
-          cost: data.cost,
-          profit: data.revenue - data.cost,
-          margin:
-            data.revenue > 0
-              ? ((data.revenue - data.cost) / data.revenue) * 100
-              : 0,
-          transactions: data.transactions,
-          projectCount: data.projects.size,
-          avgTransaction: data.revenue / data.transactions,
-          clv: clv,
+  let breakEvenMonth = null;
+  let paybackMonth = null;
+  let totalInvestment = 0;
+  let totalReturn = 0;
+  let cumulativeNet = 0;
+  roiTimeline.forEach((point) => {
+    totalInvestment += point.investment;
+    totalReturn += point.return;
+    cumulativeNet += point.net;
+    if (!breakEvenMonth && point.return >= point.investment) {
+      breakEvenMonth = point.month;
+    }
+    if (!paybackMonth && cumulativeNet >= 0) {
+      paybackMonth = point.month;
+    }
+  });
+  return {
+    breakEvenMonth,
+    paybackMonth,
+    roiPercentage:
+      totalInvestment > 0
+        ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(0)
+        : 0,
+  };
+}, [roiTimeline, hasSufficientHistory]);
+
+const customerAnalysis = useMemo(() => {
+  if (!hasSufficientHistory) {
+    return []; // or return raw data without CLV
+  }
+
+  const customers = {};
+  filteredRecords.forEach((r) => {
+    if (r.customer && r.category === "Inflow") {
+      if (!customers[r.customer]) {
+        customers[r.customer] = {
+          revenue: 0,
+          cost: 0,
+          transactions: 0,
+          projects: new Set(),
+          dates: [],
         };
-      })
-      .sort((a, b) => b.profit - a.profit);
-  }, [filteredRecords, inventoryCostMap]);
+      }
+      const qty = parseFloat(r.quantity) || 1;
+      customers[r.customer].revenue += parseFloat(r.amount) * qty;
+      let costPerUnit = parseFloat(r.cost_per_unit) || 0;
+      if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
+        costPerUnit = inventoryCostMap[r.description];
+      }
+      customers[r.customer].cost += costPerUnit * qty;
+      customers[r.customer].transactions += 1;
+      if (r.project) customers[r.customer].projects.add(r.project);
+      customers[r.customer].dates.push(new Date(r.date));
+    }
+  });
+
+  return Object.entries(customers)
+    .map(([name, data]) => {
+      const firstDate = new Date(Math.min(...data.dates.map((d) => d.getTime())));
+      const lastDate = new Date(Math.max(...data.dates.map((d) => d.getTime())));
+      const monthsActive =
+        (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
+        (lastDate.getMonth() - firstDate.getMonth()) +
+        1;
+
+      // Only compute CLV if customer has ≥3 months of activity
+      const clv = monthsActive >= 3
+        ? ((data.revenue / monthsActive) * 12) * ((data.revenue - data.cost) / data.revenue)
+        : null;
+
+      return {
+        name,
+        revenue: data.revenue,
+        cost: data.cost,
+        profit: data.revenue - data.cost,
+        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
+        transactions: data.transactions,
+        projectCount: data.projects.size,
+        avgTransaction: data.revenue / data.transactions,
+        clv, // may be null
+      };
+    })
+    .sort((a, b) => b.profit - a.profit);
+}, [filteredRecords, inventoryCostMap, hasSufficientHistory]);
 
   const productMargins = useMemo(() => {
     const products = {};
@@ -1982,6 +1994,14 @@ export default function BookkeepingApp() {
                     </span>
                   </li>
                 )}
+                {hasSufficientHistory && customerAnalysis.some(c => c.clv !== null) && (
+  <li className="flex items-start gap-2">
+    <Users className="w-4 h-4 mt-0.5 flex-shrink-0" />
+    <span>
+      <strong>High-CLV customers identified.</strong> Focus retention efforts on top 20%.
+    </span>
+  </li>
+)}
               </ul>
             </div>
             {/* Rest of health tab unchanged... */}
@@ -3267,9 +3287,17 @@ export default function BookkeepingApp() {
                             <td className="px-4 py-3 text-sm text-right text-gray-600">
                               LKR {formatLKR(customer.avgTransaction)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-purple-600">
-                              LKR {formatLKR(customer.clv)}
-                            </td>
+<td className="px-4 py-3 text-sm text-right font-semibold text-purple-600">
+  {customer.clv !== null
+    ? `LKR ${formatLKR(customer.clv)}`
+    : hasSufficientHistory
+      ? "—"
+      : (
+        <span className="text-gray-400" title="Need ≥90 days of data for CLV">
+          Insufficient data
+        </span>
+      )}
+</td>
                           </tr>
                         ))}
                       </tbody>
@@ -3591,16 +3619,20 @@ export default function BookkeepingApp() {
                   />
                 </LineChart>
               </ResponsiveContainer>
-              <div className="mt-4 p-4 bg-green-50 rounded-lg">
-                <p className="text-sm text-green-800">
-                  <strong>Break-even projection:</strong>{" "}
-                  {breakEvenMonth || "N/A"} |{" "}
-                  <strong className="ml-3">12-month ROI:</strong>{" "}
-                  {roiPercentage}% |{" "}
-                  <strong className="ml-3">Payback period:</strong>{" "}
-                  {paybackMonth || "N/A"}
-                </p>
-              </div>
+{hasSufficientHistory ? (
+  <div className="mt-4 p-4 bg-green-50 rounded-lg">
+    <p className="text-sm text-green-800">
+      <strong>Break-even projection:</strong> {breakEvenMonth || "N/A"} |{" "}
+      <strong className="ml-3">12-month ROI:</strong> {roiPercentage}% |{" "}
+      <strong className="ml-3">Payback period:</strong> {paybackMonth || "N/A"}
+    </p>
+  </div>
+) : (
+  <div className="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-yellow-800">
+    <AlertTriangle className="w-4 h-4 inline mr-1" />
+    ROI projections require at least 3 months of transaction history.
+  </div>
+)}
             </div>
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
