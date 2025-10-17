@@ -90,6 +90,14 @@ class SupabaseClient {
               `${table}?select=${columns}&${column}=eq.${value}`
             ),
         }),
+        like: (column: string, pattern: string) => ({
+          execute: async (): Promise<any[]> =>
+            this.request<any[]>(
+              `${table}?select=${columns}&${column}=like.${encodeURIComponent(
+                pattern
+              )}`
+            ),
+        }),
       }),
       update: (data: Partial<Order>) => ({
         eq: (column: string, value: string | number) => ({
@@ -177,6 +185,13 @@ const extractMOQNumber = (moq: string): number => {
   return match ? parseInt(match[0], 10) : 0;
 };
 
+// ✅ ADD THIS HELPER
+const calculateOrderProfit = (order: Order): number => {
+  const cust = extractNumericValue(order.customer_price);
+  const supp = extractNumericValue(order.supplier_price);
+  const delivery = extractNumericValue(order.supplier_delivery_fee);
+  return cust - supp - delivery;
+};
 // ------------------------
 // Status Badge Component
 // ------------------------
@@ -296,12 +311,7 @@ const CompletedOrdersPage: React.FC = () => {
     [orders]
   );
   const totalProfit = useMemo(
-    () =>
-      orders.reduce((sum, o) => {
-        const cust = extractNumericValue(o.customer_price);
-        const supp = extractNumericValue(o.supplier_price);
-        return sum + (cust - supp);
-      }, 0),
+    () => orders.reduce((sum, o) => sum + calculateOrderProfit(o), 0),
     [orders]
   );
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -377,54 +387,64 @@ const submitShipping = async (order: Order) => {
   const baseDate = now.split("T")[0];
 
   try {
-    // 🔥 Always clean up existing bookkeeping records for this order
-    if (currentShipped !== newShipped) {
-      await supabase
+    // 🔍 Check what's already been recorded
+    let hasRevenue = false;
+    let hasDelivery = false;
+    try {
+      const existingRecords = await supabase
         .from("bookkeeping_records")
-        .delete()
-        .eq("tags", `order-${order.id}`)
+        .select("tags")
+        .like("tags", `%order-${order.id}%`)
         .execute();
+
+      hasRevenue = existingRecords.some(r => (r.tags as string)?.includes('revenue'));
+      hasDelivery = existingRecords.some(r => (r.tags as string)?.includes('delivery'));
+    } catch (e) {
+      console.warn("Could not check existing records:", e);
     }
 
     // Only insert new records if shipping something
     if (newShipped > 0) {
-      const hasFinancials = order.customer_price || order.supplier_price || order.supplier_delivery_fee;
+      const custTotal = extractNumericValue(order.customer_price) || 0;
+      const suppTotal = extractNumericValue(order.supplier_price) || 0;
+      const deliveryFee = extractNumericValue(order.supplier_delivery_fee) || 0;
+      const hasFinancials = custTotal > 0 || suppTotal > 0 || deliveryFee > 0;
+
       if (hasFinancials) {
-        const custTotal = extractNumericValue(order.customer_price) || 0;
-        const suppTotal = extractNumericValue(order.supplier_price) || 0;
-        const deliveryFee = extractNumericValue(order.supplier_delivery_fee) || 0;
-
-        const custPerUnit = custTotal > 0 && totalMOQ > 0 ? custTotal / totalMOQ : 0;
-        const suppPerUnit = suppTotal > 0 && totalMOQ > 0 ? suppTotal / totalMOQ : 0;
-
         const recordsToInsert: any[] = [];
 
-        // 💰 Revenue (What you earned)
-        if (custTotal > 0 && isFinite(custPerUnit)) {
-          const revenueTotal = custPerUnit * newShipped;
-          if (revenueTotal > 0) {
-            recordsToInsert.push({
-              date: baseDate,
-              payment_date: baseDate,
-              description: `Order #${order.id} shipped ${newShipped} units: ${order.description}`,
-              category: "Inflow",
-              amount: parseFloat(revenueTotal.toFixed(2)),
-              cost_per_unit: null,
-              quantity: newShipped,
-              notes: `Revenue from shipping ${newShipped} units for order #${order.id}.`,
-              customer: order.customer_name || null,
-              project: order.description || null,
-              tags: `order-${order.id},revenue`,
-              market_price: parseFloat(custPerUnit.toFixed(2)), // your selling price/unit
-              supplied_by: null,
-              approved: true,
-            });
-          }
+        // 💰 REVENUE: Add if not already recorded
+        if (!hasRevenue && custTotal > 0) {
+          recordsToInsert.push({
+            date: baseDate,
+            payment_date: baseDate,
+            description: `Revenue from Order #${order.id}: ${order.description}`,
+            category: "Inflow",
+            amount: custTotal,
+            cost_per_unit: null,
+            quantity: totalMOQ || 1,
+            notes: `Full revenue for order #${order.id}.`,
+            customer: order.customer_name || null,
+            project: order.description || null,
+            tags: `order-${order.id},revenue`,
+            market_price: custTotal,
+            supplied_by: null,
+            approved: true,
+          });
         }
 
-        // 📦 Supplier Product Cost (What you paid for goods)
-        if (suppTotal > 0 && order.supplier_name && isFinite(suppPerUnit)) {
+        // 📦 SUPPLIER PRODUCT COST: Always reflect current total shipped
+        if (suppTotal > 0 && order.supplier_name) {
+          // Delete only product cost records
+          await supabase
+            .from("bookkeeping_records")
+            .delete()
+            .eq("tags", `order-${order.id},supplier,product`)
+            .execute();
+
+          const suppPerUnit = totalMOQ > 0 ? suppTotal / totalMOQ : suppTotal;
           const costTotal = suppPerUnit * newShipped;
+
           if (costTotal > 0) {
             recordsToInsert.push({
               date: baseDate,
@@ -432,9 +452,9 @@ const submitShipping = async (order: Order) => {
               description: `Supplier product cost for ${newShipped} units – Order #${order.id} – ${order.supplier_name}`,
               category: "Outflow",
               amount: parseFloat(costTotal.toFixed(2)),
-              cost_per_unit: parseFloat(suppPerUnit.toFixed(2)), // true unit cost
-              quantity: 1, // ✅ match actual shipped units
-              notes: `Product cost for ${newShipped} units (excl. delivery) for order #${order.id}.`,
+              cost_per_unit: parseFloat(suppPerUnit.toFixed(2)),
+              quantity: newShipped,
+              notes: `Product cost for ${newShipped} units for order #${order.id}.`,
               customer: order.customer_name || null,
               project: order.description || null,
               tags: `order-${order.id},supplier,product`,
@@ -445,18 +465,17 @@ const submitShipping = async (order: Order) => {
           }
         }
 
-        // 🚚 Delivery Fee – ONE-TIME ONLY (on first shipment)
-        const wasPreviouslyUnshipped = currentShipped === 0;
-        if (deliveryFee > 0 && order.supplier_name && wasPreviouslyUnshipped) {
+        // 🚚 DELIVERY FEE: Add if not already recorded
+        if (!hasDelivery && deliveryFee > 0 && order.supplier_name) {
           recordsToInsert.push({
             date: baseDate,
             payment_date: baseDate,
             description: `Delivery fee for Order #${order.id} – ${order.supplier_name}`,
             category: "Outflow",
-            amount: parseFloat(deliveryFee.toFixed(2)),
-            cost_per_unit: parseFloat(deliveryFee.toFixed(2)),
+            amount: deliveryFee,
+            cost_per_unit: deliveryFee,
             quantity: 1,
-            notes: `Flat delivery/shipping fee for order #${order.id}. Supplier: ${order.supplier_name}.`,
+            notes: `One-time delivery fee for order #${order.id}.`,
             customer: order.customer_name || null,
             project: order.description || null,
             tags: `order-${order.id},delivery`,
@@ -492,7 +511,6 @@ const submitShipping = async (order: Order) => {
       )
     );
 
-    // Clean up local state
     setShippingQuantities((prev) => {
       const newQty = { ...prev };
       delete newQty[order.id];
@@ -540,8 +558,7 @@ const submitShipping = async (order: Order) => {
 
     const csvRows = orders.map((o) => {
       const cust = extractNumericValue(o.customer_price);
-      const supp = extractNumericValue(o.supplier_price);
-      const profit = cust - supp;
+      const profit = calculateOrderProfit(o);
       const margin = cust > 0 ? (profit / cust) * 100 : 0;
       const totalMOQ = extractMOQNumber(o.moq);
       const shipped = o.shipped_quantity || 0;
@@ -690,8 +707,7 @@ const submitShipping = async (order: Order) => {
       <div className="space-y-4">
         {orders.map((order) => {
           const customerPrice = extractNumericValue(order.customer_price);
-          const supplierPrice = extractNumericValue(order.supplier_price);
-          const profit = customerPrice - supplierPrice;
+          const profit = calculateOrderProfit(order);
           const margin = customerPrice > 0 ? (profit / customerPrice) * 100 : 0;
           const daysSince = Math.ceil(
             (Date.now() - new Date(order.created_at).getTime()) /
@@ -808,7 +824,7 @@ const submitShipping = async (order: Order) => {
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         value={
                           shippingQuantities[order.id] ??
                           (order.shipped_quantity || 0)
