@@ -11,3 +11,6 @@
 2025-10-16 00:03:44,583 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
 2025-10-16 00:03:44,583 | INFO     | ✅ Scraping done. Total places: 0 | API calls: 0
 2025-10-16 00:03:44,584 | WARNING  | 🔍 No qualifying businesses found.
+2025-10-17 19:58:38,869 | INFO     | 🚀 STRATEGIC B2B LEAD ENGINE — STARTED
+2025-10-17 19:58:38,870 | INFO     | ============================================================
+2025-10-17 19:58:38,870 | INFO     | API queries_quota: 60

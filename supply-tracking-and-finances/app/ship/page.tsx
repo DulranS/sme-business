@@ -123,7 +123,8 @@ const parseImages = (imagesJson: string): OrderImage[] => {
 };
 
 const extractMOQNumber = (moq: string): number => {
-  const match = moq.match(/\d+/);
+  const cleaned = moq.replace(/,/g, '');
+  const match = cleaned.match(/\d+/);
   return match ? parseInt(match[0], 10) : 0;
 };
 

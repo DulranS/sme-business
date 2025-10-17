@@ -1056,28 +1056,24 @@ const SupplierBiddingSection: React.FC<{
 // ------------------------
 // Pricing Section Component
 // ------------------------
-const createBookkeepingRecord = async (
-  date: string,
-  description: string,
-  category: string,
-  amount: number,
-  customer?: string,
-  project?: string,
-  suppliedBy?: string,
-  orderId?: number
-) => {
+const createBookkeepingRecord = async (recordData: {
+  date: string;
+  payment_date?: string;
+  description: string;
+  category: string;
+  amount: number;
+  cost_per_unit?: number | null;
+  quantity?: number;
+  notes?: string | null;
+  customer?: string | null;
+  project?: string | null;
+  tags?: string | null;
+  market_price?: number | null;
+  supplied_by?: string | null;
+  approved?: boolean;
+}) => {
   try {
-    const record = {
-      date,
-      description,
-      category,
-      amount,
-      customer: customer || null,
-      project: project || null,
-      supplied_by: suppliedBy || null,
-      tags: orderId ? `order-${orderId}` : null,
-    };
-    await supabase.from("bookkeeping_records").insert([record]).execute();
+    await supabase.from("bookkeeping_records").insert([recordData]).execute();
   } catch (err) {
     console.error("Failed to create bookkeeping record:", err);
   }
@@ -1130,42 +1126,58 @@ const PricingSection: React.FC<{
     }
   };
 
-  const sendToBookkeeping = async (order: Order) => {
-    if (!order.customer_price) {
-      console.warn("No customer price — skipping bookkeeping sync");
-      return;
+const sendToBookkeeping = async (order: Order) => {
+  if (!order.customer_price) {
+    console.warn("No customer price — skipping bookkeeping sync");
+    return;
+  }
+  const baseDate = (order.actual_delivery || new Date().toISOString()).split("T")[0];
+
+  try {
+    // Inflow (customer payment)
+    if (order.customer_price) {
+      await createBookkeepingRecord({
+        date: baseDate,
+        payment_date: baseDate,
+        description: `Order #${order.id}: ${order.description}`,
+        category: "Inflow",
+        amount: extractNumericValue(order.customer_price),
+        quantity: order.moq ? parseInt(order.moq, 10) : 1,
+        customer: order.customer_name || null,
+        project: null,
+        supplied_by: null,
+        tags: `order-${order.id}`,
+        approved: true,
+        cost_per_unit: null,
+        notes: null,
+        market_price: null,
+      });
     }
-    const baseDate = (order.actual_delivery || new Date().toISOString()).split("T")[0];
-    try {
-      if (order.customer_price) {
-        await createBookkeepingRecord(
-          baseDate,
-          `Order #${order.id}: ${order.description}`,
-          "Inflow",
-          extractNumericValue(order.customer_price),
-          order.customer_name,
-          undefined,
-          undefined,
-          order.id
-        );
-      }
-      if (order.supplier_price) {
-        await createBookkeepingRecord(
-          baseDate,
-          `Supplier payment for Order #${order.id} - ${order.description} - ${order.supplier_name} - ${order.supplier_price}`,
-          "Outflow",
-          extractNumericValue(order.supplier_price),
-          order.customer_name,
-          undefined,
-          order.supplier_name,
-          order.id
-        );
-      }
-    } catch (err) {
-      console.error("Bookkeeping sync failed:", err);
-      alert("⚠️ Financial sync to bookkeeping failed. Check console.");
+
+    // Outflow (supplier payment)
+    if (order.supplier_price) {
+      await createBookkeepingRecord({
+        date: baseDate,
+        payment_date: baseDate,
+        description: `Supplier payment for Order #${order.id} - ${order.description}`,
+        category: "Outflow",
+        amount: extractNumericValue(order.supplier_price),
+        quantity: 1,
+        customer: order.customer_name || null,
+        project: null,
+        supplied_by: order.supplier_name || null,
+        tags: `order-${order.id}`,
+        approved: true,
+        cost_per_unit: null,
+        notes: order.supplier_description || null,
+        market_price: null,
+      });
     }
-  };
+  } catch (err) {
+    console.error("Bookkeeping sync failed:", err);
+    alert("⚠️ Financial sync to bookkeeping failed. Check console.");
+  }
+};
 
   const supplierCost = extractNumericValue(
     isEditing ? supplierPrice : order.supplier_price
@@ -1195,7 +1207,7 @@ const PricingSection: React.FC<{
             <button
               onClick={async () => {
                 setBookkeepingLoading(true);
-                await sendToBookkeeping(order);
+                // await sendToBookkeeping(order);
                 setBookkeepingLoading(false);
               }}
               disabled={bookkeepingLoading}
@@ -1825,34 +1837,42 @@ const OrderManagementApp: React.FC = () => {
     orderId: number,
     status: Order["status"]
   ) => {
-    setLoading(true);
-    try {
-      const updatedOrders = await supabase
-        .from("orders")
-        .update({ status })
-        .eq("id", orderId)
-        .execute();
-      const updatedOrder = updatedOrders[0] as Order;
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? updatedOrder : o))
-      );
-      if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
-      await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
-      if (status === "completed" && updatedOrder.customer_price) {
-        const revenue = extractNumericValue(updatedOrder.customer_price);
-        if (revenue > 0) {
-          await createBookkeepingRecord(
-            new Date().toISOString().split("T")[0],
-            `Order #${orderId} completed: ${updatedOrder.description || ""}`,
-            "Inflow",
-            revenue,
-            updatedOrder.customer_name || "",
-            updatedOrder.category || "",
-            updatedOrder.supplier_name || "",
-            orderId
-          );
-        }
-      }
+  setLoading(true);
+  try {
+    const updatedOrders = await supabase
+      .from("orders")
+      .update({ status })
+      .eq("id", orderId)
+      .execute();
+    const updatedOrder = updatedOrders[0] as Order;
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? updatedOrder : o))
+    );
+    if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
+    await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
+if (status === "completed" && updatedOrder.customer_price) {
+  const revenue = extractNumericValue(updatedOrder.customer_price);
+  if (revenue > 0) {
+    const recordData = {
+      date: new Date().toISOString().split("T")[0],
+      payment_date: new Date().toISOString().split("T")[0],
+      description: `Order #${orderId} completed: ${updatedOrder.description || ""}`,
+      category: "Inflow",
+      amount: revenue,
+      quantity: 1,
+      customer: updatedOrder.customer_name || null,
+      project: updatedOrder.category || null,
+      supplied_by: updatedOrder.supplier_name || null,
+      tags: `order-${orderId}`,
+      approved: true,
+      // Optional fields (set to null if not available)
+      cost_per_unit: null,
+      notes: null,
+      market_price: null,
+    };
+    await createBookkeepingRecord(recordData);
+  }
+}
     } catch (error) {
       console.error("Status update error:", error);
       alert("Failed to update status");
