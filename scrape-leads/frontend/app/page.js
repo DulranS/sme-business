@@ -1,7 +1,6 @@
-// app/page.js
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 
 export default function LeadDashboard() {
@@ -16,6 +15,12 @@ export default function LeadDashboard() {
   const [minReviews, setMinReviews] = useState('');
   const [tagFilter, setTagFilter] = useState('ALL');
   const [showFilters, setShowFilters] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: '' });
+
+  const showToast = useCallback((msg) => {
+    setToast({ show: true, message: msg });
+    setTimeout(() => setToast({ show: false, message: '' }), 2000);
+  }, []);
 
   useEffect(() => {
     const fetchLeads = async () => {
@@ -56,9 +61,7 @@ export default function LeadDashboard() {
         (lead.phone_raw || '').replace(/\D/g, '').includes(searchTerm.replace(/\D/g, '')) ||
         (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesQuality = qualityFilter === 'ALL' || 
-        (lead.lead_quality || '').includes(qualityFilter);
-
+      const matchesQuality = qualityFilter === 'ALL' || lead.lead_quality === qualityFilter;
       const matchesCategory = categoryFilter === 'ALL' || lead.category === categoryFilter;
 
       const hasEmail = !!lead.email;
@@ -74,7 +77,7 @@ export default function LeadDashboard() {
       const matchesReviews = !minReviews || reviews >= parseInt(minReviews);
 
       const matchesTag = tagFilter === 'ALL' || 
-        (lead.tags && lead.tags.includes(tagFilter));
+        (lead.tags && lead.tags.split(';').map(t => t.trim()).includes(tagFilter));
 
       return matchesSearch && matchesQuality && matchesCategory && 
              matchesContact && matchesRating && matchesReviews && matchesTag;
@@ -120,9 +123,18 @@ export default function LeadDashboard() {
     URL.revokeObjectURL(url);
   };
 
+  const copyToClipboard = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`✅ ${label} copied!`);
+    } catch (err) {
+      showToast('❌ Failed to copy');
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <p className="text-black text-center text-lg">Loading leads...</p>
       </div>
     );
@@ -130,7 +142,7 @@ export default function LeadDashboard() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="text-center">
           <p className="text-black mb-2 text-lg">⚠️ Failed to load leads</p>
           <p className="text-black text-sm">{error}</p>
@@ -140,11 +152,18 @@ export default function LeadDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-20">
+    <div className="min-h-screen bg-gray-50 pb-24 relative">
       <Head>
         <title>Colombo B2B Leads</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-black text-white px-4 py-2 rounded-lg shadow-lg text-center text-sm">
+          {toast.message}
+        </div>
+      )}
 
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
@@ -260,19 +279,17 @@ export default function LeadDashboard() {
       </header>
 
       {/* Leads List */}
-      <main className="px-4 pt-4 pb-24">
+      <main className="px-4 pt-4">
         {filteredLeads.length === 0 ? (
           <div className="text-center py-10">
             <p className="text-black text-lg">No matching leads</p>
             <p className="text-black text-sm mt-1">Try adjusting your filters.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 pb-24">
             {filteredLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
-              // 🔥 FIXED: No space in WhatsApp URL
-              const mobile9Digit = (lead.whatsapp_number || '').toString().replace(/\D/g, '').slice(0, 9);
-              const waLink = mobile9Digit ? `https://wa.me/94${mobile9Digit}` : '';
+              const waLink = lead.whatsapp_number ? `https://wa.me/94${lead.whatsapp_number}` : '';
 
               return (
                 <div key={i} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
@@ -285,11 +302,12 @@ export default function LeadDashboard() {
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {lead.lead_quality && (
                           <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                            lead.lead_quality.includes('HOT') ? 'bg-red-100 text-red-800' :
-                            lead.lead_quality.includes('WARM') ? 'bg-yellow-100 text-yellow-800' :
+                            lead.lead_quality === 'HOT' ? 'bg-red-100 text-red-800' :
+                            lead.lead_quality === 'WARM' ? 'bg-yellow-100 text-yellow-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
-                            {lead.lead_quality}
+                            {lead.lead_quality === 'HOT' ? '🔥 HOT' :
+                             lead.lead_quality === 'WARM' ? '🔸 WARM' : '❄️ COLD'}
                           </span>
                         )}
                         {lead.category && (
@@ -304,6 +322,7 @@ export default function LeadDashboard() {
                         href={waLink}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => showToast('Opening WhatsApp...')}
                         className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 transition"
                         aria-label="Message on WhatsApp"
                       >
@@ -312,10 +331,58 @@ export default function LeadDashboard() {
                     )}
                   </div>
 
-                  <div className="mt-3 space-y-1.5 text-black text-base">
-                    {lead.email && <div className="truncate">📧 {lead.email}</div>}
-                    {lead.phone_raw && <div>📱 {lead.phone_raw}</div>}
-                    {lead.address && <div className="text-sm opacity-90 truncate">📍 {lead.address}</div>}
+                  <div className="mt-3 space-y-2 text-black text-base">
+                    {lead.email && (
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={`mailto:${lead.email}`}
+                          className="truncate text-blue-600 hover:underline flex items-center gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            showToast('Opening email app...');
+                          }}
+                        >
+                          📧 {lead.email}
+                        </a>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(lead.email, 'Email');
+                          }}
+                          className="text-gray-500 hover:text-blue-600 active:scale-95"
+                          aria-label="Copy email"
+                        >
+                          📋
+                        </button>
+                      </div>
+                    )}
+                    {lead.phone_raw && (
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={`tel:+94${lead.whatsapp_number}`}
+                          className="text-blue-600 hover:underline flex items-center gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            showToast('Opening phone dialer...');
+                          }}
+                        >
+                          📱 {lead.phone_raw}
+                        </a>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(lead.phone_raw, 'Phone');
+                          }}
+                          className="text-gray-500 hover:text-blue-600 active:scale-95"
+                          aria-label="Copy phone"
+                        >
+                          📋
+                        </button>
+                      </div>
+                    )}
+                    {lead.address && (
+                      <div className="text-sm opacity-90 truncate">📍 {lead.address}</div>
+                    )}
                   </div>
 
                   {(lead.rating || lead.review_count) && (
