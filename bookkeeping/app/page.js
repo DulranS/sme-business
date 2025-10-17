@@ -40,6 +40,7 @@ import {
   Recycle,
   ArrowUp,
   HeartPulse,
+  Repeat,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -77,7 +78,7 @@ const STRATEGIC_WEIGHTS = {
   Outflow: -3,
   Overhead: -4,
   "Loan Payment": -2,
-  "Cash Flow Gap": -5, // ← ADDED: strategic penalty for delays
+  "Cash Flow Gap": -5,
 };
 
 const categoryLabels = {
@@ -90,7 +91,7 @@ const categoryLabels = {
   "Inventory Purchase": "Inventory Purchase",
   Logistics: "Logistics",
   Refund: "Refund",
-  "Cash Flow Gap": "Cash Flow Gap (Delayed)", // ← ADDED
+  "Cash Flow Gap": "Cash Flow Gap (Delayed)",
 };
 
 const internalCategories = [
@@ -103,16 +104,17 @@ const internalCategories = [
   "Inventory Purchase",
   "Logistics",
   "Refund",
-  "Cash Flow Gap", // ← ADDED
+  "Cash Flow Gap",
 ];
 
 export default function BookkeepingApp() {
   const [records, setRecords] = useState([]);
+  const [recurringCosts, setRecurringCosts] = useState([]);
   const [isEditing, setIsEditing] = useState(null);
+  const [isEditingRecurring, setIsEditingRecurring] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
-
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
     paymentDate: "",
@@ -128,11 +130,17 @@ export default function BookkeepingApp() {
     marketPrice: "",
     suppliedBy: "",
   });
+  const [recurringForm, setRecurringForm] = useState({
+    description: "",
+    amount: "",
+    notes: "",
+  });
   const [targetRevenue, setTargetRevenue] = useState(100000);
   const [monthlyLoanTarget, setMonthlyLoanTarget] = useState(458333);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showLoanModal, setShowLoanModal] = useState(false);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState("Overhead");
@@ -181,12 +189,131 @@ export default function BookkeepingApp() {
     alert("Monthly loan target updated!");
   };
 
+  // --- Recurring Cost Handlers ---
+  const loadRecurringCosts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("recurring_costs")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error) setRecurringCosts(data || []);
+    } catch (error) {
+      console.error("Error loading recurring costs:", error);
+    }
+  };
+
+  const resetRecurringForm = () => {
+    setRecurringForm({ description: "", amount: "", notes: "" });
+    setIsEditingRecurring(null);
+  };
+
+  const saveRecurringCost = async () => {
+    const { description, amount, notes } = recurringForm;
+    if (!description || !amount) {
+      alert("Please fill in description and amount");
+      return;
+    }
+    try {
+      if (isEditingRecurring !== null) {
+        const { error } = await supabase
+          .from("recurring_costs")
+          .update({ description, amount: parseFloat(amount), notes })
+          .eq("id", isEditingRecurring);
+        if (error) throw error;
+        setRecurringCosts(
+          recurringCosts.map((r) =>
+            r.id === isEditingRecurring
+              ? { ...r, description, amount: parseFloat(amount), notes }
+              : r
+          )
+        );
+      } else {
+        const { data, error } = await supabase
+          .from("recurring_costs")
+          .insert([{ description, amount: parseFloat(amount), notes }])
+          .select();
+        if (error) throw error;
+        setRecurringCosts([data[0], ...recurringCosts]);
+      }
+      setShowRecurringModal(false);
+      resetRecurringForm();
+      alert("Recurring cost saved!");
+    } catch (error) {
+      console.error("Error saving recurring cost:", error);
+      alert("Failed to save recurring cost.");
+    }
+  };
+
+  const handleEditRecurring = (cost) => {
+    setRecurringForm({
+      description: cost.description,
+      amount: cost.amount.toString(),
+      notes: cost.notes || "",
+    });
+    setIsEditingRecurring(cost.id);
+    setShowRecurringModal(true);
+  };
+
+  const handleDeleteRecurring = async (id) => {
+    if (!window.confirm("Delete this recurring cost?")) return;
+    try {
+      const { error } = await supabase
+        .from("recurring_costs")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      setRecurringCosts(recurringCosts.filter((r) => r.id !== id));
+      alert("Recurring cost deleted.");
+    } catch (error) {
+      console.error("Error deleting recurring cost:", error);
+      alert("Failed to delete.");
+    }
+  };
+
+  // --- Generate Actual Records from Recurring Costs ---
+  const generateRecurringRecords = async () => {
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstDayStr = firstDay.toISOString().split("T")[0];
+
+    for (const cost of recurringCosts) {
+      // Check if already generated this month
+      const exists = records.some(
+        (r) =>
+          r.description === cost.description &&
+          r.category === "Overhead" &&
+          r.date.startsWith(monthKey)
+      );
+      if (!exists) {
+        const recordData = {
+          date: firstDayStr,
+          payment_date: firstDayStr,
+          description: cost.description,
+          category: "Overhead",
+          amount: cost.amount,
+          notes: cost.notes || "Auto-generated from recurring cost",
+          approved: true,
+        };
+        const { data, error } = await supabase
+          .from("bookkeeping_records")
+          .insert([recordData])
+          .select();
+        if (!error) {
+          setRecords((prev) => [data[0], ...prev]);
+        }
+      }
+    }
+  };
+
   // --- Sync Data ---
   const syncRecords = async () => {
     setSyncing(true);
     try {
       await loadRecords();
       await loadBudgets();
+      await loadRecurringCosts();
+      await generateRecurringRecords();
     } catch (error) {
       console.error("Sync failed:", error);
       alert("Failed to sync data. Please check your connection and try again.");
@@ -199,8 +326,6 @@ export default function BookkeepingApp() {
   useEffect(() => {
     const savedLoanTarget = localStorage.getItem("monthlyLoanTarget");
     if (savedLoanTarget) setMonthlyLoanTarget(parseFloat(savedLoanTarget));
-
-    // Set default date filter to last 30 days
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - 30);
@@ -208,31 +333,27 @@ export default function BookkeepingApp() {
       start: start.toISOString().split("T")[0],
       end: end.toISOString().split("T")[0],
     });
-
     loadRecords();
     loadBudgets();
+    loadRecurringCosts();
   }, []);
 
-const loadRecords = async () => {
-  try {
-    setLoading(true);
-const { data, error } = await supabase
-  .from("bookkeeping_records")
-  .select("*")
-  // .eq("approved", true) // 👈 THIS FILTER IS BREAKING EVERYTHING
-  .order("date", { ascending: false });
-    if (error) throw error;
-    setRecords(data || []);
-  } catch (error) {
-    console.error("Error loading records:", error);
-    setRecords([]);
-  } finally {
-    setLoading(false);
-  }
-};
-
-// In admin panel, when clicking "Approve"
-
+  const loadRecords = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("bookkeeping_records")
+        .select("*")
+        .order("date", { ascending: false });
+      if (error) throw error;
+      setRecords(data || []);
+    } catch (error) {
+      console.error("Error loading records:", error);
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadBudgets = async () => {
     try {
@@ -272,19 +393,19 @@ const { data, error } = await supabase
       const key = r.description;
       const qty = parseFloat(r.quantity) || 0;
       const cost = parseFloat(r.cost_per_unit) || 0;
-if (!key || cost <= 0) return;
+      if (!key || cost <= 0) return;
       if (!map[key]) {
         map[key] = { totalCost: 0, totalQty: 0 };
       }
-map[key].totalCost += cost * qty; // qty can be negative
-map[key].totalQty += qty;
+      map[key].totalCost += cost * qty;
+      map[key].totalQty += qty;
     });
     Object.keys(map).forEach((key) => {
-if (map[key].totalQty <= 0) {
-  delete map[key]; // or skip
-} else {
-  map[key] = map[key].totalCost / map[key].totalQty;
-}
+      if (map[key].totalQty <= 0) {
+        delete map[key];
+      } else {
+        map[key] = map[key].totalCost / map[key].totalQty;
+      }
     });
     return map;
   }, [filteredRecords]);
@@ -326,24 +447,31 @@ if (map[key].totalQty <= 0) {
       overhead: 0,
       loanPayment: 0,
       loanReceived: 0,
-      logistics: 0, // ← new
-      refund: 0, // ← new
+      logistics: 0,
+      refund: 0,
     }
   );
+
+  // Add recurring costs to overhead for calculations
+  const totalRecurring = recurringCosts.reduce(
+    (sum, cost) => sum + (parseFloat(cost.amount) || 0),
+    0
+  );
+  const overheadWithRecurring = totals.overhead + totalRecurring;
 
   const grossProfit = totals.inflow - totals.outflow;
   const trueGrossMargin =
     totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-  const operatingProfit = grossProfit - totals.overhead - totals.reinvestment;
+  const operatingProfit = grossProfit - overheadWithRecurring - totals.reinvestment;
   const netLoanImpact = totals.loanReceived - totals.loanPayment;
-  // Example: Net Profit should subtract logistics & refunds
-const netProfit = operatingProfit + netLoanImpact;
+  const netProfit = operatingProfit + netLoanImpact;
 
-  // ✅ Loan Coverage Logic (Rolling 30 days)
+  // Loan Coverage
   const today = new Date();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
-  const rollingInflow =  records.filter(
+  const rollingInflow = records
+    .filter(
       (r) =>
         r.category === "Inflow" &&
         new Date(r.date) >= thirtyDaysAgo &&
@@ -357,7 +485,7 @@ const netProfit = operatingProfit + netLoanImpact;
     monthlyLoanTarget > 0 ? (rollingInflow / monthlyLoanTarget) * 100 : 0;
   const loanStatus = loanCoveragePercent >= 100 ? "On Track" : "At Risk";
 
-  // --- Customer Concentration for Strategic Scoring ---
+  // Customer Concentration
   const customerRevenueMap = useMemo(() => {
     const map = {};
     filteredRecords.forEach((r) => {
@@ -378,15 +506,14 @@ const netProfit = operatingProfit + netLoanImpact;
       ? Math.max(...Object.values(customerRevenueMap)) / totalCustomerRevenue
       : 0;
 
-  // --- Supplier Analysis ---
+  // Supplier Analysis
   const supplierAnalysis = useMemo(() => {
     const suppliers = {};
     filteredRecords.forEach((r) => {
       if (r.supplied_by && r.category !== "Inflow") {
         const amount = parseFloat(r.amount) || 0;
         const qty = parseFloat(r.quantity) || 1;
-        const totalCost = amount * qty; // 👈 critical fix
-
+        const totalCost = amount * qty;
         if (!suppliers[r.supplied_by]) {
           suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
         }
@@ -403,7 +530,7 @@ const netProfit = operatingProfit + netLoanImpact;
       .sort((a, b) => b.cost - a.cost);
   }, [filteredRecords]);
 
-  // --- Strategic Scoring (Enhanced) ---
+  // Strategic Scoring
   const recordsWithStrategicScore = useMemo(() => {
     return filteredRecords
       .map((r) => {
@@ -417,20 +544,15 @@ const netProfit = operatingProfit + netLoanImpact;
           (new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24)
         );
         recencyBonus = Math.max(0, 5 - daysOld / 30);
-
-        // Special handling for Cash Flow Gap
-if (r.category === "Cash Flow Gap") {
-  // Assume amount = delay in days or impact score
-  recencyBonus = -2;
-  customerPenalty = -3;
-}
-
+        if (r.category === "Cash Flow Gap") {
+          recencyBonus = -2;
+          customerPenalty = -3;
+        }
         if (r.category === "Refund") {
-          customerPenalty = -4; // stronger penalty
-          recencyBonus = -3; // recent refunds hurt more
+          customerPenalty = -4;
+          recencyBonus = -3;
         }
         if (r.category === "Logistics") {
-          // Compare to avg logistics cost (you can compute this separately)
           const avgLogistics =
             totals.logistics /
             Math.max(
@@ -439,9 +561,8 @@ if (r.category === "Cash Flow Gap") {
               1
             );
           const actualCost = parseFloat(r.amount) || 0;
-          marginImpact = actualCost < avgLogistics ? 1 : -1; // reward efficiency
+          marginImpact = actualCost < avgLogistics ? 1 : -1;
         }
-
         if (r.category === "Inflow") {
           const qty = parseFloat(r.quantity) || 1;
           const price = parseFloat(r.amount) || 0;
@@ -459,7 +580,6 @@ if (r.category === "Cash Flow Gap") {
             customerPenalty = -2;
           }
         }
-
         const strategicScore =
           baseWeight +
           marginImpact +
@@ -479,12 +599,13 @@ if (r.category === "Cash Flow Gap") {
       });
   }, [filteredRecords, inventoryCostMap, topCustomerShare]);
 
-  // --- Business Health Index ---
-  const monthlyBurn = totals.overhead + totals.outflow + totals.reinvestment;
+  // Business Health Index (now includes recurring cost ratio)
+  const monthlyBurn = overheadWithRecurring + totals.outflow + totals.reinvestment;
   const cashRunwayMonths = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
   const liquidityRatio = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
-  const refundRate =
-    totals.inflow > 0 ? (totals.refund / totals.inflow) * 100 : 0;
+  const refundRate = totals.inflow > 0 ? (totals.refund / totals.inflow) * 100 : 0;
+  const recurringRatio = totals.inflow > 0 ? (totalRecurring / totals.inflow) * 100 : 0;
+
   const maturityData = [
     { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
     {
@@ -510,79 +631,73 @@ if (r.category === "Cash Flow Gap") {
     },
     { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
   ];
+
   const dataCompletenessScore = (
     (maturityData.reduce((sum, m) => sum + parseFloat(m.score), 0) / 400) *
     100
   ).toFixed(0);
+
   const businessHealthIndex = Math.min(
     100,
     Math.round(
       (trueGrossMargin / 50) * 25 +
         (loanCoveragePercent / 100) * 25 +
         (liquidityRatio > 1 ? 25 : liquidityRatio * 25) +
-        parseFloat(dataCompletenessScore) * 0.25
+        parseFloat(dataCompletenessScore) * 0.25 +
+        (recurringRatio < 30 ? 25 : 0) // Bonus if recurring costs < 30% of revenue
     )
   );
 
-  // --- Auto-trigger Strategy Modal if data is sparse ---
-  // useEffect(() => {
-  //   if (dataCompletenessScore < 60 && !showStrategyModal) {
-  //     const timer = setTimeout(() => setShowStrategyModal(true), 3000);
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, [dataCompletenessScore]);
-
-  // --- Handle Form Submit ---
-const handleSubmit = async () => {
-  if (!formData.description || !formData.amount) return;
-  try {
-    const recordData = {
-      date: formData.date,
-      payment_date: formData.paymentDate || formData.date,
-      description: formData.description,
-      category: formData.category,
-      amount: parseFloat(formData.amount),
-      cost_per_unit: formData.costPerUnit
-        ? parseFloat(formData.costPerUnit)
-        : null,
-      quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
-      notes: formData.notes || null,
-      customer: formData.customer || null,
-      project: formData.project || null,
-      tags: formData.tags || null,
-      market_price: formData.marketPrice
-        ? parseFloat(formData.marketPrice)
-        : null,
-      supplied_by: formData.suppliedBy || null,
-      approved: true, // 👈 NEW: mark as pending approval
-    };
-
-    if (isEditing !== null) {
-      const { error } = await supabase
-        .from("bookkeeping_records")
-        .update(recordData)
-        .eq("id", isEditing);
-      if (error) throw error;
-      setRecords(
-        records.map((r) =>
-          r.id === isEditing ? { ...recordData, id: r.id } : r
-        )
-      );
-      setIsEditing(null);
-    } else {
-      const { data, error } = await supabase
-        .from("bookkeeping_records")
-        .insert([recordData])
-        .select();
-      if (error) throw error;
-      setRecords([data[0], ...records]);
+  // Handle Form Submit
+  const handleSubmit = async () => {
+    if (!formData.description || !formData.amount) return;
+    try {
+      const recordData = {
+        date: formData.date,
+        payment_date: formData.paymentDate || formData.date,
+        description: formData.description,
+        category: formData.category,
+        amount: parseFloat(formData.amount),
+        cost_per_unit: formData.costPerUnit
+          ? parseFloat(formData.costPerUnit)
+          : null,
+        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+        notes: formData.notes || null,
+        customer: formData.customer || null,
+        project: formData.project || null,
+        tags: formData.tags || null,
+        market_price: formData.marketPrice
+          ? parseFloat(formData.marketPrice)
+          : null,
+        supplied_by: formData.suppliedBy || null,
+        approved: true,
+      };
+      if (isEditing !== null) {
+        const { error } = await supabase
+          .from("bookkeeping_records")
+          .update(recordData)
+          .eq("id", isEditing);
+        if (error) throw error;
+        setRecords(
+          records.map((r) =>
+            r.id === isEditing ? { ...recordData, id: r.id } : r
+          )
+        );
+        setIsEditing(null);
+      } else {
+        const { data, error } = await supabase
+          .from("bookkeeping_records")
+          .insert([recordData])
+          .select();
+        if (error) throw error;
+        setRecords([data[0], ...records]);
+      }
+      resetForm();
+    } catch (error) {
+      console.error("Error saving record:", error);
+      alert("Failed to save record.");
     }
-    resetForm();
-  } catch (error) {
-    console.error("Error saving record:", error);
-    alert("Failed to save record.");
-  }
-};
+  };
 
   const resetForm = () => {
     setFormData({
@@ -617,7 +732,7 @@ const handleSubmit = async () => {
       project: record.project || "",
       tags: record.tags || "",
       marketPrice: record.market_price ? record.market_price.toString() : "",
-      suppliedBy: record.supplied_by || "", // ✅ FIXED: use record.supplied_by
+      suppliedBy: record.supplied_by || "",
     });
     setIsEditing(record.id);
     setActiveTab("overview");
@@ -664,14 +779,13 @@ const handleSubmit = async () => {
               val === "" || val == null ? null : parseFloat(val);
             const parseString = (val) =>
               val === "" || val == null ? null : String(val).trim();
-            // In handleCsvImport, improve category resolution:
-const categoryKey =
-  Object.entries(categoryLabels).find(
-    ([, label]) => label === row["Category"]
-  )?.[0] ||
-  (internalCategories.includes(row["Category"])
-    ? row["Category"]
-    : "Inflow");
+            const categoryKey =
+              Object.entries(categoryLabels).find(
+                ([, label]) => label === row["Category"]
+              )?.[0] ||
+              (internalCategories.includes(row["Category"])
+                ? row["Category"]
+                : "Inflow");
             return {
               date:
                 parseString(row["Date"]) ||
@@ -720,7 +834,7 @@ const categoryKey =
     });
   };
 
-  // --- Export to CSV ---
+  // Export to CSV
   const exportToCSV = () => {
     const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
     if (dataToExport.length === 0) {
@@ -776,10 +890,10 @@ const categoryKey =
       dateFilter.start || dateFilter.end
         ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
         : "";
-const csvContent = [
-  headers.join(","),
-  ...csvData.map((row) => row.join(",")),
-].join("\r\n");
+    const csvContent = [
+      headers.join(","),
+      ...csvData.map((row) => row.join(",")),
+    ].join("\r\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -809,7 +923,7 @@ const csvContent = [
     });
   };
 
-  // --- Reused analytics (unchanged logic but now use fixed totals) ---
+  // Reused analytics
   const competitiveAnalysis = useMemo(() => {
     return filteredRecords
       .filter(
@@ -852,8 +966,7 @@ const csvContent = [
       .sort((a, b) => b.competitiveEdge - a.competitiveEdge);
   }, [filteredRecords, inventoryCostMap]);
 
-  const isPositiveCategory = (cat) => 
-  ["Inflow", "Loan Received"].includes(cat);
+  const isPositiveCategory = (cat) => ["Inflow", "Loan Received"].includes(cat);
 
   const competitiveTotals = useMemo(() => {
     return competitiveAnalysis.reduce(
@@ -878,26 +991,19 @@ const csvContent = [
 
   const monthlyData = useMemo(() => {
     if (!filteredRecords || filteredRecords.length === 0) return [];
-
-    // Get current year-month (e.g., "2024-06")
     const now = new Date();
     const currentMonthKey = `${now.getFullYear()}-${String(
       now.getMonth() + 1
     ).padStart(2, "0")}`;
-
     const grouped = {};
     filteredRecords.forEach((r) => {
       const date = new Date(r.date);
       const monthKey = `${date.getFullYear()}-${String(
         date.getMonth() + 1
       ).padStart(2, "0")}`;
-
-      // 👇 Only include current month
       if (monthKey !== currentMonthKey) return;
-
       if (!grouped[monthKey])
         grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
-
       const qty = parseFloat(r.quantity) || 1;
       const price = parseFloat(r.amount) || 0;
       let cost = parseFloat(r.cost_per_unit) || 0;
@@ -907,7 +1013,6 @@ const csvContent = [
       const revenue = price * qty;
       const totalCost = cost * qty;
       const profit = revenue - totalCost;
-
       if (r.category === "Inflow") {
         grouped[monthKey].revenue += revenue;
         grouped[monthKey].cost += totalCost;
@@ -917,7 +1022,6 @@ const csvContent = [
         grouped[monthKey].profit -= price;
       }
     });
-
     return Object.entries(grouped)
       .map(([month, vals]) => ({
         month,
@@ -930,24 +1034,19 @@ const csvContent = [
 
   const dailyData = useMemo(() => {
     if (!filteredRecords || filteredRecords.length === 0) return [];
-
     const today = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
-
     const dayMap = {};
-    // Initialize all days in last 30 days
     for (let i = 30; i >= 0; i--) {
       const d = new Date();
       d.setDate(today.getDate() - i);
-      const key = d.toISOString().split("T")[0]; // YYYY-MM-DD
+      const key = d.toISOString().split("T")[0];
       dayMap[key] = { date: key, revenue: 0, profit: 0, cost: 0 };
     }
-
     filteredRecords.forEach((r) => {
-      const recordDate = r.date; // assume format YYYY-MM-DD
+      const recordDate = r.date;
       if (recordDate < thirtyDaysAgo.toISOString().split("T")[0]) return;
-
       if (!dayMap[recordDate]) {
         dayMap[recordDate] = {
           date: recordDate,
@@ -956,7 +1055,6 @@ const csvContent = [
           cost: 0,
         };
       }
-
       const qty = parseFloat(r.quantity) || 1;
       const price = parseFloat(r.amount) || 0;
       let cost = parseFloat(r.cost_per_unit) || 0;
@@ -966,7 +1064,6 @@ const csvContent = [
       const revenue = price * qty;
       const totalCost = cost * qty;
       const profit = revenue - totalCost;
-
       if (r.category === "Inflow") {
         dayMap[recordDate].revenue += revenue;
         dayMap[recordDate].profit += profit;
@@ -975,30 +1072,32 @@ const csvContent = [
         dayMap[recordDate].profit -= price;
       }
     });
-
     return Object.values(dayMap).map((day) => ({
       ...day,
       margin: day.revenue > 0 ? (day.profit / day.revenue) * 100 : 0,
     }));
   }, [filteredRecords, inventoryCostMap]);
 
-const cashFlowGaps = useMemo(() => {
-  return filteredRecords
-    .filter((r) => r.payment_date && r.category === "Inflow")
-    .map((r) => {
-      const issueDate = new Date(r.date);
-      const paidDate = new Date(r.payment_date);
-      const gapDays = Math.max(0, Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24)));
-      return {
-        id: r.id,
-        description: r.description,
-        amount: r.amount,
-        customer: r.customer,
-        gapDays,
-        status: gapDays > 30 ? "Delayed" : "On Time",
-      };
-    });
-}, [filteredRecords]);
+  const cashFlowGaps = useMemo(() => {
+    return filteredRecords
+      .filter((r) => r.payment_date && r.category === "Inflow")
+      .map((r) => {
+        const issueDate = new Date(r.date);
+        const paidDate = new Date(r.payment_date);
+        const gapDays = Math.max(
+          0,
+          Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24))
+        );
+        return {
+          id: r.id,
+          description: r.description,
+          amount: r.amount,
+          customer: r.customer,
+          gapDays,
+          status: gapDays > 30 ? "Delayed" : "On Time",
+        };
+      });
+  }, [filteredRecords]);
 
   const roiTimeline = useMemo(() => {
     const grouped = {};
@@ -1088,7 +1187,10 @@ const cashFlowGaps = useMemo(() => {
           (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
           (lastDate.getMonth() - firstDate.getMonth()) +
           1;
-const clv = (data.revenue / monthsActive) * 12 * ((data.revenue - data.cost) / data.revenue);
+        const clv =
+          (data.revenue / monthsActive) *
+          12 *
+          ((data.revenue - data.cost) / data.revenue);
         return {
           name,
           revenue: data.revenue,
@@ -1200,8 +1302,8 @@ const clv = (data.revenue / monthsActive) * 12 * ((data.revenue - data.cost) / d
     return productMargins
       .filter((p) => p.cost > 0)
       .map((p) => {
-const targetMargin = 50;
-const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
+        const targetMargin = 50;
+        const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         const priceIncrease = recommendedPrice - p.avgPrice;
         const percentIncrease = (priceIncrease / p.avgPrice) * 100;
         return {
@@ -1218,6 +1320,17 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
       .filter((r) => r.needsAction)
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   }, [productMargins]);
+
+  // Recurring Cost Alert
+  const recurringAlert = useMemo(() => {
+    if (recurringRatio > 30 && totals.inflow > 0) {
+      return {
+        percent: recurringRatio.toFixed(1),
+        severity: "warning",
+      };
+    }
+    return null;
+  }, [recurringRatio, totals.inflow]);
 
   const businessValueData = [
     {
@@ -1307,7 +1420,7 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
     return Object.entries(groups).map(([group, items]) => ({ group, items }));
   }, [recordsWithStrategicScore, groupBy]);
 
-  // --- Cash Flow Forecast (30-day) ---
+  // Cash Flow Forecast (30-day) with recurring costs
   const forecastDays = 30;
   const avgDailyInflow = rollingInflow / 30;
   const outflowCategories = [
@@ -1326,9 +1439,7 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         new Date(r.date) <= today
     )
     .reduce((sum, r) => sum + parseFloat(r.amount), 0);
-  const avgDailyOutflow = recentOutflow / 30;
-  // Compute 30-day net cash position (inflow - all outflows)
-  // Forecast shows CUMULATIVE NET CASH FLOW over next 30 days (starting from 0)
+  const avgDailyOutflow = (recentOutflow + totalRecurring) / 30;
   const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
     const date = new Date();
     date.setDate(today.getDate() + i + 1);
@@ -1415,6 +1526,13 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 <Bell className="w-4 h-4" />
                 Budgets
               </button>
+              <button
+                onClick={() => setShowRecurringModal(true)}
+                className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-400 transition-colors font-semibold shadow-md"
+              >
+                <Repeat className="w-4 h-4" />
+                Recurring
+              </button>
               <input
                 type="file"
                 accept=".csv"
@@ -1440,7 +1558,7 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
           </div>
         </div>
 
-        {/* Loan Health Alert with Trend */}
+        {/* Loan Health Alert */}
         <div className="mb-6">
           <div
             className={`p-4 rounded-lg flex items-center gap-3 ${
@@ -1470,54 +1588,68 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         </div>
 
         {/* Strategic Alerts */}
-        {(budgetAlerts.length > 0 || pricingRecommendations.length > 0) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            {budgetAlerts.length > 0 && (
-              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-yellow-900 mb-2">
-                      Budget Alerts
-                    </h3>
-                    <div className="space-y-2">
-                      {budgetAlerts.slice(0, 2).map((alert, idx) => (
-                        <div key={idx} className="text-sm text-yellow-800">
-                          <strong>
-                            {categoryLabels[alert.category] || alert.category}:
-                          </strong>{" "}
-                          {alert.percentUsed.toFixed(0)}% used
-                          {alert.severity === "critical" && " - OVER BUDGET!"}
-                        </div>
-                      ))}
-                    </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {budgetAlerts.length > 0 && (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-yellow-900 mb-2">
+                    Budget Alerts
+                  </h3>
+                  <div className="space-y-2">
+                    {budgetAlerts.slice(0, 2).map((alert, idx) => (
+                      <div key={idx} className="text-sm text-yellow-800">
+                        <strong>
+                          {categoryLabels[alert.category] || alert.category}:
+                        </strong>{" "}
+                        {alert.percentUsed.toFixed(0)}% used
+                        {alert.severity === "critical" && " - OVER BUDGET!"}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            )}
-            {pricingRecommendations.length > 0 && (
-              <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-lg">
-                <div className="flex items-start gap-3">
-                  <Sparkles className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-orange-900 mb-2">
-                      Pricing Opportunities
-                    </h3>
-                    <div className="space-y-2">
-                      {pricingRecommendations.slice(0, 2).map((rec, idx) => (
-                        <div key={idx} className="text-sm text-orange-800">
-                          <strong>{rec.product}:</strong> +
-                          {rec.percentIncrease.toFixed(0)}% price = +LKR{" "}
-                          {formatLKR(rec.potentialRevenue)} revenue
-                        </div>
-                      ))}
-                    </div>
+            </div>
+          )}
+          {pricingRecommendations.length > 0 && (
+            <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-lg">
+              <div className="flex items-start gap-3">
+                <Sparkles className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-orange-900 mb-2">
+                    Pricing Opportunities
+                  </h3>
+                  <div className="space-y-2">
+                    {pricingRecommendations.slice(0, 2).map((rec, idx) => (
+                      <div key={idx} className="text-sm text-orange-800">
+                        <strong>{rec.product}:</strong> +
+                        {rec.percentIncrease.toFixed(0)}% price = +LKR{" "}
+                        {formatLKR(rec.potentialRevenue)} revenue
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+          {recurringAlert && (
+            <div className="bg-purple-50 border-l-4 border-purple-400 p-4 rounded-r-lg">
+              <div className="flex items-start gap-3">
+                <Repeat className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-purple-900 mb-2">
+                    Recurring Cost Alert
+                  </h3>
+                  <p className="text-sm text-purple-800">
+                    Recurring costs are {recurringAlert.percent}% of revenue.
+                    Consider optimization if above 30%.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Navigation Tabs */}
         <div className="bg-white rounded-lg shadow-md mb-6 overflow-hidden">
@@ -1531,6 +1663,7 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
               { id: "customers", label: "Customers", icon: Users },
               { id: "suppliers", label: "Suppliers", icon: Factory },
               { id: "pricing", label: "Pricing Intel", icon: Sparkles },
+              { id: "recurring", label: "Recurring Costs", icon: Repeat },
               {
                 id: "analytics",
                 label: "Strategic Analytics",
@@ -1613,6 +1746,111 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
           </div>
         </div>
 
+        {/* Recurring Costs Tab */}
+        {activeTab === "recurring" && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                <Repeat className="w-7 h-7" />
+                Recurring Monthly Costs
+              </h2>
+              <p className="text-purple-100">
+                Manage fixed monthly expenses like rent, software, and salaries
+              </p>
+            </div>
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Your Recurring Costs</h3>
+                <button
+                  onClick={() => {
+                    resetRecurringForm();
+                    setShowRecurringModal(true);
+                  }}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-purple-700"
+                >
+                  <Plus className="w-4 h-4" /> Add Cost
+                </button>
+              </div>
+              {recurringCosts.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Repeat className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                  <p>No recurring costs added yet</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                          Description
+                        </th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          Monthly Amount
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                          Notes
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {recurringCosts.map((cost) => (
+                        <tr key={cost.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-gray-900 font-medium">
+                            {cost.description}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-red-600">
+                            LKR {formatLKR(cost.amount)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">
+                            {cost.notes || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleEditRecurring(cost)}
+                              className="text-blue-600 hover:text-blue-800 mx-1"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRecurring(cost.id)}
+                              className="text-red-600 hover:text-red-800 mx-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="mt-6 p-4 bg-purple-50 rounded-lg">
+                <h4 className="font-semibold text-purple-900 mb-2">
+                  Summary
+                </h4>
+                <p className="text-purple-800">
+                  Total Recurring Costs:{" "}
+                  <span className="font-bold text-purple-600">
+                    LKR {formatLKR(totalRecurring)}
+                  </span>
+                  {totals.inflow > 0 && (
+                    <>
+                      {" "}({recurringRatio.toFixed(1)}% of revenue)
+                    </>
+                  )}
+                </p>
+                <p className="text-sm text-purple-700 mt-2">
+                  These costs are automatically added to your "Overhead" each
+                  month on the 1st.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Business Health Tab */}
         {activeTab === "health" && (
           <div className="space-y-6">
@@ -1656,7 +1894,7 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                   LKR {formatLKR(monthlyBurn)}
                 </p>
                 <p className="text-black text-gray-500 mt-1">
-                  Monthly expenses
+                  Monthly expenses (incl. recurring)
                 </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-5 text-center">
@@ -1669,16 +1907,15 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-5 text-center">
-                <h3 className="text-sm text-gray-600 mb-1">Data Quality</h3>
+                <h3 className="text-sm text-gray-600 mb-1">Recurring Ratio</h3>
                 <p className="text-2xl font-bold text-purple-600">
-                  {dataCompletenessScore}%
+                  {recurringRatio > 0 ? recurringRatio.toFixed(1) : "0"}%
                 </p>
                 <p className="text-black text-gray-500 mt-1">
-                  Bookkeeping completeness
+                  Recurring / Revenue
                 </p>
               </div>
             </div>
-
             {/* AI Insights Summary */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border border-blue-200">
               <h3 className="font-bold text-lg mb-3 text-blue-900">
@@ -1692,7 +1929,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                   : "⚠️ Action needed: improve cash flow, reduce dependency, and enhance data tracking."}
               </p>
             </div>
-
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border border-blue-200">
               <h3 className="font-bold text-lg mb-3 text-blue-900">
                 Strategic Recommendations
@@ -1736,9 +1972,19 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                     </span>
                   </li>
                 )}
+                {recurringRatio > 30 && (
+                  <li className="flex items-start gap-2">
+                    <Repeat className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>Recurring Cost Review:</strong> Fixed costs exceed
+                      30% of revenue. Negotiate or eliminate non-essential
+                      subscriptions.
+                    </span>
+                  </li>
+                )}
               </ul>
             </div>
-            {/* Strategic Alert - Cash Flow Delay Risk */}
+            {/* Rest of health tab unchanged... */}
             {cashFlowGaps.length > 0 &&
               cashFlowGaps.filter((g) => g.status === "Delayed").length > 0 && (
                 <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-r-lg mb-6">
@@ -1764,8 +2010,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                   </div>
                 </div>
               )}
-
-            {/* Payment Timing Risk Card */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <Clock className="w-5 h-5 text-amber-600" />
@@ -1804,7 +2048,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                       </p>
                     </div>
                   </div>
-
                   <h4 className="font-semibold mb-3">Top Delayed Customers</h4>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -1928,11 +2171,9 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 </div>
               )}
             </div>
-
-            {/* Cash Flow Forecast Chart */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4">
-                30-Day Cash Flow Forecast
+                30-Day Cash Flow Forecast (incl. Recurring)
               </h3>
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={projectedCash}>
@@ -2050,7 +2291,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 <p className="text-sm opacity-90">Business Health Index</p>
               </div>
             </div>
-
             {/* Entry Form */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -2273,7 +2513,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 )}
               </div>
             </div>
-
             {/* Recent Records Preview */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
@@ -2344,18 +2583,20 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                           <td className="px-4 py-3 text-sm text-right text-gray-600">
                             LKR {formatLKR(price)}
                           </td>
-<td
-  className={`px-4 py-3 text-sm text-right font-semibold ${
-    record.category === "Inflow" || record.category === "Loan Received"
-      ? "text-green-600"
-      : "text-red-600"
-  }`}
->
-  {record.category === "Inflow" || record.category === "Loan Received"
-    ? "+"
-    : "−"}{" "}
-  LKR {formatLKR(total)}
-</td>
+                          <td
+                            className={`px-4 py-3 text-sm text-right font-semibold ${
+                              record.category === "Inflow" ||
+                              record.category === "Loan Received"
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {record.category === "Inflow" ||
+                            record.category === "Loan Received"
+                              ? "+"
+                              : "−"}{" "}
+                            LKR {formatLKR(total)}
+                          </td>
                           <td className="px-4 py-3 text-sm text-right">
                             {margin !== null ? (
                               <span
@@ -2409,7 +2650,7 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
           </>
         )}
 
-        {/* Suppliers Tab */}
+        {/* Remaining tabs (suppliers, records, margins, etc.) unchanged... */}
         {activeTab === "suppliers" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-6">
@@ -2480,7 +2721,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
           </div>
         )}
 
-        {/* All Records Tab with Strategic Ranking */}
         {activeTab === "records" && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-4">
@@ -2726,7 +2966,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
           </div>
         )}
 
-        {/* Other tabs remain with minor enhancements */}
         {activeTab === "margins" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
@@ -2875,45 +3114,65 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-{productMargins.map((product, idx) => (
-  <tr key={idx} className="hover:bg-gray-50">
-    <td className="px-4 py-3 text-sm font-medium text-gray-900">{product.name}</td>
-    <td className="px-4 py-3 text-sm text-right text-gray-600">{product.quantity.toFixed(0)}</td>
-    <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgPrice)}</td>
-    <td className="px-4 py-3 text-sm text-right text-gray-600">LKR {formatLKR(product.avgCost)}</td>
-<td className="px-4 py-3 text-sm text-right font-semibold">
-  {product.avgProfit >= 0 ? (
-    <span className="text-green-600">+ LKR {formatLKR(product.avgProfit)}</span>
-  ) : (
-    <span className="text-red-600">− LKR {formatLKR(Math.abs(product.avgProfit))}</span>
-  )}
-</td>
-<td className="px-4 py-3 text-sm text-right font-semibold">
-  {product.profit >= 0 ? (
-    <span className="text-green-600">+ LKR {formatLKR(product.profit)}</span>
-  ) : (
-    <span className="text-red-600">− LKR {formatLKR(Math.abs(product.profit))}</span>
-  )}
-</td>
-    <td className="px-4 py-3 text-sm text-right">
-      <span
-        className={`font-bold ${
-          product.margin >= 50
-            ? "text-green-600"
-            : product.margin >= 30
-            ? "text-blue-600"
-            : product.margin >= 15
-            ? "text-orange-600"
-            : "text-red-600"
-        }`}
-      >
-        {product.margin.toFixed(1)}%
-      </span>
-    </td>
-    <td className="px-4 py-3 text-sm text-right text-gray-600">{product.customers}</td>
-    <td className="px-4 py-3 text-sm text-right text-gray-600">{product.inventoryTurnover.toFixed(1)}x</td>
-  </tr>
-))}
+                      {productMargins.map((product, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {product.name}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            {product.quantity.toFixed(0)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            LKR {formatLKR(product.avgPrice)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            LKR {formatLKR(product.avgCost)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold">
+                            {product.avgProfit >= 0 ? (
+                              <span className="text-green-600">
+                                + LKR {formatLKR(product.avgProfit)}
+                              </span>
+                            ) : (
+                              <span className="text-red-600">
+                                − LKR {formatLKR(Math.abs(product.avgProfit))}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold">
+                            {product.profit >= 0 ? (
+                              <span className="text-green-600">
+                                + LKR {formatLKR(product.profit)}
+                              </span>
+                            ) : (
+                              <span className="text-red-600">
+                                − LKR {formatLKR(Math.abs(product.profit))}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            <span
+                              className={`font-bold ${
+                                product.margin >= 50
+                                  ? "text-green-600"
+                                  : product.margin >= 30
+                                  ? "text-blue-600"
+                                  : product.margin >= 15
+                                  ? "text-orange-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {product.margin.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            {product.customers}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            {product.inventoryTurnover.toFixed(1)}x
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -3213,7 +3472,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
         {activeTab === "analytics" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-6">
-              {/* Strategic Opportunity Summary */}
               <div className="bg-gradient-to-br from-rose-50 to-red-100 border-2 border-red-300 rounded-lg p-5">
                 <h3 className="font-bold text-red-900 mb-3 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5" />
@@ -3257,7 +3515,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 Enterprise-grade insights for data-driven decision making
               </p>
             </div>
-            {/* Business Health Score */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <Award className="w-5 h-5 text-purple-600" />
@@ -3299,7 +3556,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 ))}
               </div>
             </div>
-            {/* ROI Projection Timeline */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <Clock className="w-5 h-5 text-blue-600" />
@@ -3346,7 +3602,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 </p>
               </div>
             </div>
-            {/* Analytics Maturity Model */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <Brain className="w-5 h-5 text-indigo-600" />
@@ -3385,7 +3640,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 ))}
               </div>
             </div>
-            {/* Monthly Trend Analysis */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-green-600" />
@@ -3462,7 +3716,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                 </div>
               )}
             </div>
-            {/* Key Insights Panel */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
                 <div className="flex items-start gap-3">
@@ -3503,6 +3756,13 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                         <span>
                           <strong>Customer tracking:</strong>{" "}
                           {customerAnalysis.length} unique customers identified
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Recurring costs:</strong> {recurringCosts.length}{" "}
+                          fixed expenses managed
                         </span>
                       </li>
                     </ul>
@@ -3574,6 +3834,15 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                           <span>
                             Add more transaction history for better trend
                             analysis and insights
+                          </span>
+                        </li>
+                      )}
+                      {recurringCosts.length === 0 && (
+                        <li className="flex items-start gap-2">
+                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>
+                            Add recurring costs to automate overhead tracking
+                            and improve forecasting
                           </span>
                         </li>
                       )}
@@ -3961,6 +4230,62 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
             </div>
           </div>
         )}
+        {showRecurringModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">
+                {isEditingRecurring ? "Edit" : "Add"} Recurring Cost
+              </h3>
+              <input
+                type="text"
+                placeholder="Description (e.g., Office Rent)"
+                value={recurringForm.description}
+                onChange={(e) =>
+                  setRecurringForm({
+                    ...recurringForm,
+                    description: e.target.value,
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3"
+              />
+              <input
+                type="number"
+                placeholder="Monthly Amount (LKR)"
+                value={recurringForm.amount}
+                onChange={(e) =>
+                  setRecurringForm({ ...recurringForm, amount: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3"
+              />
+              <textarea
+                placeholder="Notes (optional)"
+                value={recurringForm.notes}
+                onChange={(e) =>
+                  setRecurringForm({ ...recurringForm, notes: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
+                rows={2}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={saveRecurringCost}
+                  className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors"
+                >
+                  {isEditingRecurring ? "Update" : "Save"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRecurringModal(false);
+                    resetRecurringForm();
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {showStrategyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white rounded-lg p-6 max-w-6xl w-full my-8">
@@ -3981,7 +4306,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                   <span className="text-2xl">×</span>
                 </button>
               </div>
-              {/* Implementation Phases */}
               <div className="space-y-6">
                 {implementationPhases.map((phase, idx) => {
                   const Icon = phase.icon;
@@ -4065,7 +4389,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                   );
                 })}
               </div>
-              {/* Expected Outcomes */}
               <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-lg border-2 border-green-300">
                   <div className="flex items-center gap-3 mb-3">
@@ -4093,8 +4416,9 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                         (r) => r.category === "Inflow" && r.cost_per_unit
                       ).length /
                         Math.max(
-                          filteredRecords.filter((r) => r.category === "Inflow")
-                            .length,
+                          filteredRecords.filter(
+                            (r) => r.category === "Inflow"
+                          ).length,
                           1
                         )) *
                       100
@@ -4122,7 +4446,6 @@ const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
                   </p>
                 </div>
               </div>
-              {/* Action Button */}
               <div className="mt-8 p-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg text-white">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
