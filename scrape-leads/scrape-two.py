@@ -133,7 +133,7 @@ def extract_email_from_website(base_url):
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (compatible; B2BLeadBot/1.0; +https://yourcompany.com/bot)"
+        "User-Agent": "B2BLeadBot/1.0 (contact: you@email.com)"
     })
 
     paths = ["", "/contact", "/about", "/en/contact", "/contact-us", "/reach-us"]
