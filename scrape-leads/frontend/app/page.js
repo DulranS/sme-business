@@ -8,8 +8,6 @@ export default function LeadDashboard() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [qualityFilter, setQualityFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
@@ -17,7 +15,7 @@ export default function LeadDashboard() {
   const [minRating, setMinRating] = useState('');
   const [minReviews, setMinReviews] = useState('');
   const [tagFilter, setTagFilter] = useState('ALL');
-  const [showFilters, setShowFilters] = useState(false); // Mobile toggle
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const fetchLeads = async () => {
@@ -115,7 +113,7 @@ export default function LeadDashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'strategic_colombo_leads.csv';
+    a.download = 'colombo_b2b_leads.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -125,7 +123,7 @@ export default function LeadDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white px-4">
-        <p className="text-black text-center">Loading leads...</p>
+        <p className="text-black text-center text-lg">Loading leads...</p>
       </div>
     );
   }
@@ -134,7 +132,7 @@ export default function LeadDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white p-4">
         <div className="text-center">
-          <p className="text-black mb-2">⚠️ Failed to load leads</p>
+          <p className="text-black mb-2 text-lg">⚠️ Failed to load leads</p>
           <p className="text-black text-sm">{error}</p>
         </div>
       </div>
@@ -142,116 +140,117 @@ export default function LeadDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-24">
+    <div className="min-h-screen bg-white pb-20">
       <Head>
-        <title>Colombo B2B Lead Dashboard</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Colombo B2B Leads</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3">
+        <div className="px-4 py-3">
           <div className="flex justify-between items-center mb-3">
             <h1 className="text-lg font-bold text-black">Colombo B2B Leads</h1>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="text-sm text-blue-600 md:hidden"
+              className="text-sm text-blue-600 font-medium"
             >
-              {showFilters ? 'Hide Filters' : 'Show Filters'}
+              {showFilters ? '▲ Hide Filters' : '▼ Show Filters'}
             </button>
           </div>
 
-          {/* Search */}
           <input
             type="text"
-            placeholder="Search business, contact, phone..."
+            placeholder="Search business, contact, or phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-2.5 border border-gray-300 rounded mb-3 text-black text-sm"
+            className="w-full p-3 text-base border border-gray-300 rounded-lg mb-3 text-black placeholder-gray-500"
           />
 
-          {/* Filters (Collapsible on mobile) */}
-          <div className={`${showFilters ? 'block' : 'hidden'} md:block mb-4`}>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <select
-                value={qualityFilter}
-                onChange={(e) => setQualityFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
-              >
-                <option value="ALL">All Qualities</option>
-                <option value="HOT">🔥 HOT</option>
-                <option value="WARM">🔸 WARM</option>
-                <option value="COLD">❄️ COLD</option>
-              </select>
+          {showFilters && (
+            <div className="space-y-3 mb-3">
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={qualityFilter}
+                  onChange={(e) => setQualityFilter(e.target.value)}
+                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
+                >
+                  <option value="ALL">All Qualities</option>
+                  <option value="HOT">🔥 HOT</option>
+                  <option value="WARM">🔸 WARM</option>
+                  <option value="COLD">❄️ COLD</option>
+                </select>
 
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
-              >
-                <option value="ALL">All Categories</option>
-                {uniqueCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
+                >
+                  <option value="ALL">All Categories</option>
+                  {uniqueCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
 
-              <select
-                value={contactFilter}
-                onChange={(e) => setContactFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
-              >
-                <option value="ALL">Any Contact</option>
-                <option value="EMAIL">WithEmail</option>
-                <option value="PHONE">With Phone</option>
-                <option value="BOTH">WithEmail + Phone</option>
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={contactFilter}
+                  onChange={(e) => setContactFilter(e.target.value)}
+                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
+                >
+                  <option value="ALL">Any Contact</option>
+                  <option value="EMAIL">WithEmail</option>
+                  <option value="PHONE">With Phone</option>
+                  <option value="BOTH">WithEmail + Phone</option>
+                </select>
 
-              <select
-                value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
-              >
-                <option value="ALL">All Tags</option>
-                {allTags.map(tag => (
-                  <option key={tag} value={tag}>{tag}</option>
-                ))}
-              </select>
+                <select
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
+                >
+                  <option value="ALL">All Tags</option>
+                  {allTags.map(tag => (
+                    <option key={tag} value={tag}>{tag}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  placeholder="Min Rating (e.g. 4.0)"
+                  value={minRating}
+                  onChange={(e) => setMinRating(e.target.value)}
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black placeholder-gray-500"
+                />
+                <input
+                  type="number"
+                  placeholder="Min Reviews (e.g. 50)"
+                  value={minReviews}
+                  onChange={(e) => setMinReviews(e.target.value)}
+                  min="0"
+                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black placeholder-gray-500"
+                />
+              </div>
             </div>
+          )}
 
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="Min Rating"
-                value={minRating}
-                onChange={(e) => setMinRating(e.target.value)}
-                min="0"
-                max="5"
-                step="0.1"
-                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
-              />
-              <input
-                type="number"
-                placeholder="Min Reviews"
-                value={minReviews}
-                onChange={(e) => setMinReviews(e.target.value)}
-                min="0"
-                className="w-full p-2 border border-gray-300 rounded text-black text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Summary & Export */}
-          <div className="flex flex-wrap justify-between items-center gap-2 pt-2">
-            <p className="text-black text-sm">
-              {filteredLeads.length} of {leads.length} leads
-            </p>
+          <div className="flex justify-between items-center pt-2">
+            <span className="text-black text-sm">
+              {filteredLeads.length} leads
+            </span>
             <button
               onClick={exportToCSV}
               disabled={filteredLeads.length === 0}
-              className={`px-3 py-1.5 rounded text-sm font-medium whitespace-nowrap ${
+              className={`px-4 py-2.5 rounded-lg font-medium text-base ${
                 filteredLeads.length === 0
                   ? 'bg-gray-200 text-gray-500'
-                  : 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-green-600 text-white active:bg-green-700'
               }`}
             >
               📥 Export
@@ -261,30 +260,31 @@ export default function LeadDashboard() {
       </header>
 
       {/* Leads List */}
-      <main className="container mx-auto px-4 pt-4 pb-20">
+      <main className="px-4 pt-4 pb-24">
         {filteredLeads.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-black">No leads match your filters.</p>
+          <div className="text-center py-10">
+            <p className="text-black text-lg">No matching leads</p>
+            <p className="text-black text-sm mt-1">Try adjusting your filters.</p>
           </div>
         ) : (
           <div className="space-y-4">
             {filteredLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
-              // 🔥 CRITICAL FIX: NO SPACE in WhatsApp URL
+              // 🔥 FIXED: No space in WhatsApp URL
               const mobile9Digit = (lead.whatsapp_number || '').toString().replace(/\D/g, '').slice(0, 9);
               const waLink = mobile9Digit ? `https://wa.me/94${mobile9Digit}` : '';
 
               return (
-                <div key={i} className="border border-gray-200 rounded-lg p-4 bg-white">
+                <div key={i} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <h2 className="font-bold text-black text-base truncate">{contactName}</h2>
+                      <h2 className="font-bold text-black text-lg leading-tight">{contactName}</h2>
                       {lead.business_name && lead.business_name !== contactName && (
-                        <p className="text-black text-sm mt-0.5 truncate">{lead.business_name}</p>
+                        <p className="text-black text-sm mt-1 opacity-90">{lead.business_name}</p>
                       )}
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {lead.lead_quality && (
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                          <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
                             lead.lead_quality.includes('HOT') ? 'bg-red-100 text-red-800' :
                             lead.lead_quality.includes('WARM') ? 'bg-yellow-100 text-yellow-800' :
                             'bg-gray-100 text-gray-800'
@@ -293,7 +293,7 @@ export default function LeadDashboard() {
                           </span>
                         )}
                         {lead.category && (
-                          <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                          <span className="px-2.5 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
                             {lead.category}
                           </span>
                         )}
@@ -304,43 +304,30 @@ export default function LeadDashboard() {
                         href={waLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex-shrink-0 w-10 h-10 rounded-full bg-green-600 flex items-center justify-center"
-                        aria-label="WhatsApp"
+                        className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 transition"
+                        aria-label="Message on WhatsApp"
                       >
-                        <span className="text-white text-lg">💬</span>
+                        <span className="text-white text-xl">💬</span>
                       </a>
                     )}
                   </div>
 
-                  <div className="mt-3 space-y-1 text-black text-sm">
+                  <div className="mt-3 space-y-1.5 text-black text-base">
                     {lead.email && <div className="truncate">📧 {lead.email}</div>}
                     {lead.phone_raw && <div>📱 {lead.phone_raw}</div>}
-                    {lead.address && <div className="truncate">📍 {lead.address}</div>}
-                    {lead.website && (
-                      <div className="truncate">
-                        🌐{' '}
-                        <a
-                          href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
-                          {lead.website.replace(/^https?:\/\//, '')}
-                        </a>
-                      </div>
-                    )}
+                    {lead.address && <div className="text-sm opacity-90 truncate">📍 {lead.address}</div>}
                   </div>
 
                   {(lead.rating || lead.review_count) && (
-                    <div className="mt-2 text-black text-sm">
+                    <div className="mt-2 text-black text-sm opacity-90">
                       ⭐ {lead.rating || 'N/A'} ({lead.review_count || 0} reviews)
                     </div>
                   )}
 
                   {lead.tags && (
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       {lead.tags.split(';').map((tag, idx) => (
-                        <span key={idx} className="px-1.5 py-0.5 bg-gray-100 text-black text-xs rounded">
+                        <span key={idx} className="px-2 py-1 bg-gray-100 text-black text-xs rounded-full">
                           {tag.trim()}
                         </span>
                       ))}
