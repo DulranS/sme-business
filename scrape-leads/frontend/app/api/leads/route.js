@@ -7,33 +7,47 @@ import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const CSV_PATH = join(__dirname, 'output_business_leads.csv');
 
 export async function GET() {
-  const csvPath = join(__dirname, 'whatsapp_ready_leads.csv');
-
-  if (!fs.existsSync(csvPath)) {
-    console.error('CSV file not found at:', csvPath);
-    return NextResponse.json({ error: 'Leads file not found' }, { status: 404 });
+  if (!fs.existsSync(CSV_PATH)) {
+    return NextResponse.json(
+      { error: 'output_business_leads.csv not found in /app/api/' },
+      { status: 404 }
+    );
   }
 
   try {
-    const content = fs.readFileSync(csvPath, 'utf-8');
+    const content = fs.readFileSync(CSV_PATH, 'utf-8');
     const records = parse(content, {
       columns: true,
       skip_empty_lines: true,
       relax_column_count: true,
     });
 
-    // Optional: filter out summary rows
-    const cleanRecords = records.filter(row =>
-      row.contact_name &&
-      !row.contact_name.includes('SUMMARY') &&
-      row.contact_name !== 'Prospect'
-    );
+    // Clean data on the server side
+    const cleaned = records
+      .filter(row => {
+        const name = (row.business_name || '').trim();
+        return name && !name.includes('SUMMARY');
+      })
+      .map(row => {
+        let email = (row.email || '').trim();
+        // Remove fake emails
+        if (email.includes('.png') || email.includes('sentry') || email.includes('@domain.com')) {
+          email = '';
+        }
 
-    return NextResponse.json(cleanRecords);
+        return {
+          ...row,
+          email,
+          contact_name: '', // We'll build this in frontend for flexibility
+        };
+      });
+
+    return NextResponse.json(cleaned);
   } catch (error) {
-    console.error('CSV Parse Error:', error);
-    return NextResponse.json({ error: 'Failed to parse leads' }, { status: 500 });
+    console.error('CSV Error:', error);
+    return NextResponse.json({ error: 'Failed to parse CSV' }, { status: 500 });
   }
 }
