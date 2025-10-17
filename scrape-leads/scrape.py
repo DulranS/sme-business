@@ -70,33 +70,20 @@ logger = logging.getLogger("LeadEngine")
 # ==============================
 # 🎯 BUSINESS LOGIC & SCORING
 # ==============================
-BUSINESS_CATEGORIES = {
-    "HIGH_VALUE_B2B": [
-        "marketing agency", "advertising agency", "consulting", "law firm", "legal services",
-        "accounting firm", "audit", "tax", "medical clinic", "dental clinic", "software company",
-        "IT services", "tech startup", "real estate agency", "insurance broker", "financial advisor",
-        "architecture firm", "engineering consultancy"
-    ],
-    "LOCAL_SERVICES": [
-        "restaurant", "cafe", "hotel", "spa", "salon", "gym", "fitness center",
-        "car repair", "automotive", "pharmacy", "retail store"
-    ]
-}
+# Simplified B2B keyword list for lighter categorization
+B2B_KEYWORDS = [
+    "marketing", "advertising", "consulting", "law", "legal", "accounting",
+    "software", "it", "technology", "real estate", "insurance", "finance",
+    "architecture", "engineering"
+]
 
 # Prioritized, Colombo-specific search terms (B2B first)
 SEARCH_TERMS = [
-    # High-Value B2B (Priority)
-    "marketing agency Colombo",
+    "marketing Colombo",
+    "consulting Colombo",
     "law firm Colombo",
-    "IT company Colombo",
-    "software development Colombo",
-    "accounting firm Colombo",
-    "business consulting Colombo",
-    "real estate agency Colombo",
-    "insurance company Colombo",
-    # Local (Secondary)
-    "dental clinic Colombo",
-    "medical center Colombo"
+    "software company Colombo",
+    "accounting Colombo"
 ]
 
 # Trusted email domains (reduce spam risk)
@@ -167,16 +154,11 @@ def extract_email_from_website(base_url):
     return None
 
 def categorize_business(name, types):
-    name_lower = name.lower()
-    types_lower = " ".join(types).lower()
-    text = f"{name_lower} {types_lower}"
-    
-    for keyword in BUSINESS_CATEGORIES["HIGH_VALUE_B2B"]:
-        if keyword in text:
-            return "HIGH_VALUE_B2B"
-    for keyword in BUSINESS_CATEGORIES["LOCAL_SERVICES"]:
-        if keyword in text:
-            return "LOCAL_SERVICES"
+    """Simple categorization: 'B2B' if any B2B keyword matches, else 'OTHER'."""
+    text = f"{name} {' '.join(types)}".lower()
+    for kw in B2B_KEYWORDS:
+        if kw in text:
+            return "B2B"
     return "OTHER"
 
 def score_and_tag_lead(rating, reviews, has_phone, has_email, has_website, category):
@@ -204,12 +186,10 @@ def score_and_tag_lead(rating, reviews, has_phone, has_email, has_website, categ
         score += 10
         tags.append("Has Website")
 
-    # Category Bonus
-    if category == "HIGH_VALUE_B2B":
-        score += 25
-        tags.append("B2B Target")
-    elif category == "LOCAL_SERVICES":
+    # Small, simple category bonus for B2B matches
+    if category == "B2B":
         score += 10
+        tags.append("B2B")
 
     # Final quality
     if score >= 80:

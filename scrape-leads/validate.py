@@ -21,8 +21,8 @@ from datetime import datetime
 # ==============================
 # 🔧 CONFIGURATION
 # ==============================
-INPUT_FILE = "business_leads.csv"
-OUTPUT_FILE = "whatsapp_ready_leads.csv"
+INPUT_FILE = "b2b_leads.csv"
+OUTPUT_FILE = "output_business_leads.csv"
 INVALID_FILE = "invalid_or_landline_leads.csv"
 LOG_FILE = "whatsapp_prep.log"
 
