@@ -1233,18 +1233,18 @@ const PricingSection: React.FC<{
               </p>
             </div>
           )}
-          <div className="flex space-x-2">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
             <button
               onClick={onSave}
               disabled={loading}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2 disabled:opacity-50 text-sm"
+              className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2 disabled:opacity-50 text-sm"
             >
               <Save className="w-4 h-4" />
               <span>Save</span>
             </button>
             <button
               onClick={onCancel}
-              className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 flex items-center space-x-2 text-sm"
+              className="w-full sm:w-auto bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 flex items-center space-x-2 text-sm"
             >
               <X className="w-4 h-4" />
               <span>Cancel</span>
@@ -3506,25 +3506,25 @@ const OrderManagementApp: React.FC = () => {
                 {orderImages.length === 0 ? (
                   <p className="text-gray-500 text-sm">No images uploaded</p>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {orderImages.map((image, index) => (
-                      <div key={index} className="relative group">
-                        <img
-                          src={image.url}
-                          alt={image.name}
-                          className="w-full h-32 object-cover rounded border cursor-pointer"
-                          onClick={() => window.open(image.url, "_blank")}
-                        />
-                        <button
-                          onClick={() => removeOrderImage(index)}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-opacity opacity-0 group-hover:opacity-100"
-                          title="Remove image"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+<div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+  {orderImages.map((image, index) => (
+    <div key={index} className="relative group aspect-square">
+      <img
+        src={image.url}
+        alt={image.name}
+        className="w-full h-full object-contain rounded border bg-white p-1 cursor-pointer"
+        onClick={() => window.open(image.url, "_blank")}
+      />
+      <button
+        onClick={() => removeOrderImage(index)}
+        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-opacity opacity-0 group-hover:opacity-100"
+        title="Remove image"
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  ))}
+</div>
                 )}
               </div>
             </div>
