@@ -2,35 +2,44 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Head from 'next/head';
+import debounce from 'lodash.debounce';
 
 // Helper to normalize Sri Lankan phone numbers to 94XXXXXXXXX format
 function normalizePhone(phone) {
   if (!phone) return '';
   let digits = phone.replace(/\D/g, '');
 
-  // Already in 94XXXXXXXXX format (11 digits starting with 94)
   if (digits.startsWith('94') && digits.length === 11) {
     return digits;
   }
-
-  // Local mobile: 077XXXXXXX → 9477XXXXXXX
   if (digits.startsWith('0') && digits.length === 10) {
     return '94' + digits.substring(1);
   }
-
-  // Short mobile: 77XXXXXXX (9 digits, starts with 7/8/9)
   if (digits.length === 9 && /^[789]/.test(digits)) {
     return '94' + digits;
   }
-
-  // Landline or other: e.g., 011XXXXXX → 9411XXXXXX
   if (digits.startsWith('0') && digits.length >= 9) {
     return '94' + digits.substring(1);
   }
-
-  // Fallback: just return cleaned digits
   return digits;
 }
+
+// Fuzzy search helper (case-insensitive partial match)
+function fuzzyMatch(text, query) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return text?.toLowerCase().includes(q);
+}
+
+// Debounced search setter
+const useDebounce = (value, delay) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+};
 
 export default function LeadDashboard() {
   const [leads, setLeads] = useState([]);
@@ -46,6 +55,8 @@ export default function LeadDashboard() {
   const [tagFilter, setTagFilter] = useState('ALL');
   const [showFilters, setShowFilters] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '' });
+
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const showToast = useCallback((msg) => {
     setToast({ show: true, message: msg });
@@ -85,15 +96,16 @@ export default function LeadDashboard() {
 
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
-      // Normalize once for performance
       const normalizedLeadPhone = normalizePhone(lead.phone_raw);
-      const normalizedSearch = normalizePhone(searchTerm);
+      const normalizedSearchPhone = normalizePhone(debouncedSearchTerm);
 
-      const matchesSearch = !searchTerm ||
-        (lead.business_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (lead.contact_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        normalizedLeadPhone.includes(normalizedSearch);
+      const matchesSearch =
+        fuzzyMatch(lead.business_name, debouncedSearchTerm) ||
+        fuzzyMatch(lead.contact_name, debouncedSearchTerm) ||
+        fuzzyMatch(lead.email, debouncedSearchTerm) ||
+        normalizedLeadPhone.includes(normalizedSearchPhone) ||
+        fuzzyMatch(lead.address, debouncedSearchTerm) ||
+        fuzzyMatch(lead.tags, debouncedSearchTerm);
 
       const matchesQuality = qualityFilter === 'ALL' || lead.lead_quality === qualityFilter;
       const matchesCategory = categoryFilter === 'ALL' || lead.category === categoryFilter;
@@ -119,7 +131,17 @@ export default function LeadDashboard() {
              matchesContact && matchesMinRating && matchesMaxRating && 
              matchesReviews && matchesTag;
     });
-  }, [leads, searchTerm, qualityFilter, categoryFilter, contactFilter, minRating, maxRating, minReviews, tagFilter]);
+  }, [
+    leads,
+    debouncedSearchTerm,
+    qualityFilter,
+    categoryFilter,
+    contactFilter,
+    minRating,
+    maxRating,
+    minReviews,
+    tagFilter
+  ]);
 
   const exportToCSV = () => {
     if (filteredLeads.length === 0) return;
@@ -172,7 +194,14 @@ export default function LeadDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <p className="text-black text-center text-lg">Loading leads...</p>
+        <div className="space-y-3 w-full max-w-md">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="bg-white p-4 rounded-xl shadow-sm animate-pulse">
+              <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -180,9 +209,15 @@ export default function LeadDashboard() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <p className="text-black mb-2 text-lg">⚠️ Failed to load leads</p>
-          <p className="text-black text-sm">{error}</p>
+          <p className="text-gray-600 text-sm mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -191,7 +226,7 @@ export default function LeadDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       <Head>
-        <title>Colombo B2B Leads</title>
+        <title>Colombo B2B Leads | Sales Accelerator</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
@@ -217,7 +252,7 @@ export default function LeadDashboard() {
 
           <input
             type="text"
-            placeholder="Search business, contact, or phone..."
+            placeholder="Search business, contact, email, phone, or address..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full p-3 text-base border border-gray-300 rounded-lg mb-3 text-black placeholder-gray-500"
@@ -329,19 +364,47 @@ export default function LeadDashboard() {
       {/* Leads List */}
       <main className="px-4 pt-4">
         {filteredLeads.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-black text-lg">No matching leads</p>
-            <p className="text-black text-sm mt-1">Try adjusting your filters.</p>
+          <div className="text-center py-12 px-4">
+            <div className="text-5xl mb-4">🔍</div>
+            <p className="text-black text-lg font-medium">No leads match your filters</p>
+            <p className="text-gray-600 mt-1">Try broadening your search or adjusting filters.</p>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setQualityFilter('ALL');
+                setCategoryFilter('ALL');
+                setContactFilter('ALL');
+                setTagFilter('ALL');
+                setMinRating('');
+                setMaxRating('');
+                setMinReviews('');
+              }}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
+            >
+              Reset All Filters
+            </button>
           </div>
         ) : (
           <div className="space-y-4 pb-24">
             {filteredLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
-              const normalizedWaNumber = normalizePhone(lead.whatsapp_number);
+              const normalizedWaNumber = normalizePhone(lead.whatsapp_number || lead.phone_raw);
               const waLink = normalizedWaNumber ? `https://wa.me/${normalizedWaNumber}` : '';
 
+              // Strategic: Highlight high-intent leads
+              const isHighValue = 
+                lead.lead_quality === 'HOT' && 
+                lead.email && 
+                lead.phone_raw && 
+                (parseFloat(lead.rating) >= 4.0 || parseInt(lead.review_count) >= 20);
+
               return (
-                <div key={i} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
+                <div 
+                  key={i} 
+                  className={`border rounded-xl p-4 bg-white shadow-sm transition-all ${
+                    isHighValue ? 'border-green-500 ring-1 ring-green-200' : 'border-gray-200'
+                  }`}
+                >
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <h2 className="font-bold text-black text-lg leading-tight">{contactName}</h2>
@@ -364,6 +427,11 @@ export default function LeadDashboard() {
                             {lead.category}
                           </span>
                         )}
+                        {isHighValue && (
+                          <span className="px-2.5 py-1 text-xs bg-green-100 text-green-800 rounded-full font-bold">
+                            💎 High-Value
+                          </span>
+                        )}
                       </div>
                     </div>
                     {waLink && (
@@ -372,7 +440,7 @@ export default function LeadDashboard() {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => showToast('Opening WhatsApp...')}
-                        className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 transition"
+                        className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 transition hover:bg-green-700"
                         aria-label="Message on WhatsApp"
                       >
                         <span className="text-white text-xl">💬</span>

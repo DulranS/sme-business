@@ -9,29 +9,67 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CSV_PATH = join(__dirname, 'output_business_leads.csv');
 
-// Helper: extract clean 9-digit Sri Lankan local number (without country code)
+// Utility: sanitize string (prevent XSS, trim, collapse whitespace)
+function sanitize(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .trim()
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/<[^>]*>/g, ''); // strip HTML
+}
+
+// Utility: validate email with regex
+function isValidEmail(email) {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email);
+}
+
+// Helper: extract clean 9-digit Sri Lankan local number (for WhatsApp)
 function extractLocalNumber(phone) {
   if (!phone) return '';
   const digits = phone.toString().replace(/\D/g, '');
-  // Sri Lankan numbers: usually 10 digits including 0, or 9 without leading 0
-  // We want last 9 digits after removing country code (94) or leading 0
+
+  // Handle international format: +94 or 94
   if (digits.startsWith('94') && digits.length >= 11) {
-    return digits.substring(2).slice(-9);
+    const local = digits.substring(2);
+    return local.length >= 9 ? local.slice(-9) : '';
   }
+
+  // Handle local format: 077XXXXXXX → 77XXXXXXX (9 digits)
   if (digits.startsWith('0') && digits.length === 10) {
     return digits.substring(1);
   }
-  if (digits.length === 9) {
+
+  // Already 9-digit local?
+  if (digits.length === 9 && /^[789]/.test(digits)) {
     return digits;
   }
-  // Fallback: take last 9 digits if long enough
+
+  // Fallback: take last 9 digits if plausible
   return digits.length >= 9 ? digits.slice(-9) : '';
+}
+
+// Helper: normalize phone to E.164 for display (e.g., +94771234567)
+function normalizeToE164(phone) {
+  if (!phone) return '';
+  const digits = phone.toString().replace(/\D/g, '');
+  if (digits.startsWith('94') && digits.length === 11) {
+    return `+${digits}`;
+  }
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `+94${digits.substring(1)}`;
+  }
+  if (digits.length === 9 && /^[789]/.test(digits)) {
+    return `+94${digits}`;
+  }
+  return ''; // invalid
 }
 
 export async function GET() {
   if (!fs.existsSync(CSV_PATH)) {
+    console.error(`[Leads API] CSV file not found at: ${CSV_PATH}`);
     return NextResponse.json(
-      { error: 'output_business_leads.csv not found in /app/api/leads/' },
+      { error: 'Lead data file missing. Contact admin.' },
       { status: 404 }
     );
   }
@@ -42,76 +80,86 @@ export async function GET() {
       columns: true,
       skip_empty_lines: true,
       relax_column_count: true,
+      skip_records_with_empty_values: false, // we handle empties manually
     });
 
-    const seen = new Set(); // for deduplication
-    const cleaned = records
-      .filter(row => {
-        const name = (row.business_name || '').trim();
-        if (!name || name.includes('SUMMARY') || name.toLowerCase() === 'business name') {
-          return false;
-        }
+    const seen = new Set(); // dedupe key: normalized phone + email + business
+    const cleaned = [];
 
-        // Optional: dedupe by business + phone/email
-        const key = `${name}|${row.phone_raw || ''}|${row.email || ''}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map(row => {
-        // Clean email
-        let email = (row.email || '').trim();
-        if (
-          !email ||
-          email.includes('.png') ||
-          email.includes('sentry') ||
-          email.includes('@domain.com') ||
-          email.includes('example.com') ||
-          !email.includes('@')
-        ) {
-          email = '';
-        }
+    for (const row of records) {
+      const business_name = sanitize(row.business_name);
+      if (!business_name || business_name.toLowerCase().includes('summary')) {
+        continue;
+      }
 
-        // Clean phone
-        const phone_raw = (row.phone_raw || '').toString().trim();
+      // Normalize contact info
+      const email = sanitize(row.email);
+      const validEmail = email && isValidEmail(email) ? email : '';
 
-        // Derive WhatsApp number (9-digit local format)
-        const whatsapp_number = extractLocalNumber(phone_raw);
+      // Try multiple phone fields (extendable)
+      const phoneCandidates = [
+        row.phone_raw,
+        row.phone,
+        row.mobile,
+        row.whatsapp,
+        row.contact_number
+      ].filter(Boolean);
+      const rawPhone = phoneCandidates.length ? sanitize(phoneCandidates[0]) : '';
+      const e164Phone = normalizeToE164(rawPhone);
+      const whatsappLocal = extractLocalNumber(rawPhone);
 
-        // Normalize lead quality
-        let lead_quality = (row.lead_quality || '').trim().toUpperCase();
-        if (!['HOT', 'WARM', 'COLD'].includes(lead_quality)) {
-          lead_quality = 'COLD';
-        }
+      // Dedupe key: use normalized phone or email
+      const dedupeKey = `${business_name}|${e164Phone}|${validEmail}`.toLowerCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
 
-        // Ensure all fields exist to avoid frontend errors
-        return {
-          business_name: (row.business_name || '').trim(),
-          contact_name: '', // intentionally left for frontend flexibility
-          category: (row.category || '').trim(),
-          lead_quality,
-          phone_raw: phone_raw,
-          whatsapp_number, // critical for frontend WhatsApp link
-          email,
-          website: (row.website || '').trim(),
-          address: (row.address || '').trim(),
-          rating: row.rating ? String(row.rating).trim() : '',
-          review_count: row.review_count ? String(row.review_count).trim() : '',
-          tags: (row.tags || '').trim(),
-        };
-      })
-      .sort((a, b) => {
-        // Sort: HOT > WARM > COLD, then by business name
-        const qualityOrder = { HOT: 0, WARM: 1, COLD: 2 };
-        if (a.lead_quality !== b.lead_quality) {
-          return qualityOrder[a.lead_quality] - qualityOrder[b.lead_quality];
-        }
-        return a.business_name.localeCompare(b.business_name);
+      // Infer contact name if missing
+      let contact_name = sanitize(row.contact_name);
+      if (!contact_name) {
+        contact_name = business_name; // fallback to business name
+      }
+
+      // Normalize lead quality
+      const lead_quality = ['HOT', 'WARM'].includes((row.lead_quality || '').trim().toUpperCase())
+        ? row.lead_quality.trim().toUpperCase()
+        : 'COLD';
+
+      // Parse numeric fields safely
+      const rating = parseFloat(row.rating) >= 0 ? String(parseFloat(row.rating).toFixed(1)) : '';
+      const review_count = parseInt(row.review_count, 10) >= 0 ? String(parseInt(row.review_count, 10)) : '';
+
+      cleaned.push({
+        business_name,
+        contact_name,
+        category: sanitize(row.category),
+        lead_quality,
+        phone_raw: rawPhone, // original for display
+        phone_e164: e164Phone, // for tel: links
+        whatsapp_number: whatsappLocal, // for wa.me (9-digit local)
+        email: validEmail,
+        website: sanitize(row.website),
+        address: sanitize(row.address),
+        rating,
+        review_count,
+        tags: sanitize(row.tags),
       });
+    }
+
+    // Sort: HOT > WARM > COLD, then by name
+    const qualityOrder = { HOT: 0, WARM: 1, COLD: 2 };
+    cleaned.sort((a, b) => {
+      if (a.lead_quality !== b.lead_quality) {
+        return qualityOrder[a.lead_quality] - qualityOrder[b.lead_quality];
+      }
+      return a.business_name.localeCompare(b.business_name, 'en', { sensitivity: 'base' });
+    });
 
     return NextResponse.json(cleaned);
   } catch (error) {
-    console.error('CSV Parsing Error:', error);
-    return NextResponse.json({ error: 'Failed to parse leads data' }, { status: 500 });
+    console.error('[Leads API] Fatal error:', error);
+    return NextResponse.json(
+      { error: 'Unable to load leads. Try again later.' },
+      { status: 500 }
+    );
   }
 }
