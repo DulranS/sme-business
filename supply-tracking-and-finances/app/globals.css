@@ -4,6 +4,10 @@
   color: black;
 }
 
+html, body {
+  overscroll-behavior-y: none;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
