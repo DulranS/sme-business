@@ -12,6 +12,7 @@ export default function LeadDashboard() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [contactFilter, setContactFilter] = useState('ALL');
   const [minRating, setMinRating] = useState('');
+  const [maxRating, setMaxRating] = useState(''); // ✅ Added maxRating
   const [minReviews, setMinReviews] = useState('');
   const [tagFilter, setTagFilter] = useState('ALL');
   const [showFilters, setShowFilters] = useState(false);
@@ -73,16 +74,19 @@ export default function LeadDashboard() {
 
       const rating = parseFloat(lead.rating) || 0;
       const reviews = parseInt(lead.review_count) || 0;
-      const matchesRating = !minRating || rating >= parseFloat(minRating);
+
+      const matchesMinRating = !minRating || rating >= parseFloat(minRating);
+      const matchesMaxRating = !maxRating || rating <= parseFloat(maxRating); // ✅ Max rating logic
       const matchesReviews = !minReviews || reviews >= parseInt(minReviews);
 
       const matchesTag = tagFilter === 'ALL' || 
         (lead.tags && lead.tags.split(';').map(t => t.trim()).includes(tagFilter));
 
       return matchesSearch && matchesQuality && matchesCategory && 
-             matchesContact && matchesRating && matchesReviews && matchesTag;
+             matchesContact && matchesMinRating && matchesMaxRating && 
+             matchesReviews && matchesTag;
     });
-  }, [leads, searchTerm, qualityFilter, categoryFilter, contactFilter, minRating, minReviews, tagFilter]);
+  }, [leads, searchTerm, qualityFilter, categoryFilter, contactFilter, minRating, maxRating, minReviews, tagFilter]);
 
   const exportToCSV = () => {
     if (filteredLeads.length === 0) return;
@@ -236,6 +240,7 @@ export default function LeadDashboard() {
                 </select>
               </div>
 
+              {/* ✅ Min & Max Rating Inputs */}
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="number"
@@ -249,13 +254,24 @@ export default function LeadDashboard() {
                 />
                 <input
                   type="number"
-                  placeholder="Min Reviews (e.g. 50)"
-                  value={minReviews}
-                  onChange={(e) => setMinReviews(e.target.value)}
+                  placeholder="Max Rating (e.g. 4.9)"
+                  value={maxRating}
+                  onChange={(e) => setMaxRating(e.target.value)}
                   min="0"
+                  max="5"
+                  step="0.1"
                   className="w-full p-3 text-base border border-gray-300 rounded-lg text-black placeholder-gray-500"
                 />
               </div>
+
+              <input
+                type="number"
+                placeholder="Min Reviews (e.g. 50)"
+                value={minReviews}
+                onChange={(e) => setMinReviews(e.target.value)}
+                min="0"
+                className="w-full p-3 text-base border border-gray-300 rounded-lg text-black placeholder-gray-500"
+              />
             </div>
           )}
 
@@ -289,7 +305,7 @@ export default function LeadDashboard() {
           <div className="space-y-4 pb-24">
             {filteredLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
-              const waLink = lead.whatsapp_number ? `https://wa.me/94${lead.whatsapp_number}` : '';
+              const waLink = lead.whatsapp_number ? `https://wa.me/94${lead.whatsapp_number.replace(/\D/g, '')}` : '';
 
               return (
                 <div key={i} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
@@ -359,7 +375,7 @@ export default function LeadDashboard() {
                     {lead.phone_raw && (
                       <div className="flex items-center justify-between">
                         <a
-                          href={`tel:+94${lead.whatsapp_number}`}
+                          href={`tel:+94${lead.whatsapp_number.replace(/\D/g, '')}`}
                           className="text-blue-600 hover:underline flex items-center gap-1"
                           onClick={(e) => {
                             e.stopPropagation();
