@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   CheckCircle,
   Package,
@@ -155,6 +155,26 @@ class SupabaseClient {
               throw new Error(`Delete failed: ${response.status}`);
           },
         }),
+        like: (column: string, pattern: string) => ({
+          execute: async (): Promise<void> => {
+            const response = await fetch(
+              `${this.url}/rest/v1/${table}?${column}=like.${encodeURIComponent(
+                pattern
+              )}`,
+              {
+                method: "DELETE",
+                headers: {
+                  apikey: this.key,
+                  Authorization: `Bearer ${this.key}`,
+                  "Content-Type": "application/json",
+                  Prefer: "return=minimal",
+                },
+              }
+            );
+            if (!response.ok)
+              throw new Error(`Delete failed: ${response.status}`);
+          },
+        }),
       }),
     };
   }
@@ -262,9 +282,6 @@ const CompletedOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notifiedOrderIds, setNotifiedOrderIds] = useState<Set<number>>(
-    new Set()
-  );
   const [shippingQuantities, setShippingQuantities] = useState<
     Record<number, number>
   >({});
@@ -284,13 +301,19 @@ const CompletedOrdersPage: React.FC = () => {
           .eq("status", "completed")
           .execute();
 
-        const newOrders = completedOrders.filter(
-          (o) => !notifiedOrderIds.has(o.id)
-        );
-        newOrders.forEach((order) => {
-          sendDiscordWebhook(order);
-          setNotifiedOrderIds((prev) => new Set(prev).add(order.id));
-        });
+
+        const notifiedOrderIdsRef = useRef<Set<number>>(new Set());
+
+// Inside useEffect:
+const newOrders = completedOrders.filter(
+  (o) => !notifiedOrderIdsRef.current.has(o.id)
+);
+newOrders.forEach((order) => {
+  sendDiscordWebhook(order);
+  notifiedOrderIdsRef.current.add(order.id);
+});
+
+
 
         setOrders(completedOrders);
       } catch (err) {
@@ -387,23 +410,14 @@ const submitShipping = async (order: Order) => {
   const baseDate = now.split("T")[0];
 
   try {
-    // 🔍 Check what's already been recorded
-    let hasRevenue = false;
-    let hasDelivery = false;
-    try {
-      const existingRecords = await supabase
-        .from("bookkeeping_records")
-        .select("tags")
-        .like("tags", `%order-${order.id}%`)
-        .execute();
+    // 🧹 ALWAYS delete all existing bookkeeping records for this order
+    await supabase
+      .from("bookkeeping_records")
+      .delete()
+      .like("tags", `%order-${order.id}%`)
+      .execute();
 
-      hasRevenue = existingRecords.some(r => (r.tags as string)?.includes('revenue'));
-      hasDelivery = existingRecords.some(r => (r.tags as string)?.includes('delivery'));
-    } catch (e) {
-      console.warn("Could not check existing records:", e);
-    }
-
-    // Only insert new records if shipping something
+    // 💰 Only insert new records if shipping something
     if (newShipped > 0) {
       const custTotal = extractNumericValue(order.customer_price) || 0;
       const suppTotal = extractNumericValue(order.supplier_price) || 0;
@@ -413,8 +427,8 @@ const submitShipping = async (order: Order) => {
       if (hasFinancials) {
         const recordsToInsert: any[] = [];
 
-        // 💰 REVENUE: Add if not already recorded
-        if (!hasRevenue && custTotal > 0) {
+        // 💵 Revenue (full amount, always)
+        if (custTotal > 0) {
           recordsToInsert.push({
             date: baseDate,
             payment_date: baseDate,
@@ -433,18 +447,10 @@ const submitShipping = async (order: Order) => {
           });
         }
 
-        // 📦 SUPPLIER PRODUCT COST: Always reflect current total shipped
+        // 📦 Supplier Product Cost (scaled to shipped quantity)
         if (suppTotal > 0 && order.supplier_name) {
-          // Delete only product cost records
-          await supabase
-            .from("bookkeeping_records")
-            .delete()
-            .eq("tags", `order-${order.id},supplier,product`)
-            .execute();
-
           const suppPerUnit = totalMOQ > 0 ? suppTotal / totalMOQ : suppTotal;
           const costTotal = suppPerUnit * newShipped;
-
           if (costTotal > 0) {
             recordsToInsert.push({
               date: baseDate,
@@ -465,8 +471,8 @@ const submitShipping = async (order: Order) => {
           }
         }
 
-        // 🚚 DELIVERY FEE: Add if not already recorded
-        if (!hasDelivery && deliveryFee > 0 && order.supplier_name) {
+        // 🚚 Delivery Fee (flat, one-time)
+        if (deliveryFee > 0 && order.supplier_name) {
           recordsToInsert.push({
             date: baseDate,
             payment_date: baseDate,
@@ -491,13 +497,13 @@ const submitShipping = async (order: Order) => {
       }
     }
 
-    // Update order
+    // ✅ Update order with fresh shipped_at on every shipment
     await supabase
       .from("orders")
       .update({
         status: finalStatus,
         shipped_quantity: newShipped,
-        shipped_at: newShipped > 0 ? (order.shipped_at || now) : null,
+        shipped_at: newShipped > 0 ? now : null,
       })
       .eq("id", order.id)
       .execute();
@@ -506,7 +512,7 @@ const submitShipping = async (order: Order) => {
     setOrders((prev) =>
       prev.map((o) =>
         o.id === order.id
-          ? { ...o, shipped_quantity: newShipped, status: finalStatus, shipped_at: newShipped > 0 ? (o.shipped_at || now) : null }
+          ? { ...o, shipped_quantity: newShipped, status: finalStatus, shipped_at: newShipped > 0 ? now : null }
           : o
       )
     );
@@ -529,7 +535,6 @@ const submitShipping = async (order: Order) => {
     });
   }
 };
-
   const shipRemaining = (orderId: number, remaining: number) => {
     setShippingQuantities((prev) => ({ ...prev, [orderId]: remaining }));
   };
