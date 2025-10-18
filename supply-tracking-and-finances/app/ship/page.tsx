@@ -33,6 +33,7 @@ interface Order {
   created_at: string;
   supplier_price?: string;
   supplier_description?: string;
+  supplier_delivery_fee?: string;
   customer_price?: string;
 
   inventory_status?: "in-stock" | "low-stock" | "out-of-stock" | "reorder-needed";
@@ -134,6 +135,15 @@ const extractNumericValue = (priceString?: string): number => {
   return match ? parseFloat(match[0].replace(/,/g, "")) : 0;
 };
 
+// ✅ ADD THIS NEW HELPER
+const calculateOrderProfit = (order: Order): number => {
+  const cust = extractNumericValue(order.customer_price);
+  const supp = extractNumericValue(order.supplier_price);
+  const delivery = extractNumericValue(order.supplier_delivery_fee);
+  const logistics = extractNumericValue(order.logistics_cost);
+  return cust - supp - delivery - logistics;
+};
+
 // ------------------------
 // Image Gallery
 // ------------------------
@@ -181,8 +191,7 @@ const sendDiscordWebhookOnDispatch = async (
   if (!DISCORD_WEBHOOK_URL) return;
 
   const custPrice = extractNumericValue(order.customer_price);
-  const suppPrice = extractNumericValue(order.supplier_price);
-  const profit = custPrice - suppPrice;
+  const profit = calculateOrderProfit(order);
   const margin = custPrice > 0 ? ((profit / custPrice) * 100).toFixed(1) : "N/A";
 
   const payload = {
@@ -255,11 +264,7 @@ const ShipOrdersPage: React.FC = () => {
     orders.reduce((sum, o) => sum + extractNumericValue(o.customer_price), 0), [orders]
   );
   const totalProfit = useMemo(() =>
-    orders.reduce((sum, o) => {
-      const cust = extractNumericValue(o.customer_price);
-      const supp = extractNumericValue(o.supplier_price);
-      return sum + (cust - supp);
-    }, 0), [orders]
+    orders.reduce((sum, o) => sum + calculateOrderProfit(o), 0), [orders]
   );
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
@@ -394,6 +399,7 @@ const ShipOrdersPage: React.FC = () => {
       "Urgency",
       "Inventory Status",
       "Days in Queue",
+            "Supplier Delivery Fee",
       "Logistics Cost",
       "Shipping Carrier",
       "Tracking Number",
@@ -404,8 +410,7 @@ const ShipOrdersPage: React.FC = () => {
 
     const csvRows = orders.map((o) => {
       const cust = extractNumericValue(o.customer_price);
-      const supp = extractNumericValue(o.supplier_price);
-      const profit = cust - supp;
+      const profit = calculateOrderProfit(o);
       const margin = cust > 0 ? (profit / cust) * 100 : 0;
       const totalMOQ = extractMOQNumber(o.moq);
       const shipped = o.shipped_quantity || 0;
@@ -430,7 +435,8 @@ const ShipOrdersPage: React.FC = () => {
         o.urgency,
         o.inventory_status || "N/A",
         daysInQueue,
-        o.logistics_cost || "N/A",
+o.supplier_delivery_fee || "N/A",
+o.logistics_cost || "N/A",
         o.shipping_carrier || "N/A",
         o.tracking_number || "N/A",
         o.route_optimized ? "Yes" : "No",
@@ -583,10 +589,9 @@ const ShipOrdersPage: React.FC = () => {
           // Strategic flags
           const showUrgencyFlag = order.urgency === "high";
           const showInventoryRisk = order.inventory_status === "low-stock" || order.inventory_status === "out-of-stock";
-          const custPrice = extractNumericValue(order.customer_price);
-          const suppPrice = extractNumericValue(order.supplier_price);
-          const profit = custPrice - suppPrice;
+          const profit = calculateOrderProfit(order);
           const profitPerUnit = totalMOQ > 0 ? profit / totalMOQ : 0;
+          const custPrice = extractNumericValue(order.customer_price); // keep for margin
 
           return (
             <div
