@@ -1163,10 +1163,6 @@ const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
 }, [roiTimeline, hasSufficientHistory]);
 
 const customerAnalysis = useMemo(() => {
-  if (!hasSufficientHistory) {
-    return []; // or return raw data without CLV
-  }
-
   const customers = {};
   filteredRecords.forEach((r) => {
     if (r.customer && r.category === "Inflow") {
@@ -1180,42 +1176,51 @@ const customerAnalysis = useMemo(() => {
         };
       }
       const qty = parseFloat(r.quantity) || 1;
-      customers[r.customer].revenue += parseFloat(r.amount) * qty;
+      const amount = parseFloat(r.amount) || 0;
+      customers[r.customer].revenue += amount * qty;
       let costPerUnit = parseFloat(r.cost_per_unit) || 0;
       if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-        costPerUnit = inventoryCostMap[r.description];
+        costPerUnit = inventoryCostMap[r.description] || 0;
       }
       customers[r.customer].cost += costPerUnit * qty;
       customers[r.customer].transactions += 1;
       if (r.project) customers[r.customer].projects.add(r.project);
-      customers[r.customer].dates.push(new Date(r.date));
+      if (r.date) customers[r.customer].dates.push(new Date(r.date));
     }
   });
 
   return Object.entries(customers)
     .map(([name, data]) => {
-      const firstDate = new Date(Math.min(...data.dates.map((d) => d.getTime())));
-      const lastDate = new Date(Math.max(...data.dates.map((d) => d.getTime())));
-      const monthsActive =
-        (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
-        (lastDate.getMonth() - firstDate.getMonth()) +
-        1;
-
-      // Only compute CLV if customer has ≥3 months of activity
-      const clv = monthsActive >= 3
-        ? ((data.revenue / monthsActive) * 12) * ((data.revenue - data.cost) / data.revenue)
+      const firstDate = data.dates.length
+        ? new Date(Math.min(...data.dates.map((d) => d.getTime())))
         : null;
+      const lastDate = data.dates.length
+        ? new Date(Math.max(...data.dates.map((d) => d.getTime())))
+        : null;
+      const monthsActive = firstDate && lastDate
+        ? (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
+          (lastDate.getMonth() - firstDate.getMonth()) +
+          1
+        : 0;
+
+      // Only compute CLV if conditions met
+      const clv =
+        hasSufficientHistory && monthsActive >= 3 && data.revenue > 0
+          ? ((data.revenue / monthsActive) * 12) *
+            ((data.revenue - data.cost) / data.revenue)
+          : null;
 
       return {
         name,
         revenue: data.revenue,
         cost: data.cost,
         profit: data.revenue - data.cost,
-        margin: data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
+        margin:
+          data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
         transactions: data.transactions,
         projectCount: data.projects.size,
-        avgTransaction: data.revenue / data.transactions,
-        clv, // may be null
+        avgTransaction: data.transactions ? data.revenue / data.transactions : 0,
+        clv,
       };
     })
     .sort((a, b) => b.profit - a.profit);
@@ -3294,7 +3299,7 @@ const customerAnalysis = useMemo(() => {
       ? "—"
       : (
         <span className="text-gray-400" title="Need ≥90 days of data for CLV">
-          Insufficient data
+          CLV not available
         </span>
       )}
 </td>
