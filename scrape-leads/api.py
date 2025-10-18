@@ -39,8 +39,8 @@ import logging
 # 🔧 CONFIGURATION
 # ==============================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "scrape.py")
-PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "validate.py")
+SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "lean_business_scraper.py")
+PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "whatsapp_lead_preparer.py")
 LEADS_FILE = "b2b_leads.csv"
 WHATSAPP_FILE = "whatsapp_ready_leads.csv"
 LOGS_DIR = "pipeline_logs"

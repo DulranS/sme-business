@@ -40,7 +40,7 @@ logger = logging.getLogger("WhatsAppPrep")
 # Sri Lankan mobile prefixes (2024)
 MOBILE_PREFIXES = {
     "70", "71", "72", "75", "76", "77", "78",
-    "11", "12", "13", "14", "15", "16", "17", "18", "19"  # Some 11xxx are mobile now
+    "12", "13", "14", "15", "16", "17", "18", "19"
 }
 LANDLINE_PREFIXES = {"11", "31", "32", "33", "34", "35", "36", "37", "38", "41", "45", "47", "51", "52", "54", "55", "57", "63", "65", "66", "67"}
 
@@ -84,7 +84,7 @@ def clean_and_classify_number(raw_num):
 def generate_wa_link(number):
     """Generate clickable WhatsApp link."""
     if number:
-        return f"https://wa.me/94{number}"  # NO SPACES
+        return f"https://wa.me/94{number}"  # ✅ No spaces, valid URL
     return ""
 
 # ==============================
