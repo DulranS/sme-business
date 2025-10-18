@@ -1014,7 +1014,7 @@ const SupplierBiddingSection: React.FC<{
               </button>
               <button
                 onClick={handleApprove}
-                disabled={password !== process.env?.NEXT_ADMIN_KEY}
+                disabled={password !== `${process.env?.NEXT_ADMIN_KEY}`}
                 className={`px-4 py-2 rounded text-white ${
                   process.env?.NEXT_ADMIN_KEY
                     ? "bg-green-600 hover:bg-green-700"
@@ -1351,9 +1351,9 @@ const PricingSection: React.FC<{
               </button>
               <button
                 onClick={handleRemove}
-                disabled={removePassword !== process.env?.NEXT_ADMIN_KEY}
+                disabled={removePassword !== `${process.env?.NEXT_ADMIN_KEY}`}
                 className={`px-4 py-2 rounded text-white ${
-                  removePassword === process.env?.NEXT_ADMIN_KEY
+                  removePassword === `${process.env?.NEXT_ADMIN_KEY}`
                     ? "bg-red-600 hover:bg-red-700"
                     : "bg-gray-400"
                 }`}
@@ -2225,7 +2225,7 @@ const OrderManagementApp: React.FC = () => {
     bid: SupplierBid,
     password: string
   ) => {
-    if (password !== process.env?.NEXT_ADMIN_KEY) {
+    if (password !== `${process.env?.NEXT_ADMIN_KEY}`) {
       alert("Incorrect password. Supplier not approved.");
       return;
     }
@@ -3400,7 +3400,7 @@ const OrderManagementApp: React.FC = () => {
                 loading={loading}
                 onEdit={handleEditPricing}
                 onRemoveSupplier={(pwd) => {
-                  if (pwd !== process.env?.NEXT_ADMIN_KEY) {
+                  if (pwd !== `${process.env?.NEXT_ADMIN_KEY}`) {
                     alert("Incorrect password. Supplier not removed.");
                     return;
                   }
