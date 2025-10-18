@@ -1647,10 +1647,10 @@ const LogisticsSection: React.FC<{
 const RecurringOrderManager: React.FC<{
   orders: Order[];
   onClose: () => void;
-  onCreate: (template: Partial<Order>) => Promise<void> | void;
-  onDelete: (id: number) => Promise<void> | void;
+  onCreate: (template: Partial<Order>) => void;
+  onDelete: (id: number) => void;
   onUpdate: (id: number, data: Partial<Order>) => void;
-  onConvertToRecurring: (order: Order) => Promise<void> | void;
+  onConvertToRecurring: (order: Order) => void;
 }> = ({ orders, onClose, onCreate, onDelete, onUpdate, onConvertToRecurring }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<Partial<Order>>({
