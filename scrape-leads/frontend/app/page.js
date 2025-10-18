@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Head from 'next/head';
-import debounce from 'lodash.debounce';
 
 // Helper to normalize Sri Lankan phone numbers to 94XXXXXXXXX format
 function normalizePhone(phone) {
