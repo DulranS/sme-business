@@ -3,6 +3,35 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 
+// Helper to normalize Sri Lankan phone numbers to 94XXXXXXXXX format
+function normalizePhone(phone) {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+
+  // Already in 94XXXXXXXXX format (11 digits starting with 94)
+  if (digits.startsWith('94') && digits.length === 11) {
+    return digits;
+  }
+
+  // Local mobile: 077XXXXXXX → 9477XXXXXXX
+  if (digits.startsWith('0') && digits.length === 10) {
+    return '94' + digits.substring(1);
+  }
+
+  // Short mobile: 77XXXXXXX (9 digits, starts with 7/8/9)
+  if (digits.length === 9 && /^[789]/.test(digits)) {
+    return '94' + digits;
+  }
+
+  // Landline or other: e.g., 011XXXXXX → 9411XXXXXX
+  if (digits.startsWith('0') && digits.length >= 9) {
+    return '94' + digits.substring(1);
+  }
+
+  // Fallback: just return cleaned digits
+  return digits;
+}
+
 export default function LeadDashboard() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,7 +41,7 @@ export default function LeadDashboard() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [contactFilter, setContactFilter] = useState('ALL');
   const [minRating, setMinRating] = useState('');
-  const [maxRating, setMaxRating] = useState(''); // ✅ Added maxRating
+  const [maxRating, setMaxRating] = useState('');
   const [minReviews, setMinReviews] = useState('');
   const [tagFilter, setTagFilter] = useState('ALL');
   const [showFilters, setShowFilters] = useState(false);
@@ -56,11 +85,15 @@ export default function LeadDashboard() {
 
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
+      // Normalize once for performance
+      const normalizedLeadPhone = normalizePhone(lead.phone_raw);
+      const normalizedSearch = normalizePhone(searchTerm);
+
       const matchesSearch = !searchTerm ||
         (lead.business_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (lead.contact_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (lead.phone_raw || '').replace(/\D/g, '').includes(searchTerm.replace(/\D/g, '')) ||
-        (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase());
+        (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        normalizedLeadPhone.includes(normalizedSearch);
 
       const matchesQuality = qualityFilter === 'ALL' || lead.lead_quality === qualityFilter;
       const matchesCategory = categoryFilter === 'ALL' || lead.category === categoryFilter;
@@ -76,7 +109,7 @@ export default function LeadDashboard() {
       const reviews = parseInt(lead.review_count) || 0;
 
       const matchesMinRating = !minRating || rating >= parseFloat(minRating);
-      const matchesMaxRating = !maxRating || rating <= parseFloat(maxRating); // ✅ Max rating logic
+      const matchesMaxRating = !maxRating || rating <= parseFloat(maxRating);
       const matchesReviews = !minReviews || reviews >= parseInt(minReviews);
 
       const matchesTag = tagFilter === 'ALL' || 
@@ -240,7 +273,6 @@ export default function LeadDashboard() {
                 </select>
               </div>
 
-              {/* ✅ Min & Max Rating Inputs */}
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="number"
@@ -305,7 +337,8 @@ export default function LeadDashboard() {
           <div className="space-y-4 pb-24">
             {filteredLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
-              const waLink = lead.whatsapp_number ? `https://wa.me/94${lead.whatsapp_number.replace(/\D/g, '')}` : '';
+              const normalizedWaNumber = normalizePhone(lead.whatsapp_number);
+              const waLink = normalizedWaNumber ? `https://wa.me/${normalizedWaNumber}` : '';
 
               return (
                 <div key={i} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
@@ -375,7 +408,7 @@ export default function LeadDashboard() {
                     {lead.phone_raw && (
                       <div className="flex items-center justify-between">
                         <a
-                          href={`tel:+94${lead.whatsapp_number.replace(/\D/g, '')}`}
+                          href={`tel:+${normalizePhone(lead.phone_raw)}`}
                           className="text-blue-600 hover:underline flex items-center gap-1"
                           onClick={(e) => {
                             e.stopPropagation();
