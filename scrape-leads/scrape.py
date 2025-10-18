@@ -5,7 +5,7 @@ lean_business_scraper.py
 ✅ High-intent leads only  
 ✅ Verified contact info (phone + email)  
 ✅ Deduplicated & scored  
-✅ Budget-safe (<$5/run)  
+✅ Budget-safe (<$1/run, <$4/month for 4 runs)  
 ✅ Outreach-ready output  
 ✅ Full audit trail  
 
@@ -20,7 +20,7 @@ import logging
 import requests
 from datetime import datetime
 from collections import deque
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 from dotenv import load_dotenv
 import googlemaps
 import phonenumbers
@@ -39,22 +39,23 @@ if not GOOGLE_API_KEY:
 LOCATION_NAME = os.getenv("LOCATION_NAME", "").strip()
 
 # Default fallback center (Colombo) used only if geocoding fails.
-DEFAULT_CENTER = (6.86026115, 79.912990)  # (lat, lng)
+DEFAULT_CENTER = (6.86026115, 79.912990)  # Colombo city center (lat, lng)
 
-SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km around Colombo
+SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km radius
 
 # I/O
 LEADS_FILE = os.getenv("LEADS_FILE", "b2b_leads.csv")
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
+LAST_RUN_FILE = "last_run.txt"
 
-# Budget Guardrails (Google Places API Pricing: Text=$32/1k, Details=$17/1k)
-MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "5"))
-MAX_RESULTS_PER_QUERY = int(os.getenv("MAX_RESULTS_PER_QUERY", "10"))
-MAX_TOTAL_BUSINESSES = int(os.getenv("MAX_TOTAL_BUSINESSES", "50"))
+# 🔒 BUDGET & SAFETY GUARDRAILS (Optimized for 4x/month under $4 total)
+MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "4"))        # ↓ from 5
+MAX_RESULTS_PER_QUERY = int(os.getenv("MAX_RESULTS_PER_QUERY", "8"))  # ↓ from 10
+MAX_TOTAL_BUSINESSES = int(os.getenv("MAX_TOTAL_BUSINESSES", "30"))   # ↓ from 50
 
 # Quality Filters
 MIN_RATING = 3.5
-MIN_REVIEWS = 5  # Increased for better signal
+MIN_REVIEWS = 5
 
 # Setup structured logging
 logging.basicConfig(
@@ -70,37 +71,37 @@ logger = logging.getLogger("LeadEngine")
 # ==============================
 # 🎯 BUSINESS LOGIC & SCORING
 # ==============================
-# Simplified B2B keyword list for lighter categorization
+# High-signal B2B keywords (Colombo-relevant)
 B2B_KEYWORDS = [
     "marketing", "advertising", "consulting", "law", "legal", "accounting",
     "software", "it", "technology", "real estate", "insurance", "finance",
-    "architecture", "engineering"
+    "architecture", "engineering", "digital", "agency", "solutions", "services"
 ]
 
-# Prioritized, Colombo-specific search terms (B2B first)
+# Prioritized, Colombo-specific search terms (B2B intent)
 SEARCH_TERMS = [
-    "marketing Colombo",
-    "consulting Colombo",
+    "marketing agency Colombo",
+    "IT consulting Colombo",
     "law firm Colombo",
     "software company Colombo",
-    "accounting Colombo"
+    "accounting services Colombo",
+    "digital marketing Colombo",
+    "business consulting Colombo"
 ]
 
-# Trusted email domains (reduce spam risk)
-TRUSTED_EMAIL_DOMAINS = {
-    "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
-    "icloud.com", "protonmail.com", "aol.com"
-}
-
 def is_professional_email(email):
-    """Prefer business domains; allow personal only if no alternative."""
+    """Reject disposable/temp emails; allow personal only as last resort."""
     if not email:
         return False
-    domain = email.split("@")[-1].lower()
-    # Allow personal emails only as fallback
-    return not domain.startswith("temp") and not domain in {
-        "mailinator.com", "10minutemail.com", "guerrillamail.com", "yopmail.com"
+    email = email.lower()
+    if any(bad in email for bad in ["noreply", "example", "test", "admin", "info@"]):
+        return False
+    domain = email.split("@")[-1]
+    disposable_domains = {
+        "mailinator.com", "10minutemail.com", "guerrillamail.com", "yopmail.com",
+        "tempmail.com", "throwaway.email", "fakeinbox.com"
     }
+    return domain not in disposable_domains
 
 def clean_phone_number(phone_str):
     """Standardize to E.164 Sri Lankan format."""
@@ -130,31 +131,31 @@ def extract_email_from_website(base_url):
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "B2BLeadBot/1.0 (contact: you@email.com)"
+        "User-Agent": "B2BLeadBot/1.0 (ethical scraping; contact: yourname@yourcompany.com)"
     })
 
-    paths = ["", "/contact", "/about", "/en/contact", "/contact-us", "/reach-us"]
+    # Common contact paths (prioritize English & local)
+    paths = ["", "/contact", "/about", "/en/contact", "/contact-us", "/reach-us", "/team"]
     for path in paths:
         try:
             url = urljoin(base_url, path)
-            response = session.get(url, timeout=7, allow_redirects=True)
+            response = session.get(url, timeout=6, allow_redirects=True)
             if response.status_code != 200:
                 continue
 
-            # Find all emails
+            # Extract emails with basic context filtering
             emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", response.text)
             for email in emails:
-                email = email.lower()
-                if "noreply" in email or "example" in email or "test" in email:
-                    continue
+                email = email.lower().strip()
                 if is_professional_email(email):
                     return email
-        except Exception:
+        except Exception as e:
+            logger.debug(f"   → Email extraction failed for {url}: {e}")
             continue
     return None
 
 def categorize_business(name, types):
-    """Simple categorization: 'B2B' if any B2B keyword matches, else 'OTHER'."""
+    """Categorize as B2B if keyword matches; else OTHER."""
     text = f"{name} {' '.join(types)}".lower()
     for kw in B2B_KEYWORDS:
         if kw in text:
@@ -162,7 +163,7 @@ def categorize_business(name, types):
     return "OTHER"
 
 def score_and_tag_lead(rating, reviews, has_phone, has_email, has_website, category):
-    """Return (quality_score, quality_label, tags)."""
+    """Return (score, quality_label, tags)."""
     score = 0
     tags = []
 
@@ -186,12 +187,10 @@ def score_and_tag_lead(rating, reviews, has_phone, has_email, has_website, categ
         score += 10
         tags.append("Has Website")
 
-    # Small, simple category bonus for B2B matches
     if category == "B2B":
         score += 10
         tags.append("B2B")
 
-    # Final quality
     if score >= 80:
         quality = "🔥 HOT"
     elif score >= 50:
@@ -205,7 +204,7 @@ def score_and_tag_lead(rating, reviews, has_phone, has_email, has_website, categ
 # ⚙️ INFRASTRUCTURE
 # ==============================
 class RateLimiter:
-    def __init__(self, max_per_minute=25):  # Conservative
+    def __init__(self, max_per_minute=25):
         self.calls = deque()
         self.limit = max_per_minute
 
@@ -220,13 +219,17 @@ class RateLimiter:
         self.calls.append(time.time())
 
 # ==============================
+# 💰 COST ESTIMATION
+# ==============================
+def estimate_cost(search_calls, details_calls):
+    search_cost = (search_calls * 32) / 1000
+    details_cost = (details_calls * 17) / 1000
+    return round(search_cost + details_cost, 2)
+
+# ==============================
 # 🕵️ SCRAPING & PROCESSING
 # ==============================
 def scrape_businesses(location, location_label="Location"):
-    """
-    location: (lat, lng) tuple
-    location_label: human-friendly string for logs (e.g., "Colombo, Sri Lanka")
-    """
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
     all_places = []
     seen_place_ids = set()
@@ -234,7 +237,7 @@ def scrape_businesses(location, location_label="Location"):
     api_calls = 0
 
     logger.info(f"📍 Starting B2B lead scrape in {location_label} (radius: {SEARCH_RADIUS}m)")
-    logger.info(f"📊 Budget: {MAX_SEARCH_QUERIES} queries | Max {MAX_TOTAL_BUSINESSES} leads")
+    logger.info(f"📊 Budget guardrails: {MAX_SEARCH_QUERIES} queries | Max {MAX_TOTAL_BUSINESSES} leads")
 
     for i, query in enumerate(SEARCH_TERMS[:MAX_SEARCH_QUERIES], 1):
         if len(all_places) >= MAX_TOTAL_BUSINESSES:
@@ -255,7 +258,7 @@ def scrape_businesses(location, location_label="Location"):
                 reviews = place.get("user_ratings_total", 0)
 
                 if (
-                    pid not in seen_place_ids and
+                    pid and pid not in seen_place_ids and
                     rating >= MIN_RATING and
                     reviews >= MIN_REVIEWS
                 ):
@@ -274,7 +277,7 @@ def scrape_businesses(location, location_label="Location"):
 def enrich_and_filter_leads(places):
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
     leads = []
-    seen_contacts = set()  # (phone, email) dedup
+    seen_contacts = set()  # Dedup by (phone, email)
     rate_limiter = RateLimiter()
     api_calls = 0
 
@@ -300,7 +303,7 @@ def enrich_and_filter_leads(places):
             if not phone and not email:
                 continue
 
-            # Deduplication
+            # Deduplication key
             contact_key = (phone or "", email or "")
             if contact_key in seen_contacts:
                 continue
@@ -333,11 +336,7 @@ def enrich_and_filter_leads(places):
             logger.error(f"   ❌ Enrichment error for {place.get('name', 'N/A')}: {e}")
 
     logger.info(f"✅ Enrichment done. Valid leads: {len(leads)} | API calls: {api_calls}")
-    # Sort: HOT first, then by rating
-    leads.sort(key=lambda x: (
-        "HOT" in x["lead_quality"], 
-        x["rating"]
-    ), reverse=True)
+    leads.sort(key=lambda x: ("HOT" in x["lead_quality"], x["rating"]), reverse=True)
     return leads, api_calls
 
 # ==============================
@@ -348,7 +347,6 @@ def save_leads(leads):
         logger.warning("📭 No leads to save.")
         return
 
-    # Clean, sales-friendly columns
     columns = [
         "lead_quality", "business_name", "category", "tags",
         "phone", "email", "website", "address",
@@ -361,7 +359,6 @@ def save_leads(leads):
         for lead in leads:
             writer.writerow({col: lead.get(col, "") for col in columns})
 
-    # Add human-readable summary footer
     hot = sum(1 for l in leads if "HOT" in l["lead_quality"])
     warm = sum(1 for l in leads if "WARM" in l["lead_quality"])
     cold = len(leads) - hot - warm
@@ -373,29 +370,33 @@ def save_leads(leads):
 
     logger.info(f"💾 Saved {len(leads)} leads to '{LEADS_FILE}'")
 
-def estimate_cost(search_calls, details_calls):
-    search_cost = (search_calls * 32) / 1000
-    details_cost = (details_calls * 17) / 1000
-    return search_cost + details_cost
-
 # ==============================
 # 🚀 MAIN EXECUTION
 # ==============================
 def main():
     logger.info("🚀 STRATEGIC B2B LEAD ENGINE — STARTED")
     logger.info("=" * 60)
+    
+    # 🔒 Prevent duplicate runs on same day
+    today = datetime.now().strftime("%Y-%m-%d")
+    if os.path.exists(LAST_RUN_FILE):
+        with open(LAST_RUN_FILE) as f:
+            last_run = f.read().strip()
+        if last_run == today:
+            logger.warning("🚫 Already ran today. Skipping to preserve budget.")
+            return
+
     start_time = time.time()
 
     try:
-        # Resolve human-friendly location name to coordinates
+        # Resolve location
         gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
         location_label = "Colombo (default)"
-        if LOCATION_NAME:
-            location_query = LOCATION_NAME
-        else:
-            # interactive prompt for convenience
-            location_query = input("Enter location (e.g., 'Colombo, Sri Lanka') [Default: Colombo]: ").strip()
+        location_query = LOCATION_NAME or input(
+            "Enter location (e.g., 'Colombo, Sri Lanka') [Default: Colombo]: "
+        ).strip()
 
+        location = DEFAULT_CENTER
         if location_query:
             try:
                 geocode_results = gmaps.geocode(location_query)
@@ -405,15 +406,10 @@ def main():
                     location_label = geocode_results[0].get("formatted_address", location_query)
                     logger.info(f"🔎 Resolved '{location_query}' → {location_label} @ {location}")
                 else:
-                    logger.warning(f"⚠️ Geocode returned no results for '{location_query}', using default center.")
-                    location = DEFAULT_CENTER
-                # small delay guard
+                    logger.warning(f"⚠️ Geocode failed for '{location_query}'. Using default.")
                 time.sleep(0.2)
             except Exception as e:
-                logger.warning(f"⚠️ Geocoding failed for '{location_query}': {e}. Using default center.")
-                location = DEFAULT_CENTER
-        else:
-            location = DEFAULT_CENTER
+                logger.warning(f"⚠️ Geocoding error: {e}. Using default center.")
 
         # Phase 1: Discover
         places, search_calls = scrape_businesses(location, location_label)
@@ -435,9 +431,15 @@ def main():
         # Final Summary
         logger.info("✅ RUN COMPLETED SUCCESSFULLY")
         logger.info(f"⏱️  Duration: {duration:.1f} minutes")
-        logger.info(f"💰 Estimated Cost: ${total_cost:.2f} (Remaining: ${200 - total_cost:.2f})")
+        logger.info(f"💰 Estimated Cost: ${total_cost:.2f} | Monthly (4x): ~${total_cost * 4:.2f}")
+        if total_cost * 4 > 10:
+            logger.warning("⚠️  Projected monthly cost > $10 — consider lowering limits.")
         logger.info(f"📊 Leads: {len(leads)} (HOT: {sum('HOT' in l['lead_quality'] for l in leads)})")
         logger.info(f"📤 Ready for outreach: {LEADS_FILE}")
+
+        # Record run date
+        with open(LAST_RUN_FILE, "w") as f:
+            f.write(today)
 
     except Exception as e:
         logger.exception(f"💥 CRITICAL FAILURE: {e}")
