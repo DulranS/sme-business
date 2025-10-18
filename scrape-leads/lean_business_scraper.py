@@ -44,7 +44,7 @@ DEFAULT_CENTER = (6.86026115, 79.912990)  # Colombo city center (lat, lng)
 SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km radius
 
 # I/O
-LEADS_FILE = os.getenv("LEADS_FILE", "b2b_leads.csv")
+DEFAULT_LEADS_NAME = "b2b_leads.csv"  # matches scraper output
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
 LAST_RUN_FILE = "last_run.txt"
 

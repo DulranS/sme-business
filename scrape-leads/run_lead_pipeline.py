@@ -27,7 +27,7 @@ SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "scrape.py")
 PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "validate.py")
 
 # Expected output from scraper → input for preparer
-DEFAULT_LEADS_NAME = "output_business_leads.csv"
+DEFAULT_LEADS_NAME = "b2b_leads.csv"
 # target directory under project root: ./frontend/app/api/leads
 FRONTEND_LEADS_DIR = os.path.normpath(
     os.path.join(SCRIPT_DIR, "..", "frontend", "app", "api", "leads")
