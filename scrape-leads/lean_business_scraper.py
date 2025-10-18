@@ -34,7 +34,7 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise EnvironmentError("❌ Missing GOOGLE_API_KEY in .env")
-
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Accept a human-friendly location name (env or runtime input).
 LOCATION_NAME = os.getenv("LOCATION_NAME", "").strip()
 
@@ -45,6 +45,7 @@ SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km radius
 
 # I/O
 DEFAULT_LEADS_NAME = "b2b_leads.csv"  # matches scraper output
+LEADS_FILE = os.getenv("LEADS_FILE", DEFAULT_LEADS_NAME)
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
 LAST_RUN_FILE = "last_run.txt"
 

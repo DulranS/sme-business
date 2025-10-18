@@ -132,7 +132,7 @@ def main():
         return False
 
     # Final check
-    whatsapp_file = "whatsapp_ready_leads.csv"
+    whatsapp_file = "output_business_leads.csv"
     if os.path.exists(whatsapp_file):
         with open(whatsapp_file, "r", encoding="utf-8") as f:
             lines = sum(1 for _ in f)

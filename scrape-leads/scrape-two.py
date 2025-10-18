@@ -42,7 +42,8 @@ DEFAULT_LNG = float(os.getenv("DEFAULT_LNG", "79.912990"))
 SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km
 
 # I/O
-LEADS_FILE = os.getenv("LEADS_FILE", "b2b_leads.csv")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LEADS_FILE = os.path.join(SCRIPT_DIR, os.getenv("LEADS_FILE", "b2b_leads.csv"))
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
 
 # Budget Guardrails (Google Places: Text=$32/1k, Details=$17/1k)
@@ -446,7 +447,7 @@ def save_leads(leads):
         f.write(f"\nSUMMARY: HOT={hot}, WARM={warm}, COLD={total - hot - warm} | Total Leads={total}\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Source: Google Maps + Web Intelligence\n")
 
-    logger.info(f"💾 Saved {total} leads to '{LEADS_FILE}' and '{json_file}'")
+    logger.info(f"💾 Saved leads to: {os.path.abspath(LEADS_FILE)}")
 
 def estimate_cost(search_calls, details_calls):
     return (search_calls * 32 + details_calls * 17) / 1000
