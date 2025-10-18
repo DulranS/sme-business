@@ -279,12 +279,14 @@ export default function BookkeepingApp() {
 
     for (const cost of recurringCosts) {
       // Check if already generated this month
-      const exists = records.some(
-        (r) =>
-          r.description === cost.description &&
-          r.category === "Overhead" &&
-          r.date.startsWith(monthKey)
-      );
+const autoGenNote = "Auto-generated from recurring cost";
+const exists = records.some(
+  (r) =>
+    r.description === cost.description &&
+    r.category === "Overhead" &&
+    r.date.startsWith(monthKey) &&
+    r.notes?.includes(autoGenNote)
+);
       if (!exists) {
         const recordData = {
           date: firstDayStr,
@@ -421,46 +423,52 @@ const hasSufficientHistory = useMemo(() => {
 }, [records]);
 
   // --- Totals & Loan Coverage ---
-  const totals = filteredRecords.reduce(
-    (acc, r) => {
-      const amount = parseFloat(r.amount) || 0;
-      let totalAmount = amount;
-      if (r.category === "Cash Flow Gap") return acc;
-      if (r.category === "Inflow") {
-        const quantity = parseFloat(r.quantity) || 1;
-        totalAmount = amount * quantity;
-        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
-        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-          costPerUnit = inventoryCostMap[r.description];
-        }
-        const cost = costPerUnit * quantity;
-        acc.inflow += totalAmount;
-        acc.inflowCost += cost;
-        acc.inflowProfit += totalAmount - cost;
-      } else {
-        if (r.category === "Outflow") acc.outflow += totalAmount;
-        if (r.category === "Reinvestment") acc.reinvestment += totalAmount;
-        if (r.category === "Overhead") acc.overhead += totalAmount;
-        if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
-        if (r.category === "Loan Received") acc.loanReceived += totalAmount;
-        if (r.category === "Logistics") acc.logistics += totalAmount;
-        if (r.category === "Refund") acc.refund += totalAmount;
+const totals = filteredRecords.reduce(
+  (acc, r) => {
+    const amount = parseFloat(r.amount) || 0;
+    const quantity = parseFloat(r.quantity) || 1;
+    const totalAmount = amount * quantity;
+
+    if (r.category === "Cash Flow Gap") return acc;
+
+    if (r.category === "Inflow") {
+      let costPerUnit = parseFloat(r.cost_per_unit) || 0;
+      if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
+        costPerUnit = inventoryCostMap[r.description];
       }
-      return acc;
-    },
-    {
-      inflow: 0,
-      inflowCost: 0,
-      inflowProfit: 0,
-      outflow: 0,
-      reinvestment: 0,
-      overhead: 0,
-      loanPayment: 0,
-      loanReceived: 0,
-      logistics: 0,
-      refund: 0,
+      const cost = costPerUnit * quantity;
+      acc.inflow += totalAmount;
+      acc.inflowCost += cost;
+      if (costPerUnit > 0) {
+  acc.inflowProfit += totalAmount - cost;
+} else {
+  // Optionally log or track missing cost elsewhere
+}
+    } else {
+      // Apply quantity-aware totalAmount to ALL other categories
+      if (r.category === "Outflow") acc.outflow += totalAmount;
+      if (r.category === "Reinvestment") acc.reinvestment += totalAmount;
+      if (r.category === "Overhead") acc.overhead += totalAmount;
+      if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
+      if (r.category === "Loan Received") acc.loanReceived += totalAmount;
+      if (r.category === "Logistics") acc.logistics += totalAmount;
+      if (r.category === "Refund") acc.refund += totalAmount;
     }
-  );
+    return acc;
+  },
+  {
+    inflow: 0,
+    inflowCost: 0,
+    inflowProfit: 0,
+    outflow: 0,
+    reinvestment: 0,
+    overhead: 0,
+    loanPayment: 0,
+    loanReceived: 0,
+    logistics: 0,
+    refund: 0,
+  }
+);
 
   // Add recurring costs to overhead for calculations
   const totalRecurring = recurringCosts.reduce(
@@ -480,17 +488,17 @@ const hasSufficientHistory = useMemo(() => {
   const today = new Date();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
-  const rollingInflow = records
-    .filter(
-      (r) =>
-        r.category === "Inflow" &&
-        new Date(r.date) >= thirtyDaysAgo &&
-        new Date(r.date) <= today
-    )
-    .reduce(
-      (sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
-      0
-    );
+const rollingInflow = records
+  .filter(
+    (r) =>
+      (r.category === "Inflow" || r.category === "Loan Received") &&
+      new Date(r.date) >= thirtyDaysAgo &&
+      new Date(r.date) <= today
+  )
+  .reduce(
+    (sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
+    0
+  );
   const loanCoveragePercent =
     monthlyLoanTarget > 0 ? (rollingInflow / monthlyLoanTarget) * 100 : 0;
   const loanStatus = loanCoveragePercent >= 100 ? "On Track" : "At Risk";
@@ -660,7 +668,11 @@ const hasSufficientHistory = useMemo(() => {
 
   // Handle Form Submit
   const handleSubmit = async () => {
-    if (!formData.description || !formData.amount) return;
+      if (!formData.description || !formData.amount) return;
+  if (!formData.date) {
+    alert("Please select a date");
+    return;
+  }
     try {
       const recordData = {
         date: formData.date,

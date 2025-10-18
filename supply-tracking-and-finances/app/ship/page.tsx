@@ -374,13 +374,42 @@ const ShipOrdersPage: React.FC = () => {
           shipping_carrier: carrier,
           tracking_number: tracking,
           shipped_quantity: (order.shipped_quantity || 0) + toShip,
-          shipped_at: order.shipped_at || now,
+          shipped_at: now,
         })
         .eq("id", order.id)
         .execute();
 
       // Remove dispatched order from UI
-      setOrders((prev) => prev.filter((o) => o.id !== order.id));
+      const newShipped = (order.shipped_quantity || 0) + toShip;
+const totalMOQ = extractMOQNumber(order.moq);
+const isFullyDispatched = newShipped >= totalMOQ;
+
+// Update order in state (don't remove unless fully done)
+setOrders((prev) =>
+  prev.map((o) =>
+    o.id === order.id
+      ? { ...o, shipped_quantity: newShipped, status: "dispatched" }
+      : o
+  )
+);
+
+// Only remove from "ship" list if fully dispatched
+if (isFullyDispatched) {
+  setOrders((prev) =>
+  prev.map((o) =>
+    o.id === order.id
+      ? {
+          ...o,
+          status: "dispatched",
+          shipping_carrier: carrier,
+          tracking_number: tracking,
+          shipped_quantity: (o.shipped_quantity || 0) + toShip,
+          shipped_at: now,
+        }
+      : o
+  )
+);
+}
       setDispatchData((prev) => {
         const newD = { ...prev };
         delete newD[order.id];
