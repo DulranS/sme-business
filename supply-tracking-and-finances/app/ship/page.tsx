@@ -128,10 +128,25 @@ const extractMOQNumber = (moq: string): number => {
   return match ? parseInt(match[0], 10) : 0;
 };
 
-const extractNumericValue = (priceString?: string): number => {
-  if (!priceString) return 0;
-  const match = priceString.match(/[\d,]+\.?\d*/);
-  return match ? parseFloat(match[0].replace(/,/g, "")) : 0;
+const extractNumericValue = (priceString: any): number => {
+  // Handle null, undefined, or non-string/number types
+  if (priceString == null) return 0;
+
+  // If it's already a number, return it (or 0 if NaN)
+  if (typeof priceString === 'number') {
+    return isNaN(priceString) ? 0 : priceString;
+  }
+
+  // If it's a string, proceed with regex
+  if (typeof priceString === 'string') {
+    const cleaned = priceString.trim();
+    if (!cleaned) return 0;
+    const match = cleaned.match(/[\d,]+\.?\d*/);
+    return match ? parseFloat(match[0].replace(/,/g, "")) : 0;
+  }
+
+  // Fallback for unexpected types (e.g., boolean, object)
+  return 0;
 };
 
 const calculateOrderProfit = (order: Order): number => {
