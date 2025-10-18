@@ -44,3 +44,7 @@ Traceback (most recent call last):
     raise TimeoutExpired(self.args, orig_timeout)
 subprocess.TimeoutExpired: Command '['C:\\Python312\\python.exe', 'c:\\Users\\dulra\\sme-business\\scrape-leads\\scrape.py']' timed out after 300 seconds
 2025-10-17 20:03:37,394 | CRITICAL | 🛑 Pipeline halted: Scraper failed.
+2025-10-19 02:34:35,297 | INFO     | ============================================================
+2025-10-19 02:34:35,297 | INFO     | 🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)
+2025-10-19 02:34:35,297 | INFO     | ============================================================
+2025-10-19 02:34:35,297 | ERROR    | ❌ Scraper script not found: c:\Users\dulra\sme-business\scrape-leads\scrape.py
