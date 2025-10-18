@@ -6,7 +6,7 @@ import {
   MapPin,
   Calendar,
   Download,
-  Image as ImageIcon,
+  ImageIcon,
   AlertTriangle,
   Truck,
   ClipboardList,
@@ -35,7 +35,6 @@ interface Order {
   supplier_description?: string;
   supplier_delivery_fee?: string;
   customer_price?: string;
-
   inventory_status?: "in-stock" | "low-stock" | "out-of-stock" | "reorder-needed";
   shipping_carrier?: string;
   tracking_number?: string;
@@ -124,7 +123,7 @@ const parseImages = (imagesJson: string): OrderImage[] => {
 };
 
 const extractMOQNumber = (moq: string): number => {
-  const cleaned = moq.replace(/,/g, '');
+  const cleaned = moq.replace(/,/g, "");
   const match = cleaned.match(/\d+/);
   return match ? parseInt(match[0], 10) : 0;
 };
@@ -135,7 +134,6 @@ const extractNumericValue = (priceString?: string): number => {
   return match ? parseFloat(match[0].replace(/,/g, "")) : 0;
 };
 
-// ✅ ADD THIS NEW HELPER
 const calculateOrderProfit = (order: Order): number => {
   const cust = extractNumericValue(order.customer_price);
   const supp = extractNumericValue(order.supplier_price);
@@ -248,6 +246,15 @@ const ShipOrdersPage: React.FC = () => {
           .execute();
 
         setOrders(shipOrders);
+
+        // ✅ Initialize shipping quantities to remaining amount
+        const initialQuantities: Record<number, number> = {};
+        shipOrders.forEach((order) => {
+          const total = extractMOQNumber(order.moq);
+          const shipped = order.shipped_quantity || 0;
+          initialQuantities[order.id] = Math.max(0, total - shipped);
+        });
+        setShippingQuantities(initialQuantities);
       } catch (err) {
         console.error("Fetch error:", err);
         setError("Failed to load shipping orders.");
@@ -259,7 +266,7 @@ const ShipOrdersPage: React.FC = () => {
     fetchShipOrders();
   }, []);
 
-  // 💡 Strategic Metrics
+  // Strategic Metrics
   const totalRevenue = useMemo(() =>
     orders.reduce((sum, o) => sum + extractNumericValue(o.customer_price), 0), [orders]
   );
@@ -268,7 +275,6 @@ const ShipOrdersPage: React.FC = () => {
   );
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-  // Avg days from order creation to now (SLA pressure)
   const avgDaysInQueue = useMemo(() => {
     if (orders.length === 0) return 0;
     const totalDays = orders.reduce((sum, o) => {
@@ -277,7 +283,6 @@ const ShipOrdersPage: React.FC = () => {
     return totalDays / orders.length;
   }, [orders]);
 
-  // High-urgency or low-inventory orders count
   const atRiskOrders = useMemo(() =>
     orders.filter(o =>
       o.urgency === "high" ||
@@ -285,7 +290,6 @@ const ShipOrdersPage: React.FC = () => {
       o.inventory_status === "out-of-stock"
     ).length, [orders]);
 
-  // Helpers
   const getRemaining = (order: Order): number => {
     const total = extractMOQNumber(order.moq);
     const shipped = order.shipped_quantity || 0;
@@ -312,7 +316,7 @@ const ShipOrdersPage: React.FC = () => {
 
   const handleQuantityChange = (orderId: number, value: string) => {
     const num = value === "" ? 0 : parseInt(value, 10);
-    if (!isNaN(num)) {
+    if (!isNaN(num) && num >= 0) {
       setShippingQuantities((prev) => ({ ...prev, [orderId]: num }));
     }
   };
@@ -325,8 +329,8 @@ const ShipOrdersPage: React.FC = () => {
     const toShip = shippingQuantities[order.id] || 0;
     const remaining = getRemaining(order);
 
-    if (toShip <= 0) {
-      alert("Please enter a quantity greater than 0.");
+    if (toShip < 1) {
+      alert("Shipment quantity must be at least 1.");
       return;
     }
 
@@ -346,7 +350,6 @@ const ShipOrdersPage: React.FC = () => {
     const now = new Date().toISOString();
 
     try {
-      // ✅ Send Discord notification with shipping quantity
       await sendDiscordWebhookOnDispatch(order, toShip, carrier, tracking);
 
       await supabase
@@ -361,6 +364,7 @@ const ShipOrdersPage: React.FC = () => {
         .eq("id", order.id)
         .execute();
 
+      // Remove dispatched order from UI
       setOrders((prev) => prev.filter((o) => o.id !== order.id));
       setDispatchData((prev) => {
         const newD = { ...prev };
@@ -378,7 +382,7 @@ const ShipOrdersPage: React.FC = () => {
     }
   };
 
-  // Enhanced CSV Export with strategic fields
+  // ✅ Fixed CSV Export — aligned headers and rows
   const exportToCSV = () => {
     if (orders.length === 0) return;
 
@@ -393,14 +397,14 @@ const ShipOrdersPage: React.FC = () => {
       "Description",
       "Customer Price",
       "Supplier Price",
+      "Supplier Delivery Fee",
+      "Logistics Cost",
       "Profit",
       "Margin %",
       "Profit per Unit",
       "Urgency",
       "Inventory Status",
       "Days in Queue",
-            "Supplier Delivery Fee",
-      "Logistics Cost",
       "Shipping Carrier",
       "Tracking Number",
       "Route Optimized",
@@ -429,14 +433,14 @@ const ShipOrdersPage: React.FC = () => {
         `"${o.description.replace(/"/g, '""')}"`,
         o.customer_price || "N/A",
         o.supplier_price || "N/A",
+        o.supplier_delivery_fee || "N/A",
+        o.logistics_cost || "N/A",
         profit > 0 ? profit.toFixed(2) : "N/A",
         margin > 0 ? margin.toFixed(2) : "N/A",
         profitPerUnit > 0 ? profitPerUnit.toFixed(2) : "N/A",
         o.urgency,
         o.inventory_status || "N/A",
         daysInQueue,
-o.supplier_delivery_fee || "N/A",
-o.logistics_cost || "N/A",
         o.shipping_carrier || "N/A",
         o.tracking_number || "N/A",
         o.route_optimized ? "Yes" : "No",
@@ -582,16 +586,14 @@ o.logistics_cost || "N/A",
           const totalMOQ = extractMOQNumber(order.moq);
           const toShip = shippingQuantities[order.id] || 0;
           const isOverShipping = toShip > remaining;
-          const isDispatchDisabled = toShip <= 0 || isOverShipping || 
+          const isDispatchDisabled = toShip < 1 || isOverShipping || 
             !dispatchData[order.id]?.carrier?.trim() || 
             !dispatchData[order.id]?.tracking?.trim();
 
-          // Strategic flags
           const showUrgencyFlag = order.urgency === "high";
           const showInventoryRisk = order.inventory_status === "low-stock" || order.inventory_status === "out-of-stock";
           const profit = calculateOrderProfit(order);
           const profitPerUnit = totalMOQ > 0 ? profit / totalMOQ : 0;
-          const custPrice = extractNumericValue(order.customer_price); // keep for margin
 
           return (
             <div
@@ -659,12 +661,12 @@ o.logistics_cost || "N/A",
                     <div className="flex gap-1">
                       <input
                         type="number"
-                        min="0"
+                        min="1"
                         max={remaining}
                         value={shippingQuantities[order.id] ?? ""}
                         onChange={(e) => handleQuantityChange(order.id, e.target.value)}
                         className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
-                        placeholder="0"
+                        placeholder="1"
                       />
                       {remaining > 0 && (
                         <button
