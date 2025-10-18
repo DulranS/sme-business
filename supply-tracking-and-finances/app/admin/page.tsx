@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Papa from "papaparse";
 import {
   RefreshCw,
@@ -214,6 +214,10 @@ class SupabaseClient {
       select: (columns: string = "*") => ({
         execute: async (): Promise<Order[]> =>
           this.request<Order[]>(`${table}?select=${columns}`),
+        eq: (column: string, value: string | number) => ({
+          execute: async (): Promise<Order[]> =>
+            this.request<Order[]>(`${table}?${column}=eq.${value}&select=${columns}`),
+        }),
       }),
       insert: (data: Partial<Order> | Partial<Order>[]) => ({
         execute: async (): Promise<Order[]> =>
@@ -1935,21 +1939,58 @@ const OrderManagementApp: React.FC = () => {
   }, []);
 
   const biddingSectionRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const bidId = urlParams.get("bid");
-    if (bidId && !isNaN(Number(bidId))) {
-      const orderId = Number(bidId);
-      const order = orders.find((o) => o.id === orderId);
-      if (order) {
-        handleSelectOrder(order);
-        setShowOrdersList(false);
-        setTimeout(() => {
-          biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 300);
-      }
+const isSupplierView = useMemo(() => {
+  return new URLSearchParams(window.location.search).has('bid');
+}, []);
+
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const bidId = urlParams.get("bid");
+
+  if (bidId && !isNaN(Number(bidId))) {
+    const orderId = Number(bidId);
+
+    // Try to find in already loaded orders
+    const order = orders.find((o) => o.id === orderId);
+    if (order) {
+      handleSelectOrder(order);
+      setShowOrdersList(false);
+      setTimeout(() => {
+        biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
+      // Optional: clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
     }
-  }, [orders]);
+
+    // If not found, fetch directly from Supabase
+    const fetchOrderById = async () => {
+      try {
+        const response = await supabase
+          .from("orders")
+          .select("*")
+          .eq("id", orderId)
+          .execute();
+        const fetchedOrder = response[0] as Order | undefined;
+        if (fetchedOrder) {
+          handleSelectOrder(fetchedOrder);
+          setShowOrdersList(false);
+          setTimeout(() => {
+            biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+          }, 300);
+          window.history.replaceState({}, "", window.location.pathname);
+        } else {
+          alert("Order not found.");
+        }
+      } catch (err) {
+        console.error("Failed to fetch order by ID:", err);
+        alert("Could not load the requested order.");
+      }
+    };
+
+    fetchOrderById();
+  }
+}, []); // ← Run only once on mount
 
   useEffect(() => {
     loadOrders();
@@ -3119,16 +3160,18 @@ const OrderManagementApp: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <button
-                onClick={() => deleteOrder(selectedOrder.id)}
-                className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded"
-                title="Delete Order"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
+{!isSupplierView && (
+  <button
+    onClick={() => deleteOrder(selectedOrder.id)}
+    className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded"
+    title="Delete Order"
+  >
+    <Trash2 className="w-5 h-5" />
+  </button>
+)}
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              <FinancialDashboard summary={financialSummary} />
+              {!isSupplierView && <FinancialDashboard summary={financialSummary} />}
               {isInventoryCritical(selectedOrder.inventory_status) && (
                 <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
                   <div className="flex items-start">
@@ -3202,24 +3245,24 @@ const OrderManagementApp: React.FC = () => {
                 </div>
               )}
               {/* Convert to Recurring Button */}
-              {!selectedOrder.is_recurring && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm text-blue-700 mb-2">
-                    Turn this order into a recurring template for predictable revenue.
-                  </p>
-                  <button
-                    onClick={() => {
-                      convertToRecurring(selectedOrder);
-                      setShowOrdersList(true);
-                      setSelectedOrder(null);
-                    }}
-                    className="bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center"
-                  >
-                    <Repeat2 className="w-4 h-4 mr-2" />
-                    Convert to Recurring Order
-                  </button>
-                </div>
-              )}
+{!isSupplierView && !selectedOrder.is_recurring && (
+  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <p className="text-sm text-blue-700 mb-2">
+      Turn this order into a recurring template for predictable revenue.
+    </p>
+    <button
+      onClick={() => {
+        convertToRecurring(selectedOrder);
+        setShowOrdersList(true);
+        setSelectedOrder(null);
+      }}
+      className="bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center"
+    >
+      <Repeat2 className="w-4 h-4 mr-2" />
+      Convert to Recurring Order
+    </button>
+  </div>
+)}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="font-semibold text-gray-900">Category</h3>
@@ -3371,70 +3414,84 @@ const OrderManagementApp: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">
-                  Update Status
-                </h3>
-                <StatusUpdater
-                  currentStatus={selectedOrder.status}
-                  onUpdate={(status) =>
-                    updateOrderStatus(selectedOrder.id, status)
-                  }
-                  loading={loading}
-                />
-              </div>
-              <PricingSection
-                setLoading={setLoading}
-                order={selectedOrder}
-                isEditing={isEditingPricing}
-                supplierName={supplierName}
-                supplierPrice={supplierPrice}
-                supplierDescription={supplierDescription}
-                customerPrice={customerPrice}
-                setSupplierName={setSupplierName}
-                setSupplierPrice={setSupplierPrice}
-                setSupplierDescription={setSupplierDescription}
-                setCustomerPrice={setCustomerPrice}
-                onSave={() => updatePricingInfo(selectedOrder.id)}
-                onCancel={handleCancelEditPricing}
-                loading={loading}
-                onEdit={handleEditPricing}
-                onRemoveSupplier={(pwd) => {
-                  if (pwd !== `${process.env?.NEXT_ADMIN_KEY}`) {
-                    alert("Incorrect password. Supplier not removed.");
-                    return;
-                  }
-                  const updatePayload: Partial<Order> = {
-                    supplier_name: undefined,
-                    supplier_price: undefined,
-                    supplier_description: undefined,
-                    supplier_lead_time_days: undefined,
-                    status: "pending",
-                  };
-                  supabase
-                    .from("orders")
-                    .update(updatePayload)
-                    .eq("id", selectedOrder!.id)
-                    .execute()
-                    .then(() => {
-                      setOrders((prev) =>
-                        prev.map((o) =>
-                          o.id === selectedOrder!.id
-                            ? { ...o, ...updatePayload }
-                            : o
-                        )
-                      );
-                      setSelectedOrder((prev) =>
-                        prev ? { ...prev, ...updatePayload } : null
-                      );
-                      alert("Supplier removed successfully.");
-                    })
-                    .catch((err) => {
-                      console.error("Remove supplier error:", err);
-                      alert("Failed to remove supplier.");
-                    });
-                }}
-              />
+{!isSupplierView && (
+  <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <h3 className="font-semibold text-gray-900 mb-4">
+      Update Status
+    </h3>
+    <StatusUpdater
+      currentStatus={selectedOrder.status}
+      onUpdate={(status) => updateOrderStatus(selectedOrder.id, status)}
+      loading={loading}
+    />
+  </div>
+)}
+{isSupplierView ? (
+  <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+    <h3 className="font-semibold text-gray-900 mb-4">Pricing Summary</h3>
+    <div className="space-y-2">
+      <p><strong>Customer Price:</strong> {selectedOrder.customer_price || "N/A"}</p>
+      <p><strong>Description:</strong> {selectedOrder.description}</p>
+      <p><strong>MOQ:</strong> {selectedOrder.moq}</p>
+      {selectedOrder.category && (
+        <p><strong>Category:</strong> {selectedOrder.category}</p>
+      )}
+    </div>
+  </div>
+) : (
+  <PricingSection
+    setLoading={setLoading}
+    order={selectedOrder}
+    isEditing={isEditingPricing}
+    supplierName={supplierName}
+    supplierPrice={supplierPrice}
+    supplierDescription={supplierDescription}
+    customerPrice={customerPrice}
+    setSupplierName={setSupplierName}
+    setSupplierPrice={setSupplierPrice}
+    setSupplierDescription={setSupplierDescription}
+    setCustomerPrice={setCustomerPrice}
+    onSave={() => updatePricingInfo(selectedOrder.id)}
+    onCancel={handleCancelEditPricing}
+    loading={loading}
+    onEdit={handleEditPricing}
+    onRemoveSupplier={(pwd) => {
+      if (pwd !== `${process.env?.NEXT_ADMIN_KEY}`) {
+        alert("Incorrect password. Supplier not removed.");
+        return;
+      }
+      const updatePayload: Partial<Order> = {
+        supplier_name: undefined,
+        supplier_price: undefined,
+        supplier_description: undefined,
+        supplier_lead_time_days: undefined,
+        status: "pending",
+      };
+      supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", selectedOrder!.id)
+        .execute()
+        .then(() => {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === selectedOrder!.id
+                ? { ...o, ...updatePayload }
+                : o
+            )
+          );
+          setSelectedOrder((prev) =>
+            prev ? { ...prev, ...updatePayload } : null
+          );
+          alert("Supplier removed successfully.");
+        })
+        .catch((err) => {
+          console.error("Remove supplier error:", err);
+          alert("Failed to remove supplier.");
+        });
+    }}
+  />
+)}
               <LogisticsSection
                 order={selectedOrder}
                 isEditing={isEditingLogistics}
