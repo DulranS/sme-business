@@ -1,0 +1,4 @@
+2025-10-19 02:34:43,426 | INFO     | ============================================================
+2025-10-19 02:34:43,426 | INFO     | 🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)
+2025-10-19 02:34:43,427 | INFO     | ============================================================
+2025-10-19 02:34:43,427 | ERROR    | ❌ Scraper script not found: c:\Users\dulra\sme-business\scrape-leads\scrape.py

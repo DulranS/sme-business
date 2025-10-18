@@ -23,8 +23,8 @@ from datetime import datetime
 # ==============================
 LOG_FILE = "lead_pipeline.log"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "scrape.py")
-PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "validate.py")
+SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "lean_business_scraper.py")
+PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "whatsapp_lead_preparer.py")
 
 # Expected output from scraper → input for preparer
 DEFAULT_LEADS_NAME = "b2b_leads.csv"
