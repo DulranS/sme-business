@@ -40,6 +40,9 @@ import {
   Shield,
   Award,
   Info,
+  Repeat,
+  Plus,
+  Repeat2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -52,9 +55,9 @@ interface OrderImage {
 }
 interface SupplierBid {
   supplier_name: string;
-  price: string; // e.g., "5000 USD"
+  price: string;
   notes?: string;
-  submitted_at: string; // ISO
+  submitted_at: string;
   lead_time_days?: number;
 }
 interface Order {
@@ -89,6 +92,11 @@ interface Order {
   route_optimized?: boolean;
   category?: string;
   bids?: string;
+  // === NEW: Recurring Order Fields ===
+  is_recurring?: boolean;
+  recurring_interval?: "weekly" | "monthly" | "quarterly";
+  next_occurrence?: string;
+  recurring_template_id?: number;
 }
 interface FinancialSummary {
   totalRevenue: number;
@@ -115,6 +123,7 @@ interface FinancialSummary {
   inventoryTurnover: number;
   avgSupplierLeadTime: number;
   refundRate: number;
+  recurringClients: number;
 }
 interface CSVRow {
   customer_name?: string;
@@ -139,7 +148,10 @@ interface CSVRow {
   supplier_lead_time_days?: string;
   route_optimized?: string;
   category?: string;
+  is_recurring?: string;
+  recurring_interval?: string;
 }
+
 const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
   "Customer Name": "customer_name",
   Email: "email",
@@ -162,31 +174,12 @@ const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
   "Logistics Cost": "logistics_cost",
   "Lead Time (days)": "supplier_lead_time_days",
   "Route Optimized": "route_optimized",
-  customer_name: "customer_name",
-  email: "email",
-  phone: "phone",
-  location: "location",
-  description: "description",
-  moq: "moq",
-  status: "status",
-  urgency: "urgency",
-  category: "category",
-  supplier_name: "supplier_name",
-  supplier_price: "supplier_price",
-  customer_price: "customer_price",
-  inventory_status: "inventory_status",
-  shipping_carrier: "shipping_carrier",
-  tracking_number: "tracking_number",
-  estimated_delivery: "estimated_delivery",
-  actual_delivery: "actual_delivery",
-  refund_status: "refund_status",
-  logistics_cost: "logistics_cost",
-  supplier_lead_time_days: "supplier_lead_time_days",
-  route_optimized: "route_optimized",
+  "Is Recurring": "is_recurring",
+  "Recurring Interval": "recurring_interval",
 };
 
 // ------------------------
-// Supabase Client (Enhanced)
+// Supabase Client
 // ------------------------
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -195,7 +188,6 @@ const DISCORD_WEBHOOK_URL =
 
 class SupabaseClient {
   constructor(private url: string, private key: string) {}
-
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -217,7 +209,6 @@ class SupabaseClient {
     }
     return response.json() as Promise<T>;
   }
-
   from(table: string) {
     return {
       select: (columns: string = "*") => ({
@@ -260,6 +251,33 @@ const parseCategories = (categoryString?: string): string[] => {
     .filter(Boolean);
 };
 
+// ==============================
+// 🔁 RECURRING SUPPLY INFERENCE
+// ==============================
+const HIGH_RECURRING_CATEGORIES = new Set([
+  "marketing", "advertising", "digital agency", "software", "it services",
+  "consulting", "real estate agency", "architecture", "engineering",
+  "cloud services", "saas", "web development", "design agency", "technology"
+]);
+const MEDIUM_RECURRING_CATEGORIES = new Set([
+  "legal", "law firm", "accounting", "finance", "insurance",
+  "hr services", "recruitment", "logistics", "education", "business services"
+]);
+
+const inferRecurringSupplyLikelihood = (categoryString?: string): "High" | "Medium" | "Low" => {
+  if (!categoryString) return "Low";
+  const categories = parseCategories(categoryString).map(cat => cat.toLowerCase());
+  for (const cat of categories) {
+    if (HIGH_RECURRING_CATEGORIES.has(cat)) return "High";
+    if ([...HIGH_RECURRING_CATEGORIES].some(kw => cat.includes(kw))) return "High";
+  }
+  for (const cat of categories) {
+    if (MEDIUM_RECURRING_CATEGORIES.has(cat)) return "Medium";
+    if ([...MEDIUM_RECURRING_CATEGORIES].some(kw => cat.includes(kw))) return "Medium";
+  }
+  return "Low";
+};
+
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ------------------------
@@ -275,7 +293,6 @@ const getStatusColor = (status: Order["status"]) => {
   };
   return colors[status] || "bg-gray-100 text-gray-800 border-gray-300";
 };
-
 const getStatusIcon = (status: Order["status"]) => {
   const icons: Record<Order["status"], React.ReactElement> = {
     pending: <AlertCircle className="w-4 h-4" />,
@@ -286,7 +303,6 @@ const getStatusIcon = (status: Order["status"]) => {
   };
   return icons[status] || <AlertCircle className="w-4 h-4" />;
 };
-
 const getUrgencyColor = (urgency: Order["urgency"]) => {
   const colors: Record<Order["urgency"], string> = {
     low: "text-green-600 bg-green-50",
@@ -295,7 +311,6 @@ const getUrgencyColor = (urgency: Order["urgency"]) => {
   };
   return colors[urgency] || "text-gray-600 bg-gray-50";
 };
-
 const getInventoryColor = (inv: Order["inventory_status"]) => {
   const map: Record<string, string> = {
     "in-stock": "bg-green-100 text-green-800",
@@ -305,10 +320,8 @@ const getInventoryColor = (inv: Order["inventory_status"]) => {
   };
   return map[inv || ""] || "bg-gray-100 text-gray-800";
 };
-
 const isInventoryCritical = (inv: Order["inventory_status"]) =>
   inv === "low-stock" || inv === "out-of-stock" || inv === "reorder-needed";
-
 const parseImages = (imagesJson: string): OrderImage[] => {
   try {
     return JSON.parse(imagesJson || "[]");
@@ -317,7 +330,6 @@ const parseImages = (imagesJson: string): OrderImage[] => {
     return [];
   }
 };
-
 const parseBids = (bidsJson: string): SupplierBid[] => {
   try {
     return JSON.parse(bidsJson || "[]");
@@ -326,7 +338,6 @@ const parseBids = (bidsJson: string): SupplierBid[] => {
     return [];
   }
 };
-
 const extractNumericValue = (priceString?: any): number => {
   if (priceString == null) return 0;
   const str = String(priceString);
@@ -334,7 +345,6 @@ const extractNumericValue = (priceString?: any): number => {
   if (!match) return 0;
   return parseFloat(match[0].replace(/,/g, ""));
 };
-
 const formatCurrency = (value: number): string => {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -343,7 +353,6 @@ const formatCurrency = (value: number): string => {
     maximumFractionDigits: 0,
   }).format(value);
 };
-
 const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let totalRevenue = 0;
   let totalCost = 0;
@@ -360,6 +369,7 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let totalLeadTime = 0;
   let supplierCount = 0;
   let refunds = 0;
+  let recurringClients = 0;
 
   orders.forEach((order) => {
     const customerPrice = extractNumericValue(order.customer_price);
@@ -367,6 +377,10 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
     const logisticsCost = extractNumericValue(order.logistics_cost);
     const margin =
       customerPrice > 0 ? (customerPrice - supplierPrice) / customerPrice : 0;
+    
+    if (order.is_recurring && !order.recurring_template_id) {
+      recurringClients++;
+    }
 
     if (order.status === "completed") {
       totalRevenue += customerPrice;
@@ -451,16 +465,15 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
     inventoryTurnover,
     avgSupplierLeadTime,
     refundRate,
+    recurringClients,
   };
 };
-
 const getDaysSince = (dateString: string): number => {
   const created = new Date(dateString);
   const now = new Date();
   const diffTime = now.getTime() - created.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
-
 const sendOrderUpdateWebhook = async (order: Order, action: string) => {
   if (!DISCORD_WEBHOOK_URL) return;
   const payload = {
@@ -478,6 +491,7 @@ Urgency: ${order.urgency}
 Description: ${order.description}
 Status: ${order.status}
 Category: ${order.category || "N/A"}
+Recurring: ${order.is_recurring ? `✅ ${order.recurring_interval}` : "❌"}
 Inventory: ${order.inventory_status || "N/A"}
 Shipping: ${order.shipping_carrier || "N/A"} | ${order.tracking_number || "N/A"}
 Est. Delivery: ${
@@ -590,7 +604,7 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
           <BarChart3 className="w-5 h-5 mr-2 text-gray-600" />
           Strategic Performance Indicators
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div className="text-center p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500 mb-1">On-Time Delivery</p>
             <p
@@ -631,6 +645,12 @@ const FinancialDashboard: React.FC<{ summary: FinancialSummary }> = ({
               {summary.inventoryTurnover.toFixed(2)}x
             </p>
           </div>
+          <div className="text-center p-3 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg border border-green-200">
+            <p className="text-xs text-gray-500 mb-1">Recurring Clients</p>
+            <p className="text-lg font-bold text-green-700">
+              {summary.recurringClients}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -653,6 +673,7 @@ const OrderCard: React.FC<{
   const isAging = daysSince > 14 && order.status === "pending";
   const isLowMargin = margin < 20 && order.status === "completed";
   const isInventoryLow = isInventoryCritical(order.inventory_status);
+  const isRecurring = order.is_recurring && !order.recurring_template_id;
   return (
     <div
       className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
@@ -664,19 +685,26 @@ const OrderCard: React.FC<{
           ? "bg-yellow-50"
           : isInventoryLow
           ? "bg-orange-50"
+          : isRecurring
+          ? "bg-green-50"
           : ""
       }`}
       onClick={onClick}
     >
       <div className="flex justify-between items-start mb-2">
         <h3 className="font-medium text-gray-900">{order.customer_name}</h3>
-        <span
-          className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(
-            order.status
-          )}`}
-        >
-          {order.status}
-        </span>
+        <div className="flex items-center space-x-1">
+          {order.is_recurring && !order.recurring_template_id && (
+            <Repeat className="w-3 h-3 text-green-600" aria-label="Recurring Order" />
+          )}
+          <span
+            className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(
+              order.status
+            )}`}
+          >
+            {order.status}
+          </span>
+        </div>
       </div>
       <p className="text-sm text-gray-600 mb-1">{order.moq}</p>
       {parseCategories(order.category).map((cat, idx) => (
@@ -705,6 +733,12 @@ const OrderCard: React.FC<{
           {order.refund_status && order.refund_status !== "none" && (
             <RotateCcw className="w-3 h-3 text-red-500" />
           )}
+          {(() => {
+            const likelihood = inferRecurringSupplyLikelihood(order.category);
+            if (likelihood === "High") return <TrendingUp className="w-3 h-3 text-green-600" aria-label="High recurring need" />;
+            if (likelihood === "Medium") return <TrendingUp className="w-3 h-3 text-blue-600" aria-label="Medium recurring need" />;
+            return null;
+          })()}
         </div>
         {customerPrice > 0 && (
           <div className="text-xs">
@@ -722,58 +756,6 @@ const OrderCard: React.FC<{
             )}
           </div>
         )}
-      </div>
-    </div>
-  );
-};
-
-// ------------------------
-// Image Gallery Component
-// ------------------------
-const ImageGallery: React.FC<{ images: OrderImage[] }> = ({ images }) => {
-  const openImage = (url: string) =>
-    window.open(url, "_blank", "noopener,noreferrer");
-  if (images.length === 0) {
-    return (
-      <div>
-        <h3 className="font-semibold text-gray-900 mb-4">Order Images</h3>
-        <p className="text-gray-500 text-sm">No images available</p>
-      </div>
-    );
-  }
-  return (
-    <div>
-      <h3 className="font-semibold text-gray-900 mb-4">
-        Order Images ({images.length})
-      </h3>
-      <div className="space-y-4">
-        {images.map((image, i) => (
-          <div
-            key={i}
-            className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-          >
-            <p className="text-sm font-medium text-gray-800 mb-2">
-              {image.name}
-            </p>
-            <div className="flex justify-center">
-              <img
-                src={image.url}
-                alt={image.name}
-                className="h-80 object-cover rounded border cursor-pointer hover:opacity-80"
-                onClick={() => openImage(image.url)}
-                title="Click to view full size"
-              />
-            </div>
-            <div className="mt-2 text-center">
-              <button
-                onClick={() => openImage(image.url)}
-                className="text-blue-600 hover:text-blue-800 text-xs underline"
-              >
-                View full size
-              </button>
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -799,7 +781,6 @@ const SupplierBiddingSection: React.FC<{
   const [password, setPassword] = useState("");
   const isAlreadyApproved = !!order.supplier_name || order.status !== "pending";
   const bids = parseBids(order.bids || "[]");
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!supplierName || !price) return;
@@ -816,13 +797,11 @@ const SupplierBiddingSection: React.FC<{
     setLeadTime("");
     setIsSubmitting(false);
   };
-
   const publicLink = `${window.location.origin}${window.location.pathname}?bid=${order.id}`;
   const copyToClipboard = () => {
     navigator.clipboard.writeText(publicLink);
     alert("Public bidding link copied to clipboard!");
   };
-
   const handleApprove = () => {
     if (showApprovalModal) {
       onApproveBid(showApprovalModal, password);
@@ -830,7 +809,6 @@ const SupplierBiddingSection: React.FC<{
       setPassword("");
     }
   };
-
   return (
     <div
       ref={biddingRef}
@@ -1078,7 +1056,6 @@ const createBookkeepingRecord = async (recordData: {
     console.error("Failed to create bookkeeping record:", err);
   }
 };
-
 const PricingSection: React.FC<{
   order: Order;
   isEditing: boolean;
@@ -1117,7 +1094,6 @@ const PricingSection: React.FC<{
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [removePassword, setRemovePassword] = useState("");
   const [bookkeepingLoading, setBookkeepingLoading] = useState(false);
-
   const handleRemove = () => {
     if (onRemoveSupplier) {
       onRemoveSupplier(removePassword);
@@ -1125,60 +1101,6 @@ const PricingSection: React.FC<{
       setShowRemoveModal(false);
     }
   };
-
-const sendToBookkeeping = async (order: Order) => {
-  if (!order.customer_price) {
-    console.warn("No customer price — skipping bookkeeping sync");
-    return;
-  }
-  const baseDate = (order.actual_delivery || new Date().toISOString()).split("T")[0];
-
-  try {
-    // Inflow (customer payment)
-    if (order.customer_price) {
-      await createBookkeepingRecord({
-        date: baseDate,
-        payment_date: baseDate,
-        description: `Order #${order.id}: ${order.description}`,
-        category: "Inflow",
-        amount: extractNumericValue(order.customer_price),
-        quantity: order.moq ? parseInt(order.moq, 10) : 1,
-        customer: order.customer_name || null,
-        project: null,
-        supplied_by: null,
-        tags: `order-${order.id}`,
-        approved: true,
-        cost_per_unit: null,
-        notes: null,
-        market_price: null,
-      });
-    }
-
-    // Outflow (supplier payment)
-    if (order.supplier_price) {
-      await createBookkeepingRecord({
-        date: baseDate,
-        payment_date: baseDate,
-        description: `Supplier payment for Order #${order.id} - ${order.description}`,
-        category: "Outflow",
-        amount: extractNumericValue(order.supplier_price),
-        quantity: 1,
-        customer: order.customer_name || null,
-        project: null,
-        supplied_by: order.supplier_name || null,
-        tags: `order-${order.id}`,
-        approved: true,
-        cost_per_unit: null,
-        notes: order.supplier_description || null,
-        market_price: null,
-      });
-    }
-  } catch (err) {
-    console.error("Bookkeeping sync failed:", err);
-    alert("⚠️ Financial sync to bookkeeping failed. Check console.");
-  }
-};
-
   const supplierCost = extractNumericValue(
     isEditing ? supplierPrice : order.supplier_price
   );
@@ -1187,7 +1109,6 @@ const sendToBookkeeping = async (order: Order) => {
   );
   const profit = customerRevenue - supplierCost;
   const margin = customerRevenue > 0 ? (profit / customerRevenue) * 100 : 0;
-
   return (
     <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg p-6">
       <div className="flex justify-between items-start mb-4">
@@ -1721,6 +1642,231 @@ const LogisticsSection: React.FC<{
 };
 
 // ------------------------
+// Recurring Order Manager Modal
+// ------------------------
+const RecurringOrderManager: React.FC<{
+  orders: Order[];
+  onClose: () => void;
+  onCreate: (template: Partial<Order>) => Promise<void> | void;
+  onDelete: (id: number) => Promise<void> | void;
+  onUpdate: (id: number, data: Partial<Order>) => void;
+  onConvertToRecurring: (order: Order) => Promise<void> | void;
+}> = ({ orders, onClose, onCreate, onDelete, onUpdate, onConvertToRecurring }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState<Partial<Order>>({
+    customer_name: "",
+    email: "",
+    phone: "",
+    location: "",
+    description: "",
+    moq: "",
+    urgency: "medium",
+    category: "",
+    images: "[]",
+    is_recurring: true,
+    recurring_interval: "monthly",
+  });
+
+  const recurringTemplates = orders.filter(order => order.is_recurring && !order.recurring_template_id);
+
+  const handleCreate = () => {
+    if (!formData.customer_name || !formData.phone || !formData.location || !formData.description || !formData.moq) {
+      alert("Please fill all required fields");
+      return;
+    }
+    onCreate(formData);
+    setFormData({
+      customer_name: "",
+      email: "",
+      phone: "",
+      location: "",
+      description: "",
+      moq: "",
+      urgency: "medium",
+      category: "",
+      images: "[]",
+      is_recurring: true,
+      recurring_interval: "monthly",
+    });
+    setIsCreating(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h2 className="text-lg font-bold flex items-center">
+            <Repeat className="w-5 h-5 mr-2 text-green-600" />
+            Manage Recurring Orders
+          </h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {isCreating ? (
+            <div className="bg-gray-50 p-4 rounded-lg border mb-4">
+              <h3 className="font-medium mb-3">Create New Recurring Order Template</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Customer Name *"
+                  value={formData.customer_name || ""}
+                  onChange={(e) => setFormData({...formData, customer_name: e.target.value})}
+                  className="px-3 py-2 border rounded"
+                />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={formData.email || ""}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="px-3 py-2 border rounded"
+                />
+                <input
+                  type="text"
+                  placeholder="Phone *"
+                  value={formData.phone || ""}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  className="px-3 py-2 border rounded"
+                />
+                <input
+                  type="text"
+                  placeholder="Location *"
+                  value={formData.location || ""}
+                  onChange={(e) => setFormData({...formData, location: e.target.value})}
+                  className="px-3 py-2 border rounded"
+                />
+                <textarea
+                  placeholder="Description *"
+                  value={formData.description || ""}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  className="px-3 py-2 border rounded"
+                  rows={2}
+                />
+                <input
+                  type="text"
+                  placeholder="MOQ *"
+                  value={formData.moq || ""}
+                  onChange={(e) => setFormData({...formData, moq: e.target.value})}
+                  className="px-3 py-2 border rounded"
+                />
+                <input
+                  type="text"
+                  placeholder="Category"
+                  value={formData.category || ""}
+                  onChange={(e) => setFormData({...formData, category: e.target.value})}
+                  className="px-3 py-2 border rounded"
+                />
+                <div>
+                  <label className="block text-sm mb-1">Interval</label>
+                  <select
+                    value={formData.recurring_interval || "monthly"}
+                    onChange={(e) => setFormData({...formData, recurring_interval: e.target.value as any})}
+                    className="w-full px-3 py-2 border rounded"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">Urgency</label>
+                  <select
+                    value={formData.urgency || "medium"}
+                    onChange={(e) => setFormData({...formData, urgency: e.target.value as any})}
+                    className="w-full px-3 py-2 border rounded"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex space-x-2 mt-3">
+                <button
+                  onClick={handleCreate}
+                  className="bg-green-600 text-white px-4 py-2 rounded text-sm"
+                >
+                  Create Template
+                </button>
+                <button
+                  onClick={() => setIsCreating(false)}
+                  className="bg-gray-300 text-gray-700 px-4 py-2 rounded text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsCreating(true)}
+              className="flex items-center text-green-600 mb-4"
+            >
+              <Plus className="w-4 h-4 mr-1" /> Add Recurring Order Template
+            </button>
+          )}
+
+          <div className="mb-6">
+            <h3 className="font-medium mb-2">Convert Existing Order to Recurring</h3>
+            <p className="text-sm text-gray-600 mb-2">Select any order below to turn it into a recurring template.</p>
+            <div className="max-h-60 overflow-y-auto border rounded p-2">
+              {orders
+                .filter(o => !o.is_recurring || o.recurring_template_id)
+                .map((order) => (
+                  <div
+                    key={order.id}
+                    className="flex justify-between items-center p-2 hover:bg-gray-100 border-b"
+                  >
+                    <div>
+                      <span className="font-medium">{order.customer_name}</span> • {order.description}
+                    </div>
+                    <button
+                      onClick={() => onConvertToRecurring(order)}
+                      className="text-blue-600 hover:text-blue-800 flex items-center text-sm"
+                    >
+                      <Repeat2 className="w-3 h-3 mr-1" /> Make Recurring
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-medium">Active Recurring Templates ({recurringTemplates.length})</h3>
+            {recurringTemplates.length === 0 ? (
+              <p className="text-gray-500">No recurring order templates yet.</p>
+            ) : (
+              recurringTemplates.map((template) => (
+                <div key={template.id} className="border rounded-lg p-4 bg-green-50">
+                  <div className="flex justify-between">
+                    <div>
+                      <h3 className="font-medium">{template.customer_name}</h3>
+                      <p className="text-sm text-gray-600">{template.description}</p>
+                      <p className="text-xs text-green-700 mt-1">
+                        {template.recurring_interval} • {template.category || "N/A"}
+                      </p>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => onDelete(template.id)}
+                        className="text-red-600 hover:text-red-800"
+                        title="Delete Template"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ------------------------
 // Main App Component
 // ------------------------
 const OrderManagementApp: React.FC = () => {
@@ -1733,6 +1879,7 @@ const OrderManagementApp: React.FC = () => {
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [categoryInput, setCategoryInput] = useState("");
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [showRecurringManager, setShowRecurringManager] = useState(false);
   // Pricing state
   const [supplierName, setSupplierName] = useState("");
   const [supplierPrice, setSupplierPrice] = useState("");
@@ -1753,9 +1900,13 @@ const OrderManagementApp: React.FC = () => {
     Record<string, boolean>
   >({});
   const [filter, setFilter] = useState<
-    "all" | "low-margin" | "aging" | "refund" | "inventory"
+    "all" | "low-margin" | "aging" | "refund" | "inventory" | "recurring-high"
   >("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  // Image state
+  const [orderImages, setOrderImages] = useState<OrderImage[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -1784,7 +1935,6 @@ const OrderManagementApp: React.FC = () => {
   }, []);
 
   const biddingSectionRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const bidId = urlParams.get("bid");
@@ -1830,6 +1980,9 @@ const OrderManagementApp: React.FC = () => {
     if (filter === "inventory") {
       return isInventoryCritical(order.inventory_status);
     }
+    if (filter === "recurring-high") {
+      return inferRecurringSupplyLikelihood(order.category) === "High";
+    }
     return true;
   });
 
@@ -1837,42 +1990,38 @@ const OrderManagementApp: React.FC = () => {
     orderId: number,
     status: Order["status"]
   ) => {
-  setLoading(true);
-  try {
-    const updatedOrders = await supabase
-      .from("orders")
-      .update({ status })
-      .eq("id", orderId)
-      .execute();
-    const updatedOrder = updatedOrders[0] as Order;
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? updatedOrder : o))
-    );
-    if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
-    await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
-if (status === "completed" && updatedOrder.customer_price) {
-  const revenue = extractNumericValue(updatedOrder.customer_price);
-  if (revenue > 0) {
-    const recordData = {
-      date: new Date().toISOString().split("T")[0],
-      payment_date: new Date().toISOString().split("T")[0],
-      description: `Order #${orderId} completed: ${updatedOrder.description || ""}`,
-      category: "Inflow",
-      amount: revenue,
-      quantity: 1,
-      customer: updatedOrder.customer_name || null,
-      project: updatedOrder.category || null,
-      supplied_by: updatedOrder.supplier_name || null,
-      tags: `order-${orderId}`,
-      approved: true,
-      // Optional fields (set to null if not available)
-      cost_per_unit: null,
-      notes: null,
-      market_price: null,
-    };
-    await createBookkeepingRecord(recordData);
-  }
-}
+    setLoading(true);
+    try {
+      const updatedOrders = await supabase
+        .from("orders")
+        .update({ status })
+        .eq("id", orderId)
+        .execute();
+      const updatedOrder = updatedOrders[0] as Order;
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? updatedOrder : o))
+      );
+      if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
+      await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
+      if (status === "completed" && updatedOrder.customer_price) {
+        const revenue = extractNumericValue(updatedOrder.customer_price);
+        if (revenue > 0) {
+          const recordData = {
+            date: new Date().toISOString().split("T")[0],
+            payment_date: new Date().toISOString().split("T")[0],
+            description: `Order #${orderId} completed: ${updatedOrder.description || ""}`,
+            category: "Inflow",
+            amount: revenue,
+            quantity: 1,
+            customer: updatedOrder.customer_name || null,
+            project: updatedOrder.category || null,
+            supplied_by: updatedOrder.supplier_name || null,
+            tags: `order-${orderId}`,
+            approved: true,
+          };
+          await createBookkeepingRecord(recordData);
+        }
+      }
     } catch (error) {
       console.error("Status update error:", error);
       alert("Failed to update status");
@@ -1996,6 +2145,47 @@ if (status === "completed" && updatedOrder.customer_price) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const createRecurringTemplate = async (template: Partial<Order>) => {
+    try {
+      await supabase.from("orders").insert([template]).execute();
+      await loadOrders();
+      alert("Recurring order template created!");
+    } catch (err) {
+      console.error("Create recurring template error:", err);
+      alert("Failed to create recurring template");
+    }
+  };
+
+  const deleteRecurringTemplate = async (id: number) => {
+    if (!confirm("Delete this recurring order template?")) return;
+    try {
+      await supabase.from("orders").delete().eq("id", id).execute();
+      setOrders((prev) => prev.filter((o) => o.id !== id));
+      alert("Template deleted");
+    } catch (err) {
+      console.error("Delete recurring template error:", err);
+      alert("Failed to delete template");
+    }
+  };
+
+  const convertToRecurring = async (order: Order) => {
+    const template: Partial<Order> = {
+      ...order,
+      id: undefined,
+      is_recurring: true,
+      recurring_interval: "monthly",
+      status: "pending",
+      supplier_name: "",
+      supplier_price: "",
+      supplier_description: "",
+      customer_price: "",
+      created_at: new Date().toISOString(),
+      images: JSON.stringify(orderImages),
+    };
+    delete template.id;
+    await createRecurringTemplate(template);
   };
 
   const submitSupplierBid = async (
@@ -2128,6 +2318,8 @@ if (status === "completed" && updatedOrder.customer_price) {
           else if (clean === "Logistics Cost") key = "logistics_cost";
           else if (clean === "Lead Time (days)") key = "supplier_lead_time_days";
           else if (clean === "Route Optimized") key = "route_optimized";
+          else if (clean === "Is Recurring") key = "is_recurring";
+          else if (clean === "Recurring Interval") key = "recurring_interval";
           else if (
             [
               "customer_name",
@@ -2151,6 +2343,8 @@ if (status === "completed" && updatedOrder.customer_price) {
               "logistics_cost",
               "supplier_lead_time_days",
               "route_optimized",
+              "is_recurring",
+              "recurring_interval",
             ].includes(clean)
           ) {
             key = clean as keyof CSVRow;
@@ -2257,6 +2451,8 @@ if (status === "completed" && updatedOrder.customer_price) {
             supplier_lead_time_days: cleanInt(rowData.supplier_lead_time_days),
             route_optimized: rowData.route_optimized?.toLowerCase() === "true",
             category: rowData.category || undefined,
+            is_recurring: rowData.is_recurring?.toLowerCase() === "true",
+            recurring_interval: rowData.recurring_interval as any,
           };
           newOrders.push(order);
         }
@@ -2288,8 +2484,8 @@ if (status === "completed" && updatedOrder.customer_price) {
 
   const downloadCSVTemplate = () => {
     const template = [
-      '"Customer Name",Email,Phone,Location,Description,MOQ,Urgency,Status,Category,"Supplier Name","Supplier Price","Customer Price","Inventory Status","Shipping Carrier","Tracking #","Est. Delivery","Actual Delivery","Refund Status","Logistics Cost","Lead Time (days)","Route Optimized"',
-      '"John Doe","john@example.com","+1234567890","New York","Custom widgets","1000 units","high","pending","Electronics","ABC Supplier","5000 USD","8000 USD","in-stock","DHL","123456789","2024-07-10","","none","1200 LKR","5","true"',
+      '"Customer Name",Email,Phone,Location,Description,MOQ,Urgency,Status,Category,"Supplier Name","Supplier Price","Customer Price","Inventory Status","Shipping Carrier","Tracking #","Est. Delivery","Actual Delivery","Refund Status","Logistics Cost","Lead Time (days)","Route Optimized","Is Recurring","Recurring Interval"',
+      '"John Doe","john@example.com","+1234567890","New York","Custom widgets","1000 units","high","pending","Electronics","ABC Supplier","5000 USD","8000 USD","in-stock","DHL","123456789","2024-07-10","","none","1200 LKR","5","true","true","monthly"',
     ].join("\n");
     const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -2328,6 +2524,9 @@ if (status === "completed" && updatedOrder.customer_price) {
       "Route Optimized",
       "Created Date",
       "Days Since Created",
+      "Recurring Supply Likelihood",
+      "Is Recurring",
+      "Recurring Interval",
     ];
     const csv = [
       headers.join(","),
@@ -2336,6 +2535,7 @@ if (status === "completed" && updatedOrder.customer_price) {
         const supplierPrice = extractNumericValue(o.supplier_price);
         const profit = customerPrice - supplierPrice;
         const margin = customerPrice > 0 ? (profit / customerPrice) * 100 : 0;
+        const likelihood = inferRecurringSupplyLikelihood(o.category);
         return [
           o.id,
           `"${o.customer_name.replace(/"/g, '""')}"`,
@@ -2367,6 +2567,9 @@ if (status === "completed" && updatedOrder.customer_price) {
           o.route_optimized ? "true" : "false",
           new Date(o.created_at).toISOString().split("T")[0],
           getDaysSince(o.created_at),
+          likelihood,
+          o.is_recurring ? "true" : "false",
+          o.recurring_interval || "N/A",
         ].join(",");
       }),
     ].join("\n");
@@ -2382,6 +2585,10 @@ if (status === "completed" && updatedOrder.customer_price) {
   const exportStrategicReport = () => {
     const summary = financialSummary;
     const date = new Date().toISOString().split("T")[0];
+    const highRecurringCount = orders.filter(o => 
+      inferRecurringSupplyLikelihood(o.category) === "High"
+    ).length;
+
     const reportSections = [
       "STRATEGIC OPERATIONS & FINANCIAL REPORT",
       `Generated: ${new Date().toLocaleString()}`,
@@ -2395,6 +2602,8 @@ if (status === "completed" && updatedOrder.customer_price) {
       `Refund Rate,${summary.refundRate.toFixed(2)}%`,
       `Avg Supplier Lead Time,${summary.avgSupplierLeadTime.toFixed(2)} days`,
       `Inventory Turnover,${summary.inventoryTurnover.toFixed(2)}x`,
+      `Recurring Clients,${summary.recurringClients}`,
+      `High-Recurring Clients,${highRecurringCount}`,
       "",
       "=== LOGISTICS PERFORMANCE ===",
       `Total Logistics Cost,${summary.totalLogisticsCost.toFixed(2)}`,
@@ -2417,6 +2626,8 @@ if (status === "completed" && updatedOrder.customer_price) {
           : "N/A"
       }`,
       `4. Reorder inventory for items marked "reorder-needed"`,
+      `5. Focus retention on ${highRecurringCount} high-recurring clients for predictable revenue.`,
+      `6. Convert ${summary.recurringClients} recurring clients to annual contracts for cash flow stability.`,
       "",
     ];
     const csv = reportSections.join("\n");
@@ -2449,6 +2660,7 @@ if (status === "completed" && updatedOrder.customer_price) {
     setLogisticsCost(order.logistics_cost || "");
     setSupplierLeadTime(order.supplier_lead_time_days?.toString() || "");
     setRouteOptimized(!!order.route_optimized);
+    setOrderImages(parseImages(order.images));
   };
 
   const handleBackToList = () => {
@@ -2457,7 +2669,6 @@ if (status === "completed" && updatedOrder.customer_price) {
     setIsEditingPricing(false);
     setIsEditingLogistics(false);
     setIsEditingCategory(false);
-    // Clean URL
     window.history.replaceState({}, "", window.location.pathname);
   };
 
@@ -2525,6 +2736,56 @@ if (status === "completed" && updatedOrder.customer_price) {
   const refundCount = orders.filter(
     (o) => o.refund_status && o.refund_status !== "none"
   ).length;
+  const highRecurringCount = orders.filter(o => 
+    inferRecurringSupplyLikelihood(o.category) === "High"
+  ).length;
+  const recurringClientCount = orders.filter(o => o.is_recurring && !o.recurring_template_id).length;
+
+  // Image handlers
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const newImages: OrderImage[] = [];
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          newImages.push({ name: file.name, url: event.target.result as string });
+          if (newImages.length === files.length) {
+            setOrderImages((prev) => [...prev, ...newImages]);
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeOrderImage = (index: number) => {
+    setOrderImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const saveOrderImages = async () => {
+    if (!selectedOrder) return;
+    setLoading(true);
+    try {
+      await supabase
+        .from("orders")
+        .update({ images: JSON.stringify(orderImages) })
+        .eq("id", selectedOrder.id)
+        .execute();
+      
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === selectedOrder.id ? { ...o, images: JSON.stringify(orderImages) } : o
+        )
+      );
+      alert("✅ Images updated successfully");
+    } catch (err) {
+      console.error("Image save error:", err);
+      alert("❌ Failed to update images");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -2594,6 +2855,17 @@ if (status === "completed" && updatedOrder.customer_price) {
                 <Warehouse className="w-3 h-3" />
                 <span>Inventory ({inventoryAlertCount})</span>
               </button>
+              <button
+                onClick={() => setFilter("recurring-high")}
+                className={`px-3 py-1 text-xs rounded flex items-center space-x-1 ${
+                  filter === "recurring-high"
+                    ? "bg-green-100 text-green-800"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                <TrendingUp className="w-3 h-3" />
+                <span>Recurring (High) ({highRecurringCount})</span>
+              </button>
             </div>
             <div className="mt-2 flex items-center space-x-2">
               <Tag className="w-4 h-4 text-gray-500" />
@@ -2618,6 +2890,14 @@ if (status === "completed" && updatedOrder.customer_price) {
               title="Refresh Orders"
             >
               <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowRecurringManager(true)}
+              className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 flex items-center space-x-1"
+              title="Manage Recurring Orders"
+            >
+              <Repeat className="w-4 h-4" />
+              <span className="text-sm hidden sm:inline">Recurring</span>
             </button>
             <Link href={"/ready"}>Show completed orders</Link>
             <input
@@ -2705,7 +2985,9 @@ if (status === "completed" && updatedOrder.customer_price) {
         {(lowMarginCount > 0 ||
           agingCount > 0 ||
           inventoryAlertCount > 0 ||
-          refundCount > 0) && (
+          refundCount > 0 ||
+          highRecurringCount > 0 ||
+          recurringClientCount > 0) && (
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 p-3 text-sm">
             <div className="flex items-center">
               <Info className="w-4 h-4 text-blue-600 mr-2" />
@@ -2723,6 +3005,12 @@ if (status === "completed" && updatedOrder.customer_price) {
               )}
               {refundCount > 0 && (
                 <li>{refundCount} order(s) with refund requests</li>
+              )}
+              {highRecurringCount > 0 && (
+                <li>{highRecurringCount} high-recurring clients identified</li>
+              )}
+              {recurringClientCount > 0 && (
+                <li>{recurringClientCount} active recurring orders</li>
               )}
             </ul>
           </div>
@@ -2806,6 +3094,9 @@ if (status === "completed" && updatedOrder.customer_price) {
                     Order #{selectedOrder.id}
                   </h2>
                   <div className="flex items-center space-x-2 mt-1">
+                    {selectedOrder.is_recurring && !selectedOrder.recurring_template_id && (
+                      <Repeat className="w-4 h-4 text-green-600" aria-label="Recurring Order" />
+                    )}
                     {getStatusIcon(selectedOrder.status)}
                     <span
                       className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(
@@ -2853,6 +3144,80 @@ if (status === "completed" && updatedOrder.customer_price) {
                       </p>
                     </div>
                   </div>
+                </div>
+              )}
+              {/* Recurring Supply Profile */}
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Recurring Supply Profile</h3>
+                {(() => {
+                  const likelihood = inferRecurringSupplyLikelihood(selectedOrder.category);
+                  const colorMap = {
+                    High: "text-green-700 bg-green-100",
+                    Medium: "text-blue-700 bg-blue-100",
+                    Low: "text-gray-700 bg-gray-100",
+                  };
+                  const iconMap = {
+                    High: <TrendingUp className="w-5 h-5 text-green-600" />,
+                    Medium: <TrendingUp className="w-5 h-5 text-blue-600" />,
+                    Low: <AlertCircle className="w-5 h-5 text-gray-500" />,
+                  };
+                  return (
+                    <div className="flex items-start space-x-3">
+                      {iconMap[likelihood]}
+                      <div>
+                        <span className={`inline-block px-3 py-1 text-sm font-medium rounded-full ${colorMap[likelihood]}`}>
+                          {likelihood} Recurring Need
+                        </span>
+                        <p className="text-sm text-gray-600 mt-2">
+                          {likelihood === "High"
+                            ? "This client likely requires ongoing external supplies or services (e.g., SaaS, tools, materials)."
+                            : likelihood === "Medium"
+                            ? "Potential for repeat orders based on business model."
+                            : "Likely a one-time or project-based engagement."}
+                        </p>
+                        {likelihood === "High" && (
+                          <p className="text-xs text-green-700 mt-2 bg-green-50 p-2 rounded border border-green-200">
+                            💡 Strategic Tip: Consider offering a retainer or subscription model.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              {/* Recurring Order Settings */}
+              {selectedOrder.is_recurring && !selectedOrder.recurring_template_id && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+                  <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                    <Repeat className="w-5 h-5 text-green-600 mr-2" />
+                    Recurring Order
+                  </h3>
+                  <p className="text-sm text-green-700">
+                    This order is part of a recurring schedule:{" "}
+                    <span className="font-medium">{selectedOrder.recurring_interval}</span>.
+                  </p>
+                  <p className="text-xs text-green-600 mt-2">
+                    Note: This is an auto-generated instance. Edit the template to change future orders.
+                  </p>
+                </div>
+              )}
+              {/* Convert to Recurring Button */}
+              {!selectedOrder.is_recurring && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-700 mb-2">
+                    Turn this order into a recurring template for predictable revenue.
+                  </p>
+                  <button
+                    onClick={() => {
+                      convertToRecurring(selectedOrder);
+                      setShowOrdersList(true);
+                      setSelectedOrder(null);
+                    }}
+                    className="bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center"
+                  >
+                    <Repeat2 className="w-4 h-4 mr-2" />
+                    Convert to Recurring Order
+                  </button>
                 </div>
               )}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -3107,8 +3472,60 @@ if (status === "completed" && updatedOrder.customer_price) {
                 )}
                 biddingRef={biddingSectionRef}
               />
+              {/* === Enhanced Image Management Section === */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <ImageGallery images={parseImages(selectedOrder.images)} />
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold text-gray-900">Order Images ({orderImages.length})</h3>
+                  <div className="flex space-x-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleImageUpload}
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                    >
+                      <Upload className="w-4 h-4 mr-1" /> Upload
+                    </button>
+                    {orderImages.length > 0 && (
+                      <button
+                        onClick={saveOrderImages}
+                        disabled={loading}
+                        className="bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center disabled:opacity-50"
+                      >
+                        <Save className="w-4 h-4 mr-1" /> Save
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {orderImages.length === 0 ? (
+                  <p className="text-gray-500 text-sm">No images uploaded</p>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {orderImages.map((image, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={image.url}
+                          alt={image.name}
+                          className="w-full h-32 object-cover rounded border cursor-pointer"
+                          onClick={() => window.open(image.url, "_blank")}
+                        />
+                        <button
+                          onClick={() => removeOrderImage(index)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-opacity opacity-0 group-hover:opacity-100"
+                          title="Remove image"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </>
@@ -3122,6 +3539,20 @@ if (status === "completed" && updatedOrder.customer_price) {
           </div>
         )}
       </div>
+
+      {/* Recurring Order Manager Modal */}
+      {showRecurringManager && (
+        <RecurringOrderManager
+          orders={orders}
+          onClose={() => setShowRecurringManager(false)}
+          onCreate={createRecurringTemplate}
+          onDelete={deleteRecurringTemplate}
+          onUpdate={(id, data) => {
+            // Update logic can be added here if needed
+          }}
+          onConvertToRecurring={convertToRecurring}
+        />
+      )}
     </div>
   );
 };
