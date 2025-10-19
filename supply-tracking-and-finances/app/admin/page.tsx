@@ -1940,6 +1940,7 @@ const OrderManagementApp: React.FC = () => {
 
   const biddingSectionRef = useRef<HTMLDivElement>(null);
 const isSupplierView = useMemo(() => {
+  if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).has('bid');
 }, []);
 
