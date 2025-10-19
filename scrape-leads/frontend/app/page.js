@@ -532,7 +532,9 @@ export default function LeadDashboard() {
               const waMessage = encodeURIComponent(
                 `Hi ${lead.contact_name || 'there'}, I'm reaching out from [Your Company] about ${lead.business_name || 'your business'}. Would you be open to a quick chat?`
               );
-              const waLink = normalizedWaNumber ? `https://wa.me/${normalizedWaNumber}?text=${waMessage}` : '';
+              const waLink = normalizedWaNumber 
+  ? `https://wa.me/${normalizedWaNumber}?text=${waMessage}` 
+  : '';
 
               const isHighValue = lead._score >= 75;
 

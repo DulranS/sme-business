@@ -366,13 +366,15 @@ const markAsDispatched = async (order: Order) => {
   const currentShipped = order.shipped_quantity || 0;
   const newShipped = currentShipped + toShip;
   const totalMOQ = extractMOQNumber(order.moq);
-  const isFullyDispatched = totalMOQ > 0 ? newShipped >= totalMOQ : newShipped > 0;
+
+  // ✅ CRITICAL: Only "dispatched" if FULLY shipped
+  const effectiveMOQ = totalMOQ > 0 ? totalMOQ : 1;
+  const isFullyDispatched = newShipped >= effectiveMOQ;
   const newStatus = isFullyDispatched ? "dispatched" : "ship";
 
   try {
     await sendDiscordWebhookOnDispatch(order, toShip, carrier, tracking);
 
-    // Update in DB
     await supabase
       .from("orders")
       .update({
@@ -385,7 +387,6 @@ const markAsDispatched = async (order: Order) => {
       .eq("id", order.id)
       .execute();
 
-    // Update UI: remove if fully done, else update shipped qty
     setOrders((prev) =>
       isFullyDispatched
         ? prev.filter((o) => o.id !== order.id)
@@ -396,7 +397,7 @@ const markAsDispatched = async (order: Order) => {
           )
     );
 
-    // Clean up local form state
+    // Clean up form state
     setDispatchData((prev) => {
       const updated = { ...prev };
       delete updated[order.id];

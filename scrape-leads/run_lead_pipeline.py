@@ -70,7 +70,10 @@ def run_script(script_name):
         logger.exception(f"💥 Failed to execute {script_name}: {e}")
         return False
 
+
 def main():
+    os.chdir(SCRIPT_DIR)
+    logger.info(f"Working directory set to: {SCRIPT_DIR}")
     logger.info("=" * 60)
     logger.info("🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)")
     logger.info("=" * 60)

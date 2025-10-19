@@ -84,7 +84,7 @@ def clean_and_classify_number(raw_num):
 def generate_wa_link(number):
     """Generate clickable WhatsApp link."""
     if number:
-        return f"https://wa.me/94{number}"  # ✅ No spaces
+        return f"https://wa.me/94{number}"  # ✅ No spaces — just "94" + 9-digit number
     return ""
 
 # ==============================

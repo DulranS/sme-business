@@ -398,14 +398,14 @@ const submitShipping = async (order: Order) => {
     }
   }
 
-  const finalStatus =
-    totalMOQ === 0
-      ? newShipped > 0
-        ? "shipped"
-        : "completed"
-      : newShipped >= totalMOQ
+const finalStatus =
+  totalMOQ === 0
+    ? newShipped > 0
       ? "shipped"
-      : "ship";
+      : "completed"
+    : newShipped >= totalMOQ
+    ? "shipped"
+    : "completed"; // ← NEVER use "ship"
 
   const now = new Date().toISOString();
   const baseDate = now.split("T")[0];

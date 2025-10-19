@@ -6,10 +6,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import crypto from 'crypto';
 
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const CSV_PATH = join(__dirname, 'output_business_leads.csv');
-const CONTACTED_PATH = join(__dirname, 'contacted_leads.json'); // optional persistence
+export const CONTACTED_PATH = join(__dirname, '..', 'app', 'api', 'leads', 'contacted_leads.json');
 
 // Utility: sanitize string (prevent XSS, trim, collapse whitespace)
 function sanitize(str) {
