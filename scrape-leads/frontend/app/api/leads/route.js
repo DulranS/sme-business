@@ -4,10 +4,12 @@ import fs from 'fs';
 import { parse } from 'csv-parse/sync';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CSV_PATH = join(__dirname, 'output_business_leads.csv');
+const CONTACTED_PATH = join(__dirname, 'contacted_leads.json'); // optional persistence
 
 // Utility: sanitize string (prevent XSS, trim, collapse whitespace)
 function sanitize(str) {
@@ -29,23 +31,19 @@ function extractLocalNumber(phone) {
   if (!phone) return '';
   const digits = phone.toString().replace(/\D/g, '');
 
-  // Handle international format: +94 or 94
   if (digits.startsWith('94') && digits.length >= 11) {
     const local = digits.substring(2);
     return local.length >= 9 ? local.slice(-9) : '';
   }
 
-  // Handle local format: 077XXXXXXX → 77XXXXXXX (9 digits)
   if (digits.startsWith('0') && digits.length === 10) {
     return digits.substring(1);
   }
 
-  // Already 9-digit local?
   if (digits.length === 9 && /^[789]/.test(digits)) {
     return digits;
   }
 
-  // Fallback: take last 9 digits if plausible
   return digits.length >= 9 ? digits.slice(-9) : '';
 }
 
@@ -62,7 +60,26 @@ function normalizeToE164(phone) {
   if (digits.length === 9 && /^[789]/.test(digits)) {
     return `+94${digits}`;
   }
-  return ''; // invalid
+  return '';
+}
+
+// Generate deterministic ID
+function generateLeadId(lead) {
+  const key = `${lead.business_name}|${lead.phone_e164}|${lead.email}`.toLowerCase();
+  return crypto.createHash('md5').update(key).digest('hex').substring(0, 12);
+}
+
+// Load contacted timestamps (optional persistence)
+function loadContactedMap() {
+  try {
+    if (fs.existsSync(CONTACTED_PATH)) {
+      const data = fs.readFileSync(CONTACTED_PATH, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.warn('[Leads API] Failed to load contacted data:', e.message);
+  }
+  return {};
 }
 
 export async function GET() {
@@ -80,11 +97,12 @@ export async function GET() {
       columns: true,
       skip_empty_lines: true,
       relax_column_count: true,
-      skip_records_with_empty_values: false, // we handle empties manually
+      skip_records_with_empty_values: false,
     });
 
-    const seen = new Set(); // dedupe key: normalized phone + email + business
+    const seen = new Set();
     const cleaned = [];
+    const contactedMap = loadContactedMap();
 
     for (const row of records) {
       const business_name = sanitize(row.business_name);
@@ -92,11 +110,9 @@ export async function GET() {
         continue;
       }
 
-      // Normalize contact info
       const email = sanitize(row.email);
       const validEmail = email && isValidEmail(email) ? email : '';
 
-      // Try multiple phone fields (extendable)
       const phoneCandidates = [
         row.phone_raw,
         row.phone,
@@ -108,44 +124,48 @@ export async function GET() {
       const e164Phone = normalizeToE164(rawPhone);
       const whatsappLocal = extractLocalNumber(rawPhone);
 
-      // Dedupe key: use normalized phone or email
       const dedupeKey = `${business_name}|${e164Phone}|${validEmail}`.toLowerCase();
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
-      // Infer contact name if missing
       let contact_name = sanitize(row.contact_name);
       if (!contact_name) {
-        contact_name = business_name; // fallback to business name
+        contact_name = business_name;
       }
 
-      // Normalize lead quality
       const lead_quality = ['HOT', 'WARM'].includes((row.lead_quality || '').trim().toUpperCase())
         ? row.lead_quality.trim().toUpperCase()
         : 'COLD';
 
-      // Parse numeric fields safely
       const rating = parseFloat(row.rating) >= 0 ? String(parseFloat(row.rating).toFixed(1)) : '';
       const review_count = parseInt(row.review_count, 10) >= 0 ? String(parseInt(row.review_count, 10)) : '';
 
-      cleaned.push({
+      const baseLead = {
         business_name,
         contact_name,
         category: sanitize(row.category),
         lead_quality,
-        phone_raw: rawPhone, // original for display
-        phone_e164: e164Phone, // for tel: links
-        whatsapp_number: whatsappLocal, // for wa.me (9-digit local)
+        phone_raw: rawPhone,
+        phone_e164: e164Phone,
+        whatsapp_number: whatsappLocal,
         email: validEmail,
         website: sanitize(row.website),
         address: sanitize(row.address),
         rating,
         review_count,
         tags: sanitize(row.tags),
+      };
+
+      const id = generateLeadId(baseLead);
+      const last_contacted = contactedMap[id] || '';
+
+      cleaned.push({
+        ...baseLead,
+        id,
+        last_contacted,
       });
     }
 
-    // Sort: HOT > WARM > COLD, then by name
     const qualityOrder = { HOT: 0, WARM: 1, COLD: 2 };
     cleaned.sort((a, b) => {
       if (a.lead_quality !== b.lead_quality) {

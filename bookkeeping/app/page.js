@@ -412,6 +412,10 @@ const exists = records.some(
     return map;
   }, [filteredRecords]);
 
+  const userSelectableCategories = internalCategories.filter(
+  (cat) => cat !== "Cash Flow Gap"
+);
+
 // Detect if we have at least 90 days of transaction history
 const hasSufficientHistory = useMemo(() => {
   if (records.length === 0) return false;
@@ -491,7 +495,7 @@ const totals = filteredRecords.reduce(
 const rollingInflow = records
   .filter(
     (r) =>
-      (r.category === "Inflow" || r.category === "Loan Received") &&
+      r.category === "Inflow" &&
       new Date(r.date) >= thirtyDaysAgo &&
       new Date(r.date) <= today
   )
@@ -673,6 +677,12 @@ const rollingInflow = records
     alert("Please select a date");
     return;
   }
+
+  const amountNum = parseFloat(formData.amount);
+if (formData.category !== "Inflow" && formData.category !== "Loan Received" && amountNum > 0) {
+  alert("Outflow categories should have positive amounts (system treats them as costs).");
+  return;
+}
     try {
       const recordData = {
         date: formData.date,
@@ -1011,48 +1021,49 @@ const rollingInflow = records
     );
   }, [competitiveAnalysis]);
 
-  const monthlyData = useMemo(() => {
-    if (!filteredRecords || filteredRecords.length === 0) return [];
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, "0")}`;
-    const grouped = {};
-    filteredRecords.forEach((r) => {
-      const date = new Date(r.date);
-      const monthKey = `${date.getFullYear()}-${String(
-        date.getMonth() + 1
-      ).padStart(2, "0")}`;
-      if (monthKey !== currentMonthKey) return;
-      if (!grouped[monthKey])
-        grouped[monthKey] = { revenue: 0, cost: 0, profit: 0 };
-      const qty = parseFloat(r.quantity) || 1;
-      const price = parseFloat(r.amount) || 0;
-      let cost = parseFloat(r.cost_per_unit) || 0;
-      if (!cost && r.description && inventoryCostMap[r.description]) {
-        cost = inventoryCostMap[r.description];
-      }
-      const revenue = price * qty;
-      const totalCost = cost * qty;
-      const profit = revenue - totalCost;
-      if (r.category === "Inflow") {
-        grouped[monthKey].revenue += revenue;
-        grouped[monthKey].cost += totalCost;
-        grouped[monthKey].profit += profit;
-      } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-        grouped[monthKey].cost += price;
-        grouped[monthKey].profit -= price;
-      }
-    });
-    return Object.entries(grouped)
-      .map(([month, vals]) => ({
-        month,
-        revenue: vals.revenue,
-        profit: vals.profit,
-        margin: vals.revenue > 0 ? (vals.profit / vals.revenue) * 100 : 0,
-      }))
-      .sort((a, b) => new Date(a.month) - new Date(b.month));
-  }, [filteredRecords, inventoryCostMap]);
+const monthlyData = useMemo(() => {
+  if (!filteredRecords || filteredRecords.length === 0) return [];
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const grouped = {};
+
+  filteredRecords.forEach((r) => {
+    const date = new Date(r.date);
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    if (monthKey !== currentMonthKey) return; // Only current month
+
+    if (!grouped[monthKey]) {
+      grouped[monthKey] = { revenue: 0, cogs: 0, opex: 0 };
+    }
+
+    const qty = parseFloat(r.quantity) || 1;
+    const price = parseFloat(r.amount) || 0;
+    let cost = parseFloat(r.cost_per_unit) || 0;
+    if (!cost && r.description && inventoryCostMap[r.description]) {
+      cost = inventoryCostMap[r.description];
+    }
+    const revenue = price * qty;
+    const totalCost = cost * qty;
+
+    if (r.category === "Inflow") {
+      grouped[monthKey].revenue += revenue;
+      grouped[monthKey].cogs += totalCost;
+    } else if (["Outflow", "Overhead", "Reinvestment", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
+  dayMap[recordDate].profit -= price * qty;
+}
+  });
+
+  return Object.entries(grouped).map(([month, vals]) => {
+    const grossProfit = vals.revenue - vals.cogs;
+    const netProfit = grossProfit - vals.opex;
+    return {
+      month,
+      revenue: vals.revenue,
+      profit: netProfit, // This is operating profit
+      margin: vals.revenue > 0 ? (netProfit / vals.revenue) * 100 : 0,
+    };
+  }).sort((a, b) => new Date(a.month) - new Date(b.month));
+}, [filteredRecords, inventoryCostMap]);
 
   const dailyData = useMemo(() => {
     if (!filteredRecords || filteredRecords.length === 0) return [];
@@ -1121,57 +1132,71 @@ const rollingInflow = records
       });
   }, [filteredRecords]);
 
-  const roiTimeline = useMemo(() => {
-    const grouped = {};
-    filteredRecords.forEach((r) => {
-      if (!r.date) return;
-      const month = new Date(r.date).toLocaleString("default", {
-        month: "short",
-        year: "2-digit",
-      });
-      if (!grouped[month])
-        grouped[month] = { month, investment: 0, return: 0, net: 0 };
-      if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-        grouped[month].investment += parseFloat(r.amount) || 0;
-        grouped[month].net -= parseFloat(r.amount) || 0;
-      } else if (r.category === "Inflow") {
-        const qty = parseFloat(r.quantity) || 1;
-        grouped[month].return += (parseFloat(r.amount) || 0) * qty;
-        grouped[month].net += (parseFloat(r.amount) || 0) * qty;
-      }
+const roiTimeline = useMemo(() => {
+  const grouped = {};
+  filteredRecords.forEach((r) => {
+    if (!r.date) return;
+    const month = new Date(r.date).toLocaleString("default", {
+      month: "short",
+      year: "2-digit",
     });
-    return Object.values(grouped);
-  }, [filteredRecords]);
+    if (!grouped[month])
+      grouped[month] = { month, investment: 0, return: 0, net: 0 };
+
+    const amount = parseFloat(r.amount) || 0;
+    const qty = parseFloat(r.quantity) || 1;
+    const total = amount * qty;
+
+    if (r.category === "Reinvestment") {
+      grouped[month].investment += total;
+      grouped[month].net -= total;
+    } else if (r.category === "Inflow") {
+      grouped[month].return += total;
+      grouped[month].net += total;
+    } else if (["Outflow", "Overhead", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
+      // These are expenses, NOT investments — do NOT add to investment
+      grouped[month].net -= total;
+    }
+  });
+  return Object.values(grouped);
+}, [filteredRecords]);
 
 const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
   if (!hasSufficientHistory) {
     return { breakEvenMonth: null, paybackMonth: null, roiPercentage: null };
   }
-
+  let cumulativeInvestment = 0;
+  let cumulativeReturn = 0;
+  let cumulativeNet = 0;
+  let breakEvenFound = false;
+  let paybackFound = false;
   let breakEvenMonth = null;
   let paybackMonth = null;
-  let totalInvestment = 0;
-  let totalReturn = 0;
-  let cumulativeNet = 0;
+
   roiTimeline.forEach((point) => {
-    totalInvestment += point.investment;
-    totalReturn += point.return;
+    cumulativeInvestment += point.investment;
+    cumulativeReturn += point.return;
     cumulativeNet += point.net;
-    if (!breakEvenMonth && point.return >= point.investment) {
+
+    // Break-even: first month where cumulative net turns non-negative
+    if (!breakEvenFound && cumulativeNet >= 0) {
       breakEvenMonth = point.month;
+      breakEvenFound = true;
     }
-    if (!paybackMonth && cumulativeNet >= 0) {
+
+    // Payback period is same as break-even in this context
+    if (!paybackFound && cumulativeNet >= 0) {
       paybackMonth = point.month;
+      paybackFound = true;
     }
   });
-  return {
-    breakEvenMonth,
-    paybackMonth,
-    roiPercentage:
-      totalInvestment > 0
-        ? (((totalReturn - totalInvestment) / totalInvestment) * 100).toFixed(0)
-        : 0,
-  };
+
+  const roiPercentage =
+    cumulativeInvestment > 0
+      ? (((cumulativeReturn - cumulativeInvestment) / cumulativeInvestment) * 100).toFixed(0)
+      : 0;
+
+  return { breakEvenMonth, paybackMonth, roiPercentage };
 }, [roiTimeline, hasSufficientHistory]);
 
 const customerAnalysis = useMemo(() => {
@@ -2368,11 +2393,9 @@ const customerAnalysis = useMemo(() => {
                   }
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {categories.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
+  {userSelectableCategories.map((cat) => (
+    <option key={cat} value={cat}>{cat}</option>
+  ))}
                 </select>
                 <input
                   type="number"
@@ -3266,7 +3289,7 @@ const customerAnalysis = useMemo(() => {
                             Avg Order
                           </th>
                           <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                            CLV
+                            Estimated CLV
                           </th>
                         </tr>
                       </thead>

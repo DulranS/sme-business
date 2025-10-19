@@ -40,6 +40,44 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
+// Calculate lead score (0–100)
+const calculateLeadScore = (lead) => {
+  let score = 0;
+  if (lead.lead_quality === 'HOT') score += 40;
+  else if (lead.lead_quality === 'WARM') score += 20;
+
+  if (lead.email && lead.phone_raw) score += 25;
+  else if (lead.email || lead.phone_raw) score += 10;
+
+  const rating = parseFloat(lead.rating) || 0;
+  const reviews = parseInt(lead.review_count) || 0;
+
+  if (rating >= 4.0) score += 15;
+  if (reviews >= 20) score += 10;
+
+  if (lead.tags?.toLowerCase().includes('decision-maker')) score += 10;
+  if (lead.tags?.toLowerCase().includes('urgent')) score += 10;
+
+  return Math.min(100, Math.max(0, score));
+};
+
+// Get next best action suggestion
+const getNextBestAction = (lead) => {
+  const hasEmail = !!lead.email;
+  const hasPhone = !!lead.phone_raw;
+  const isHot = lead.lead_quality === 'HOT';
+  const rating = parseFloat(lead.rating) || 0;
+  const reviews = parseInt(lead.review_count) || 0;
+  const tags = lead.tags?.toLowerCase() || '';
+
+  if (tags.includes('urgent')) return '🚨 Urgent: Follow up immediately';
+  if (isHot && hasEmail && !lead.last_contacted) return '📧 Send intro email';
+  if (hasPhone && (rating >= 4.0 || reviews >= 20)) return '📞 Call now – high trust signal';
+  if (hasPhone) return '💬 Start WhatsApp chat';
+  if (hasEmail) return '📧 Email for initial contact';
+  return '🔍 Research before outreach';
+};
+
 export default function LeadDashboard() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,21 +92,29 @@ export default function LeadDashboard() {
   const [tagFilter, setTagFilter] = useState('ALL');
   const [showFilters, setShowFilters] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '' });
+  const [sortField, setSortField] = useState('score'); // 'score', 'rating', 'quality', 'name'
+  const [sortDirection, setSortDirection] = useState('desc');
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const showToast = useCallback((msg) => {
     setToast({ show: true, message: msg });
-    setTimeout(() => setToast({ show: false, message: '' }), 2000);
+    setTimeout(() => setToast({ show: false, message: '' }), 2500);
   }, []);
 
+  // Fetch leads
   useEffect(() => {
     const fetchLeads = async () => {
       try {
         const res = await fetch('/api/leads');
         if (!res.ok) throw new Error('Failed to load leads');
         const data = await res.json();
-        setLeads(data);
+        // Attach computed score
+        const leadsWithScore = data.map(lead => ({
+          ...lead,
+          _score: calculateLeadScore(lead)
+        }));
+        setLeads(leadsWithScore);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -81,6 +127,7 @@ export default function LeadDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // All tags
   const allTags = useMemo(() => {
     const tags = new Set();
     leads.forEach(lead => {
@@ -91,8 +138,10 @@ export default function LeadDashboard() {
     return Array.from(tags).sort();
   }, [leads]);
 
+  // Unique categories
   const uniqueCategories = [...new Set(leads.map(l => l.category).filter(Boolean))].sort();
 
+  // Filter leads
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
       const normalizedLeadPhone = normalizePhone(lead.phone_raw);
@@ -142,8 +191,61 @@ export default function LeadDashboard() {
     tagFilter
   ]);
 
+  // Sort leads
+  const sortedLeads = useMemo(() => {
+    return [...filteredLeads].sort((a, b) => {
+      let aVal, bVal;
+
+      if (sortField === 'score') {
+        aVal = a._score;
+        bVal = b._score;
+      } else if (sortField === 'rating') {
+        aVal = parseFloat(a.rating) || 0;
+        bVal = parseFloat(b.rating) || 0;
+      } else if (sortField === 'quality') {
+        const order = { HOT: 3, WARM: 2, COLD: 1 };
+        aVal = order[a.lead_quality] || 0;
+        bVal = order[b.lead_quality] || 0;
+      } else if (sortField === 'name') {
+        aVal = (a.contact_name || a.business_name || '').toLowerCase();
+        bVal = (b.contact_name || b.business_name || '').toLowerCase();
+      } else {
+        return 0;
+      }
+
+      if (typeof aVal === 'string') {
+        return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      } else {
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+    });
+  }, [filteredLeads, sortField, sortDirection]);
+
+  // Mark as contacted
+  const markAsContacted = async (leadId) => {
+    try {
+      const res = await fetch(`/api/leads/${leadId}/contacted`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        setLeads(prev =>
+          prev.map(lead =>
+            lead.id === leadId ? { ...lead, last_contacted: new Date().toISOString() } : lead
+          )
+        );
+        showToast('✅ Marked as contacted!');
+      } else {
+        throw new Error('Failed to update');
+      }
+    } catch (err) {
+      showToast('❌ Failed to update lead');
+    }
+  };
+
+  // Export CSV (all fields)
   const exportToCSV = () => {
-    if (filteredLeads.length === 0) return;
+    if (sortedLeads.length === 0) return;
 
     const headers = [
       'business_name',
@@ -157,12 +259,13 @@ export default function LeadDashboard() {
       'address',
       'rating',
       'review_count',
-      'tags'
+      'tags',
+      'last_contacted'
     ];
 
     const csvContent = [
       headers.join(','),
-      ...filteredLeads.map(lead =>
+      ...sortedLeads.map(lead =>
         headers.map(field => {
           const val = lead[field] || '';
           return `"${String(val).replace(/"/g, '""')}"`;
@@ -181,6 +284,30 @@ export default function LeadDashboard() {
     URL.revokeObjectURL(url);
   };
 
+  // Export WhatsApp numbers only (for bulk import)
+  const exportWhatsAppNumbers = () => {
+    const numbers = sortedLeads
+      .map(lead => normalizePhone(lead.whatsapp_number || lead.phone_raw))
+      .filter(n => n.length === 11 && n.startsWith('94'))
+      .map(n => `+${n}`);
+
+    if (numbers.length === 0) {
+      showToast('❌ No valid WhatsApp numbers to export');
+      return;
+    }
+
+    const blob = new Blob([numbers.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'whatsapp_numbers.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`✅ Exported ${numbers.length} WhatsApp numbers!`);
+  };
+
   const copyToClipboard = async (text, label) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -190,6 +317,7 @@ export default function LeadDashboard() {
     }
   };
 
+  // Loading & error states
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -225,7 +353,7 @@ export default function LeadDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       <Head>
-        <title>Colombo B2B Leads | Sales Accelerator</title>
+        <title>🚀 Colombo B2B Revenue Hub | Close Deals Faster</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
@@ -240,7 +368,7 @@ export default function LeadDashboard() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 py-3">
           <div className="flex justify-between items-center mb-3">
-            <h1 className="text-lg font-bold text-black">Colombo B2B Leads</h1>
+            <h1 className="text-lg font-bold text-black">Colombo B2B Revenue Hub</h1>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="text-sm text-blue-600 font-medium"
@@ -343,26 +471,39 @@ export default function LeadDashboard() {
 
           <div className="flex justify-between items-center pt-2">
             <span className="text-black text-sm">
-              {filteredLeads.length} leads
+              {sortedLeads.length} leads • Avg Score: {sortedLeads.length ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length) : 0}/100
             </span>
-            <button
-              onClick={exportToCSV}
-              disabled={filteredLeads.length === 0}
-              className={`px-4 py-2.5 rounded-lg font-medium text-base ${
-                filteredLeads.length === 0
-                  ? 'bg-gray-200 text-gray-500'
-                  : 'bg-green-600 text-white active:bg-green-700'
-              }`}
-            >
-              📥 Export
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={exportToCSV}
+                disabled={sortedLeads.length === 0}
+                className={`px-3 py-2 rounded font-medium text-sm ${
+                  sortedLeads.length === 0
+                    ? 'bg-gray-200 text-gray-500'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
+              >
+                📥 CSV
+              </button>
+              <button
+                onClick={exportWhatsAppNumbers}
+                disabled={sortedLeads.length === 0}
+                className={`px-3 py-2 rounded font-medium text-sm ${
+                  sortedLeads.length === 0
+                    ? 'bg-gray-200 text-gray-500'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                }`}
+              >
+                📲 WA Numbers
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Leads List */}
       <main className="px-4 pt-4">
-        {filteredLeads.length === 0 ? (
+        {sortedLeads.length === 0 ? (
           <div className="text-center py-12 px-4">
             <div className="text-5xl mb-4">🔍</div>
             <p className="text-black text-lg font-medium">No leads match your filters</p>
@@ -385,21 +526,19 @@ export default function LeadDashboard() {
           </div>
         ) : (
           <div className="space-y-4 pb-24">
-            {filteredLeads.map((lead, i) => {
+            {sortedLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
               const normalizedWaNumber = normalizePhone(lead.whatsapp_number || lead.phone_raw);
-              const waLink = normalizedWaNumber ? `https://wa.me/${normalizedWaNumber}` : '';
+              const waMessage = encodeURIComponent(
+                `Hi ${lead.contact_name || 'there'}, I'm reaching out from [Your Company] about ${lead.business_name || 'your business'}. Would you be open to a quick chat?`
+              );
+              const waLink = normalizedWaNumber ? `https://wa.me/${normalizedWaNumber}?text=${waMessage}` : '';
 
-              // Strategic: Highlight high-intent leads
-              const isHighValue = 
-                lead.lead_quality === 'HOT' && 
-                lead.email && 
-                lead.phone_raw && 
-                (parseFloat(lead.rating) >= 4.0 || parseInt(lead.review_count) >= 20);
+              const isHighValue = lead._score >= 75;
 
               return (
                 <div 
-                  key={i} 
+                  key={lead.id || i} 
                   className={`border rounded-xl p-4 bg-white shadow-sm transition-all ${
                     isHighValue ? 'border-green-500 ring-1 ring-green-200' : 'border-gray-200'
                   }`}
@@ -428,9 +567,15 @@ export default function LeadDashboard() {
                         )}
                         {isHighValue && (
                           <span className="px-2.5 py-1 text-xs bg-green-100 text-green-800 rounded-full font-bold">
-                            💎 High-Value
+                            💎 High-Value (Score: {lead._score})
                           </span>
                         )}
+                        <span className="px-2.5 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">
+                          {lead._score}/100
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-blue-700 font-medium">
+                        ➡️ {getNextBestAction(lead)}
                       </div>
                     </div>
                     {waLink && (
@@ -509,13 +654,37 @@ export default function LeadDashboard() {
 
                   {lead.tags && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {lead.tags.split(';').map((tag, idx) => (
-                        <span key={idx} className="px-2 py-1 bg-gray-100 text-black text-xs rounded-full">
-                          {tag.trim()}
-                        </span>
-                      ))}
+                      {lead.tags.split(';').map((tag, idx) => {
+                        const trimmed = tag.trim();
+                        const isUrgent = trimmed.toLowerCase().includes('urgent');
+                        const isDecisionMaker = trimmed.toLowerCase().includes('decision-maker');
+                        let bgColor = 'bg-gray-100';
+                        if (isUrgent) bgColor = 'bg-red-100';
+                        else if (isDecisionMaker) bgColor = 'bg-green-100';
+
+                        return (
+                          <span key={idx} className={`px-2 py-1 ${bgColor} text-black text-xs rounded-full`}>
+                            {trimmed}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
+
+                  {/* Follow-up & Contacted */}
+                  <div className="mt-3 flex justify-between items-center">
+                    {lead.last_contacted && (
+                      <span className="text-xs text-gray-600">
+                        Last contacted: {new Date(lead.last_contacted).toLocaleDateString()}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => markAsContacted(lead.id)}
+                      className="text-xs bg-blue-100 text-blue-800 px-2.5 py-1 rounded hover:bg-blue-200"
+                    >
+                      ✅ Mark Contacted
+                    </button>
+                  </div>
                 </div>
               );
             })}
