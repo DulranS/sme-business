@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const CONTACTED_PATH = join(__dirname, '../contacted_leads.json');
+const CONTACTED_PATH = join(__dirname, '../output_business_leads.csv');
 
 export async function POST(request, { params }) {
   const { id } = params;

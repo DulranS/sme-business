@@ -9,7 +9,7 @@ import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-export const CONTACTED_PATH = join(__dirname, '..', 'app', 'api', 'leads', 'contacted_leads.json');
+export const CONTACTED_PATH = join(__dirname, '..', 'app', 'api', 'leads', 'output_business_leads.csv');
 
 // Utility: sanitize string (prevent XSS, trim, collapse whitespace)
 function sanitize(str) {
