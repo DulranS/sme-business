@@ -43,6 +43,8 @@ import {
   Repeat,
   Plus,
   Repeat2,
+  Zap,
+  HardDrive,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -151,20 +153,6 @@ interface CSVRow {
   is_recurring?: string;
   recurring_interval?: string;
 }
-
-interface InventoryForecast {
-  order_id: number;
-  item_description: string;
-  category: string;
-  avg_monthly_usage: number; // units or value
-  current_stock_level: number;
-  reorder_point: number;
-  lead_time_days: number;
-  next_reorder_date: string; // ISO string
-  supplier_suggestion: string;
-  status: "ok" | "warning" | "critical";
-}
-
 const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
   "Customer Name": "customer_name",
   Email: "email",
@@ -280,7 +268,6 @@ const MEDIUM_RECURRING_CATEGORIES = new Set([
   "legal", "law firm", "accounting", "finance", "insurance",
   "hr services", "recruitment", "logistics", "education", "business services"
 ]);
-
 const inferRecurringSupplyLikelihood = (categoryString?: string): "High" | "Medium" | "Low" => {
   if (!categoryString) return "Low";
   const categories = parseCategories(categoryString).map(cat => cat.toLowerCase());
@@ -296,6 +283,151 @@ const inferRecurringSupplyLikelihood = (categoryString?: string): "High" | "Medi
 };
 
 const supabase = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ==============================
+// 🔮 INVENTORY FORECASTING ENGINE
+// ==============================
+interface InventoryForecast {
+  order_id: number;
+  item_description: string;
+  category: string;
+  avg_monthly_usage: number;
+  current_stock_level: number;
+  reorder_point: number;
+  lead_time_days: number;
+  next_reorder_date: string;
+  supplier_suggestion: string;
+  status: "ok" | "warning" | "critical";
+}
+
+const calculateInventoryForecast = (order: Order): InventoryForecast | null => {
+  if (!order.moq || !order.description) return null;
+
+  let avg_monthly_usage = 0;
+  if (order.is_recurring && !order.recurring_template_id) {
+    const qty = parseFloat(order.moq.replace(/[^\d.-]/g, "")) || 1;
+    if (order.recurring_interval === "weekly") avg_monthly_usage = qty * 4;
+    else if (order.recurring_interval === "monthly") avg_monthly_usage = qty;
+    else if (order.recurring_interval === "quarterly") avg_monthly_usage = qty / 3;
+  } else {
+    avg_monthly_usage = parseFloat(order.moq.replace(/[^\d.-]/g, "")) / 6 || 0;
+  }
+
+  const lead_time_days = order.supplier_lead_time_days || 7;
+  const safety_stock_factor = 1.5;
+  const current_stock_level = 0; // In real app, pull from inventory system
+  const reorder_point = avg_monthly_usage * (lead_time_days / 30) * safety_stock_factor;
+
+  const today = new Date();
+  const next_reorder_date = new Date();
+  next_reorder_date.setDate(today.getDate() + lead_time_days);
+
+  let status: "ok" | "warning" | "critical" = "ok";
+  if (current_stock_level <= 0) status = "critical";
+  else if (current_stock_level < reorder_point) status = "warning";
+
+  return {
+    order_id: order.id,
+    item_description: order.description,
+    category: order.category || "Uncategorized",
+    avg_monthly_usage,
+    current_stock_level,
+    reorder_point,
+    lead_time_days,
+    next_reorder_date: next_reorder_date.toISOString().split("T")[0],
+    supplier_suggestion: order.supplier_name || "TBD",
+    status,
+  };
+};
+
+// ------------------------
+// Inventory Forecast Section Component
+// ------------------------
+const InventoryForecastSection: React.FC<{
+  order: Order;
+  onCreateReorder: (order: Order) => void;
+}> = ({ order, onCreateReorder }) => {
+  const forecast = calculateInventoryForecast(order);
+  if (!forecast) return null;
+
+  const handleReorder = () => {
+    onCreateReorder({
+      ...order,
+      id: 0,
+      status: "pending",
+      created_at: new Date().toISOString(),
+      images: "[]",
+      supplier_name: "",
+      supplier_price: "",
+      customer_price: "",
+      inventory_status: "reorder-needed",
+    });
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-amber-50 to-orange-100 border border-amber-200 rounded-lg p-6">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900 flex items-center space-x-2">
+            <HardDrive className="w-5 h-5 text-amber-600" />
+            <span>Inventory Forecast</span>
+          </h3>
+          <p className="text-sm text-amber-700 mt-1">
+            Proactive reorder intelligence based on usage patterns.
+          </p>
+        </div>
+        {forecast.status !== "ok" && (
+          <button
+            onClick={handleReorder}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-sm flex items-center"
+          >
+            <Zap className="w-4 h-4 mr-1" /> Reorder Now
+          </button>
+        )}
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white p-3 rounded border">
+          <p className="text-xs text-gray-500">Avg Monthly Usage</p>
+          <p className="font-medium">{forecast.avg_monthly_usage.toFixed(1)} units</p>
+        </div>
+        <div className="bg-white p-3 rounded border">
+          <p className="text-xs text-gray-500">Lead Time</p>
+          <p className="font-medium">{forecast.lead_time_days} days</p>
+        </div>
+        <div className="bg-white p-3 rounded border">
+          <p className="text-xs text-gray-500">Reorder Point</p>
+          <p className="font-medium">{forecast.reorder_point.toFixed(1)} units</p>
+        </div>
+        <div className="bg-white p-3 rounded border">
+          <p className="text-xs text-gray-500">Next Reorder</p>
+          <p className="font-medium">{forecast.next_reorder_date}</p>
+        </div>
+      </div>
+
+      {forecast.status === "critical" && (
+        <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded flex items-start">
+          <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 mr-2" />
+          <div>
+            <p className="text-sm font-medium text-red-800">Critical: Out of stock!</p>
+            <p className="text-sm text-red-700">Immediate reorder required to avoid disruption.</p>
+          </div>
+        </div>
+      )}
+      {forecast.status === "warning" && (
+        <div className="mt-4 p-3 bg-orange-100 border border-orange-300 rounded flex items-start">
+          <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5 mr-2" />
+          <div>
+            <p className="text-sm font-medium text-orange-800">Warning: Stock running low</p>
+            <p className="text-sm text-orange-700">
+              Reorder by {forecast.next_reorder_date} to maintain supply.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ------------------------
 // Helper Functions
@@ -387,18 +519,15 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
   let supplierCount = 0;
   let refunds = 0;
   let recurringClients = 0;
-
   orders.forEach((order) => {
     const customerPrice = extractNumericValue(order.customer_price);
     const supplierPrice = extractNumericValue(order.supplier_price);
     const logisticsCost = extractNumericValue(order.logistics_cost);
     const margin =
       customerPrice > 0 ? (customerPrice - supplierPrice) / customerPrice : 0;
-    
     if (order.is_recurring && !order.recurring_template_id) {
       recurringClients++;
     }
-
     if (order.status === "completed") {
       totalRevenue += customerPrice;
       totalCost += supplierPrice;
@@ -433,7 +562,6 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
       inProgressValue += customerPrice;
     }
   });
-
   const totalProfit = totalRevenue - totalCost;
   const profitMargin =
     totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -456,7 +584,6 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
     completedOrders > 0 ? (refunds / completedOrders) * 100 : 0;
   const inventoryTurnover =
     completedOrders > 0 ? totalRevenue / (totalCost || 1) : 0;
-
   return {
     totalRevenue,
     totalCost,
@@ -1073,6 +1200,7 @@ const createBookkeepingRecord = async (recordData: {
     console.error("Failed to create bookkeeping record:", err);
   }
 };
+
 const PricingSection: React.FC<{
   order: Order;
   isEditing: boolean;
@@ -1683,9 +1811,7 @@ const RecurringOrderManager: React.FC<{
     is_recurring: true,
     recurring_interval: "monthly",
   });
-
   const recurringTemplates = orders.filter(order => order.is_recurring && !order.recurring_template_id);
-
   const handleCreate = () => {
     if (!formData.customer_name || !formData.phone || !formData.location || !formData.description || !formData.moq) {
       alert("Please fill all required fields");
@@ -1707,7 +1833,6 @@ const RecurringOrderManager: React.FC<{
     });
     setIsCreating(false);
   };
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -1822,7 +1947,6 @@ const RecurringOrderManager: React.FC<{
               <Plus className="w-4 h-4 mr-1" /> Add Recurring Order Template
             </button>
           )}
-
           <div className="mb-6">
             <h3 className="font-medium mb-2">Convert Existing Order to Recurring</h3>
             <p className="text-sm text-gray-600 mb-2">Select any order below to turn it into a recurring template.</p>
@@ -1847,7 +1971,6 @@ const RecurringOrderManager: React.FC<{
                 ))}
             </div>
           </div>
-
           <div className="space-y-3">
             <h3 className="font-medium">Active Recurring Templates ({recurringTemplates.length})</h3>
             {recurringTemplates.length === 0 ? (
@@ -1920,7 +2043,6 @@ const OrderManagementApp: React.FC = () => {
     "all" | "low-margin" | "aging" | "refund" | "inventory" | "recurring-high"
   >("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-
   // Image state
   const [orderImages, setOrderImages] = useState<OrderImage[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1951,60 +2073,71 @@ const OrderManagementApp: React.FC = () => {
     }
   }, []);
 
-  const biddingSectionRef = useRef<HTMLDivElement>(null);
-const isSupplierView = useMemo(() => {
-  if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).has('bid');
-}, []);
-
-useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const bidId = urlParams.get("bid");
-
-  if (bidId && !isNaN(Number(bidId))) {
-    const orderId = Number(bidId);
-
-    // Try to find in already loaded orders
-    const order = orders.find((o) => o.id === orderId);
-    if (order) {
-      handleSelectOrder(order);
-      setShowOrdersList(false);
-      setTimeout(() => {
-        biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 300);
-      // Optional: clean URL
-      window.history.replaceState({}, "", window.location.pathname);
-      return;
+  const createReorderDraft = async (draftOrder: Order) => {
+    try {
+      const { id, ...cleanOrder } = draftOrder;
+      const newOrder: Partial<Order> = {
+        ...cleanOrder,
+        status: "pending",
+        created_at: new Date().toISOString(),
+        images: "[]",
+      };
+      await supabase.from("orders").insert([newOrder]).execute();
+      await loadOrders();
+      alert("✅ Reorder draft created!");
+    } catch (err) {
+      console.error("Reorder creation error:", err);
+      alert("❌ Failed to create reorder draft");
     }
+  };
 
-    // If not found, fetch directly from Supabase
-    const fetchOrderById = async () => {
-      try {
-        const response = await supabase
-          .from("orders")
-          .select("*")
-          .eq("id", orderId)
-          .execute();
-        const fetchedOrder = response[0] as Order | undefined;
-        if (fetchedOrder) {
-          handleSelectOrder(fetchedOrder);
-          setShowOrdersList(false);
-          setTimeout(() => {
-            biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
-          }, 300);
-          window.history.replaceState({}, "", window.location.pathname);
-        } else {
-          alert("Order not found.");
-        }
-      } catch (err) {
-        console.error("Failed to fetch order by ID:", err);
-        alert("Could not load the requested order.");
+  const biddingSectionRef = useRef<HTMLDivElement>(null);
+  const isSupplierView = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).has('bid');
+  }, []);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const bidId = urlParams.get("bid");
+    if (bidId && !isNaN(Number(bidId))) {
+      const orderId = Number(bidId);
+      const order = orders.find((o) => o.id === orderId);
+      if (order) {
+        handleSelectOrder(order);
+        setShowOrdersList(false);
+        setTimeout(() => {
+          biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 300);
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
       }
-    };
-
-    fetchOrderById();
-  }
-}, []); // ← Run only once on mount
+      const fetchOrderById = async () => {
+        try {
+          const response = await supabase
+            .from("orders")
+            .select("*")
+            .eq("id", orderId)
+            .execute();
+          const fetchedOrder = response[0] as Order | undefined;
+          if (fetchedOrder) {
+            handleSelectOrder(fetchedOrder);
+            setShowOrdersList(false);
+            setTimeout(() => {
+              biddingSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 300);
+            window.history.replaceState({}, "", window.location.pathname);
+          } else {
+            alert("Order not found.");
+          }
+        } catch (err) {
+          console.error("Failed to fetch order by ID:", err);
+          alert("Could not load the requested order.");
+        }
+      };
+      fetchOrderById();
+    }
+  }, []);
 
   useEffect(() => {
     loadOrders();
@@ -2058,31 +2191,29 @@ useEffect(() => {
       );
       if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
       await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
-// Only create bookkeeping record if the order was NOT already completed
-// Only create bookkeeping record if the order was NOT already completed
-if (
-  status === "completed" &&
-  updatedOrder.customer_price &&
-  selectedOrder?.status !== "completed" // ← ADD THIS CHECK
-) {
-  const revenue = extractNumericValue(updatedOrder.customer_price);
-  if (revenue > 0) {
-    const recordData = {
-      date: new Date().toISOString().split("T")[0],
-      payment_date: new Date().toISOString().split("T")[0],
-      description: `Order #${orderId} completed: ${updatedOrder.description || ""}`,
-      category: "Inflow",
-      amount: revenue,
-      quantity: 1,
-      customer: updatedOrder.customer_name || null,
-      project: updatedOrder.category || null,
-      supplied_by: updatedOrder.supplier_name || null,
-      tags: `order-${orderId}`,
-      approved: true,
-    };
-    await createBookkeepingRecord(recordData);
-  }
-}
+      if (
+        status === "completed" &&
+        updatedOrder.customer_price &&
+        selectedOrder?.status !== "completed"
+      ) {
+        const revenue = extractNumericValue(updatedOrder.customer_price);
+        if (revenue > 0) {
+          const recordData = {
+            date: new Date().toISOString().split("T")[0],
+            payment_date: new Date().toISOString().split("T")[0],
+            description: `Order #${orderId} completed: ${updatedOrder.description || ""}`,
+            category: "Inflow",
+            amount: revenue,
+            quantity: 1,
+            customer: updatedOrder.customer_name || null,
+            project: updatedOrder.category || null,
+            supplied_by: updatedOrder.supplier_name || null,
+            tags: `order-${orderId}`,
+            approved: true,
+          };
+          await createBookkeepingRecord(recordData);
+        }
+      }
     } catch (error) {
       console.error("Status update error:", error);
       alert("Failed to update status");
@@ -2649,7 +2780,6 @@ if (
     const highRecurringCount = orders.filter(o => 
       inferRecurringSupplyLikelihood(o.category) === "High"
     ).length;
-
     const reportSections = [
       "STRATEGIC OPERATIONS & FINANCIAL REPORT",
       `Generated: ${new Date().toLocaleString()}`,
@@ -2833,7 +2963,6 @@ if (
         .update({ images: JSON.stringify(orderImages) })
         .eq("id", selectedOrder.id)
         .execute();
-      
       setOrders((prev) =>
         prev.map((o) =>
           o.id === selectedOrder.id ? { ...o, images: JSON.stringify(orderImages) } : o
@@ -3180,15 +3309,15 @@ if (
                   </div>
                 </div>
               </div>
-{!isSupplierView && (
-  <button
-    onClick={() => deleteOrder(selectedOrder.id)}
-    className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded"
-    title="Delete Order"
-  >
-    <Trash2 className="w-5 h-5" />
-  </button>
-)}
+              {!isSupplierView && (
+                <button
+                  onClick={() => deleteOrder(selectedOrder.id)}
+                  className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded"
+                  title="Delete Order"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {!isSupplierView && <FinancialDashboard summary={financialSummary} />}
@@ -3209,6 +3338,15 @@ if (
                   </div>
                 </div>
               )}
+
+              {/* >>> NEW: Inventory Forecast Section <<< */}
+              {!isSupplierView && (
+                <InventoryForecastSection
+                  order={selectedOrder}
+                  onCreateReorder={createReorderDraft}
+                />
+              )}
+
               {/* Recurring Supply Profile */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">Recurring Supply Profile</h3>
@@ -3248,6 +3386,7 @@ if (
                   );
                 })()}
               </div>
+
               {/* Recurring Order Settings */}
               {selectedOrder.is_recurring && !selectedOrder.recurring_template_id && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-6">
@@ -3264,25 +3403,27 @@ if (
                   </p>
                 </div>
               )}
+
               {/* Convert to Recurring Button */}
-{!isSupplierView && !selectedOrder.is_recurring && (
-  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-    <p className="text-sm text-blue-700 mb-2">
-      Turn this order into a recurring template for predictable revenue.
-    </p>
-    <button
-      onClick={() => {
-        convertToRecurring(selectedOrder);
-        setShowOrdersList(true);
-        setSelectedOrder(null);
-      }}
-      className="bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center"
-    >
-      <Repeat2 className="w-4 h-4 mr-2" />
-      Convert to Recurring Order
-    </button>
-  </div>
-)}
+              {!isSupplierView && !selectedOrder.is_recurring && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-700 mb-2">
+                    Turn this order into a recurring template for predictable revenue.
+                  </p>
+                  <button
+                    onClick={() => {
+                      convertToRecurring(selectedOrder);
+                      setShowOrdersList(true);
+                      setSelectedOrder(null);
+                    }}
+                    className="bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center"
+                  >
+                    <Repeat2 className="w-4 h-4 mr-2" />
+                    Convert to Recurring Order
+                  </button>
+                </div>
+              )}
+
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="font-semibold text-gray-900">Category</h3>
@@ -3339,6 +3480,7 @@ if (
                   </div>
                 )}
               </div>
+
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Customer Information
@@ -3401,6 +3543,7 @@ if (
                   </div>
                 </div>
               </div>
+
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   Order Details
@@ -3434,84 +3577,87 @@ if (
                   </div>
                 </div>
               </div>
-{!isSupplierView && (
-  <div className="bg-white border border-gray-200 rounded-lg p-6">
-    <h3 className="font-semibold text-gray-900 mb-4">
-      Update Status
-    </h3>
-    <StatusUpdater
-      currentStatus={selectedOrder.status}
-      onUpdate={(status) => updateOrderStatus(selectedOrder.id, status)}
-      loading={loading}
-    />
-  </div>
-)}
-{isSupplierView ? (
-  <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-    <h3 className="font-semibold text-gray-900 mb-4">Pricing Summary</h3>
-    <div className="space-y-2">
-      <p><strong>Customer Price:</strong> {selectedOrder.customer_price || "N/A"}</p>
-      <p><strong>Description:</strong> {selectedOrder.description}</p>
-      <p><strong>MOQ:</strong> {selectedOrder.moq}</p>
-      {selectedOrder.category && (
-        <p><strong>Category:</strong> {selectedOrder.category}</p>
-      )}
-    </div>
-  </div>
-) : (
-  <PricingSection
-    setLoading={setLoading}
-    order={selectedOrder}
-    isEditing={isEditingPricing}
-    supplierName={supplierName}
-    supplierPrice={supplierPrice}
-    supplierDescription={supplierDescription}
-    customerPrice={customerPrice}
-    setSupplierName={setSupplierName}
-    setSupplierPrice={setSupplierPrice}
-    setSupplierDescription={setSupplierDescription}
-    setCustomerPrice={setCustomerPrice}
-    onSave={() => updatePricingInfo(selectedOrder.id)}
-    onCancel={handleCancelEditPricing}
-    loading={loading}
-    onEdit={handleEditPricing}
-    onRemoveSupplier={(pwd) => {
-      if (pwd !== `${process.env?.NEXT_ADMIN_KEY}`) {
-        alert("Incorrect password. Supplier not removed.");
-        return;
-      }
-      const updatePayload: Partial<Order> = {
-        supplier_name: undefined,
-        supplier_price: undefined,
-        supplier_description: undefined,
-        supplier_lead_time_days: undefined,
-        status: "pending",
-      };
-      supabase
-        .from("orders")
-        .update(updatePayload)
-        .eq("id", selectedOrder!.id)
-        .execute()
-        .then(() => {
-          setOrders((prev) =>
-            prev.map((o) =>
-              o.id === selectedOrder!.id
-                ? { ...o, ...updatePayload }
-                : o
-            )
-          );
-          setSelectedOrder((prev) =>
-            prev ? { ...prev, ...updatePayload } : null
-          );
-          alert("Supplier removed successfully.");
-        })
-        .catch((err) => {
-          console.error("Remove supplier error:", err);
-          alert("Failed to remove supplier.");
-        });
-    }}
-  />
-)}
+
+              {!isSupplierView && (
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">
+                    Update Status
+                  </h3>
+                  <StatusUpdater
+                    currentStatus={selectedOrder.status}
+                    onUpdate={(status) => updateOrderStatus(selectedOrder.id, status)}
+                    loading={loading}
+                  />
+                </div>
+              )}
+
+              {isSupplierView ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Pricing Summary</h3>
+                  <div className="space-y-2">
+                    <p><strong>Customer Price:</strong> {selectedOrder.customer_price || "N/A"}</p>
+                    <p><strong>Description:</strong> {selectedOrder.description}</p>
+                    <p><strong>MOQ:</strong> {selectedOrder.moq}</p>
+                    {selectedOrder.category && (
+                      <p><strong>Category:</strong> {selectedOrder.category}</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <PricingSection
+                  setLoading={setLoading}
+                  order={selectedOrder}
+                  isEditing={isEditingPricing}
+                  supplierName={supplierName}
+                  supplierPrice={supplierPrice}
+                  supplierDescription={supplierDescription}
+                  customerPrice={customerPrice}
+                  setSupplierName={setSupplierName}
+                  setSupplierPrice={setSupplierPrice}
+                  setSupplierDescription={setSupplierDescription}
+                  setCustomerPrice={setCustomerPrice}
+                  onSave={() => updatePricingInfo(selectedOrder.id)}
+                  onCancel={handleCancelEditPricing}
+                  loading={loading}
+                  onEdit={handleEditPricing}
+                  onRemoveSupplier={(pwd) => {
+                    if (pwd !== `${process.env?.NEXT_ADMIN_KEY}`) {
+                      alert("Incorrect password. Supplier not removed.");
+                      return;
+                    }
+                    const updatePayload: Partial<Order> = {
+                      supplier_name: undefined,
+                      supplier_price: undefined,
+                      supplier_description: undefined,
+                      supplier_lead_time_days: undefined,
+                      status: "pending",
+                    };
+                    supabase
+                      .from("orders")
+                      .update(updatePayload)
+                      .eq("id", selectedOrder!.id)
+                      .execute()
+                      .then(() => {
+                        setOrders((prev) =>
+                          prev.map((o) =>
+                            o.id === selectedOrder!.id
+                              ? { ...o, ...updatePayload }
+                              : o
+                          )
+                        );
+                        setSelectedOrder((prev) =>
+                          prev ? { ...prev, ...updatePayload } : null
+                        );
+                        alert("Supplier removed successfully.");
+                      })
+                      .catch((err) => {
+                        console.error("Remove supplier error:", err);
+                        alert("Failed to remove supplier.");
+                      });
+                  }}
+                />
+              )}
+
               <LogisticsSection
                 order={selectedOrder}
                 isEditing={isEditingLogistics}
@@ -3538,6 +3684,7 @@ if (
                 loading={loading}
                 onEdit={handleEditLogistics}
               />
+
               <SupplierBiddingSection
                 order={selectedOrder}
                 onBidSubmit={(bid) => submitSupplierBid(selectedOrder.id, bid)}
@@ -3549,6 +3696,7 @@ if (
                 )}
                 biddingRef={biddingSectionRef}
               />
+
               {/* === Enhanced Image Management Section === */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
@@ -3579,29 +3727,28 @@ if (
                     )}
                   </div>
                 </div>
-
                 {orderImages.length === 0 ? (
                   <p className="text-gray-500 text-sm">No images uploaded</p>
                 ) : (
-<div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-  {orderImages.map((image, index) => (
-    <div key={index} className="relative group aspect-square">
-      <img
-        src={image.url}
-        alt={image.name}
-        className="w-full h-full object-contain rounded border bg-white p-1 cursor-pointer"
-        onClick={() => window.open(image.url, "_blank")}
-      />
-      <button
-        onClick={() => removeOrderImage(index)}
-        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-opacity opacity-0 group-hover:opacity-100"
-        title="Remove image"
-      >
-        <X className="w-3 h-3" />
-      </button>
-    </div>
-  ))}
-</div>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                    {orderImages.map((image, index) => (
+                      <div key={index} className="relative group aspect-square">
+                        <img
+                          src={image.url}
+                          alt={image.name}
+                          className="w-full h-full object-contain rounded border bg-white p-1 cursor-pointer"
+                          onClick={() => window.open(image.url, "_blank")}
+                        />
+                        <button
+                          onClick={() => removeOrderImage(index)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-opacity opacity-0 group-hover:opacity-100"
+                          title="Remove image"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -3616,7 +3763,6 @@ if (
           </div>
         )}
       </div>
-
       {/* Recurring Order Manager Modal */}
       {showRecurringManager && (
         <RecurringOrderManager
