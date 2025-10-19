@@ -91,6 +91,7 @@ interface Order {
   refund_status?: "none" | "requested" | "approved" | "processed";
   logistics_cost?: string;
   supplier_lead_time_days?: number;
+  current_stock_level?: number;
   route_optimized?: boolean;
   category?: string;
   bids?: string;
@@ -315,7 +316,7 @@ const calculateInventoryForecast = (order: Order): InventoryForecast | null => {
 
   const lead_time_days = order.supplier_lead_time_days || 7;
   const safety_stock_factor = 1.5;
-  const current_stock_level = 0; // In real app, pull from inventory system
+  const current_stock_level = order.current_stock_level || 0; // In real app, pull from inventory system
   const reorder_point = avg_monthly_usage * (lead_time_days / 30) * safety_stock_factor;
 
   const today = new Date();
@@ -1142,13 +1143,13 @@ const SupplierBiddingSection: React.FC<{
               at{" "}
               <span className="font-semibold">{showApprovalModal.price}</span>?
             </p>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
-            />
+<input
+  type="password"
+  value={password}
+  onChange={(e) => setPassword(e.target.value)}
+  placeholder="Enter confirmation password"
+  className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+/>
             <div className="flex justify-end space-x-2">
               <button
                 onClick={() => setShowApprovalModal(null)}
@@ -1480,13 +1481,13 @@ const PricingSection: React.FC<{
               <span className="font-semibold">{order.supplier_name}</span> as
               the supplier for this order. This cannot be undone.
             </p>
-            <input
-              type="password"
-              value={removePassword}
-              onChange={(e) => setRemovePassword(e.target.value)}
-              placeholder="Enter admin password:"
-              className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
-            />
+<input
+  type="password"
+  value={removePassword}
+  onChange={(e) => setRemovePassword(e.target.value)}
+  placeholder="Confirmation password"
+  className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+/>
             <div className="flex justify-end space-x-2">
               <button
                 onClick={() => setShowRemoveModal(false)}
@@ -2417,10 +2418,10 @@ const OrderManagementApp: React.FC = () => {
     bid: SupplierBid,
     password: string
   ) => {
-    if (password !== `${process.env?.NEXT_ADMIN_KEY}`) {
-      alert("Incorrect password. Supplier not approved.");
-      return;
-    }
+if (!password.trim()) {
+  alert("Confirmation password is required to approve a supplier.");
+  return;
+}
     try {
       const updatePayload: Partial<Order> = {
         supplier_name: bid.supplier_name,
@@ -2469,210 +2470,94 @@ const OrderManagementApp: React.FC = () => {
     }
   };
 
-  const handleCSVImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const text = e.target?.result as string;
-        const lines = text
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter((line) => line);
-        if (lines.length < 2) {
-          alert("CSV must contain headers and at least one data row");
-          return;
-        }
-        const rawHeaders = lines[0].split(",").map((h) => h.trim());
-        const headerMap: (keyof CSVRow | null)[] = [];
-        for (const raw of rawHeaders) {
-          const clean = raw.replace(/^"(.*)"$/, "$1").trim();
-          let key: keyof CSVRow | null = null;
-          if (clean === "Customer Name") key = "customer_name";
-          else if (clean === "Email") key = "email";
-          else if (clean === "Phone") key = "phone";
-          else if (clean === "Location") key = "location";
-          else if (clean === "Description") key = "description";
-          else if (clean === "MOQ") key = "moq";
-          else if (clean === "Urgency") key = "urgency";
-          else if (clean === "Status") key = "status";
-          else if (clean === "Category") key = "category";
-          else if (clean === "Supplier Name") key = "supplier_name";
-          else if (clean === "Supplier Price") key = "supplier_price";
-          else if (clean === "Customer Price") key = "customer_price";
-          else if (clean === "Inventory Status") key = "inventory_status";
-          else if (clean === "Shipping Carrier") key = "shipping_carrier";
-          else if (clean === "Tracking #") key = "tracking_number";
-          else if (clean === "Est. Delivery") key = "estimated_delivery";
-          else if (clean === "Actual Delivery") key = "actual_delivery";
-          else if (clean === "Refund Status") key = "refund_status";
-          else if (clean === "Logistics Cost") key = "logistics_cost";
-          else if (clean === "Lead Time (days)") key = "supplier_lead_time_days";
-          else if (clean === "Route Optimized") key = "route_optimized";
-          else if (clean === "Is Recurring") key = "is_recurring";
-          else if (clean === "Recurring Interval") key = "recurring_interval";
-          else if (
-            [
-              "customer_name",
-              "email",
-              "phone",
-              "location",
-              "description",
-              "moq",
-              "urgency",
-              "status",
-              "category",
-              "supplier_name",
-              "supplier_price",
-              "customer_price",
-              "inventory_status",
-              "shipping_carrier",
-              "tracking_number",
-              "estimated_delivery",
-              "actual_delivery",
-              "refund_status",
-              "logistics_cost",
-              "supplier_lead_time_days",
-              "route_optimized",
-              "is_recurring",
-              "recurring_interval",
-            ].includes(clean)
-          ) {
-            key = clean as keyof CSVRow;
-          }
-          headerMap.push(key);
-        }
-        const newOrders: Partial<Order>[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i];
-          if (!line) continue;
-          const values: string[] = [];
-          let current = "";
-          let inQuotes = false;
-          for (let j = 0; j < line.length; j++) {
-            const char = line[j];
-            if (char === '"') {
-              if (inQuotes && line[j + 1] === '"') {
-                current += '"';
-                j++;
-              } else {
-                inQuotes = !inQuotes;
-              }
-            } else if (char === "," && !inQuotes) {
-              values.push(current);
-              current = "";
-            } else {
-              current += char;
-            }
-          }
-          values.push(current);
-          const rowData: CSVRow = {};
-          for (
-            let idx = 0;
-            idx < headerMap.length && idx < values.length;
-            idx++
-          ) {
-            const key = headerMap[idx];
-            if (key !== null) {
-              let val = values[idx].trim();
-              if (val.startsWith('"') && val.endsWith('"')) {
-                val = val.slice(1, -1).replace(/""/g, '"');
-              }
-              rowData[key] = val || undefined;
-            }
-          }
-          if (
-            !rowData.customer_name ||
-            !rowData.phone ||
-            !rowData.location ||
-            !rowData.description ||
-            !rowData.moq
-          ) {
-            console.warn(
-              `Skipping row ${i + 1}: missing required fields`,
-              rowData
-            );
-            continue;
-          }
-          const cleanDate = (val: string | undefined): string | undefined => {
-            return val && val !== "N/A" ? val : undefined;
-          };
-          const cleanInt = (val: string | undefined): number | undefined => {
-            if (!val || val === "none" || val === "N/A" || val.trim() === "")
-              return undefined;
-            const num = parseInt(val.trim(), 10);
-            return isNaN(num) ? undefined : num;
-          };
-          const urgency = ["low", "medium", "high"].includes(
-            rowData.urgency?.toLowerCase() || ""
-          )
-            ? (rowData.urgency?.toLowerCase() as Order["urgency"])
-            : "medium";
-          const status = [
-            "pending",
-            "in-progress",
-            "completed",
-            "cancelled",
-            "ship",
-          ].includes(rowData.status?.toLowerCase() || "")
-            ? (rowData.status?.toLowerCase() as Order["status"])
-            : "pending";
-          const order: Partial<Order> = {
-            customer_name: rowData.customer_name,
-            email: rowData.email || undefined,
-            phone: rowData.phone,
-            location: rowData.location,
-            description: rowData.description,
-            moq: rowData.moq,
-            urgency,
-            status,
-            created_at: new Date().toISOString(),
-            supplier_name: rowData.supplier_name || undefined,
-            supplier_price: rowData.supplier_price || undefined,
-            supplier_description: rowData.supplier_description || undefined,
-            customer_price: rowData.customer_price || undefined,
-            images: "[]",
-            inventory_status: rowData.inventory_status as any,
-            shipping_carrier: rowData.shipping_carrier,
-            tracking_number: rowData.tracking_number,
-            estimated_delivery: cleanDate(rowData.estimated_delivery),
-            actual_delivery: cleanDate(rowData.actual_delivery),
-            refund_status: rowData.refund_status as any,
-            logistics_cost: rowData.logistics_cost,
-            supplier_lead_time_days: cleanInt(rowData.supplier_lead_time_days),
-            route_optimized: rowData.route_optimized?.toLowerCase() === "true",
-            category: rowData.category || undefined,
-            is_recurring: rowData.is_recurring?.toLowerCase() === "true",
-            recurring_interval: rowData.recurring_interval as any,
-          };
-          newOrders.push(order);
-        }
-        if (newOrders.length === 0) {
-          alert("No valid orders found in CSV");
-          return;
-        }
-        setLoading(true);
-        try {
-          await supabase.from("orders").insert(newOrders).execute();
-          await loadOrders();
-          alert(`Successfully imported ${newOrders.length} order(s)`);
-        } catch (error) {
-          console.error("Import error:", error);
-          alert(
-            "Failed to import orders. Check CSV format and required fields."
-          );
-        } finally {
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error("CSV parsing error:", error);
-        alert("Error parsing CSV file");
+const handleCSVImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: async (results) => {
+      const rows = results.data as CSVRow[];
+      const newOrders: Partial<Order>[] = [];
+
+      for (const row of rows) {
+        if (
+          !row.customer_name ||
+          !row.phone ||
+          !row.location ||
+          !row.description ||
+          !row.moq
+        ) continue;
+
+        const urgency = ["low", "medium", "high"].includes(
+          row.urgency?.toLowerCase() || ""
+        )
+          ? (row.urgency?.toLowerCase() as Order["urgency"])
+          : "medium";
+
+        const status = [
+          "pending", "in-progress", "completed", "cancelled", "ship"
+        ].includes(row.status?.toLowerCase() || "")
+          ? (row.status?.toLowerCase() as Order["status"])
+          : "pending";
+
+        newOrders.push({
+          customer_name: row.customer_name,
+          email: row.email || undefined,
+          phone: row.phone,
+          location: row.location,
+          description: row.description,
+          moq: row.moq,
+          urgency,
+          status,
+          created_at: new Date().toISOString(),
+          supplier_name: row.supplier_name || undefined,
+          supplier_price: row.supplier_price || undefined,
+          customer_price: row.customer_price || undefined,
+          images: "[]",
+          inventory_status: row.inventory_status as any,
+          shipping_carrier: row.shipping_carrier,
+          tracking_number: row.tracking_number,
+          estimated_delivery: row.estimated_delivery,
+          actual_delivery: row.actual_delivery,
+          refund_status: row.refund_status as any,
+          logistics_cost: row.logistics_cost,
+          supplier_lead_time_days: row.supplier_lead_time_days
+            ? parseInt(row.supplier_lead_time_days, 10)
+            : undefined,
+          route_optimized: row.route_optimized?.toLowerCase() === "true",
+          category: row.category || undefined,
+          is_recurring: row.is_recurring?.toLowerCase() === "true",
+          recurring_interval: row.recurring_interval as any,
+        });
       }
-    };
-    reader.readAsText(file);
-    event.target.value = "";
-  };
+
+      if (newOrders.length === 0) {
+        alert("No valid orders found in CSV");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        await supabase.from("orders").insert(newOrders).execute();
+        await loadOrders();
+        alert(`Successfully imported ${newOrders.length} order(s)`);
+      } catch (error) {
+        console.error("Import error:", error);
+        alert("Failed to import orders. Check CSV format.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    error: (err) => {
+      console.error("CSV Parse Error:", err);
+      alert("Error parsing CSV file");
+    },
+  });
+
+  event.target.value = "";
+};
 
   const downloadCSVTemplate = () => {
     const template = [
@@ -2935,6 +2820,10 @@ const OrderManagementApp: React.FC = () => {
   // Image handlers
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
+      if (files.some(f => f.size > 2 * 1024 * 1024)) {
+    alert("Image too large. Max 2MB per image.");
+    return;
+  }
     const newImages: OrderImage[] = [];
     files.forEach((file) => {
       const reader = new FileReader();
@@ -3621,10 +3510,10 @@ const OrderManagementApp: React.FC = () => {
                   loading={loading}
                   onEdit={handleEditPricing}
                   onRemoveSupplier={(pwd) => {
-                    if (pwd !== `${process.env?.NEXT_ADMIN_KEY}`) {
-                      alert("Incorrect password. Supplier not removed.");
-                      return;
-                    }
+if (!pwd.trim()) {
+  alert("Password is required to remove a supplier.");
+  return;
+}
                     const updatePayload: Partial<Order> = {
                       supplier_name: undefined,
                       supplier_price: undefined,
