@@ -263,12 +263,12 @@ const ShipOrdersPage: React.FC = () => {
         setOrders(shipOrders);
 
         // ✅ Initialize shipping quantities to remaining amount
-        const initialQuantities: Record<number, number> = {};
-        shipOrders.forEach((order) => {
-          const total = extractMOQNumber(order.moq);
-          const shipped = order.shipped_quantity || 0;
-          initialQuantities[order.id] = Math.max(0, total - shipped);
-        });
+const initialQuantities: Record<number, number> = {};
+shipOrders.forEach((order) => {
+  const total = extractMOQNumber(order.moq);
+  const shipped = order.shipped_quantity || 0;
+  initialQuantities[order.id] = Math.max(0, total - shipped);
+});
         setShippingQuantities(initialQuantities);
       } catch (err) {
         console.error("Fetch error:", err);
@@ -340,91 +340,80 @@ const ShipOrdersPage: React.FC = () => {
     setShippingQuantities((prev) => ({ ...prev, [orderId]: remaining }));
   };
 
-  const markAsDispatched = async (order: Order) => {
-    const toShip = shippingQuantities[order.id] || 0;
-    const remaining = getRemaining(order);
+const markAsDispatched = async (order: Order) => {
+  const toShip = shippingQuantities[order.id] || 0;
+  const remaining = getRemaining(order);
 
-    if (toShip < 1) {
-      alert("Shipment quantity must be at least 1.");
-      return;
-    }
+  if (toShip < 1) {
+    alert("Shipment quantity must be at least 1.");
+    return;
+  }
 
-    if (toShip > remaining) {
-      alert(`Cannot ship more than remaining quantity (${remaining}).`);
-      return;
-    }
+  if (toShip > remaining) {
+    alert(`Cannot ship more than remaining quantity (${remaining}).`);
+    return;
+  }
 
-    const carrier = dispatchData[order.id]?.carrier?.trim();
-    const tracking = dispatchData[order.id]?.tracking?.trim();
+  const carrier = dispatchData[order.id]?.carrier?.trim();
+  const tracking = dispatchData[order.id]?.tracking?.trim();
 
-    if (!carrier || !tracking || tracking.length < 4) {
-      alert("Please enter valid carrier and tracking number (min 4 characters).");
-      return;
-    }
+  if (!carrier || !tracking || tracking.length < 4) {
+    alert("Please enter valid carrier and tracking number (min 4 characters).");
+    return;
+  }
 
-    const now = new Date().toISOString();
+  const now = new Date().toISOString();
+  const currentShipped = order.shipped_quantity || 0;
+  const newShipped = currentShipped + toShip;
+  const totalMOQ = extractMOQNumber(order.moq);
+  const isFullyDispatched = totalMOQ > 0 ? newShipped >= totalMOQ : newShipped > 0;
+  const newStatus = isFullyDispatched ? "dispatched" : "ship";
 
-    try {
-      await sendDiscordWebhookOnDispatch(order, toShip, carrier, tracking);
+  try {
+    await sendDiscordWebhookOnDispatch(order, toShip, carrier, tracking);
 
-      await supabase
-        .from("orders")
-        .update({
-          status: "dispatched",
-          shipping_carrier: carrier,
-          tracking_number: tracking,
-          shipped_quantity: (order.shipped_quantity || 0) + toShip,
-          shipped_at: now,
-        })
-        .eq("id", order.id)
-        .execute();
+    // Update in DB
+    await supabase
+      .from("orders")
+      .update({
+        status: newStatus,
+        shipping_carrier: carrier,
+        tracking_number: tracking,
+        shipped_quantity: newShipped,
+        shipped_at: now,
+      })
+      .eq("id", order.id)
+      .execute();
 
-      // Remove dispatched order from UI
-      const newShipped = (order.shipped_quantity || 0) + toShip;
-const totalMOQ = extractMOQNumber(order.moq);
-const isFullyDispatched = newShipped >= totalMOQ;
+    // Update UI: remove if fully done, else update shipped qty
+    setOrders((prev) =>
+      isFullyDispatched
+        ? prev.filter((o) => o.id !== order.id)
+        : prev.map((o) =>
+            o.id === order.id
+              ? { ...o, shipped_quantity: newShipped, status: newStatus }
+              : o
+          )
+    );
 
-// Update order in state (don't remove unless fully done)
-setOrders((prev) =>
-  prev.map((o) =>
-    o.id === order.id
-      ? { ...o, shipped_quantity: newShipped, status: "dispatched" }
-      : o
-  )
-);
+    // Clean up local form state
+    setDispatchData((prev) => {
+      const updated = { ...prev };
+      delete updated[order.id];
+      return updated;
+    });
+    setShippingQuantities((prev) => {
+      const updated = { ...prev };
+      delete updated[order.id];
+      return updated;
+    });
 
-// Only remove from "ship" list if fully dispatched
-if (isFullyDispatched) {
-  setOrders((prev) =>
-  prev.map((o) =>
-    o.id === order.id
-      ? {
-          ...o,
-          status: "dispatched",
-          shipping_carrier: carrier,
-          tracking_number: tracking,
-          shipped_quantity: (o.shipped_quantity || 0) + toShip,
-          shipped_at: now,
-        }
-      : o
-  )
-);
-}
-      setDispatchData((prev) => {
-        const newD = { ...prev };
-        delete newD[order.id];
-        return newD;
-      });
-      setShippingQuantities((prev) => {
-        const newQ = { ...prev };
-        delete newQ[order.id];
-        return newQ;
-      });
-    } catch (err) {
-      console.error("Dispatch update failed:", err);
-      alert("Failed to mark as dispatched. Please try again.");
-    }
-  };
+    alert(`✅ ${isFullyDispatched ? "Order fully dispatched!" : "Partial shipment recorded."}`);
+  } catch (err) {
+    console.error("Dispatch update failed:", err);
+    alert("Failed to mark as dispatched. Please try again.");
+  }
+};
 
   // ✅ Fixed CSV Export — aligned headers and rows
   const exportToCSV = () => {

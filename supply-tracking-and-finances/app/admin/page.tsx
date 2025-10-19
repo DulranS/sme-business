@@ -2044,25 +2044,31 @@ useEffect(() => {
       );
       if (selectedOrder?.id === orderId) setSelectedOrder(updatedOrder);
       await sendOrderUpdateWebhook(updatedOrder, "Status Updated");
-      if (status === "completed" && updatedOrder.customer_price) {
-        const revenue = extractNumericValue(updatedOrder.customer_price);
-        if (revenue > 0) {
-          const recordData = {
-            date: new Date().toISOString().split("T")[0],
-            payment_date: new Date().toISOString().split("T")[0],
-            description: `Order #${orderId} completed: ${updatedOrder.description || ""}`,
-            category: "Inflow",
-            amount: revenue,
-            quantity: 1,
-            customer: updatedOrder.customer_name || null,
-            project: updatedOrder.category || null,
-            supplied_by: updatedOrder.supplier_name || null,
-            tags: `order-${orderId}`,
-            approved: true,
-          };
-          await createBookkeepingRecord(recordData);
-        }
-      }
+// Only create bookkeeping record if the order was NOT already completed
+// Only create bookkeeping record if the order was NOT already completed
+if (
+  status === "completed" &&
+  updatedOrder.customer_price &&
+  selectedOrder?.status !== "completed" // ← ADD THIS CHECK
+) {
+  const revenue = extractNumericValue(updatedOrder.customer_price);
+  if (revenue > 0) {
+    const recordData = {
+      date: new Date().toISOString().split("T")[0],
+      payment_date: new Date().toISOString().split("T")[0],
+      description: `Order #${orderId} completed: ${updatedOrder.description || ""}`,
+      category: "Inflow",
+      amount: revenue,
+      quantity: 1,
+      customer: updatedOrder.customer_name || null,
+      project: updatedOrder.category || null,
+      supplied_by: updatedOrder.supplier_name || null,
+      tags: `order-${orderId}`,
+      approved: true,
+    };
+    await createBookkeepingRecord(recordData);
+  }
+}
     } catch (error) {
       console.error("Status update error:", error);
       alert("Failed to update status");
