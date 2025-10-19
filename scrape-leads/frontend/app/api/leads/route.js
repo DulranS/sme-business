@@ -6,10 +6,15 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import crypto from 'crypto';
 
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-export const CONTACTED_PATH = join(__dirname, '..', 'app', 'api', 'leads', 'output_business_leads.csv');
+
+// ✅ Path to your SOURCE CSV file containing raw leads
+// Place your CSV file in the same directory: /app/api/leads/business_leads.csv
+const CSV_PATH = join(__dirname, 'output_business_leads.csv');
+
+// Optional: Path to store last contacted timestamps (will be created if needed)
+const CONTACTED_PATH = join(__dirname, 'contacted_leads.json');
 
 // Utility: sanitize string (prevent XSS, trim, collapse whitespace)
 function sanitize(str) {
@@ -83,6 +88,7 @@ function loadContactedMap() {
 }
 
 export async function GET() {
+  // ✅ Check if source CSV exists
   if (!fs.existsSync(CSV_PATH)) {
     console.error(`[Leads API] CSV file not found at: ${CSV_PATH}`);
     return NextResponse.json(

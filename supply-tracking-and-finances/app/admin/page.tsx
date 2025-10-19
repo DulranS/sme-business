@@ -152,6 +152,19 @@ interface CSVRow {
   recurring_interval?: string;
 }
 
+interface InventoryForecast {
+  order_id: number;
+  item_description: string;
+  category: string;
+  avg_monthly_usage: number; // units or value
+  current_stock_level: number;
+  reorder_point: number;
+  lead_time_days: number;
+  next_reorder_date: string; // ISO string
+  supplier_suggestion: string;
+  status: "ok" | "warning" | "critical";
+}
+
 const CSV_HEADER_MAPPING: Record<string, keyof CSVRow> = {
   "Customer Name": "customer_name",
   Email: "email",
