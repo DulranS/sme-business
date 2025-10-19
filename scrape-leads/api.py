@@ -37,6 +37,7 @@ PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "whatsapp_lead_preparer.py")
 JOBS_BASE_DIR = os.path.join(SCRIPT_DIR, "pipeline_jobs")
 LOGS_DIR = os.path.join(JOBS_BASE_DIR, "logs")
 OUTPUTS_DIR = os.path.join(JOBS_BASE_DIR, "outputs")
+MAX_CONCURRENT_JOBS = 2  # ← Adjust as needed (e.g., 1, 2, or 3)
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
@@ -84,6 +85,12 @@ class JobListResponse(BaseModel):
 # 💾 JOB STORAGE
 # ==============================
 jobs_db: Dict[str, PipelineJob] = {}
+
+def count_running_jobs() -> int:
+    return sum(
+        1 for job in jobs_db.values()
+        if job.status in (JobStatus.SCRAPING, JobStatus.PREPARING)
+    )
 
 # ==============================
 # 🔄 PIPELINE EXECUTION
@@ -143,7 +150,7 @@ async def execute_pipeline(job_id: str):
         if not success:
             raise Exception(f"Preparer failed: {error}")
 
-        whatsapp_file = os.path.join(output_dir, "whatsapp_ready_leads.csv")
+        whatsapp_file = os.path.join(output_dir, "output_business_leads.csv")
         if os.path.exists(whatsapp_file):
             with open(whatsapp_file, "r", encoding="utf-8") as f:
                 job.leads_prepared = max(0, sum(1 for _ in f) - 1)
@@ -188,6 +195,14 @@ async def root():
 
 @app.post("/pipeline/start", response_model=JobResponse)
 async def start_pipeline(background_tasks: BackgroundTasks):
+    # 🔒 Enforce concurrency limit
+    running_count = count_running_jobs()
+    if running_count >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many concurrent jobs. Max allowed: {MAX_CONCURRENT_JOBS}, currently running: {running_count}"
+        )
+
     job_id = str(uuid.uuid4())[:8]
     job_dir = os.path.join(OUTPUTS_DIR, job_id)
     log_file = os.path.join(LOGS_DIR, f"job_{job_id}.log")
