@@ -222,26 +222,26 @@ export default function LeadDashboard() {
   }, [filteredLeads, sortField, sortDirection]);
 
   // Mark as contacted
-  const markAsContacted = async (leadId) => {
-    try {
-      const res = await fetch(`/api/leads/${leadId}/contacted`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (res.ok) {
-        setLeads(prev =>
-          prev.map(lead =>
-            lead.id === leadId ? { ...lead, last_contacted: new Date().toISOString() } : lead
-          )
-        );
-        showToast('✅ Marked as contacted!');
-      } else {
-        throw new Error('Failed to update');
-      }
-    } catch (err) {
-      showToast('❌ Failed to update lead');
-    }
-  };
+  // const markAsContacted = async (leadId) => {
+  //   try {
+  //     const res = await fetch(`/api/leads/${leadId}/contacted`, {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //     });
+  //     if (res.ok) {
+  //       setLeads(prev =>
+  //         prev.map(lead =>
+  //           lead.id === leadId ? { ...lead, last_contacted: new Date().toISOString() } : lead
+  //         )
+  //       );
+  //       showToast('✅ Marked as contacted!');
+  //     } else {
+  //       throw new Error('Failed to update');
+  //     }
+  //   } catch (err) {
+  //     showToast('❌ Failed to update lead');
+  //   }
+  // };
 
   // Export CSV (all fields)
   const exportToCSV = () => {
@@ -680,12 +680,12 @@ export default function LeadDashboard() {
                         Last contacted: {new Date(lead.last_contacted).toLocaleDateString()}
                       </span>
                     )}
-                    <button
+                    {/* <button
                       onClick={() => markAsContacted(lead.id)}
                       className="text-xs bg-blue-100 text-blue-800 px-2.5 py-1 rounded hover:bg-blue-200"
                     >
                       ✅ Mark Contacted
-                    </button>
+                    </button> */}
                   </div>
                 </div>
               );
