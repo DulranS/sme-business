@@ -274,19 +274,21 @@ export default function BookkeepingApp() {
   const generateRecurringRecords = async () => {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const lastGen = localStorage.getItem("lastRecurringGen");
+    if (lastGen === monthKey) return; // Prevent duplicate generation
+
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const firstDayStr = firstDay.toISOString().split("T")[0];
+    const autoGenNote = "Auto-generated from recurring cost";
 
     for (const cost of recurringCosts) {
-      // Check if already generated this month
-const autoGenNote = "Auto-generated from recurring cost";
-const exists = records.some(
-  (r) =>
-    r.description === cost.description &&
-    r.category === "Overhead" &&
-    r.date.startsWith(monthKey) &&
-    r.notes?.includes(autoGenNote)
-);
+      const exists = records.some(
+        (r) =>
+          r.description === cost.description &&
+          r.category === "Overhead" &&
+          r.date.startsWith(monthKey) &&
+          r.notes?.includes(autoGenNote)
+      );
       if (!exists) {
         const recordData = {
           date: firstDayStr,
@@ -294,7 +296,7 @@ const exists = records.some(
           description: cost.description,
           category: "Overhead",
           amount: cost.amount,
-          notes: cost.notes || "Auto-generated from recurring cost",
+          notes: cost.notes || autoGenNote,
           approved: true,
         };
         const { data, error } = await supabase
@@ -306,6 +308,7 @@ const exists = records.some(
         }
       }
     }
+    localStorage.setItem("lastRecurringGen", monthKey);
   };
 
   // --- Sync Data ---
@@ -413,74 +416,66 @@ const exists = records.some(
   }, [filteredRecords]);
 
   const userSelectableCategories = internalCategories.filter(
-  (cat) => cat !== "Cash Flow Gap"
-);
+    (cat) => cat !== "Cash Flow Gap"
+  );
 
-// Detect if we have at least 90 days of transaction history
-const hasSufficientHistory = useMemo(() => {
-  if (records.length === 0) return false;
-  const dates = records.map(r => new Date(r.date));
-  const minDate = new Date(Math.min(...dates));
-  const maxDate = new Date(Math.max(...dates));
-  const daysSpan = (maxDate - minDate) / (1000 * 60 * 60 * 24);
-  return daysSpan >= 90;
-}, [records]);
+  const hasSufficientHistory = useMemo(() => {
+    if (records.length === 0) return false;
+    const dates = records.map((r) => new Date(r.date));
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    const daysSpan = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+    return daysSpan >= 90;
+  }, [records]);
 
   // --- Totals & Loan Coverage ---
-const totals = filteredRecords.reduce(
-  (acc, r) => {
-    const amount = parseFloat(r.amount) || 0;
-    const quantity = parseFloat(r.quantity) || 1;
-    const totalAmount = amount * quantity;
-
-    if (r.category === "Cash Flow Gap") return acc;
-
-    if (r.category === "Inflow") {
-      let costPerUnit = parseFloat(r.cost_per_unit) || 0;
-      if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-        costPerUnit = inventoryCostMap[r.description];
+  const totals = filteredRecords.reduce(
+    (acc, r) => {
+      const amount = parseFloat(r.amount) || 0;
+      const quantity = parseFloat(r.quantity) || 1;
+      const totalAmount = amount * quantity;
+      if (r.category === "Cash Flow Gap") return acc;
+      if (r.category === "Inflow") {
+        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
+        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
+          costPerUnit = inventoryCostMap[r.description];
+        }
+        const cost = costPerUnit * quantity;
+        acc.inflow += totalAmount;
+        acc.inflowCost += cost;
+        if (costPerUnit > 0) {
+          acc.inflowProfit += totalAmount - cost;
+        }
+      } else {
+        if (r.category === "Outflow") acc.outflow += totalAmount;
+        if (r.category === "Reinvestment") acc.reinvestment += totalAmount;
+        if (r.category === "Overhead") acc.overhead += totalAmount;
+        if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
+        if (r.category === "Loan Received") acc.loanReceived += totalAmount;
+        if (r.category === "Logistics") acc.logistics += totalAmount;
+        if (r.category === "Refund") acc.refund += totalAmount;
       }
-      const cost = costPerUnit * quantity;
-      acc.inflow += totalAmount;
-      acc.inflowCost += cost;
-      if (costPerUnit > 0) {
-  acc.inflowProfit += totalAmount - cost;
-} else {
-  // Optionally log or track missing cost elsewhere
-}
-    } else {
-      // Apply quantity-aware totalAmount to ALL other categories
-      if (r.category === "Outflow") acc.outflow += totalAmount;
-      if (r.category === "Reinvestment") acc.reinvestment += totalAmount;
-      if (r.category === "Overhead") acc.overhead += totalAmount;
-      if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
-      if (r.category === "Loan Received") acc.loanReceived += totalAmount;
-      if (r.category === "Logistics") acc.logistics += totalAmount;
-      if (r.category === "Refund") acc.refund += totalAmount;
+      return acc;
+    },
+    {
+      inflow: 0,
+      inflowCost: 0,
+      inflowProfit: 0,
+      outflow: 0,
+      reinvestment: 0,
+      overhead: 0,
+      loanPayment: 0,
+      loanReceived: 0,
+      logistics: 0,
+      refund: 0,
     }
-    return acc;
-  },
-  {
-    inflow: 0,
-    inflowCost: 0,
-    inflowProfit: 0,
-    outflow: 0,
-    reinvestment: 0,
-    overhead: 0,
-    loanPayment: 0,
-    loanReceived: 0,
-    logistics: 0,
-    refund: 0,
-  }
-);
+  );
 
-  // Add recurring costs to overhead for calculations
   const totalRecurring = recurringCosts.reduce(
     (sum, cost) => sum + (parseFloat(cost.amount) || 0),
     0
   );
   const overheadWithRecurring = totals.overhead + totalRecurring;
-
   const grossProfit = totals.inflow - totals.outflow;
   const trueGrossMargin =
     totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
@@ -492,19 +487,25 @@ const totals = filteredRecords.reduce(
   const today = new Date();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
-const rollingInflow = records
-  .filter(
-    (r) =>
-      r.category === "Inflow" &&
-      new Date(r.date) >= thirtyDaysAgo &&
-      new Date(r.date) <= today
-  )
-  .reduce(
-    (sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
-    0
-  );
-  const loanCoveragePercent =
-    monthlyLoanTarget > 0 ? (rollingInflow / monthlyLoanTarget) * 100 : 0;
+
+  const rollingInflow = records
+    .filter(
+      (r) =>
+        r.category === "Inflow" &&
+        new Date(r.date) >= thirtyDaysAgo &&
+        new Date(r.date) <= today
+    )
+    .reduce(
+      (sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
+      0
+    );
+
+const hasRecentInflow = records.some(
+  r => r.category === "Inflow" && new Date(r.date) >= thirtyDaysAgo
+);
+const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
+  ? (rollingInflow / monthlyLoanTarget) * 100
+  : 0;
   const loanStatus = loanCoveragePercent >= 100 ? "On Track" : "At Risk";
 
   // Customer Concentration
@@ -621,7 +622,7 @@ const rollingInflow = records
       });
   }, [filteredRecords, inventoryCostMap, topCustomerShare]);
 
-  // Business Health Index (now includes recurring cost ratio)
+  // Business Health Index
   const monthlyBurn = overheadWithRecurring + totals.outflow + totals.reinvestment;
   const cashRunwayMonths = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
   const liquidityRatio = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
@@ -666,21 +667,20 @@ const rollingInflow = records
         (loanCoveragePercent / 100) * 25 +
         (liquidityRatio > 1 ? 25 : liquidityRatio * 25) +
         parseFloat(dataCompletenessScore) * 0.25 +
-        (recurringRatio < 30 ? 25 : 0) // Bonus if recurring costs < 30% of revenue
+        (recurringRatio < 30 ? 25 : 0)
     )
   );
 
   // Handle Form Submit
   const handleSubmit = async () => {
-      if (!formData.description || !formData.amount) return;
-  if (!formData.date) {
-    alert("Please select a date");
-    return;
-  }
-
-  const amountNum = parseFloat(formData.amount);
-if (formData.category !== "Inflow" && formData.category !== "Loan Received" && amountNum > 0) {
-  alert("Outflow categories should have positive amounts (system treats them as costs).");
+    if (!formData.description || !formData.amount) return;
+    if (!formData.date) {
+      alert("Please select a date");
+      return;
+    }
+const amountNum = parseFloat(formData.amount);
+if (isNaN(amountNum) || amountNum <= 0) {
+  alert("Amount must be a positive number.");
   return;
 }
     try {
@@ -805,43 +805,56 @@ if (formData.category !== "Inflow" && formData.category !== "Loan Received" && a
           alert("No valid records found in CSV.");
           return;
         }
+
+        // Normalize headers
+        const normalizeHeader = (str) =>
+          str?.trim().toLowerCase().replace(/\s+/g, "");
+
         const mappedRecords = data
           .map((row) => {
             const parseNumber = (val) =>
               val === "" || val == null ? null : parseFloat(val);
             const parseString = (val) =>
               val === "" || val == null ? null : String(val).trim();
+
+            const headers = {};
+            Object.keys(row).forEach((key) => {
+              headers[normalizeHeader(key)] = row[key];
+            });
+
             const categoryKey =
               Object.entries(categoryLabels).find(
-                ([, label]) => label === row["Category"]
+                ([, label]) => normalizeHeader(label) === normalizeHeader(headers["category"])
               )?.[0] ||
               (internalCategories.includes(row["Category"])
                 ? row["Category"]
                 : "Inflow");
+
             return {
               date:
-                parseString(row["Date"]) ||
+                parseString(headers["date"]) ||
                 new Date().toISOString().split("T")[0],
               payment_date:
-                parseString(row["Payment Date"]) || parseString(row["Date"]),
-              description: parseString(row["Description"]),
+                parseString(headers["paymentdate"]) || parseString(headers["date"]),
+              description: parseString(headers["description"]),
               category: internalCategories.includes(categoryKey)
                 ? categoryKey
                 : "Inflow",
-              amount: parseNumber(row["Unit Price (LKR)"]),
-              cost_per_unit: parseNumber(row["Cost per Unit (LKR)"]),
-              quantity: parseNumber(row["Quantity"]) || 1,
-              notes: parseString(row["Notes"]),
-              customer: parseString(row["Customer"]),
-              project: parseString(row["Project"]),
-              tags: parseString(row["Tags"]),
+              amount: parseNumber(headers["unitprice(lkr)"]),
+              cost_per_unit: parseNumber(headers["costperunit(lkr)"]),
+              quantity: parseNumber(headers["quantity"]) || 1,
+              notes: parseString(headers["notes"]),
+              customer: parseString(headers["customer"]),
+              project: parseString(headers["project"]),
+              tags: parseString(headers["tags"]),
               market_price:
-                parseNumber(row["Market/Competitor Price (LKR)"]) ||
-                parseNumber(row["Market Price"]),
-              supplied_by: parseString(row["Supplied By"]),
+                parseNumber(headers["market/competitorprice(lkr)"]) ||
+                parseNumber(headers["marketprice"]),
+              supplied_by: parseString(headers["suppliedby"]),
             };
           })
           .filter((r) => r.description && r.amount != null);
+
         if (mappedRecords.length === 0) {
           alert("No valid records to import.");
           return;
@@ -1021,44 +1034,44 @@ if (formData.category !== "Inflow" && formData.category !== "Loan Received" && a
     );
   }, [competitiveAnalysis]);
 
-const monthlyData = useMemo(() => {
-  if (!filteredRecords || filteredRecords.length === 0) return [];
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const grouped = {};
-  filteredRecords.forEach((r) => {
-    const date = new Date(r.date);
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    if (monthKey !== currentMonthKey) return; // Only current month
-    if (!grouped[monthKey]) {
-      grouped[monthKey] = { revenue: 0, cogs: 0, opex: 0 };
-    }
-    const qty = parseFloat(r.quantity) || 1;
-    const price = parseFloat(r.amount) || 0;
-    let cost = parseFloat(r.cost_per_unit) || 0;
-    if (!cost && r.description && inventoryCostMap[r.description]) {
-      cost = inventoryCostMap[r.description];
-    }
-    const revenue = price * qty;
-    const totalCost = cost * qty;
-    if (r.category === "Inflow") {
-      grouped[monthKey].revenue += revenue;
-      grouped[monthKey].cogs += totalCost;
-    } else if (["Outflow", "Overhead", "Reinvestment", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
-      grouped[monthKey].opex += price * qty;
-    }
-  });
-  return Object.entries(grouped).map(([month, vals]) => {
-    const grossProfit = vals.revenue - vals.cogs;
-    const netProfit = grossProfit - vals.opex;
-    return {
-      month,
-      revenue: vals.revenue,
-      profit: netProfit,
-      margin: vals.revenue > 0 ? (netProfit / vals.revenue) * 100 : 0,
-    };
-  }).sort((a, b) => new Date(a.month) - new Date(b.month));
-}, [filteredRecords, inventoryCostMap]);
+  const monthlyData = useMemo(() => {
+    if (!filteredRecords || filteredRecords.length === 0) return [];
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const grouped = {};
+    filteredRecords.forEach((r) => {
+      const date = new Date(r.date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      if (monthKey !== currentMonthKey) return;
+      if (!grouped[monthKey]) {
+        grouped[monthKey] = { revenue: 0, cogs: 0, opex: 0 };
+      }
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      if (r.category === "Inflow") {
+        grouped[monthKey].revenue += revenue;
+        grouped[monthKey].cogs += totalCost;
+      } else if (["Outflow", "Overhead", "Reinvestment", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
+        grouped[monthKey].opex += price * qty;
+      }
+    });
+    return Object.entries(grouped).map(([month, vals]) => {
+      const grossProfit = vals.revenue - vals.cogs;
+      const netProfit = grossProfit - vals.opex;
+      return {
+        month,
+        revenue: vals.revenue,
+        profit: netProfit,
+        margin: vals.revenue > 0 ? (netProfit / vals.revenue) * 100 : 0,
+      };
+    }).sort((a, b) => new Date(a.month) - new Date(b.month));
+  }, [filteredRecords, inventoryCostMap]);
 
   const dailyData = useMemo(() => {
     if (!filteredRecords || filteredRecords.length === 0) return [];
@@ -1127,136 +1140,122 @@ const monthlyData = useMemo(() => {
       });
   }, [filteredRecords]);
 
-const roiTimeline = useMemo(() => {
-  const grouped = {};
-  filteredRecords.forEach((r) => {
-    if (!r.date) return;
-    const month = new Date(r.date).toLocaleString("default", {
-      month: "short",
-      year: "2-digit",
-    });
-    if (!grouped[month])
-      grouped[month] = { month, investment: 0, return: 0, net: 0 };
-
-    const amount = parseFloat(r.amount) || 0;
-    const qty = parseFloat(r.quantity) || 1;
-    const total = amount * qty;
-
-    if (r.category === "Reinvestment") {
-      grouped[month].investment += total;
-      grouped[month].net -= total;
-    } else if (r.category === "Inflow") {
-      grouped[month].return += total;
-      grouped[month].net += total;
-    } else if (["Outflow", "Overhead", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
-      // These are expenses, NOT investments — do NOT add to investment
-      grouped[month].net -= total;
-    }
-  });
-  return Object.values(grouped);
-}, [filteredRecords]);
-
-const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
-  if (!hasSufficientHistory) {
-    return { breakEvenMonth: null, paybackMonth: null, roiPercentage: null };
-  }
-  let cumulativeInvestment = 0;
-  let cumulativeReturn = 0;
-  let cumulativeNet = 0;
-  let breakEvenFound = false;
-  let paybackFound = false;
-  let breakEvenMonth = null;
-  let paybackMonth = null;
-
-  roiTimeline.forEach((point) => {
-    cumulativeInvestment += point.investment;
-    cumulativeReturn += point.return;
-    cumulativeNet += point.net;
-
-    // Break-even: first month where cumulative net turns non-negative
-    if (!breakEvenFound && cumulativeNet >= 0) {
-      breakEvenMonth = point.month;
-      breakEvenFound = true;
-    }
-
-    // Payback period is same as break-even in this context
-    if (!paybackFound && cumulativeNet >= 0) {
-      paybackMonth = point.month;
-      paybackFound = true;
-    }
-  });
-
-  const roiPercentage =
-    cumulativeInvestment > 0
-      ? (((cumulativeReturn - cumulativeInvestment) / cumulativeInvestment) * 100).toFixed(0)
-      : 0;
-
-  return { breakEvenMonth, paybackMonth, roiPercentage };
-}, [roiTimeline, hasSufficientHistory]);
-
-const customerAnalysis = useMemo(() => {
-  const customers = {};
-  filteredRecords.forEach((r) => {
-    if (r.customer && r.category === "Inflow") {
-      if (!customers[r.customer]) {
-        customers[r.customer] = {
-          revenue: 0,
-          cost: 0,
-          transactions: 0,
-          projects: new Set(),
-          dates: [],
-        };
-      }
-      const qty = parseFloat(r.quantity) || 1;
+  const roiTimeline = useMemo(() => {
+    const grouped = {};
+    filteredRecords.forEach((r) => {
+      if (!r.date) return;
+      const month = new Date(r.date).toLocaleString("default", {
+        month: "short",
+        year: "2-digit",
+      });
+      if (!grouped[month])
+        grouped[month] = { month, investment: 0, return: 0, net: 0 };
       const amount = parseFloat(r.amount) || 0;
-      customers[r.customer].revenue += amount * qty;
-      let costPerUnit = parseFloat(r.cost_per_unit) || 0;
-      if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-        costPerUnit = inventoryCostMap[r.description] || 0;
+      const qty = parseFloat(r.quantity) || 1;
+      const total = amount * qty;
+      if (r.category === "Reinvestment") {
+        grouped[month].investment += total;
+        grouped[month].net -= total;
+      } else if (r.category === "Inflow") {
+        grouped[month].return += total;
+        grouped[month].net += total;
+      } else if (["Outflow", "Overhead", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
+        grouped[month].net -= total;
       }
-      customers[r.customer].cost += costPerUnit * qty;
-      customers[r.customer].transactions += 1;
-      if (r.project) customers[r.customer].projects.add(r.project);
-      if (r.date) customers[r.customer].dates.push(new Date(r.date));
+    });
+    return Object.values(grouped);
+  }, [filteredRecords]);
+
+  const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
+    if (!hasSufficientHistory) {
+      return { breakEvenMonth: null, paybackMonth: null, roiPercentage: null };
     }
-  });
-
-  return Object.entries(customers)
-    .map(([name, data]) => {
-      const firstDate = data.dates.length
-        ? new Date(Math.min(...data.dates.map((d) => d.getTime())))
-        : null;
-      const lastDate = data.dates.length
-        ? new Date(Math.max(...data.dates.map((d) => d.getTime())))
-        : null;
-      const monthsActive = firstDate && lastDate
-        ? (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
-          (lastDate.getMonth() - firstDate.getMonth()) +
-          1
+    let cumulativeInvestment = 0;
+    let cumulativeReturn = 0;
+    let cumulativeNet = 0;
+    let breakEvenFound = false;
+    let paybackFound = false;
+    let breakEvenMonth = null;
+    let paybackMonth = null;
+    roiTimeline.forEach((point) => {
+      cumulativeInvestment += point.investment;
+      cumulativeReturn += point.return;
+      cumulativeNet += point.net;
+      if (!breakEvenFound && cumulativeNet >= 0) {
+        breakEvenMonth = point.month;
+        breakEvenFound = true;
+      }
+      if (!paybackFound && cumulativeNet >= 0) {
+        paybackMonth = point.month;
+        paybackFound = true;
+      }
+    });
+    const roiPercentage =
+      cumulativeInvestment > 0
+        ? (((cumulativeReturn - cumulativeInvestment) / cumulativeInvestment) * 100).toFixed(0)
         : 0;
+    return { breakEvenMonth, paybackMonth, roiPercentage };
+  }, [roiTimeline, hasSufficientHistory]);
 
-      // Only compute CLV if conditions met
-      const clv =
-        hasSufficientHistory && monthsActive >= 3 && data.revenue > 0
-          ? ((data.revenue / monthsActive) * 12) *
-            ((data.revenue - data.cost) / data.revenue)
+  const customerAnalysis = useMemo(() => {
+    const customers = {};
+    filteredRecords.forEach((r) => {
+      if (r.customer && r.category === "Inflow") {
+        if (!customers[r.customer]) {
+          customers[r.customer] = {
+            revenue: 0,
+            cost: 0,
+            transactions: 0,
+            projects: new Set(),
+            dates: [],
+          };
+        }
+        const qty = parseFloat(r.quantity) || 1;
+        const amount = parseFloat(r.amount) || 0;
+        customers[r.customer].revenue += amount * qty;
+        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
+        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
+          costPerUnit = inventoryCostMap[r.description] || 0;
+        }
+        customers[r.customer].cost += costPerUnit * qty;
+        customers[r.customer].transactions += 1;
+        if (r.project) customers[r.customer].projects.add(r.project);
+        if (r.date) customers[r.customer].dates.push(new Date(r.date));
+      }
+    });
+    return Object.entries(customers)
+      .map(([name, data]) => {
+        const firstDate = data.dates.length
+          ? new Date(Math.min(...data.dates.map((d) => d.getTime())))
           : null;
-
-      return {
-        name,
-        revenue: data.revenue,
-        cost: data.cost,
-        profit: data.revenue - data.cost,
-        margin:
-          data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
-        transactions: data.transactions,
-        projectCount: data.projects.size,
-        avgTransaction: data.transactions ? data.revenue / data.transactions : 0,
-        clv,
-      };
-    })
-    .sort((a, b) => b.profit - a.profit);
-}, [filteredRecords, inventoryCostMap, hasSufficientHistory]);
+        const lastDate = data.dates.length
+          ? new Date(Math.max(...data.dates.map((d) => d.getTime())))
+          : null;
+        const monthsActive = firstDate && lastDate
+          ? (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
+            (lastDate.getMonth() - firstDate.getMonth()) +
+            1
+          : 0;
+        const clv =
+          hasSufficientHistory && monthsActive >= 3 && data.revenue > 0
+            ? ((data.revenue / monthsActive) * 12) *
+              ((data.revenue - data.cost) / data.revenue)
+            : null;
+        return {
+          name,
+          revenue: data.revenue,
+          cost: data.cost,
+          profit: data.revenue - data.cost,
+          margin:
+            data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
+          transactions: data.transactions,
+          projectCount: data.projects.size,
+          avgTransaction: data.transactions ? data.revenue / data.transactions : 0,
+          clv,
+        };
+      })
+      .sort((a, b) => b.profit - a.profit);
+  }, [filteredRecords, inventoryCostMap, hasSufficientHistory]);
 
   const productMargins = useMemo(() => {
     const products = {};
@@ -1511,40 +1510,40 @@ const customerAnalysis = useMemo(() => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-6 mb-6 text-white">
-          <div className="flex justify-between items-start flex-wrap gap-4">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 text-white">
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
-              <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-                <Brain className="w-8 h-8" />
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2">
+                <Brain className="w-6 h-6 sm:w-8 sm:h-8" />
                 SME Profit Intelligence Platform
               </h1>
-              <p className="text-blue-100">
+              <p className="text-blue-100 text-sm sm:text-base">
                 Payments → Cash Flow → Financial Controls → Reinvestment
               </p>
-              <div className="flex items-center gap-3 mt-2">
-                <div className="flex items-center gap-1 text-sm">
-                  <Percent className="w-4 h-4" />
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs sm:text-sm">
+                <div className="flex items-center gap-1">
+                  <Percent className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>True Margin: {trueGrossMargin.toFixed(1)}%</span>
                 </div>
-                <div className="flex items-center gap-1 text-sm">
-                  <DollarSign className="w-4 h-4" />
+                <div className="flex items-center gap-1">
+                  <DollarSign className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Loan Coverage: {loanCoveragePercent.toFixed(1)}%</span>
                 </div>
-                <div className="flex items-center gap-1 text-sm">
-                  <Database className="w-4 h-4" />
+                <div className="flex items-center gap-1">
+                  <Database className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>{records.length} transactions</span>
                 </div>
-                <div className="flex items-center gap-1 text-sm">
-                  <HeartPulse className="w-4 h-4" />
+                <div className="flex items-center gap-1">
+                  <HeartPulse className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Health: {businessHealthIndex}/100</span>
                 </div>
                 <button
                   onClick={syncRecords}
                   disabled={syncing}
-                  className="flex items-center gap-1 text-sm bg-blue-500 px-2 py-1 rounded hover:bg-blue-400 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 text-xs sm:text-sm bg-blue-500 px-2 py-1 rounded hover:bg-blue-400 transition-colors disabled:opacity-50"
                 >
                   <RefreshCw
                     className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`}
@@ -1553,33 +1552,33 @@ const customerAnalysis = useMemo(() => {
                 </button>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-1 sm:gap-2">
               <button
                 onClick={() => setShowTargetModal(true)}
-                className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-blue-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
               >
-                <Target className="w-4 h-4" />
+                <Target className="w-3 h-3 sm:w-4 sm:h-4" />
                 Target
               </button>
               <button
                 onClick={() => setShowLoanModal(true)}
-                className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-400 transition-colors font-semibold shadow-md"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-indigo-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-indigo-400 transition-colors font-semibold shadow-md"
               >
-                <DollarSign className="w-4 h-4" />
+                <DollarSign className="w-3 h-3 sm:w-4 sm:h-4" />
                 Loan Plan
               </button>
               <button
                 onClick={() => setShowBudgetModal(true)}
-                className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-blue-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
               >
-                <Bell className="w-4 h-4" />
+                <Bell className="w-3 h-3 sm:w-4 sm:h-4" />
                 Budgets
               </button>
               <button
                 onClick={() => setShowRecurringModal(true)}
-                className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-400 transition-colors font-semibold shadow-md"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-purple-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-purple-400 transition-colors font-semibold shadow-md"
               >
-                <Repeat className="w-4 h-4" />
+                <Repeat className="w-3 h-3 sm:w-4 sm:h-4" />
                 Recurring
               </button>
               <input
@@ -1591,16 +1590,16 @@ const customerAnalysis = useMemo(() => {
               />
               <button
                 onClick={() => csvInputRef.current?.click()}
-                className="flex items-center gap-2 bg-white text-blue-700 px-4 py-2 rounded-md hover:bg-blue-50 transition-colors font-semibold shadow-md"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-white text-blue-700 px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-50 transition-colors font-semibold shadow-md"
               >
-                <ArrowUp className="w-4 h-4" />
+                <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
                 Import
               </button>
               <button
                 onClick={exportToCSV}
-                className="flex items-center gap-2 bg-white text-blue-700 px-4 py-2 rounded-md hover:bg-blue-50 transition-colors font-semibold shadow-md"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-white text-blue-700 px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-50 transition-colors font-semibold shadow-md"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3 h-3 sm:w-4 sm:h-4" />
                 Export
               </button>
             </div>
@@ -1608,26 +1607,26 @@ const customerAnalysis = useMemo(() => {
         </div>
 
         {/* Loan Health Alert */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div
-            className={`p-4 rounded-lg flex items-center gap-3 ${
+            className={`p-3 sm:p-4 rounded-lg flex items-center gap-2 sm:gap-3 ${
               loanStatus === "On Track"
                 ? "bg-green-50 border border-green-200"
                 : "bg-red-50 border border-red-200"
             }`}
           >
             <DollarSign
-              className={`w-6 h-6 ${
+              className={`w-5 h-5 ${
                 loanStatus === "On Track" ? "text-green-600" : "text-red-600"
               }`}
             />
             <div>
-              <h3 className="font-semibold">
+              <h3 className="font-semibold text-sm sm:text-base">
                 {loanStatus === "On Track"
                   ? "✅ Loan Coverage On Track"
                   : "⚠️ Loan Coverage At Risk"}
               </h3>
-              <p className="text-sm">
+              <p className="text-xs sm:text-sm">
                 Rolling 30-day inflow: LKR {formatLKR(rollingInflow)} / LKR{" "}
                 {formatLKR(monthlyLoanTarget)} ({loanCoveragePercent.toFixed(1)}
                 %)
@@ -1637,18 +1636,18 @@ const customerAnalysis = useMemo(() => {
         </div>
 
         {/* Strategic Alerts */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 gap-4 mb-4 sm:mb-6">
           {budgetAlerts.length > 0 && (
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 sm:p-4 rounded-r-lg">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-900 mb-2">
+                  <h3 className="font-semibold text-yellow-900 text-sm sm:text-base mb-1 sm:mb-2">
                     Budget Alerts
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-1 sm:space-y-2">
                     {budgetAlerts.slice(0, 2).map((alert, idx) => (
-                      <div key={idx} className="text-sm text-yellow-800">
+                      <div key={idx} className="text-xs sm:text-sm text-yellow-800">
                         <strong>
                           {categoryLabels[alert.category] || alert.category}:
                         </strong>{" "}
@@ -1662,16 +1661,16 @@ const customerAnalysis = useMemo(() => {
             </div>
           )}
           {pricingRecommendations.length > 0 && (
-            <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-lg">
-              <div className="flex items-start gap-3">
-                <Sparkles className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+            <div className="bg-orange-50 border-l-4 border-orange-400 p-3 sm:p-4 rounded-r-lg">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <h3 className="font-semibold text-orange-900 mb-2">
+                  <h3 className="font-semibold text-orange-900 text-sm sm:text-base mb-1 sm:mb-2">
                     Pricing Opportunities
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-1 sm:space-y-2">
                     {pricingRecommendations.slice(0, 2).map((rec, idx) => (
-                      <div key={idx} className="text-sm text-orange-800">
+                      <div key={idx} className="text-xs sm:text-sm text-orange-800">
                         <strong>{rec.product}:</strong> +
                         {rec.percentIncrease.toFixed(0)}% price = +LKR{" "}
                         {formatLKR(rec.potentialRevenue)} revenue
@@ -1683,14 +1682,14 @@ const customerAnalysis = useMemo(() => {
             </div>
           )}
           {recurringAlert && (
-            <div className="bg-purple-50 border-l-4 border-purple-400 p-4 rounded-r-lg">
-              <div className="flex items-start gap-3">
-                <Repeat className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+            <div className="bg-purple-50 border-l-4 border-purple-400 p-3 sm:p-4 rounded-r-lg">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <Repeat className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <h3 className="font-semibold text-purple-900 mb-2">
+                  <h3 className="font-semibold text-purple-900 text-sm sm:text-base mb-1 sm:mb-2">
                     Recurring Cost Alert
                   </h3>
-                  <p className="text-sm text-purple-800">
+                  <p className="text-xs sm:text-sm text-purple-800">
                     Recurring costs are {recurringAlert.percent}% of revenue.
                     Consider optimization if above 30%.
                   </p>
@@ -1701,7 +1700,7 @@ const customerAnalysis = useMemo(() => {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="bg-white rounded-lg shadow-md mb-6 overflow-hidden">
+        <div className="bg-white rounded-lg shadow-md mb-4 sm:mb-6 overflow-hidden">
           <div className="flex overflow-x-auto">
             {[
               { id: "overview", label: "Overview", icon: BarChart3 },
@@ -1725,13 +1724,13 @@ const customerAnalysis = useMemo(() => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors whitespace-nowrap ${
+                  className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm whitespace-nowrap ${
                     activeTab === tab.id
                       ? "bg-blue-600 text-white"
                       : "text-gray-600 hover:bg-gray-100"
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-3 h-3 sm:w-4 sm:h-4" />
                   {tab.label}
                 </button>
               );
@@ -1740,54 +1739,54 @@ const customerAnalysis = useMemo(() => {
         </div>
 
         {/* Date Filter */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <Calendar className="w-5 h-5 text-gray-600" />
+        <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
             <input
               type="date"
               value={dateFilter.start}
               onChange={(e) =>
                 setDateFilter({ ...dateFilter, start: e.target.value })
               }
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <span className="text-gray-600">to</span>
+            <span className="text-gray-600 text-xs sm:text-sm">to</span>
             <input
               type="date"
               value={dateFilter.end}
               onChange={(e) =>
                 setDateFilter({ ...dateFilter, end: e.target.value })
               }
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               onClick={clearDateFilter}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+              className="px-3 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
             >
               Clear
             </button>
-            <div className="flex gap-2 ml-auto">
+            <div className="flex gap-1 sm:gap-2 ml-auto">
               <button
                 onClick={() => setQuickFilter(30)}
-                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
               >
                 30D
               </button>
               <button
                 onClick={() => setQuickFilter(90)}
-                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
               >
                 90D
               </button>
               <button
                 onClick={() => setQuickFilter(180)}
-                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
               >
                 6M
               </button>
               <button
                 onClick={() => setQuickFilter(365)}
-                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
               >
                 1Y
               </button>
@@ -1795,34 +1794,38 @@ const customerAnalysis = useMemo(() => {
           </div>
         </div>
 
+        {/* ... Rest of the component remains the same with only minor responsive tweaks ... */}
+        {/* For brevity, only key responsive changes shown above. All tables already wrapped in overflow-x-auto in original code. */}
+        {/* Modals are already responsive in original; no change needed beyond what's above. */}
+
         {/* Recurring Costs Tab */}
         {activeTab === "recurring" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Repeat className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Repeat className="w-6 h-6 sm:w-7 sm:h-7" />
                 Recurring Monthly Costs
               </h2>
-              <p className="text-purple-100">
+              <p className="text-purple-100 text-sm sm:text-base">
                 Manage fixed monthly expenses like rent, software, and salaries
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Your Recurring Costs</h3>
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                <h3 className="text-lg font-semibold mb-2 sm:mb-0">Your Recurring Costs</h3>
                 <button
                   onClick={() => {
                     resetRecurringForm();
                     setShowRecurringModal(true);
                   }}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-purple-700"
+                  className="bg-purple-600 text-white px-3 sm:px-4 py-2 rounded-md flex items-center gap-1 sm:gap-2 text-sm hover:bg-purple-700"
                 >
-                  <Plus className="w-4 h-4" /> Add Cost
+                  <Plus className="w-3 h-3 sm:w-4 sm:h-4" /> Add Cost
                 </button>
               </div>
               {recurringCosts.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <Repeat className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <div className="text-center py-8 sm:py-12 text-gray-500">
+                  <Repeat className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
                   <p>No recurring costs added yet</p>
                 </div>
               ) : (
@@ -1830,16 +1833,16 @@ const customerAnalysis = useMemo(() => {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                           Description
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Monthly Amount
                         </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                           Notes
                         </th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
                           Actions
                         </th>
                       </tr>
@@ -1847,27 +1850,27 @@ const customerAnalysis = useMemo(() => {
                     <tbody className="divide-y divide-gray-200">
                       {recurringCosts.map((cost) => (
                         <tr key={cost.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-gray-900 font-medium">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-900 font-medium text-xs sm:text-sm">
                             {cost.description}
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-red-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-red-600 text-xs sm:text-sm">
                             LKR {formatLKR(cost.amount)}
                           </td>
-                          <td className="px-4 py-3 text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-600 text-xs sm:text-sm">
                             {cost.notes || "—"}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                             <button
                               onClick={() => handleEditRecurring(cost)}
-                              className="text-blue-600 hover:text-blue-800 mx-1"
+                              className="text-blue-600 hover:text-blue-800 mx-0.5 sm:mx-1"
                             >
-                              <Pencil className="w-4 h-4" />
+                              <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteRecurring(cost.id)}
-                              className="text-red-600 hover:text-red-800 mx-1"
+                              className="text-red-600 hover:text-red-800 mx-0.5 sm:mx-1"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           </td>
                         </tr>
@@ -1876,11 +1879,11 @@ const customerAnalysis = useMemo(() => {
                   </table>
                 </div>
               )}
-              <div className="mt-6 p-4 bg-purple-50 rounded-lg">
-                <h4 className="font-semibold text-purple-900 mb-2">
+              <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-purple-50 rounded-lg">
+                <h4 className="font-semibold text-purple-900 mb-1 sm:mb-2 text-sm sm:text-base">
                   Summary
                 </h4>
-                <p className="text-purple-800">
+                <p className="text-purple-800 text-xs sm:text-sm">
                   Total Recurring Costs:{" "}
                   <span className="font-bold text-purple-600">
                     LKR {formatLKR(totalRecurring)}
@@ -1891,7 +1894,7 @@ const customerAnalysis = useMemo(() => {
                     </>
                   )}
                 </p>
-                <p className="text-sm text-purple-700 mt-2">
+                <p className="text-xs sm:text-sm text-purple-700 mt-1 sm:mt-2">
                   These costs are automatically added to your "Overhead" each
                   month on the 1st.
                 </p>
@@ -1902,21 +1905,21 @@ const customerAnalysis = useMemo(() => {
 
         {/* Business Health Tab */}
         {activeTab === "health" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-rose-500 to-rose-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <HeartPulse className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-rose-500 to-rose-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <HeartPulse className="w-6 h-6 sm:w-7 sm:h-7" />
                 Business Health Dashboard
               </h2>
-              <p className="text-rose-100">
+              <p className="text-rose-100 text-sm sm:text-base">
                 Monitor your financial stability and operational resilience
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="bg-white rounded-lg shadow-md p-5 text-center">
-                <h3 className="text-sm text-gray-600 mb-1">Health Index</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
+              <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Health Index</h3>
                 <p
-                  className={`text-2xl font-bold ${
+                  className={`text-lg sm:text-2xl font-bold ${
                     businessHealthIndex >= 80
                       ? "text-green-600"
                       : businessHealthIndex >= 60
@@ -1927,50 +1930,51 @@ const customerAnalysis = useMemo(() => {
                   {businessHealthIndex}/100
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-5 text-center">
-                <h3 className="text-sm text-gray-600 mb-1">Cash Runway</h3>
-                <p className="text-2xl font-bold text-blue-600">
+              <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Cash Runway</h3>
+                <p className="text-lg sm:text-2xl font-bold text-blue-600">
                   {cashRunwayMonths > 0 ? cashRunwayMonths.toFixed(1) : "∞"}{" "}
                   months
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   At current burn rate
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-5 text-center">
-                <h3 className="text-sm text-gray-600 mb-1">Burn Rate</h3>
-                <p className="text-2xl font-bold text-red-600">
+              <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Burn Rate</h3>
+                <p className="text-lg sm:text-2xl font-bold text-red-600">
                   LKR {formatLKR(monthlyBurn)}
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   Monthly expenses (incl. recurring)
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-5 text-center">
-                <h3 className="text-sm text-gray-600 mb-1">Liquidity Ratio</h3>
-                <p className="text-2xl font-bold text-green-600">
+              <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Liquidity Ratio</h3>
+                <p className="text-lg sm:text-2xl font-bold text-green-600">
                   {liquidityRatio > 0 ? liquidityRatio.toFixed(2) : "0"}x
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   Revenue vs monthly burn
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-5 text-center">
-                <h3 className="text-sm text-gray-600 mb-1">Recurring Ratio</h3>
-                <p className="text-2xl font-bold text-purple-600">
+              <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Recurring Ratio</h3>
+                <p className="text-lg sm:text-2xl font-bold text-purple-600">
                   {recurringRatio > 0 ? recurringRatio.toFixed(1) : "0"}%
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   Recurring / Revenue
                 </p>
               </div>
             </div>
+
             {/* AI Insights Summary */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border border-blue-200">
-              <h3 className="font-bold text-lg mb-3 text-blue-900">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-5 border border-blue-200">
+              <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 text-blue-900">
                 🧠 AI-Powered Business Summary
               </h3>
-              <p className="text-blue-800">
+              <p className="text-blue-800 text-xs sm:text-sm">
                 {businessHealthIndex >= 80
                   ? "Your business is in excellent health! Focus on scaling and reinvestment."
                   : businessHealthIndex >= 60
@@ -1978,14 +1982,15 @@ const customerAnalysis = useMemo(() => {
                   : "⚠️ Action needed: improve cash flow, reduce dependency, and enhance data tracking."}
               </p>
             </div>
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border border-blue-200">
-              <h3 className="font-bold text-lg mb-3 text-blue-900">
+
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-5 border border-blue-200">
+              <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 text-blue-900">
                 Strategic Recommendations
               </h3>
-              <ul className="space-y-2 text-blue-800">
+              <ul className="space-y-2 text-blue-800 text-xs sm:text-sm">
                 {cashRunwayMonths < 3 && (
-                  <li className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <li className="flex items-start gap-1 sm:gap-2">
+                    <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
                     <span>
                       <strong>Urgent:</strong> Cash runway under 3 months. Focus
                       on accelerating collections and reducing non-essential
@@ -1994,8 +1999,8 @@ const customerAnalysis = useMemo(() => {
                   </li>
                 )}
                 {trueGrossMargin < 30 && (
-                  <li className="flex items-start gap-2">
-                    <Percent className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <li className="flex items-start gap-1 sm:gap-2">
+                    <Percent className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
                     <span>
                       <strong>Margin Alert:</strong> Gross margin below 30%.
                       Review pricing and cost structure immediately.
@@ -2003,8 +2008,8 @@ const customerAnalysis = useMemo(() => {
                   </li>
                 )}
                 {topCustomerShare > 0.5 && (
-                  <li className="flex items-start gap-2">
-                    <Users className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <li className="flex items-start gap-1 sm:gap-2">
+                    <Users className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
                     <span>
                       <strong>Risk:</strong> Over{" "}
                       {Math.round(topCustomerShare * 100)}% revenue from one
@@ -2013,8 +2018,8 @@ const customerAnalysis = useMemo(() => {
                   </li>
                 )}
                 {dataCompletenessScore < 70 && (
-                  <li className="flex items-start gap-2">
-                    <Database className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <li className="flex items-start gap-1 sm:gap-2">
+                    <Database className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
                     <span>
                       <strong>Improve Data:</strong> Add cost, customer, and
                       supplier details to unlock deeper insights.
@@ -2022,8 +2027,8 @@ const customerAnalysis = useMemo(() => {
                   </li>
                 )}
                 {recurringRatio > 30 && (
-                  <li className="flex items-start gap-2">
-                    <Repeat className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <li className="flex items-start gap-1 sm:gap-2">
+                    <Repeat className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
                     <span>
                       <strong>Recurring Cost Review:</strong> Fixed costs exceed
                       30% of revenue. Negotiate or eliminate non-essential
@@ -2032,26 +2037,27 @@ const customerAnalysis = useMemo(() => {
                   </li>
                 )}
                 {hasSufficientHistory && customerAnalysis.some(c => c.clv !== null) && (
-  <li className="flex items-start gap-2">
-    <Users className="w-4 h-4 mt-0.5 flex-shrink-0" />
-    <span>
-      <strong>High-CLV customers identified.</strong> Focus retention efforts on top 20%.
-    </span>
-  </li>
-)}
+                  <li className="flex items-start gap-1 sm:gap-2">
+                    <Users className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>High-CLV customers identified.</strong> Focus retention efforts on top 20%.
+                    </span>
+                  </li>
+                )}
               </ul>
             </div>
+
             {/* Rest of health tab unchanged... */}
             {cashFlowGaps.length > 0 &&
               cashFlowGaps.filter((g) => g.status === "Delayed").length > 0 && (
-                <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-r-lg mb-6">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="bg-red-50 border-l-4 border-red-400 p-3 sm:p-4 rounded-r-lg mb-4 sm:mb-6">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0 mt-0.5" />
                     <div>
-                      <h3 className="font-semibold text-red-900 mb-2">
+                      <h3 className="font-semibold text-red-900 mb-1 sm:mb-2 text-sm sm:text-base">
                         Cash Flow Delay Risk
                       </h3>
-                      <p className="text-sm text-red-800">
+                      <p className="text-xs sm:text-sm text-red-800">
                         {
                           cashFlowGaps.filter((g) => g.status === "Delayed")
                             .length
@@ -2067,36 +2073,37 @@ const customerAnalysis = useMemo(() => {
                   </div>
                 </div>
               )}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-amber-600" />
+
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
                 Customer Payment Timing Risk
               </h3>
               {cashFlowGaps.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div className="text-center p-3 bg-amber-50 rounded-lg">
-                      <p className="text-sm text-gray-600">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                    <div className="text-center p-2 sm:p-3 bg-amber-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         Total Invoices Tracked
                       </p>
-                      <p className="text-xl font-bold text-amber-700">
+                      <p className="text-base sm:text-xl font-bold text-amber-700">
                         {cashFlowGaps.length}
                       </p>
                     </div>
-                    <div className="text-center p-3 bg-red-50 rounded-lg">
-                      <p className="text-sm text-gray-600">
+                    <div className="text-center p-2 sm:p-3 bg-red-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         Delayed Payments ({">"}30d)
                       </p>
-                      <p className="text-xl font-bold text-red-600">
+                      <p className="text-base sm:text-xl font-bold text-red-600">
                         {
                           cashFlowGaps.filter((g) => g.status === "Delayed")
                             .length
                         }
                       </p>
                     </div>
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Avg Delay (All)</p>
-                      <p className="text-xl font-bold text-blue-600">
+                    <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">Avg Delay (All)</p>
+                      <p className="text-base sm:text-xl font-bold text-blue-600">
                         {(
                           cashFlowGaps.reduce((sum, g) => sum + g.gapDays, 0) /
                           cashFlowGaps.length
@@ -2105,16 +2112,16 @@ const customerAnalysis = useMemo(() => {
                       </p>
                     </div>
                   </div>
-                  <h4 className="font-semibold mb-3">Top Delayed Customers</h4>
+                  <h4 className="font-semibold mb-2 sm:mb-3 text-sm sm:text-base">Top Delayed Customers</h4>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs sm:text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-3 py-2 text-left">Customer</th>
-                          <th className="px-3 py-2 text-left">Description</th>
-                          <th className="px-3 py-2 text-right">Amount (LKR)</th>
-                          <th className="px-3 py-2 text-right">Delay (Days)</th>
-                          <th className="px-3 py-2 text-center">Status</th>
+                          <th className="px-2 sm:px-3 py-1 sm:py-2 text-left">Customer</th>
+                          <th className="px-2 sm:px-3 py-1 sm:py-2 text-left">Description</th>
+                          <th className="px-2 sm:px-3 py-1 sm:py-2 text-right">Amount (LKR)</th>
+                          <th className="px-2 sm:px-3 py-1 sm:py-2 text-right">Delay (Days)</th>
+                          <th className="px-2 sm:px-3 py-1 sm:py-2 text-center">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -2124,18 +2131,18 @@ const customerAnalysis = useMemo(() => {
                           .slice(0, 5)
                           .map((gap) => (
                             <tr key={gap.id} className="hover:bg-gray-50">
-                              <td className="px-3 py-2 font-medium">
+                              <td className="px-2 sm:px-3 py-1 sm:py-2 font-medium">
                                 {gap.customer || "—"}{" "}
                               </td>
-                              <td className="px-3 py-2">{gap.description}</td>
-                              <td className="px-3 py-2 text-right">
+                              <td className="px-2 sm:px-3 py-1 sm:py-2">{gap.description}</td>
+                              <td className="px-2 sm:px-3 py-1 sm:py-2 text-right">
                                 LKR {formatLKR(gap.amount)}
                               </td>
-                              <td className="px-3 py-2 text-right font-bold text-red-600">
+                              <td className="px-2 sm:px-3 py-1 sm:py-2 text-right font-bold text-red-600">
                                 {gap.gapDays}
                               </td>
-                              <td className="px-3 py-2 text-center">
-                                <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                              <td className="px-2 sm:px-3 py-1 sm:py-2 text-center">
+                                <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-red-100 text-red-800 text-xs rounded-full">
                                   Delayed
                                 </span>
                               </td>
@@ -2146,24 +2153,25 @@ const customerAnalysis = useMemo(() => {
                   </div>
                 </>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Clock className="w-10 h-10 mx-auto mb-2 text-gray-400" />
-                  <p>No payment date data available.</p>
-                  <p className="text-sm mt-1">
+                <div className="text-center py-6 sm:py-8 text-gray-500">
+                  <Clock className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-2 sm:mb-3 text-gray-400" />
+                  <p className="text-sm sm:text-base">No payment date data available.</p>
+                  <p className="text-xs sm:text-sm mt-1">
                     Add <strong>Payment Date</strong> to your Inflow records to
                     track cash flow timing.
                   </p>
                 </div>
               )}
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-green-600" />
+
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 Revenue & Profit Trends (Last 30 Days)
               </h3>
               {dailyData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <LineChart data={dailyData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" tick={{ fontSize: 10 }} />
@@ -2188,10 +2196,10 @@ const customerAnalysis = useMemo(() => {
                       />
                     </LineChart>
                   </ResponsiveContainer>
-                  <div className="mt-4 grid grid-cols-3 gap-4">
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Avg Daily Revenue</p>
-                      <p className="text-xl font-bold text-green-600">
+                  <div className="mt-3 sm:mt-4 grid grid-cols-3 gap-3 sm:gap-4">
+                    <div className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">Avg Daily Revenue</p>
+                      <p className="text-base sm:text-xl font-bold text-green-600">
                         LKR{" "}
                         {formatLKR(
                           dailyData.reduce((sum, d) => sum + d.revenue, 0) /
@@ -2199,9 +2207,9 @@ const customerAnalysis = useMemo(() => {
                         )}
                       </p>
                     </div>
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Avg Daily Profit</p>
-                      <p className="text-xl font-bold text-blue-600">
+                    <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">Avg Daily Profit</p>
+                      <p className="text-base sm:text-xl font-bold text-blue-600">
                         LKR{" "}
                         {formatLKR(
                           dailyData.reduce((sum, d) => sum + d.profit, 0) /
@@ -2209,9 +2217,9 @@ const customerAnalysis = useMemo(() => {
                         )}
                       </p>
                     </div>
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Avg Margin</p>
-                      <p className="text-xl font-bold text-purple-600">
+                    <div className="text-center p-2 sm:p-3 bg-purple-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">Avg Margin</p>
+                      <p className="text-base sm:text-xl font-bold text-purple-600">
                         {(
                           dailyData.reduce((sum, d) => sum + d.margin, 0) /
                           dailyData.length
@@ -2222,22 +2230,23 @@ const customerAnalysis = useMemo(() => {
                   </div>
                 </>
               ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p>Add records from the last 30 days to see trends</p>
+                <div className="text-center py-8 sm:py-12 text-gray-500">
+                  <Calendar className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
+                  <p className="text-sm sm:text-base">Add records from the last 30 days to see trends</p>
                 </div>
               )}
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4">
+
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
                 30-Day Cash Flow Forecast (incl. Recurring)
               </h3>
-              <ResponsiveContainer width="100%" height={250}>
+              <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={projectedCash}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 10 }}
+                    tick={{ fontSize: 8 }}
                     tickFormatter={(date) => {
                       const d = new Date(date);
                       return d.toLocaleDateString("en-US", {
@@ -2264,104 +2273,105 @@ const customerAnalysis = useMemo(() => {
         {/* Overview Tab */}
         {activeTab === "overview" && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
-                <div className="flex justify-between items-start mb-2">
-                  <TrendingUp className="w-8 h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-black">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
+              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
                     Revenue
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
                   LKR {formatLKR(totals.inflow)}
                 </h3>
-                <p className="text-sm opacity-90">Total Inflow</p>
+                <p className="text-xs sm:text-sm opacity-90">Total Inflow</p>
               </div>
-              <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-5">
-                <div className="flex justify-between items-start mb-2">
-                  <ShoppingCart className="w-8 h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-black">
+              <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <ShoppingCart className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
                     COGS
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
                   LKR {formatLKR(totals.inflowCost)}
                 </h3>
-                <p className="text-sm opacity-90">Cost of Goods Sold</p>
+                <p className="text-xs sm:text-sm opacity-90">Cost of Goods Sold</p>
               </div>
-              <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
-                <div className="flex justify-between items-start mb-2">
-                  <Award className="w-8 h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-black">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <Award className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
                     {trueGrossMargin.toFixed(1)}%
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
                   LKR {formatLKR(totals.inflowProfit)}
                 </h3>
-                <p className="text-sm opacity-90">Gross Profit (True)</p>
+                <p className="text-xs sm:text-sm opacity-90">Gross Profit (True)</p>
               </div>
               <div
                 className={`bg-gradient-to-br ${
                   netProfit >= 0
                     ? "from-purple-500 to-purple-600"
                     : "from-orange-500 to-orange-600"
-                } text-white rounded-lg shadow-lg p-5`}
+                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <DollarSign className="w-8 h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-black">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
                     Net
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
                   LKR {formatLKR(netProfit)}
                 </h3>
-                <p className="text-sm opacity-90">Net Profit</p>
+                <p className="text-xs sm:text-sm opacity-90">Net Profit</p>
               </div>
               <div
                 className={`bg-gradient-to-br ${
                   loanStatus === "On Track"
                     ? "from-green-500 to-teal-600"
                     : "from-red-500 to-orange-600"
-                } text-white rounded-lg shadow-lg p-5`}
+                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <DollarSign className="w-8 h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-black">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
                     {loanCoveragePercent.toFixed(0)}%
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">Loan Health</h3>
-                <p className="text-sm opacity-90">{loanStatus}</p>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">Loan Health</h3>
+                <p className="text-xs sm:text-sm opacity-90">{loanStatus}</p>
               </div>
-              <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-5">
-                <div className="flex justify-between items-start mb-2">
-                  <HeartPulse className="w-8 h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-black">
+              <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <HeartPulse className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
                     Health
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold mb-1">
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
                   {businessHealthIndex}
                 </h3>
-                <p className="text-sm opacity-90">Business Health Index</p>
+                <p className="text-xs sm:text-sm opacity-90">Business Health Index</p>
               </div>
             </div>
+
             {/* Entry Form */}
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <Plus className="w-5 h-5" />
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+              <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
+                <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                 {isEditing !== null ? "Edit Record" : "Add New Record"}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <input
                   type="date"
                   value={formData.date}
                   onChange={(e) =>
                     setFormData({ ...formData, date: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="date"
@@ -2370,7 +2380,7 @@ const customerAnalysis = useMemo(() => {
                   onChange={(e) =>
                     setFormData({ ...formData, paymentDate: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
@@ -2379,27 +2389,28 @@ const customerAnalysis = useMemo(() => {
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <select
                   value={formData.category}
                   onChange={(e) =>
                     setFormData({ ...formData, category: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-  {userSelectableCategories.map((cat) => (
-    <option key={cat} value={cat}>{cat}</option>
-  ))}
+                  {userSelectableCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
                 <input
                   type="number"
+                  inputMode="decimal"
                   placeholder="Quantity (default: 1)"
                   value={formData.quantity}
                   onChange={(e) =>
                     setFormData({ ...formData, quantity: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
@@ -2408,66 +2419,70 @@ const customerAnalysis = useMemo(() => {
                   onChange={(e) =>
                     setFormData({ ...formData, suppliedBy: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Selling Price per Unit (LKR) *
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     placeholder="e.g., 100"
                     value={formData.amount}
                     onChange={(e) =>
                       setFormData({ ...formData, amount: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Market/Competitor Price (LKR) - for competitive analysis
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     placeholder="e.g., 120"
                     value={formData.marketPrice}
                     onChange={(e) =>
                       setFormData({ ...formData, marketPrice: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Cost per Unit (LKR){" "}
                     {formData.category === "Inflow" && "- for margin tracking"}
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     placeholder="e.g., 60"
                     value={formData.costPerUnit}
                     onChange={(e) =>
                       setFormData({ ...formData, costPerUnit: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
+
               {/* Profit Preview */}
               {formData.quantity &&
                 formData.amount &&
                 formData.costPerUnit &&
                 formData.category === "Inflow" && (
-                  <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
-                    <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-xs sm:text-sm">
                       <div>
                         <p className="text-gray-600 font-medium">
                           Total Revenue
                         </p>
-                        <p className="text-lg font-bold text-green-600">
+                        <p className="text-base sm:text-lg font-bold text-green-600">
                           LKR{" "}
                           {formatLKR(
                             parseFloat(formData.quantity) *
@@ -2477,7 +2492,7 @@ const customerAnalysis = useMemo(() => {
                       </div>
                       <div>
                         <p className="text-gray-600 font-medium">Total Cost</p>
-                        <p className="text-lg font-bold text-red-600">
+                        <p className="text-base sm:text-lg font-bold text-red-600">
                           LKR{" "}
                           {formatLKR(
                             parseFloat(formData.quantity) *
@@ -2489,7 +2504,7 @@ const customerAnalysis = useMemo(() => {
                         <p className="text-gray-600 font-medium">
                           Gross Profit
                         </p>
-                        <p className="text-lg font-bold text-blue-600">
+                        <p className="text-base sm:text-lg font-bold text-blue-600">
                           LKR{" "}
                           {formatLKR(
                             parseFloat(formData.quantity) *
@@ -2500,7 +2515,7 @@ const customerAnalysis = useMemo(() => {
                       </div>
                       <div>
                         <p className="text-gray-600 font-medium">Margin</p>
-                        <p className="text-lg font-bold text-purple-600">
+                        <p className="text-base sm:text-lg font-bold text-purple-600">
                           {(
                             ((parseFloat(formData.amount) -
                               parseFloat(formData.costPerUnit)) /
@@ -2513,7 +2528,8 @@ const customerAnalysis = useMemo(() => {
                     </div>
                   </div>
                 )}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <input
                   type="text"
                   placeholder="Customer (optional)"
@@ -2521,7 +2537,7 @@ const customerAnalysis = useMemo(() => {
                   onChange={(e) =>
                     setFormData({ ...formData, customer: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
@@ -2530,7 +2546,7 @@ const customerAnalysis = useMemo(() => {
                   onChange={(e) =>
                     setFormData({ ...formData, project: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
@@ -2539,7 +2555,7 @@ const customerAnalysis = useMemo(() => {
                   onChange={(e) =>
                     setFormData({ ...formData, tags: e.target.value })
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <textarea
@@ -2548,55 +2564,56 @@ const customerAnalysis = useMemo(() => {
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 sm:mb-4"
                 rows="2"
               />
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={handleSubmit}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors font-semibold"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors font-semibold text-sm"
                 >
                   {isEditing !== null ? "Update" : "Add Record"}
                 </button>
                 {isEditing !== null && (
                   <button
                     onClick={handleCancel}
-                    className="bg-gray-200 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
                   >
                     Cancel
                   </button>
                 )}
               </div>
             </div>
+
             {/* Recent Records Preview */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold mb-4">Recent Transactions</h2>
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">Recent Transactions</h2>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Date
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Description
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Category
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Qty
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Unit Price
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Total
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Margin
                       </th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
                         Actions
                       </th>
                     </tr>
@@ -2613,15 +2630,15 @@ const customerAnalysis = useMemo(() => {
                       const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
                       return (
                         <tr key={record.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">
                             {record.date}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-900">
                             {record.description}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3">
                             <span
-                              className={`px-2 py-1 text-black rounded-full ${
+                              className={`px-2 py-1 text-black rounded-full text-xs ${
                                 record.category === "Inflow"
                                   ? "bg-green-100 text-green-800"
                                   : record.category === "Outflow"
@@ -2632,14 +2649,14 @@ const customerAnalysis = useMemo(() => {
                               {record.category}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             {qty}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             LKR {formatLKR(price)}
                           </td>
                           <td
-                            className={`px-4 py-3 text-sm text-right font-semibold ${
+                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
                               record.category === "Inflow" ||
                               record.category === "Loan Received"
                                 ? "text-green-600"
@@ -2652,7 +2669,7 @@ const customerAnalysis = useMemo(() => {
                               : "−"}{" "}
                             LKR {formatLKR(total)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                             {margin !== null ? (
                               <span
                                 className={`font-semibold ${
@@ -2669,7 +2686,7 @@ const customerAnalysis = useMemo(() => {
                               <span className="text-gray-400">-</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                             <button
                               onClick={() =>
                                 handleEdit(
@@ -2678,9 +2695,9 @@ const customerAnalysis = useMemo(() => {
                                   )
                                 )
                               }
-                              className="text-blue-600 hover:text-blue-800 mx-1"
+                              className="text-blue-600 hover:text-blue-800 mx-0.5 sm:mx-1"
                             >
-                              <Pencil className="w-4 h-4" />
+                              <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                             <button
                               onClick={() =>
@@ -2690,9 +2707,9 @@ const customerAnalysis = useMemo(() => {
                                   )
                                 )
                               }
-                              className="text-red-600 hover:text-red-800 mx-1"
+                              className="text-red-600 hover:text-red-800 mx-0.5 sm:mx-1"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           </td>
                         </tr>
@@ -2705,42 +2722,44 @@ const customerAnalysis = useMemo(() => {
           </>
         )}
 
-        {/* Remaining tabs (suppliers, records, margins, etc.) unchanged... */}
+        {/* Remaining tabs are already responsive in original; no changes needed beyond what's above */}
+
+        {/* Suppliers Tab */}
         {activeTab === "suppliers" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Factory className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Factory className="w-6 h-6 sm:w-7 sm:h-7" />
                 Supplier Cost Analysis
               </h2>
-              <p className="text-amber-100">
+              <p className="text-amber-100 text-sm sm:text-base">
                 Track spending by supplier to optimize procurement
               </p>
             </div>
             {supplierAnalysis.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <Factory className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 text-center">
+                <Factory className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-600 mx-auto mb-2 sm:mb-3" />
+                <p className="text-yellow-800 text-sm sm:text-base">
                   No supplier data available. Add “Supplied By” to your records
                   to see analysis.
                 </p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                           Supplier
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Total Cost
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Transactions
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           % of COGS
                         </th>
                       </tr>
@@ -2748,16 +2767,16 @@ const customerAnalysis = useMemo(() => {
                     <tbody className="divide-y divide-gray-200">
                       {supplierAnalysis.map((supplier, idx) => (
                         <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">
                             {supplier.name}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-red-600">
                             LKR {formatLKR(supplier.cost)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             {supplier.transactions}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-blue-600 font-medium">
                             {totals.inflowCost > 0
                               ? (
                                   (supplier.cost / totals.inflowCost) *
@@ -2776,17 +2795,18 @@ const customerAnalysis = useMemo(() => {
           </div>
         )}
 
+        {/* Records Tab */}
         {activeTab === "records" && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <FileText className="w-5 h-5" />
+          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 sm:mb-4">
+              <h2 className="text-base sm:text-xl font-bold flex items-center gap-2 mb-2 sm:mb-0">
+                <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                 Complete Transaction History (Strategically Ranked)
               </h2>
               <select
                 value={groupBy}
                 onChange={(e) => setGroupBy(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="none">No Grouping</option>
                 <option value="customer">Group by Customer</option>
@@ -2799,43 +2819,43 @@ const customerAnalysis = useMemo(() => {
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Date
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Description
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Category
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Customer
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                         Supplied By
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Qty
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Unit Price
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Cost/Unit
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Total
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Profit
                       </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                         Margin
                       </th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
                         Strategic Rank
                       </th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
                         Actions
                       </th>
                     </tr>
@@ -2854,15 +2874,15 @@ const customerAnalysis = useMemo(() => {
                           : null;
                       return (
                         <tr key={record.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">
                             {record.date}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-900">
                             {record.description}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3">
                             <span
-                              className={`px-2 py-1 text-black rounded-full ${
+                              className={`px-2 py-1 text-black rounded-full text-xs ${
                                 record.category === "Inflow"
                                   ? "bg-green-100 text-green-800"
                                   : record.category === "Outflow"
@@ -2877,23 +2897,23 @@ const customerAnalysis = useMemo(() => {
                               {record.category}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">
                             {record.customer || "-"}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">
                             {record.supplied_by || "-"}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             {qty}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             LKR {formatLKR(price)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             {cost > 0 ? `LKR ${formatLKR(cost)}` : "-"}
                           </td>
                           <td
-                            className={`px-4 py-3 text-sm text-right font-semibold ${
+                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
                               record.category === "Inflow" ||
                               record.category === "Loan Received"
                                 ? "text-green-600"
@@ -2906,12 +2926,12 @@ const customerAnalysis = useMemo(() => {
                               : "−"}{" "}
                             LKR {formatLKR(total)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-blue-600">
                             {record.category === "Inflow" && cost > 0
                               ? `LKR ${formatLKR(profit)}`
                               : "-"}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                             {margin !== null ? (
                               <span
                                 className={`font-semibold ${
@@ -2930,23 +2950,23 @@ const customerAnalysis = useMemo(() => {
                               <span className="text-gray-400">-</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="px-2 py-1 bg-purple-100 text-purple-800 text-black rounded-full font-medium">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
+                            <span className="px-2 py-1 bg-purple-100 text-purple-800 text-black rounded-full font-medium text-xs">
                               #{index + 1}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                             <button
                               onClick={() => handleEdit(index)}
-                              className="text-blue-600 hover:text-blue-800 mx-1"
+                              className="text-blue-600 hover:text-blue-800 mx-0.5 sm:mx-1"
                             >
-                              <Pencil className="w-4 h-4" />
+                              <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                             <button
                               onClick={() => handleDelete(index)}
-                              className="text-red-600 hover:text-red-800 mx-1"
+                              className="text-red-600 hover:text-red-800 mx-0.5 sm:mx-1"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           </td>
                         </tr>
@@ -2955,17 +2975,17 @@ const customerAnalysis = useMemo(() => {
                   </tbody>
                 </table>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {groupedRecords.map(({ group, items }) => (
-                    <div key={group} className="border rounded-lg p-4">
-                      <h3 className="font-bold text-lg mb-3">{group}</h3>
-                      <table className="w-full text-sm">
+                    <div key={group} className="border rounded-lg p-3 sm:p-4">
+                      <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3">{group}</h3>
+                      <table className="w-full text-xs sm:text-sm">
                         <thead className="bg-gray-100">
                           <tr>
-                            <th className="px-3 py-2 text-left">Date</th>
-                            <th className="px-3 py-2 text-left">Description</th>
-                            <th className="px-3 py-2 text-right">Total</th>
-                            <th className="px-3 py-2 text-right">Actions</th>
+                            <th className="px-2 sm:px-3 py-1 sm:py-2 text-left">Date</th>
+                            <th className="px-2 sm:px-3 py-1 sm:py-2 text-left">Description</th>
+                            <th className="px-2 sm:px-3 py-1 sm:py-2 text-right">Total</th>
+                            <th className="px-2 sm:px-3 py-1 sm:py-2 text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2975,14 +2995,14 @@ const customerAnalysis = useMemo(() => {
                               (parseFloat(record.quantity) || 1);
                             return (
                               <tr key={record.id} className="border-b">
-                                <td className="px-3 py-2">{record.date}</td>
-                                <td className="px-3 py-2">
+                                <td className="px-2 sm:px-3 py-1 sm:py-2">{record.date}</td>
+                                <td className="px-2 sm:px-3 py-1 sm:py-2">
                                   {record.description}
                                 </td>
-                                <td className="px-3 py-2 text-right">
+                                <td className="px-2 sm:px-3 py-1 sm:py-2 text-right">
                                   LKR {formatLKR(total)}
                                 </td>
-                                <td className="px-3 py-2 text-right">
+                                <td className="px-2 sm:px-3 py-1 sm:py-2 text-right">
                                   <button
                                     onClick={() =>
                                       handleEdit(
@@ -2991,9 +3011,9 @@ const customerAnalysis = useMemo(() => {
                                         )
                                       )
                                     }
-                                    className="text-blue-600 hover:text-blue-800 mx-1"
+                                    className="text-blue-600 hover:text-blue-800 mx-0.5 sm:mx-1"
                                   >
-                                    <Pencil className="w-4 h-4" />
+                                    <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </button>
                                   <button
                                     onClick={() =>
@@ -3003,9 +3023,9 @@ const customerAnalysis = useMemo(() => {
                                         )
                                       )
                                     }
-                                    className="text-red-600 hover:text-red-800 mx-1"
+                                    className="text-red-600 hover:text-red-800 mx-0.5 sm:mx-1"
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </button>
                                 </td>
                               </tr>
@@ -3021,77 +3041,78 @@ const customerAnalysis = useMemo(() => {
           </div>
         )}
 
+        {/* Margins Tab */}
         {activeTab === "margins" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Percent className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Percent className="w-6 h-6 sm:w-7 sm:h-7" />
                 Profit Margin Intelligence
               </h2>
-              <p className="text-purple-100">
+              <p className="text-purple-100 text-sm sm:text-base">
                 Deep dive into your product/service profitability
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-sm text-gray-600 mb-2">Average Margin</h3>
-                <p className="text-3xl font-bold text-blue-600">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Average Margin</h3>
+                <p className="text-xl sm:text-3xl font-bold text-blue-600">
                   {trueGrossMargin.toFixed(1)}%
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   Across all products
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-sm text-gray-600 mb-2">Total Markup</h3>
-                <p className="text-3xl font-bold text-green-600">
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Total Markup</h3>
+                <p className="text-xl sm:text-3xl font-bold text-green-600">
                   LKR {formatLKR(totals.inflowProfit)}
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   Gross profit from sales
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-sm text-gray-600 mb-2">COGS</h3>
-                <p className="text-3xl font-bold text-red-600">
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">COGS</h3>
+                <p className="text-xl sm:text-3xl font-bold text-red-600">
                   LKR {formatLKR(totals.inflowCost)}
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   Cost of goods sold
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-sm text-gray-600 mb-2">Markup Ratio</h3>
-                <p className="text-3xl font-bold text-purple-600">
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Markup Ratio</h3>
+                <p className="text-xl sm:text-3xl font-bold text-purple-600">
                   {totals.inflowCost > 0
                     ? (totals.inflowProfit / totals.inflowCost).toFixed(2)
                     : "0"}
                   x
                 </p>
-                <p className="text-black text-gray-500 mt-1">
+                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
                   Profit per cost LKR
                 </p>
               </div>
             </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
-              <div className="flex items-start gap-3">
-                <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-5">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <Lightbulb className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                 <div>
-                  <h3 className="font-semibold text-blue-900 mb-2">
+                  <h3 className="font-semibold text-blue-900 mb-1 sm:mb-2 text-sm sm:text-base">
                     Margin Health Check
                   </h3>
-                  <div className="space-y-2 text-sm text-blue-800">
+                  <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-blue-800">
                     {trueGrossMargin >= 50 && (
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4" />
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                         <span>
                           Excellent margins - you have strong pricing power
                         </span>
                       </div>
                     )}
                     {trueGrossMargin >= 30 && trueGrossMargin < 50 && (
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4" />
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                         <span>
                           Good margins - consider testing price increases on
                           high-demand items
@@ -3099,8 +3120,8 @@ const customerAnalysis = useMemo(() => {
                       </div>
                     )}
                     {trueGrossMargin < 30 && trueGrossMargin > 0 && (
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4" />
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4" />
                         <span>
                           Margins below target - review pricing strategy and
                           cost optimization
@@ -3114,56 +3135,57 @@ const customerAnalysis = useMemo(() => {
           </div>
         )}
 
+        {/* Products Tab */}
         {activeTab === "products" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-teal-500 to-teal-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Package className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-teal-500 to-teal-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Package className="w-6 h-6 sm:w-7 sm:h-7" />
                 Product/Service Performance
               </h2>
-              <p className="text-teal-100">
+              <p className="text-teal-100 text-sm sm:text-base">
                 Identify your profit champions and underperformers
               </p>
             </div>
             {productMargins.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <Package className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 text-center">
+                <Package className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-600 mx-auto mb-2 sm:mb-3" />
+                <p className="text-yellow-800 text-sm sm:text-base">
                   No product data available. Add cost tracking to your inflow
                   records to see detailed analysis.
                 </p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                           Product/Service
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Qty Sold
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Avg Price
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Avg Cost
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Unit Profit
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Total Profit
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Margin %
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Customers
                         </th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                           Turnover
                         </th>
                       </tr>
@@ -3171,19 +3193,19 @@ const customerAnalysis = useMemo(() => {
                     <tbody className="divide-y divide-gray-200">
                       {productMargins.map((product, idx) => (
                         <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">
                             {product.name}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             {product.quantity.toFixed(0)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             LKR {formatLKR(product.avgPrice)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             LKR {formatLKR(product.avgCost)}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold">
                             {product.avgProfit >= 0 ? (
                               <span className="text-green-600">
                                 + LKR {formatLKR(product.avgProfit)}
@@ -3194,7 +3216,7 @@ const customerAnalysis = useMemo(() => {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold">
                             {product.profit >= 0 ? (
                               <span className="text-green-600">
                                 + LKR {formatLKR(product.profit)}
@@ -3205,7 +3227,7 @@ const customerAnalysis = useMemo(() => {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                             <span
                               className={`font-bold ${
                                 product.margin >= 50
@@ -3220,10 +3242,10 @@ const customerAnalysis = useMemo(() => {
                               {product.margin.toFixed(1)}%
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             {product.customers}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-600">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                             {product.inventoryTurnover.toFixed(1)}x
                           </td>
                         </tr>
@@ -3236,54 +3258,55 @@ const customerAnalysis = useMemo(() => {
           </div>
         )}
 
+        {/* Customers Tab */}
         {activeTab === "customers" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Users className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Users className="w-6 h-6 sm:w-7 sm:h-7" />
                 Customer Profitability Analysis
               </h2>
-              <p className="text-indigo-100">
+              <p className="text-indigo-100 text-sm sm:text-base">
                 Understand which customers drive the most profit
               </p>
             </div>
             {customerAnalysis.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <Users className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 text-center">
+                <Users className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-600 mx-auto mb-2 sm:mb-3" />
+                <p className="text-yellow-800 text-sm sm:text-base">
                   No customer data available. Add customer names to your inflow
                   records to see analysis.
                 </p>
               </div>
             ) : (
               <>
-                <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                             Customer
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Revenue
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Cost
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Profit
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Margin
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Transactions
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Avg Order
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Estimated CLV
                           </th>
                         </tr>
@@ -3291,19 +3314,19 @@ const customerAnalysis = useMemo(() => {
                       <tbody className="divide-y divide-gray-200">
                         {customerAnalysis.map((customer, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">
                               {customer.name}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-green-600">
                               LKR {formatLKR(customer.revenue)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-red-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-red-600">
                               LKR {formatLKR(customer.cost)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-blue-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-blue-600">
                               LKR {formatLKR(customer.profit)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                               <span
                                 className={`font-bold ${
                                   customer.margin >= 50
@@ -3316,41 +3339,42 @@ const customerAnalysis = useMemo(() => {
                                 {customer.margin.toFixed(1)}%
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                               {customer.transactions}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                               LKR {formatLKR(customer.avgTransaction)}
                             </td>
-<td className="px-4 py-3 text-sm text-right font-semibold text-purple-600">
-  {customer.clv !== null
-    ? `LKR ${formatLKR(customer.clv)}`
-    : hasSufficientHistory
-      ? "—"
-      : (
-        <span className="text-gray-400" title="Need ≥90 days of data for CLV">
-          CLV not available
-        </span>
-      )}
-</td>
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-purple-600">
+                              {customer.clv !== null
+                                ? `LKR ${formatLKR(customer.clv)}`
+                                : hasSufficientHistory
+                                ? "—"
+                                : (
+                                  <span className="text-gray-400" title="Need ≥90 days of data for CLV">
+                                    CLV not available
+                                  </span>
+                                )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 </div>
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4">
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
                     Customer Concentration Risk
                   </h3>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={customerAnalysis.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis
                         dataKey="name"
                         angle={-45}
                         textAnchor="end"
-                        height={100}
+                        height={80}
+                        tick={{ fontSize: 10 }}
                       />
                       <YAxis />
                       <Tooltip
@@ -3367,38 +3391,39 @@ const customerAnalysis = useMemo(() => {
           </div>
         )}
 
+        {/* Pricing Tab */}
         {activeTab === "pricing" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Sparkles className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
                 AI-Powered Pricing Intelligence
               </h2>
-              <p className="text-orange-100">
+              <p className="text-orange-100 text-sm sm:text-base">
                 Data-driven recommendations to optimize your margins
               </p>
             </div>
             {pricingRecommendations.length === 0 ? (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-                <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
-                <p className="text-green-800 font-semibold">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 sm:p-6 text-center">
+                <CheckCircle className="w-10 h-10 sm:w-12 sm:h-12 text-green-600 mx-auto mb-2 sm:mb-3" />
+                <p className="text-green-800 font-semibold text-sm sm:text-base">
                   All products have healthy margins (30%+)
                 </p>
-                <p className="text-green-700 text-sm mt-2">
+                <p className="text-green-700 text-xs sm:text-sm mt-1 sm:mt-2">
                   Continue monitoring and consider testing premium pricing on
                   best sellers
                 </p>
               </div>
             ) : (
               <>
-                <div className="bg-orange-50 border-l-4 border-orange-500 p-5 rounded-r-lg">
-                  <div className="flex items-start gap-3">
-                    <Zap className="w-6 h-6 text-orange-600 flex-shrink-0 mt-1" />
+                <div className="bg-orange-50 border-l-4 border-orange-500 p-4 sm:p-5 rounded-r-lg">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <Zap className="w-4 h-4 sm:w-6 sm:h-6 text-orange-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-bold text-orange-900 mb-2">
+                      <h3 className="font-bold text-orange-900 mb-1 sm:mb-2 text-sm sm:text-base">
                         Quick Win Opportunities
                       </h3>
-                      <p className="text-sm text-orange-800 mb-3">
+                      <p className="text-xs sm:text-sm text-orange-800 mb-2 sm:mb-3">
                         Implementing these price adjustments could generate an
                         additional{" "}
                         <span className="font-bold">
@@ -3415,30 +3440,30 @@ const customerAnalysis = useMemo(() => {
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
                             Product/Service
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Current Margin
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Current Price
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Recommended Price
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Increase
                           </th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
                             Potential Revenue
                           </th>
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
                             Priority
                           </th>
                         </tr>
@@ -3446,31 +3471,31 @@ const customerAnalysis = useMemo(() => {
                       <tbody className="divide-y divide-gray-200">
                         {pricingRecommendations.map((rec, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">
                               {rec.product}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                               <span className="text-red-600 font-bold">
                                 {rec.currentMargin.toFixed(1)}%
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-right text-gray-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
                               LKR {formatLKR(rec.currentPrice)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-green-600">
                               LKR {formatLKR(rec.recommendedPrice)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-right">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                               <span className="text-orange-600 font-bold">
                                 +{rec.percentIncrease.toFixed(1)}%
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-right font-bold text-blue-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-bold text-blue-600">
                               +LKR {formatLKR(rec.potentialRevenue)}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                               <span
-                                className={`px-3 py-1 text-black font-semibold rounded-full ${
+                                className={`px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold rounded-full text-xs ${
                                   idx < 3
                                     ? "bg-red-100 text-red-800"
                                     : idx < 6
@@ -3487,37 +3512,37 @@ const customerAnalysis = useMemo(() => {
                     </table>
                   </div>
                 </div>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
-                  <div className="flex items-start gap-3">
-                    <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-5">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <Lightbulb className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-semibold text-blue-900 mb-2">
+                      <h3 className="font-semibold text-blue-900 mb-1 sm:mb-2 text-sm sm:text-base">
                         Implementation Strategy
                       </h3>
-                      <ul className="space-y-2 text-sm text-blue-800">
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-blue-800">
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             <strong>Test incrementally:</strong> Start with
                             10-15% increases to gauge customer response
                           </span>
                         </li>
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             <strong>Bundle strategically:</strong> Combine
                             low-margin items with high-margin services
                           </span>
                         </li>
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             <strong>Value communication:</strong> Ensure pricing
                             reflects the quality and outcomes you deliver
                           </span>
                         </li>
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             <strong>Monitor closely:</strong> Track conversion
                             rates and customer feedback after adjustments
@@ -3532,22 +3557,23 @@ const customerAnalysis = useMemo(() => {
           </div>
         )}
 
+        {/* Analytics Tab */}
         {activeTab === "analytics" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-6">
-              <div className="bg-gradient-to-br from-rose-50 to-red-100 border-2 border-red-300 rounded-lg p-5">
-                <h3 className="font-bold text-red-900 mb-3 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <div className="bg-gradient-to-br from-rose-50 to-red-100 border-2 border-red-300 rounded-lg p-4 sm:p-5">
+                <h3 className="font-bold text-red-900 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                  <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
                   Top Strategic Risks & Opportunities
                 </h3>
-                <ul className="space-y-2 text-sm text-red-800">
+                <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-red-800">
                   {recordsWithStrategicScore
                     .filter((r) => r.strategicScore < 0)
                     .sort((a, b) => a.strategicScore - b.strategicScore)
                     .slice(0, 3)
                     .map((r, idx) => (
-                      <li key={r.id} className="flex items-start gap-2">
-                        <span className="font-mono bg-red-200 text-red-900 px-2 py-0.5 rounded">
+                      <li key={r.id} className="flex items-start gap-1 sm:gap-2">
+                        <span className="font-mono bg-red-200 text-red-900 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs">
                           {r.strategicScore.toFixed(1)}
                         </span>
                         <span>
@@ -3563,27 +3589,27 @@ const customerAnalysis = useMemo(() => {
                     ))}
                   {recordsWithStrategicScore.filter((r) => r.strategicScore < 0)
                     .length === 0 && (
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    <li className="flex items-center gap-1 sm:gap-2">
+                      <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
                       No high-risk transactions detected in the selected period.
                     </li>
                   )}
                 </ul>
               </div>
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <TrendingUp className="w-7 h-7" />
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 flex items-center gap-2">
+                <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7" />
                 Strategic Business Analytics
               </h2>
-              <p className="text-purple-100">
+              <p className="text-purple-100 text-sm sm:text-base">
                 Enterprise-grade insights for data-driven decision making
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                <Award className="w-5 h-5 text-purple-600" />
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                <Award className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                 Business Performance Scorecard
               </h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250}>
                 <RadarChart data={businessValueData}>
                   <PolarGrid />
                   <PolarAngleAxis dataKey="metric" />
@@ -3605,29 +3631,29 @@ const customerAnalysis = useMemo(() => {
                   <Legend />
                 </RadarChart>
               </ResponsiveContainer>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-3 sm:mt-4">
                 {businessValueData.map((item, idx) => (
                   <div key={idx} className="text-center">
-                    <p className="text-sm text-gray-600">{item.metric}</p>
-                    <p className="text-2xl font-bold text-purple-600">
+                    <p className="text-xs sm:text-sm text-gray-600">{item.metric}</p>
+                    <p className="text-lg sm:text-2xl font-bold text-purple-600">
                       {Number(item.current).toFixed(0)}%
                     </p>
-                    <p className="text-black text-gray-500">
+                    <p className="text-black text-gray-500 text-xs sm:text-sm">
                       Target: {item.target}%
                     </p>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-blue-600" />
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                 Investment ROI Timeline
               </h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={roiTimeline}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
+                  <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                   <YAxis />
                   <Tooltip formatter={(value) => `$${value}K`} />
                   <Legend />
@@ -3654,52 +3680,52 @@ const customerAnalysis = useMemo(() => {
                   />
                 </LineChart>
               </ResponsiveContainer>
-{hasSufficientHistory ? (
-  <div className="mt-4 p-4 bg-green-50 rounded-lg">
-    <p className="text-sm text-green-800">
-      <strong>Break-even projection:</strong> {breakEvenMonth || "N/A"} |{" "}
-      <strong className="ml-3">12-month ROI:</strong> {roiPercentage}% |{" "}
-      <strong className="ml-3">Payback period:</strong> {paybackMonth || "N/A"}
-    </p>
-  </div>
-) : (
-  <div className="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-yellow-800">
-    <AlertTriangle className="w-4 h-4 inline mr-1" />
-    ROI projections require at least 3 months of transaction history.
-  </div>
-)}
+              {hasSufficientHistory ? (
+                <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-50 rounded-lg">
+                  <p className="text-xs sm:text-sm text-green-800">
+                    <strong>Break-even projection:</strong> {breakEvenMonth || "N/A"} |{" "}
+                    <strong className="ml-2 sm:ml-3">12-month ROI:</strong> {roiPercentage}% |{" "}
+                    <strong className="ml-2 sm:ml-3">Payback period:</strong> {paybackMonth || "N/A"}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-yellow-50 border-l-4 border-yellow-400 text-xs sm:text-sm text-yellow-800">
+                  <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 inline mr-1" />
+                  ROI projections require at least 3 months of transaction history.
+                </div>
+              )}
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                <Brain className="w-5 h-5 text-indigo-600" />
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                <Brain className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
                 Analytics Maturity Assessment
               </h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={maturityData} layout="horizontal">
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" domain={[0, 100]} />
-                  <YAxis dataKey="stage" type="category" width={100} />
+                  <YAxis dataKey="stage" type="category" width={80} />
                   <Tooltip formatter={(value) => `${value}%`} />
                   <Bar dataKey="score" fill="#6366f1" />
                 </BarChart>
               </ResponsiveContainer>
-              <div className="mt-4 space-y-2">
+              <div className="mt-3 sm:mt-4 space-y-2">
                 {maturityData.map((stage, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                    className="flex items-center justify-between p-2 bg-gray-50 rounded text-xs sm:text-sm"
                   >
                     <span className="font-medium text-gray-700">
                       {stage.stage}
                     </span>
                     <div className="flex items-center gap-2">
-                      <div className="w-48 bg-gray-200 rounded-full h-2">
+                      <div className="w-32 sm:w-48 bg-gray-200 rounded-full h-2">
                         <div
                           className="bg-indigo-600 h-2 rounded-full transition-all"
                           style={{ width: `${stage.score}%` }}
                         ></div>
                       </div>
-                      <span className="text-sm font-semibold text-gray-600 w-12 text-right">
+                      <span className="text-xs font-semibold text-gray-600 w-8 sm:w-12 text-right">
                         {stage.score}%
                       </span>
                     </div>
@@ -3707,17 +3733,17 @@ const customerAnalysis = useMemo(() => {
                 ))}
               </div>
             </div>
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-green-600" />
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 Revenue & Profit Trends (This Month)
               </h3>
               {monthlyData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <LineChart data={monthlyData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                       <YAxis />
                       <Tooltip
                         formatter={(value) => `LKR ${formatLKR(value)}`}
@@ -3739,12 +3765,12 @@ const customerAnalysis = useMemo(() => {
                       />
                     </LineChart>
                   </ResponsiveContainer>
-                  <div className="mt-4 grid grid-cols-3 gap-4">
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <p className="text-sm text-gray-600">
+                  <div className="mt-3 sm:mt-4 grid grid-cols-3 gap-3 sm:gap-4">
+                    <div className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         Avg Monthly Revenue
                       </p>
-                      <p className="text-xl font-bold text-green-600">
+                      <p className="text-base sm:text-xl font-bold text-green-600">
                         LKR{" "}
                         {formatLKR(
                           monthlyData.reduce((sum, m) => sum + m.revenue, 0) /
@@ -3752,11 +3778,11 @@ const customerAnalysis = useMemo(() => {
                         )}
                       </p>
                     </div>
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-gray-600">
+                    <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         Avg Monthly Profit
                       </p>
-                      <p className="text-xl font-bold text-blue-600">
+                      <p className="text-base sm:text-xl font-bold text-blue-600">
                         LKR{" "}
                         {formatLKR(
                           monthlyData.reduce((sum, m) => sum + m.profit, 0) /
@@ -3764,9 +3790,9 @@ const customerAnalysis = useMemo(() => {
                         )}
                       </p>
                     </div>
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Avg Margin</p>
-                      <p className="text-xl font-bold text-purple-600">
+                    <div className="text-center p-2 sm:p-3 bg-purple-50 rounded-lg">
+                      <p className="text-xs sm:text-sm text-gray-600">Avg Margin</p>
+                      <p className="text-base sm:text-xl font-bold text-purple-600">
                         {(
                           monthlyData.reduce((sum, m) => sum + m.margin, 0) /
                           monthlyData.length
@@ -3777,30 +3803,30 @@ const customerAnalysis = useMemo(() => {
                   </div>
                 </>
               ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p>Add more records with dates to see monthly trends</p>
+                <div className="text-center py-6 sm:py-8 text-gray-500">
+                  <Calendar className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
+                  <p className="text-sm sm:text-base">Add more records with dates to see monthly trends</p>
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
-                <div className="flex items-start gap-3">
-                  <Target className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+            <div className="grid grid-cols-1 gap-4 sm:gap-6">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-4 sm:p-5">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <Target className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                   <div>
-                    <h3 className="font-bold text-blue-900 mb-2">
+                    <h3 className="font-bold text-blue-900 mb-1 sm:mb-2 text-sm sm:text-base">
                       Current Performance
                     </h3>
-                    <ul className="space-y-2 text-sm text-blue-800">
-                      <li className="flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-blue-800">
+                      <li className="flex items-start gap-1 sm:gap-2">
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                         <span>
                           <strong>Records tracked:</strong> {records.length}{" "}
                           transactions
                         </span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <li className="flex items-start gap-1 sm:gap-2">
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                         <span>
                           <strong>Cost tracking:</strong>{" "}
                           {(
@@ -3818,15 +3844,15 @@ const customerAnalysis = useMemo(() => {
                           % of sales have cost data
                         </span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <li className="flex items-start gap-1 sm:gap-2">
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                         <span>
                           <strong>Customer tracking:</strong>{" "}
                           {customerAnalysis.length} unique customers identified
                         </span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <li className="flex items-start gap-1 sm:gap-2">
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                         <span>
                           <strong>Recurring costs:</strong> {recurringCosts.length}{" "}
                           fixed expenses managed
@@ -3836,19 +3862,19 @@ const customerAnalysis = useMemo(() => {
                   </div>
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg p-5">
-                <div className="flex items-start gap-3">
-                  <Lightbulb className="w-6 h-6 text-purple-600 flex-shrink-0 mt-1" />
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg p-4 sm:p-5">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <Lightbulb className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                   <div>
-                    <h3 className="font-bold text-purple-900 mb-2">
+                    <h3 className="font-bold text-purple-900 mb-1 sm:mb-2 text-sm sm:text-base">
                       Next Steps to Improve
                     </h3>
-                    <ul className="space-y-2 text-sm text-purple-800">
+                    <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-purple-800">
                       {filteredRecords.filter(
                         (r) => r.category === "Inflow" && !r.cost_per_unit
                       ).length > 0 && (
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             Add cost tracking to{" "}
                             {
@@ -3863,8 +3889,8 @@ const customerAnalysis = useMemo(() => {
                       )}
                       {filteredRecords.filter((r) => !r.customer).length >
                         0 && (
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             Add customer names to{" "}
                             {filteredRecords.filter((r) => !r.customer).length}{" "}
@@ -3874,8 +3900,8 @@ const customerAnalysis = useMemo(() => {
                       )}
                       {filteredRecords.filter((r) => !r.supplied_by).length >
                         0 && (
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             Add supplier info to{" "}
                             {
@@ -3887,8 +3913,8 @@ const customerAnalysis = useMemo(() => {
                         </li>
                       )}
                       {Object.keys(budgets).length === 0 && (
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             Set budgets for expense categories to enable budget
                             monitoring and alerts
@@ -3896,8 +3922,8 @@ const customerAnalysis = useMemo(() => {
                         </li>
                       )}
                       {records.length < 50 && (
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             Add more transaction history for better trend
                             analysis and insights
@@ -3905,8 +3931,8 @@ const customerAnalysis = useMemo(() => {
                         </li>
                       )}
                       {recurringCosts.length === 0 && (
-                        <li className="flex items-start gap-2">
-                          <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                           <span>
                             Add recurring costs to automate overhead tracking
                             and improve forecasting
@@ -3921,67 +3947,68 @@ const customerAnalysis = useMemo(() => {
           </div>
         )}
 
+        {/* Competitive Tab */}
         {activeTab === "competitive" && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                <Target className="w-7 h-7" />
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 flex items-center gap-2">
+                <Target className="w-6 h-6 sm:w-7 sm:h-7" />
                 Competitive Positioning Intelligence
               </h2>
-              <p className="text-indigo-100">
+              <p className="text-indigo-100 text-sm sm:text-base">
                 Understand your pricing power vs market rates and competitors
               </p>
             </div>
             {competitiveAnalysis.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-yellow-800 font-semibold mb-2">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 text-center">
+                <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-600 mx-auto mb-2 sm:mb-3" />
+                <p className="text-yellow-800 font-semibold mb-1 sm:mb-2 text-sm sm:text-base">
                   No competitive data available yet
                 </p>
-                <p className="text-yellow-700 text-sm">
+                <p className="text-yellow-700 text-xs sm:text-sm">
                   Add market pricing data to your inflow records to unlock
                   competitive analysis and see where you can capture more value.
                 </p>
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-5">
-                    <div className="flex justify-between items-start mb-2">
-                      <TrendingUp className="w-8 h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
                         Tracked
                       </span>
                     </div>
-                    <h3 className="text-2xl font-bold mb-1">
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
                       {competitiveAnalysis.length}
                     </h3>
-                    <p className="text-sm opacity-90">
+                    <p className="text-xs sm:text-sm opacity-90">
                       Products with Market Data
                     </p>
                   </div>
-                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-5">
-                    <div className="flex justify-between items-start mb-2">
-                      <Zap className="w-8 h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded">
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <Zap className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
                         Opportunity
                       </span>
                     </div>
-                    <h3 className="text-2xl font-bold mb-1">
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
                       LKR {formatLKR(competitiveTotals.totalCompetitiveEdge)}
                     </h3>
-                    <p className="text-sm opacity-90">
+                    <p className="text-xs sm:text-sm opacity-90">
                       Potential Revenue Upside
                     </p>
                   </div>
-                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-5">
-                    <div className="flex justify-between items-start mb-2">
-                      <Percent className="w-8 h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded">
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <Percent className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
                         Margin
                       </span>
                     </div>
-                    <h3 className="text-2xl font-bold mb-1">
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
                       {competitiveTotals.count > 0
                         ? (
                             competitiveTotals.avgMargin /
@@ -3990,34 +4017,35 @@ const customerAnalysis = useMemo(() => {
                         : "0"}
                       %
                     </h3>
-                    <p className="text-sm opacity-90">Avg Competitive Margin</p>
+                    <p className="text-xs sm:text-sm opacity-90">Avg Competitive Margin</p>
                   </div>
-                  <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-5">
-                    <div className="flex justify-between items-start mb-2">
-                      <Calculator className="w-8 h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded">
+                  <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <Calculator className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
                         Position
                       </span>
                     </div>
-                    <h3 className="text-2xl font-bold mb-1">
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
                       {competitiveAnalysis.filter((a) => a.underpriced).length}
                     </h3>
-                    <p className="text-sm opacity-90">Underpriced Products</p>
+                    <p className="text-xs sm:text-sm opacity-90">Underpriced Products</p>
                   </div>
                 </div>
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-indigo-600" />
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
                     Competitive Positioning by Product
                   </h3>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={competitiveAnalysis.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis
                         dataKey="name"
                         angle={-45}
                         textAnchor="end"
-                        height={100}
+                        height={80}
+                        tick={{ fontSize: 10 }}
                       />
                       <YAxis />
                       <Tooltip
@@ -4042,33 +4070,33 @@ const customerAnalysis = useMemo(() => {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4">
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
                     Detailed Competitive Analysis
                   </h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs sm:text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-600">
                             Product
                           </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
                             Your Price
                           </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
                             Market Price
                           </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
                             Price Position
                           </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
                             Margin %
                           </th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
                             Competitive Edge
                           </th>
-                          <th className="px-4 py-3 text-center font-semibold text-gray-600">
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-600">
                             Status
                           </th>
                         </tr>
@@ -4076,41 +4104,41 @@ const customerAnalysis = useMemo(() => {
                       <tbody className="divide-y divide-gray-200">
                         {competitiveAnalysis.map((item) => (
                           <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-900 font-medium">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-900 font-medium">
                               {item.name}
                             </td>
-                            <td className="px-4 py-3 text-right">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right">
                               LKR {formatLKR(item.sellingPrice)}
                             </td>
-                            <td className="px-4 py-3 text-right">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right">
                               LKR {formatLKR(item.marketPrice)}
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold">
                               {(
                                 (item.sellingPrice / item.marketPrice) *
                                 100
                               ).toFixed(0)}
                               %
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold text-green-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-green-600">
                               {item.grossMargin.toFixed(1)}%
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold text-purple-600">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-purple-600">
                               LKR {formatLKR(item.competitiveEdge)}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                               {item.underpriced && (
-                                <span className="px-3 py-1 text-black font-semibold bg-green-100 text-green-800 rounded-full">
-                                  UNDERPRICED ⬆️
+                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-green-100 text-green-800 rounded-full text-xs">
+                                  UNDERPRICED ↗️
                                 </span>
                               )}
                               {item.overpriced && (
-                                <span className="px-3 py-1 text-black font-semibold bg-orange-100 text-orange-800 rounded-full">
+                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-orange-100 text-orange-800 rounded-full text-xs">
                                   PREMIUM 💎
                                 </span>
                               )}
                               {!item.underpriced && !item.overpriced && (
-                                <span className="px-3 py-1 text-black font-semibold bg-blue-100 text-blue-800 rounded-full">
+                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-blue-100 text-blue-800 rounded-full text-xs">
                                   MARKET RATE ✓
                                 </span>
                               )}
@@ -4121,26 +4149,26 @@ const customerAnalysis = useMemo(() => {
                     </table>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:gap-6">
                   {competitiveAnalysis.filter((a) => a.underpriced).length >
                     0 && (
-                    <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-5">
-                      <div className="flex items-start gap-3">
-                        <Zap className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-4 sm:p-5">
+                      <div className="flex items-start gap-2 sm:gap-3">
+                        <Zap className="w-4 h-4 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                         <div>
-                          <h3 className="font-bold text-green-900 mb-2">
+                          <h3 className="font-bold text-green-900 mb-1 sm:mb-2 text-sm sm:text-base">
                             Quick Win Opportunities
                           </h3>
-                          <div className="space-y-2 text-sm text-green-800">
+                          <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-green-800">
                             {competitiveAnalysis
                               .filter((a) => a.underpriced)
                               .slice(0, 3)
                               .map((item, idx) => (
                                 <div
                                   key={idx}
-                                  className="flex items-start gap-2"
+                                  className="flex items-start gap-1 sm:gap-2"
                                 >
-                                  <ArrowRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
                                   <span>
                                     <strong>{item.name}:</strong> Raise price to
                                     LKR {formatLKR(item.marketPrice)}= +LKR{" "}
@@ -4153,25 +4181,25 @@ const customerAnalysis = useMemo(() => {
                       </div>
                     </div>
                   )}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
-                    <div className="flex items-start gap-3">
-                      <Lightbulb className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-4 sm:p-5">
+                    <div className="flex items-start gap-2 sm:gap-3">
+                      <Lightbulb className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                       <div>
-                        <h3 className="font-bold text-blue-900 mb-2">
+                        <h3 className="font-bold text-blue-900 mb-1 sm:mb-2 text-sm sm:text-base">
                           Competitive Positioning Guide
                         </h3>
-                        <ul className="space-y-2 text-sm text-blue-800">
-                          <li className="flex items-start gap-2">
-                            <span className="font-bold">UNDERPRICED ⬆️:</span>
+                        <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-blue-800">
+                          <li className="flex items-start gap-1 sm:gap-2">
+                            <span className="font-bold">UNDERPRICED ↗️:</span>
                             You're below market. Test gradual price increases to
                             capture more value without losing customers.
                           </li>
-                          <li className="flex items-start gap-2">
+                          <li className="flex items-start gap-1 sm:gap-2">
                             <span className="font-bold">PREMIUM 💎:</span>
                             You're above market but profitable. Emphasize unique
                             value and quality to justify premium pricing.
                           </li>
-                          <li className="flex items-start gap-2">
+                          <li className="flex items-start gap-1 sm:gap-2">
                             <span className="font-bold">MARKET RATE ✓:</span>
                             Competitive pricing. Focus on service
                             differentiation and customer loyalty programs.
@@ -4188,28 +4216,29 @@ const customerAnalysis = useMemo(() => {
 
         {/* Modals */}
         {showTargetModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4">Set Revenue Target</h3>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
+              <h3 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">Set Revenue Target</h3>
               <input
                 type="number"
+                inputMode="decimal"
                 value={targetRevenue}
                 onChange={(e) =>
                   setTargetRevenue(parseFloat(e.target.value) || 0)
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 sm:mb-4"
                 placeholder="Enter target revenue (LKR)"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowTargetModal(false)}
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                  className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm"
                 >
                   Save
                 </button>
                 <button
                   onClick={() => setShowTargetModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                  className="flex-1 bg-gray-200 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
                 >
                   Cancel
                 </button>
@@ -4217,35 +4246,37 @@ const customerAnalysis = useMemo(() => {
             </div>
           </div>
         )}
+
         {showLoanModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
+              <h3 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">
                 Set Monthly Loan Target
               </h3>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
                 This is the minimum monthly inflow needed to comfortably cover
                 your loan payments.
               </p>
               <input
                 type="number"
+                inputMode="decimal"
                 value={monthlyLoanTarget}
                 onChange={(e) =>
                   setMonthlyLoanTarget(parseFloat(e.target.value) || 0)
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 sm:mb-4"
                 placeholder="Enter monthly loan target (LKR)"
               />
               <div className="flex gap-2">
                 <button
                   onClick={saveLoanTarget}
-                  className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
+                  className="flex-1 bg-indigo-600 text-white px-3 py-2 rounded-md hover:bg-indigo-700 transition-colors text-sm"
                 >
                   Save
                 </button>
                 <button
                   onClick={() => setShowLoanModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                  className="flex-1 bg-gray-200 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
                 >
                   Cancel
                 </button>
@@ -4253,14 +4284,15 @@ const customerAnalysis = useMemo(() => {
             </div>
           </div>
         )}
+
         {showBudgetModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4">Set Category Budget</h3>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
+              <h3 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">Set Category Budget</h3>
               <select
                 value={budgetCategory}
                 onChange={(e) => setBudgetCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 sm:mb-4"
               >
                 {categories
                   .filter((c) => c !== "Inflow")
@@ -4272,15 +4304,16 @@ const customerAnalysis = useMemo(() => {
               </select>
               <input
                 type="number"
+                inputMode="decimal"
                 value={budgetAmount}
                 onChange={(e) => setBudgetAmount(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 sm:mb-4"
                 placeholder="Enter budget amount (LKR)"
               />
               <div className="flex gap-2">
                 <button
                   onClick={saveBudget}
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                  className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm"
                 >
                   Save Budget
                 </button>
@@ -4289,7 +4322,7 @@ const customerAnalysis = useMemo(() => {
                     setShowBudgetModal(false);
                     setBudgetAmount("");
                   }}
-                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                  className="flex-1 bg-gray-200 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
                 >
                   Cancel
                 </button>
@@ -4297,10 +4330,11 @@ const customerAnalysis = useMemo(() => {
             </div>
           </div>
         )}
+
         {showRecurringModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
+              <h3 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">
                 {isEditingRecurring ? "Edit" : "Add"} Recurring Cost
               </h3>
               <input
@@ -4313,16 +4347,17 @@ const customerAnalysis = useMemo(() => {
                     description: e.target.value,
                   })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-2 sm:mb-3"
               />
               <input
                 type="number"
+                inputMode="decimal"
                 placeholder="Monthly Amount (LKR)"
                 value={recurringForm.amount}
                 onChange={(e) =>
                   setRecurringForm({ ...recurringForm, amount: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-2 sm:mb-3"
               />
               <textarea
                 placeholder="Notes (optional)"
@@ -4330,13 +4365,13 @@ const customerAnalysis = useMemo(() => {
                 onChange={(e) =>
                   setRecurringForm({ ...recurringForm, notes: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3 sm:mb-4"
                 rows={2}
               />
               <div className="flex gap-2">
                 <button
                   onClick={saveRecurringCost}
-                  className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors"
+                  className="flex-1 bg-purple-600 text-white px-3 py-2 rounded-md hover:bg-purple-700 transition-colors text-sm"
                 >
                   {isEditingRecurring ? "Update" : "Save"}
                 </button>
@@ -4345,7 +4380,7 @@ const customerAnalysis = useMemo(() => {
                     setShowRecurringModal(false);
                     resetRecurringForm();
                   }}
-                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                  className="flex-1 bg-gray-200 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
                 >
                   Cancel
                 </button>
@@ -4353,16 +4388,17 @@ const customerAnalysis = useMemo(() => {
             </div>
           </div>
         )}
+
         {showStrategyModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-lg p-6 max-w-6xl w-full my-8">
-              <div className="flex justify-between items-start mb-6">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-4xl sm:max-w-6xl w-full my-4 sm:my-8 mx-auto">
+              <div className="flex justify-between items-start mb-4 sm:mb-6">
                 <div>
-                  <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                    <Layers className="w-7 h-7 text-purple-600" />
+                  <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 flex items-center gap-2">
+                    <Layers className="w-6 h-6 sm:w-7 sm:h-7 text-purple-600" />
                     Strategic Implementation Roadmap
                   </h3>
-                  <p className="text-gray-600">
+                  <p className="text-gray-600 text-sm sm:text-base">
                     Transform your business with data-driven sales analytics
                   </p>
                 </div>
@@ -4370,10 +4406,10 @@ const customerAnalysis = useMemo(() => {
                   onClick={() => setShowStrategyModal(false)}
                   className="text-gray-500 hover:text-gray-700"
                 >
-                  <span className="text-2xl">×</span>
+                  <span className="text-xl sm:text-2xl">×</span>
                 </button>
               </div>
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 {implementationPhases.map((phase, idx) => {
                   const Icon = phase.icon;
                   const isExpanded = expandedSection === idx;
@@ -4386,26 +4422,26 @@ const customerAnalysis = useMemo(() => {
                         onClick={() =>
                           setExpandedSection(isExpanded ? null : idx)
                         }
-                        className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                        className="w-full p-3 sm:p-5 flex items-center justify-between hover:bg-gray-50 transition-colors"
                       >
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 sm:gap-4">
                           <div
-                            className={`${phase.color} p-3 rounded-lg text-white`}
+                            className={`${phase.color} p-2 sm:p-3 rounded-lg text-white`}
                           >
-                            <Icon className="w-6 h-6" />
+                            <Icon className="w-4 h-4 sm:w-6 sm:h-6" />
                           </div>
                           <div className="text-left">
-                            <h4 className="font-bold text-lg text-gray-900">
+                            <h4 className="font-bold text-base sm:text-lg text-gray-900">
                               Phase {idx + 1}: {phase.phase}
                             </h4>
-                            <p className="text-sm text-gray-600">
+                            <p className="text-xs sm:text-sm text-gray-600">
                               {phase.duration} • Expected Value: {phase.value}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 sm:gap-2">
                           <span
-                            className={`text-black font-semibold px-3 py-1 rounded-full ${
+                            className={`text-black font-semibold px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm ${
                               idx === 0
                                 ? "bg-green-100 text-green-700"
                                 : idx === 1
@@ -4424,29 +4460,29 @@ const customerAnalysis = useMemo(() => {
                               : "Long-term"}
                           </span>
                           {isExpanded ? (
-                            <ChevronUp className="w-5 h-5" />
+                            <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
                           ) : (
-                            <ChevronDown className="w-5 h-5" />
+                            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" />
                           )}
                         </div>
                       </button>
                       {isExpanded && (
-                        <div className="p-5 bg-gray-50 border-t-2 border-gray-200">
-                          <h5 className="font-semibold mb-3">
+                        <div className="p-3 sm:p-5 bg-gray-50 border-t-2 border-gray-200">
+                          <h5 className="font-semibold mb-2 sm:mb-3 text-sm sm:text-base">
                             Key Deliverables:
                           </h5>
-                          <ul className="space-y-2">
+                          <ul className="space-y-1 sm:space-y-2">
                             {phase.tasks.map((task, taskIdx) => (
                               <li
                                 key={taskIdx}
-                                className="flex items-start gap-3"
+                                className="flex items-start gap-2 sm:gap-3"
                               >
-                                <div className="mt-1">
-                                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                                    <CheckCircle className="w-3 h-3 text-green-600" />
+                                <div className="mt-0.5">
+                                  <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-green-100 flex items-center justify-center">
+                                    <CheckCircle className="w-2 h-2 sm:w-3 sm:h-3 text-green-600" />
                                   </div>
                                 </div>
-                                <span className="text-gray-700">{task}</span>
+                                <span className="text-gray-700 text-xs sm:text-sm">{task}</span>
                               </li>
                             ))}
                           </ul>
@@ -4456,28 +4492,28 @@ const customerAnalysis = useMemo(() => {
                   );
                 })}
               </div>
-              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-lg border-2 border-green-300">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Database className="w-6 h-6 text-green-600" />
-                    <h4 className="font-bold text-green-900">
+              <div className="mt-4 sm:mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+                <div className="bg-gradient-to-br from-green-50 to-green-100 p-3 sm:p-5 rounded-lg border-2 border-green-300">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <Database className="w-4 h-4 sm:w-6 sm:h-6 text-green-600" />
+                    <h4 className="font-bold text-green-900 text-sm sm:text-base">
                       Data Foundation
                     </h4>
                   </div>
-                  <p className="text-3xl font-bold text-green-600 mb-2">
+                  <p className="text-xl sm:text-3xl font-bold text-green-600 mb-1 sm:mb-2">
                     {records.length}
                   </p>
-                  <p className="text-sm text-green-800">
+                  <p className="text-xs sm:text-sm text-green-800">
                     Total records collected. Build to 200+ for robust analytics
                     and predictive insights.
                   </p>
                 </div>
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-lg border-2 border-blue-300">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Percent className="w-6 h-6 text-blue-600" />
-                    <h4 className="font-bold text-blue-900">Margin Quality</h4>
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-3 sm:p-5 rounded-lg border-2 border-blue-300">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <Percent className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600" />
+                    <h4 className="font-bold text-blue-900 text-sm sm:text-base">Margin Quality</h4>
                   </div>
-                  <p className="text-3xl font-bold text-blue-600 mb-2">
+                  <p className="text-xl sm:text-3xl font-bold text-blue-600 mb-1 sm:mb-2">
                     {(
                       (filteredRecords.filter(
                         (r) => r.category === "Inflow" && r.cost_per_unit
@@ -4492,46 +4528,46 @@ const customerAnalysis = useMemo(() => {
                     ).toFixed(0)}
                     %
                   </p>
-                  <p className="text-sm text-blue-800">
+                  <p className="text-xs sm:text-sm text-blue-800">
                     Sales with cost tracking. Target 90%+ for accurate
                     profitability analysis.
                   </p>
                 </div>
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-lg border-2 border-purple-300">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Users className="w-6 h-6 text-purple-600" />
-                    <h4 className="font-bold text-purple-900">
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-3 sm:p-5 rounded-lg border-2 border-purple-300">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <Users className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600" />
+                    <h4 className="font-bold text-purple-900 text-sm sm:text-base">
                       Customer Insights
                     </h4>
                   </div>
-                  <p className="text-3xl font-bold text-purple-600 mb-2">
+                  <p className="text-xl sm:text-3xl font-bold text-purple-600 mb-1 sm:mb-2">
                     {customerAnalysis.length}
                   </p>
-                  <p className="text-sm text-purple-800">
+                  <p className="text-xs sm:text-sm text-purple-800">
                     Unique customers tracked. Segment and analyze for better
                     targeting strategies.
                   </p>
                 </div>
               </div>
-              <div className="mt-8 p-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg text-white">
-                <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="mt-4 sm:mt-8 p-4 sm:p-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg text-white">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
                   <div>
-                    <h4 className="font-bold text-xl mb-2">
+                    <h4 className="font-bold text-lg sm:text-xl mb-1 sm:mb-2">
                       Ready to Transform Your Sales Process?
                     </h4>
-                    <p className="text-purple-100">
+                    <p className="text-purple-100 text-sm sm:text-base">
                       Start with Phase 1 and see measurable results in 6-8 weeks
                     </p>
                   </div>
-                  <button className="bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold hover:bg-purple-50 transition-colors shadow-lg">
+                  <button className="bg-white text-purple-600 px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold hover:bg-purple-50 transition-colors shadow-lg text-sm sm:text-base">
                     Schedule Strategy Session
                   </button>
                 </div>
               </div>
-              <div className="mt-6 flex justify-end">
+              <div className="mt-4 sm:mt-6 flex justify-end">
                 <button
                   onClick={() => setShowStrategyModal(false)}
-                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors text-sm sm:text-base"
                 >
                   Close
                 </button>
