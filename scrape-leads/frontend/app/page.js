@@ -94,6 +94,16 @@ export default function LeadDashboard() {
   const [toast, setToast] = useState({ show: false, message: '' });
   const [sortField, setSortField] = useState('score'); // 'score', 'rating', 'quality', 'name'
   const [sortDirection, setSortDirection] = useState('desc');
+  const [myBusinessName, setMyBusinessName] = useState(() => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('myBusinessName') || 'Your Company';
+  }
+  return 'Your Company';
+});
+
+useEffect(() => {
+  localStorage.setItem('myBusinessName', myBusinessName);
+}, [myBusinessName]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
@@ -369,6 +379,16 @@ export default function LeadDashboard() {
         <div className="px-4 py-3">
           <div className="flex justify-between items-center mb-3">
             <h1 className="text-lg font-bold text-black">Colombo B2B Revenue Hub</h1>
+            <div className="mt-2">
+  <label className="text-xs text-gray-600 block mb-1">Your Business Name</label>
+  <input
+    type="text"
+    value={myBusinessName}
+    onChange={(e) => setMyBusinessName(e.target.value)}
+    className="w-full p-2 text-sm border border-gray-300 rounded bg-gray-50 text-black"
+    placeholder="e.g. Colombo Tech Solutions"
+  />
+</div>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="text-sm text-blue-600 font-medium"
@@ -529,9 +549,9 @@ export default function LeadDashboard() {
             {sortedLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
               const normalizedWaNumber = normalizePhone(lead.whatsapp_number || lead.phone_raw);
-              const waMessage = encodeURIComponent(
-                `Hi ${lead.contact_name || 'there'}, I'm reaching out from [Your Company] about ${lead.business_name || 'your business'}. Would you be open to a quick chat?`
-              );
+const waMessage = encodeURIComponent(
+  `Hi ${lead.contact_name || 'there'}, I'm reaching out from ${myBusinessName} about ${lead.business_name || 'your business'}. Would you be open to a quick chat?`
+);
               const waLink = normalizedWaNumber 
   ? `https://wa.me/${normalizedWaNumber}?text=${waMessage}` 
   : '';
