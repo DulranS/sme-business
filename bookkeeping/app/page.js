@@ -1026,16 +1026,13 @@ const monthlyData = useMemo(() => {
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const grouped = {};
-
   filteredRecords.forEach((r) => {
     const date = new Date(r.date);
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     if (monthKey !== currentMonthKey) return; // Only current month
-
     if (!grouped[monthKey]) {
       grouped[monthKey] = { revenue: 0, cogs: 0, opex: 0 };
     }
-
     const qty = parseFloat(r.quantity) || 1;
     const price = parseFloat(r.amount) || 0;
     let cost = parseFloat(r.cost_per_unit) || 0;
@@ -1044,22 +1041,20 @@ const monthlyData = useMemo(() => {
     }
     const revenue = price * qty;
     const totalCost = cost * qty;
-
     if (r.category === "Inflow") {
       grouped[monthKey].revenue += revenue;
       grouped[monthKey].cogs += totalCost;
     } else if (["Outflow", "Overhead", "Reinvestment", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
-  dayMap[recordDate].profit -= price * qty;
-}
+      grouped[monthKey].opex += price * qty;
+    }
   });
-
   return Object.entries(grouped).map(([month, vals]) => {
     const grossProfit = vals.revenue - vals.cogs;
     const netProfit = grossProfit - vals.opex;
     return {
       month,
       revenue: vals.revenue,
-      profit: netProfit, // This is operating profit
+      profit: netProfit,
       margin: vals.revenue > 0 ? (netProfit / vals.revenue) * 100 : 0,
     };
   }).sort((a, b) => new Date(a.month) - new Date(b.month));
