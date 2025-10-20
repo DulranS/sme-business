@@ -23,14 +23,13 @@ function normalizePhone(phone) {
   return digits;
 }
 
-// Fuzzy search helper (case-insensitive partial match)
+// Fuzzy search helper
 function fuzzyMatch(text, query) {
   if (!query) return true;
   const q = query.toLowerCase();
   return text?.toLowerCase().includes(q);
 }
 
-// Debounced search setter
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
@@ -40,7 +39,6 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
-// Calculate lead score (0–100)
 const calculateLeadScore = (lead) => {
   let score = 0;
   if (lead.lead_quality === 'HOT') score += 40;
@@ -61,7 +59,6 @@ const calculateLeadScore = (lead) => {
   return Math.min(100, Math.max(0, score));
 };
 
-// Get next best action suggestion
 const getNextBestAction = (lead) => {
   const hasEmail = !!lead.email;
   const hasPhone = !!lead.phone_raw;
@@ -92,18 +89,33 @@ export default function LeadDashboard() {
   const [tagFilter, setTagFilter] = useState('ALL');
   const [showFilters, setShowFilters] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '' });
-  const [sortField, setSortField] = useState('score'); // 'score', 'rating', 'quality', 'name'
+  const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
-  const [myBusinessName, setMyBusinessName] = useState(() => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('myBusinessName') || 'Your Company';
-  }
-  return 'Your Company';
-});
 
-useEffect(() => {
-  localStorage.setItem('myBusinessName', myBusinessName);
-}, [myBusinessName]);
+  // Business & WhatsApp message personalization
+  const [myBusinessName, setMyBusinessName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('myBusinessName') || 'Your Company';
+    }
+    return 'Your Company';
+  });
+
+  const [whatsappTemplate, setWhatsappTemplate] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('whatsappTemplate') ||
+        'Hi {{contact_name}}, I’m reaching out from {{my_business_name}} about {{business_name}}. Would you be open to a quick chat?';
+    }
+    return 'Hi {{contact_name}}, I’m reaching out from {{my_business_name}} about {{business_name}}. Would you be open to a quick chat?';
+  });
+
+  // Persist to localStorage
+  useEffect(() => {
+    localStorage.setItem('myBusinessName', myBusinessName);
+  }, [myBusinessName]);
+
+  useEffect(() => {
+    localStorage.setItem('whatsappTemplate', whatsappTemplate);
+  }, [whatsappTemplate]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
@@ -119,7 +131,6 @@ useEffect(() => {
         const res = await fetch('/api/leads');
         if (!res.ok) throw new Error('Failed to load leads');
         const data = await res.json();
-        // Attach computed score
         const leadsWithScore = data.map(lead => ({
           ...lead,
           _score: calculateLeadScore(lead)
@@ -137,7 +148,6 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, []);
 
-  // All tags
   const allTags = useMemo(() => {
     const tags = new Set();
     leads.forEach(lead => {
@@ -148,10 +158,8 @@ useEffect(() => {
     return Array.from(tags).sort();
   }, [leads]);
 
-  // Unique categories
   const uniqueCategories = [...new Set(leads.map(l => l.category).filter(Boolean))].sort();
 
-  // Filter leads
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
       const normalizedLeadPhone = normalizePhone(lead.phone_raw);
@@ -201,7 +209,6 @@ useEffect(() => {
     tagFilter
   ]);
 
-  // Sort leads
   const sortedLeads = useMemo(() => {
     return [...filteredLeads].sort((a, b) => {
       let aVal, bVal;
@@ -231,29 +238,6 @@ useEffect(() => {
     });
   }, [filteredLeads, sortField, sortDirection]);
 
-  // Mark as contacted
-  // const markAsContacted = async (leadId) => {
-  //   try {
-  //     const res = await fetch(`/api/leads/${leadId}/contacted`, {
-  //       method: 'POST',
-  //       headers: { 'Content-Type': 'application/json' },
-  //     });
-  //     if (res.ok) {
-  //       setLeads(prev =>
-  //         prev.map(lead =>
-  //           lead.id === leadId ? { ...lead, last_contacted: new Date().toISOString() } : lead
-  //         )
-  //       );
-  //       showToast('✅ Marked as contacted!');
-  //     } else {
-  //       throw new Error('Failed to update');
-  //     }
-  //   } catch (err) {
-  //     showToast('❌ Failed to update lead');
-  //   }
-  // };
-
-  // Export CSV (all fields)
   const exportToCSV = () => {
     if (sortedLeads.length === 0) return;
 
@@ -294,7 +278,6 @@ useEffect(() => {
     URL.revokeObjectURL(url);
   };
 
-  // Export WhatsApp numbers only (for bulk import)
   const exportWhatsAppNumbers = () => {
     const numbers = sortedLeads
       .map(lead => normalizePhone(lead.whatsapp_number || lead.phone_raw))
@@ -327,7 +310,27 @@ useEffect(() => {
     }
   };
 
-  // Loading & error states
+  const renderWhatsAppLink = (lead) => {
+    const normalized = normalizePhone(lead.whatsapp_number || lead.phone_raw);
+    if (!normalized || normalized.length !== 11 || !normalized.startsWith('94')) return '';
+
+    // Replace template tokens
+    let message = whatsappTemplate
+      .replace(/{{contact_name}}/g, lead.contact_name || 'there')
+      .replace(/{{business_name}}/g, lead.business_name || 'your business')
+      .replace(/{{my_business_name}}/g, myBusinessName);
+
+    const encoded = encodeURIComponent(message);
+    return `https://wa.me/${normalized}?text=${encoded}`;
+  };
+
+  const renderMessagePreview = (lead) => {
+    return whatsappTemplate
+      .replace(/{{contact_name}}/g, lead.contact_name || 'there')
+      .replace(/{{business_name}}/g, lead.business_name || 'your business')
+      .replace(/{{my_business_name}}/g, myBusinessName);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -367,34 +370,59 @@ useEffect(() => {
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
-      {/* Toast Notification */}
       {toast.show && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-black text-white px-4 py-2 rounded-lg shadow-lg text-center text-sm">
           {toast.message}
         </div>
       )}
 
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 py-3">
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-start mb-3">
             <h1 className="text-lg font-bold text-black">Colombo B2B Revenue Hub</h1>
-            <div className="mt-2">
-  <label className="text-xs text-gray-600 block mb-1">Your Business Name</label>
-  <input
-    type="text"
-    value={myBusinessName}
-    onChange={(e) => setMyBusinessName(e.target.value)}
-    className="w-full p-2 text-sm border border-gray-300 rounded bg-gray-50 text-black"
-    placeholder="e.g. Colombo Tech Solutions"
-  />
-</div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="text-sm text-blue-600 font-medium"
+              className="text-sm text-blue-600 font-medium mt-1"
             >
               {showFilters ? '▲ Hide Filters' : '▼ Show Filters'}
             </button>
+          </div>
+
+          {/* Business Name & WhatsApp Template */}
+          <div className="space-y-3 mb-4">
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Your Business Name</label>
+              <input
+                type="text"
+                value={myBusinessName}
+                onChange={(e) => setMyBusinessName(e.target.value)}
+                className="w-full p-2.5 text-sm border border-gray-300 rounded bg-gray-50 text-black"
+                placeholder="e.g. Colombo Tech Solutions"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">
+                WhatsApp Message Template
+                <span className="ml-2 text-gray-500 text-[10px]">
+                  Use: {{contact_name}}, {{business_name}}, {{my_business_name}}
+                </span>
+              </label>
+              <textarea
+                value={whatsappTemplate}
+                onChange={(e) => setWhatsappTemplate(e.target.value)}
+                rows={2}
+                className="w-full p-2.5 text-sm border border-gray-300 rounded bg-gray-50 text-black resize-none"
+                placeholder="Hi {{contact_name}}, I'm from {{my_business_name}}..."
+              />
+            </div>
+
+            {/* Preview */}
+            {sortedLeads.length > 0 && (
+              <div className="text-xs bg-blue-50 p-2.5 rounded text-gray-700 border border-blue-100">
+                <strong>Preview:</strong> "{renderMessagePreview(sortedLeads[0])}"
+              </div>
+            )}
           </div>
 
           <input
@@ -521,7 +549,6 @@ useEffect(() => {
         </div>
       </header>
 
-      {/* Leads List */}
       <main className="px-4 pt-4">
         {sortedLeads.length === 0 ? (
           <div className="text-center py-12 px-4">
@@ -548,14 +575,7 @@ useEffect(() => {
           <div className="space-y-4 pb-24">
             {sortedLeads.map((lead, i) => {
               const contactName = lead.contact_name || lead.business_name || 'Prospect';
-              const normalizedWaNumber = normalizePhone(lead.whatsapp_number || lead.phone_raw);
-const waMessage = encodeURIComponent(
-  `Hi ${lead.contact_name || 'there'}, I'm reaching out from ${myBusinessName} about ${lead.business_name || 'your business'}. Would you be open to a quick chat?`
-);
-              const waLink = normalizedWaNumber 
-  ? `https://wa.me/${normalizedWaNumber}?text=${waMessage}` 
-  : '';
-
+              const waLink = renderWhatsAppLink(lead);
               const isHighValue = lead._score >= 75;
 
               return (
@@ -693,20 +713,11 @@ const waMessage = encodeURIComponent(
                     </div>
                   )}
 
-                  {/* Follow-up & Contacted */}
-                  <div className="mt-3 flex justify-between items-center">
-                    {lead.last_contacted && (
-                      <span className="text-xs text-gray-600">
-                        Last contacted: {new Date(lead.last_contacted).toLocaleDateString()}
-                      </span>
-                    )}
-                    {/* <button
-                      onClick={() => markAsContacted(lead.id)}
-                      className="text-xs bg-blue-100 text-blue-800 px-2.5 py-1 rounded hover:bg-blue-200"
-                    >
-                      ✅ Mark Contacted
-                    </button> */}
-                  </div>
+                  {lead.last_contacted && (
+                    <div className="mt-3 text-xs text-gray-600">
+                      Last contacted: {new Date(lead.last_contacted).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
               );
             })}
