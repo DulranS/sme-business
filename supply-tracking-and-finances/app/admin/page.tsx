@@ -3586,60 +3586,60 @@ if (!pwd.trim()) {
                 biddingRef={biddingSectionRef}
               />
 
-              {/* === Enhanced Image Management Section === */}
-              <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold text-gray-900">Order Images ({orderImages.length})</h3>
-                  <div className="flex space-x-2">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleImageUpload}
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
-                    >
-                      <Upload className="w-4 h-4 mr-1" /> Upload
-                    </button>
-                    {orderImages.length > 0 && (
-                      <button
-                        onClick={saveOrderImages}
-                        disabled={loading}
-                        className="bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center disabled:opacity-50"
-                      >
-                        <Save className="w-4 h-4 mr-1" /> Save
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {orderImages.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No images uploaded</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                    {orderImages.map((image, index) => (
-                      <div key={index} className="relative group aspect-square">
-                        <img
-                          src={image.url}
-                          alt={image.name}
-                          className="w-full h-full object-contain rounded border bg-white p-1 cursor-pointer"
-                          onClick={() => window.open(image.url, "_blank")}
-                        />
-                        <button
-                          onClick={() => removeOrderImage(index)}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-opacity opacity-0 group-hover:opacity-100"
-                          title="Remove image"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+{/* === Enhanced Image Management Section === */}
+<div className="bg-white border border-gray-200 rounded-lg p-6">
+  <div className="flex justify-between items-center mb-4">
+    <h3 className="font-semibold text-gray-900">Order Images ({orderImages.length})</h3>
+    <div className="flex space-x-2">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
+        multiple
+        className="hidden"
+      />
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+      >
+        <Upload className="w-4 h-4 mr-1" /> Upload
+      </button>
+      {orderImages.length > 0 && (
+        <button
+          onClick={saveOrderImages}
+          disabled={loading}
+          className="bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center disabled:opacity-50"
+        >
+          <Save className="w-4 h-4 mr-1" /> Save
+        </button>
+      )}
+    </div>
+  </div>
+  {orderImages.length === 0 ? (
+    <p className="text-gray-500 text-sm">No images uploaded</p>
+  ) : (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      {orderImages.map((image, index) => (
+        <div key={index} className="relative group">
+          <img
+            src={image.url}
+            alt={image.name}
+            className="w-full h-auto min-h-[120px] object-contain rounded border bg-white p-2 cursor-pointer"
+            onClick={() => window.open(image.url, "_blank")}
+          />
+          <button
+            onClick={() => removeOrderImage(index)}
+            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-opacity opacity-0 group-hover:opacity-100 z-10"
+            title="Remove image"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
             </div>
           </>
         ) : (
