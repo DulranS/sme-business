@@ -64,8 +64,9 @@ function calculateLeadScore(lead) {
   if (reviews >= 20) score += 10;
 
   const tags = (lead.tags || '').toLowerCase();
-  if (tags.includes('decision-maker')) score += 10;
-  if (tags.includes('urgent')) score += 10;
+  if (tags.includes('decision-maker')) score += 15;
+  if (tags.includes('urgent')) score += 15;
+  if (tags.includes('budget-approved')) score += 10;
 
   return Math.min(100, Math.max(0, score));
 }
@@ -78,36 +79,39 @@ function getNextBestAction(lead) {
   const reviews = parseInt(lead.review_count) || 0;
   const tags = (lead.tags || '').toLowerCase();
 
-  if (tags.includes('urgent')) return '🚨 Urgent: Follow up immediately';
-  if (isHot && hasEmail && !lead.last_contacted) return '📧 Send intro email';
-  if (hasPhone && (rating >= 4.0 || reviews >= 20)) return '📞 Call now – high trust signal';
+  if (tags.includes('urgent')) return '🚨 Urgent: Call immediately';
+  if (tags.includes('decision-maker') && isHot && hasPhone) return '📞 High-priority call – decision maker';
+  if (isHot && hasEmail && !lead.last_contacted) return '📧 Send personalized intro email';
+  if (hasPhone && (rating >= 4.0 || reviews >= 20)) return '💬 WhatsApp: Leverage social proof';
   if (hasPhone) return '💬 Start WhatsApp chat';
-  if (hasEmail) return '📧 Email for initial contact';
-  return '🔍 Research before outreach';
+  if (hasEmail) return '📧 Nurture via email sequence';
+  return '🔍 Research: Find contact info or intent signals';
 }
 
 // ==============================
 // 💬 WHATSAPP LINK GENERATION
 // ==============================
 function generateWhatsAppLink(lead, template, myBusinessName) {
+  if (typeof template !== 'string') template = '';
   const normalized = normalizePhone(lead.whatsapp_number || lead.phone_raw);
   if (!normalized || normalized.length !== 11 || !normalized.startsWith('94')) return '';
 
-  let message = template
+  let message = String(template)
     .replace(/{{contact_name}}/g, lead.contact_name || 'there')
     .replace(/{{business_name}}/g, lead.business_name || 'your business')
-    .replace(/{{my_business_name}}/g, myBusinessName);
+    .replace(/{{my_business_name}}/g, myBusinessName || 'Your Company');
 
   const encodedMessage = encodeURIComponent(message.trim());
-  // ✅ CORRECT FORMAT: NO SPACES — https://wa.me/94771234567?text=...
+  // ✅ CORRECT FORMAT — NO SPACES
   return `https://wa.me/${normalized}?text=${encodedMessage}`;
 }
 
 function renderMessagePreview(lead, template, myBusinessName) {
-  return template
+  if (typeof template !== 'string') template = '';
+  return String(template)
     .replace(/{{contact_name}}/g, lead.contact_name || 'there')
     .replace(/{{business_name}}/g, lead.business_name || 'your business')
-    .replace(/{{my_business_name}}/g, myBusinessName);
+    .replace(/{{my_business_name}}/g, myBusinessName || 'Your Company');
 }
 
 // ==============================
@@ -142,26 +146,30 @@ export default function LeadDashboard() {
     if (typeof window !== 'undefined') {
       return (
         localStorage.getItem('whatsappTemplate') ||
-        'Hi {{contact_name}}, I’m reaching out from {{my_business_name}} about {{business_name}}. Would you be open to a quick chat?'
+        'Hi {{contact_name}}, I’m {{my_business_name}}. We help businesses like {{business_name}} grow with [your solution]. Are you open to a quick chat this week?'
       );
     }
-    return 'Hi {{contact_name}}, I’m reaching out from {{my_business_name}} about {{business_name}}. Would you be open to a quick chat?';
+    return 'Hi {{contact_name}}, I’m {{my_business_name}}. We help businesses like {{business_name}} grow with [your solution]. Are you open to a quick chat this week?';
   });
 
   // === Side Effects ===
   useEffect(() => {
-    localStorage.setItem('myBusinessName', myBusinessName);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('myBusinessName', myBusinessName);
+    }
   }, [myBusinessName]);
 
   useEffect(() => {
-    localStorage.setItem('whatsappTemplate', whatsappTemplate);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('whatsappTemplate', whatsappTemplate);
+    }
   }, [whatsappTemplate]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const showToast = useCallback((msg) => {
     setToast({ show: true, message: msg });
-    setTimeout(() => setToast({ show: false, message: '' }), 2500);
+    setTimeout(() => setToast({ show: false, message: '' }), 3000);
   }, []);
 
   // === Data Fetching ===
@@ -169,22 +177,31 @@ export default function LeadDashboard() {
     const fetchLeads = async () => {
       try {
         const res = await fetch('/api/leads');
-        if (!res.ok) throw new Error('Failed to load leads');
+        if (!res.ok) {
+          throw new Error(`API error: ${res.status} ${res.statusText}`);
+        }
         const data = await res.json();
+
+        // 🔥 CRITICAL: Ensure data is an array
+        if (!Array.isArray(data)) {
+          throw new Error('API response is not an array');
+        }
+
         const leadsWithScore = data.map((lead) => ({
           ...lead,
           _score: calculateLeadScore(lead),
         }));
         setLeads(leadsWithScore);
       } catch (err) {
-        setError(err.message || 'Unknown error');
+        console.error('Failed to load leads:', err);
+        setError(err.message || 'Unable to load leads. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchLeads();
-    const interval = setInterval(fetchLeads, 30000);
+    const interval = setInterval(fetchLeads, 30000); // Refresh every 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -193,7 +210,10 @@ export default function LeadDashboard() {
     const tags = new Set();
     leads.forEach((lead) => {
       if (lead.tags) {
-        lead.tags.split(';').forEach((tag) => tags.add(tag.trim()));
+        lead.tags.split(';').forEach((tag) => {
+          const t = tag.trim();
+          if (t) tags.add(t);
+        });
       }
     });
     return Array.from(tags).sort();
@@ -308,6 +328,7 @@ export default function LeadDashboard() {
       'review_count',
       'tags',
       'last_contacted',
+      'lead_score',
     ];
 
     const csvContent = [
@@ -315,7 +336,12 @@ export default function LeadDashboard() {
       ...sortedLeads.map((lead) =>
         headers
           .map((field) => {
-            const val = lead[field] || '';
+            let val;
+            if (field === 'lead_score') {
+              val = lead._score;
+            } else {
+              val = lead[field] || '';
+            }
             return `"${String(val).replace(/"/g, '""')}"`;
           })
           .join(',')
@@ -326,11 +352,12 @@ export default function LeadDashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'colombo_b2b_leads.csv';
+    a.download = 'colombo_b2b_leads_with_score.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    showToast('✅ Leads exported with scores!');
   };
 
   const exportWhatsAppNumbers = () => {
@@ -398,6 +425,13 @@ export default function LeadDashboard() {
     );
   }
 
+  const avgScore = sortedLeads.length
+    ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length)
+    : 0;
+
+  const hotLeads = sortedLeads.filter((l) => l.lead_quality === 'HOT').length;
+  const withPhone = sortedLeads.filter((l) => l.phone_raw).length;
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       <Head>
@@ -417,7 +451,12 @@ export default function LeadDashboard() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 py-3">
           <div className="flex justify-between items-start mb-3">
-            <h1 className="text-lg font-bold text-black">Colombo B2B Revenue Hub</h1>
+            <div>
+              <h1 className="text-lg font-bold text-black">Colombo B2B Revenue Hub</h1>
+              <p className="text-xs text-gray-600 mt-1">
+                {hotLeads} HOT leads • {withPhone} with phone • Avg Score: {avgScore}/100
+              </p>
+            </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="text-sm text-blue-600 font-medium mt-1"
@@ -561,13 +600,7 @@ export default function LeadDashboard() {
 
           <div className="flex justify-between items-center pt-2">
             <span className="text-black text-sm">
-              {sortedLeads.length} leads • Avg Score:{' '}
-              {sortedLeads.length
-                ? Math.round(
-                    sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length
-                  )
-                : 0}
-              /100
+              {sortedLeads.length} leads • Avg Score: {avgScore}/100
             </span>
             <div className="flex gap-2">
               <button
@@ -579,7 +612,7 @@ export default function LeadDashboard() {
                     : 'bg-green-600 text-white hover:bg-green-700'
                 }`}
               >
-                📥 CSV
+                📥 CSV+Score
               </button>
               <button
                 onClick={exportWhatsAppNumbers}
@@ -680,7 +713,10 @@ export default function LeadDashboard() {
                         href={waLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={() => showToast('Opening WhatsApp...')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          showToast('Opening WhatsApp...');
+                        }}
                         className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 transition hover:bg-green-700"
                         aria-label="Message on WhatsApp"
                       >
@@ -753,11 +789,14 @@ export default function LeadDashboard() {
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {lead.tags.split(';').map((tag, idx) => {
                         const trimmed = tag.trim();
+                        if (!trimmed) return null;
                         const isUrgent = trimmed.toLowerCase().includes('urgent');
                         const isDecisionMaker = trimmed.toLowerCase().includes('decision-maker');
+                        const isBudget = trimmed.toLowerCase().includes('budget');
                         let bgColor = 'bg-gray-100';
                         if (isUrgent) bgColor = 'bg-red-100';
                         else if (isDecisionMaker) bgColor = 'bg-green-100';
+                        else if (isBudget) bgColor = 'bg-blue-100';
 
                         return (
                           <span
