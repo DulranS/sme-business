@@ -141,7 +141,41 @@ export default function BookkeepingApp() {
   }, []);
 
   // --- Pricing Recommendations (Placeholder to prevent crash) ---
-const pricingRecommendations = useMemo(() => {
+
+
+  // --- Sync with Debounced Filters ---
+  const syncRecords = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await Promise.all([
+        loadRecords(),
+        loadBudgets(),
+        loadRecurringCosts()
+      ]);
+      await generateRecurringRecords();
+    } catch (error) {
+      console.error("Sync failed:", error);
+      alert("Failed to sync data. Please check your connection.");
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadRecords, loadBudgets, loadRecurringCosts]);
+
+  // --- Filtered Records (Memoized) ---
+  const filteredRecords = useMemo(() => {
+    if (!dateFilter.start && !dateFilter.end) return records;
+    const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
+    const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
+    return records.filter(r => {
+      const recordDate = new Date(r.date);
+      if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
+      if (startDate) return recordDate >= startDate;
+      if (endDate) return recordDate <= endDate;
+      return true;
+    });
+  }, [records, dateFilter]);
+
+  const pricingRecommendations = useMemo(() => {
   // Only analyze inflow records with cost and market price data
   const candidates = filteredRecords.filter(r =>
     r.category === "Inflow" &&
@@ -180,38 +214,6 @@ const pricingRecommendations = useMemo(() => {
 
   return recommendations;
 }, [filteredRecords]);
-
-  // --- Sync with Debounced Filters ---
-  const syncRecords = useCallback(async () => {
-    setSyncing(true);
-    try {
-      await Promise.all([
-        loadRecords(),
-        loadBudgets(),
-        loadRecurringCosts()
-      ]);
-      await generateRecurringRecords();
-    } catch (error) {
-      console.error("Sync failed:", error);
-      alert("Failed to sync data. Please check your connection.");
-    } finally {
-      setSyncing(false);
-    }
-  }, [loadRecords, loadBudgets, loadRecurringCosts]);
-
-  // --- Filtered Records (Memoized) ---
-  const filteredRecords = useMemo(() => {
-    if (!dateFilter.start && !dateFilter.end) return records;
-    const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
-    const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
-    return records.filter(r => {
-      const recordDate = new Date(r.date);
-      if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
-      if (startDate) return recordDate >= startDate;
-      if (endDate) return recordDate <= endDate;
-      return true;
-    });
-  }, [records, dateFilter]);
 
   // --- Inventory Cost Map (Memoized) ---
   const inventoryCostMap = useMemo(() => {
