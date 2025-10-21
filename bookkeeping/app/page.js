@@ -1,75 +1,25 @@
 "use client";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import Papa from "papaparse";
 import {
-  Plus,
-  Pencil,
-  Trash2,
-  DollarSign,
-  Download,
-  TrendingUp,
-  TrendingDown,
-  Calendar,
-  BarChart3,
-  AlertCircle,
-  Target,
-  Lightbulb,
-  Award,
-  AlertTriangle,
-  CheckCircle,
-  Database,
-  RefreshCw,
-  Brain,
-  Users,
-  FileText,
-  Layers,
-  Bell,
-  Calculator,
-  Percent,
-  ShoppingCart,
-  Package,
-  Sparkles,
-  ArrowRight,
-  Zap,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  Factory,
-  CreditCard,
-  Shield,
-  Recycle,
-  ArrowUp,
-  HeartPulse,
-  Repeat,
-  Lock,
+  Plus, Pencil, Trash2, DollarSign, Download, TrendingUp,
+  Calendar, BarChart3, AlertCircle, Target, Lightbulb, Award,
+  AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users,
+  FileText, Bell, Calculator, Percent, ShoppingCart, Package,
+  Sparkles, Zap, Clock, Factory, CreditCard, Shield, Recycle,
+  ArrowUp, HeartPulse, Repeat, Lock
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  PieChart,
-  Pie,
-  Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, LineChart, Line, RadarChart, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis, Radar
 } from "recharts";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Added "On Hold Cash" with negative strategic weight
 const STRATEGIC_WEIGHTS = {
   Inflow: 10,
   Reinvestment: 8,
@@ -81,7 +31,7 @@ const STRATEGIC_WEIGHTS = {
   Overhead: -4,
   "Loan Payment": -2,
   "Cash Flow Gap": -5,
-  "On Hold Cash": -7, // New: Committed funds reduce strategic flexibility
+  "On Hold Cash": -7,
 };
 
 const categoryLabels = {
@@ -95,22 +45,16 @@ const categoryLabels = {
   Logistics: "Logistics",
   Refund: "Refund",
   "Cash Flow Gap": "Cash Flow Gap (Delayed)",
-  "On Hold Cash": "On Hold Cash", // New label
+  "On Hold Cash": "On Hold Cash",
 };
 
 const internalCategories = [
-  "Inflow",
-  "Outflow",
-  "Reinvestment",
-  "Overhead",
-  "Loan Payment",
-  "Loan Received",
-  "Inventory Purchase",
-  "Logistics",
-  "Refund",
-  "Cash Flow Gap",
-  "On Hold Cash", // Added to internal categories
+  "Inflow", "Outflow", "Reinvestment", "Overhead", "Loan Payment",
+  "Loan Received", "Inventory Purchase", "Logistics", "Refund",
+  "Cash Flow Gap", "On Hold Cash"
 ];
+
+const userSelectableCategories = internalCategories.filter(cat => cat !== "Cash Flow Gap");
 
 export default function BookkeepingApp() {
   const [records, setRecords] = useState([]);
@@ -150,52 +94,41 @@ export default function BookkeepingApp() {
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState("Overhead");
   const [budgetAmount, setBudgetAmount] = useState("");
-  const [expandedSection, setExpandedSection] = useState(null);
-  const [showStrategyModal, setShowStrategyModal] = useState(false);
   const [groupBy, setGroupBy] = useState("none");
-  const categories = internalCategories;
+  const csvInputRef = useRef(null);
 
-  // --- Save Budget ---
-  const saveBudget = async () => {
-    if (!budgetAmount) {
-      alert("Please enter a budget amount");
-      return;
-    }
+  // --- Optimized Data Loaders ---
+  const loadRecords = useCallback(async () => {
     try {
-      const { error } = await supabase.from("category_budgets").upsert({
-        category: budgetCategory,
-        amount: parseFloat(budgetAmount),
-      });
-      if (error) {
-        throw error;
-      }
-      await loadBudgets();
-      setShowBudgetModal(false);
-      setBudgetAmount("");
-      alert(
-        `Budget for ${
-          categoryLabels[budgetCategory] || budgetCategory
-        } saved successfully!`
-      );
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("bookkeeping_records")
+        .select("*")
+        .order("date", { ascending: false });
+      if (error) throw error;
+      setRecords(data || []);
     } catch (error) {
-      console.error("Error saving budget:", error);
-      alert("Failed to save budget. Please try again.");
+      console.error("Error loading records:", error);
+      setRecords([]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  // --- Save Loan Target ---
-  const saveLoanTarget = () => {
-    if (monthlyLoanTarget <= 0) {
-      alert("Please enter a valid monthly loan target");
-      return;
+  const loadBudgets = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("category_budgets").select("*");
+      if (!error && data) {
+        const budgetMap = {};
+        data.forEach(b => budgetMap[b.category] = b.amount);
+        setBudgets(budgetMap);
+      }
+    } catch (error) {
+      console.error("Error loading budgets:", error);
     }
-    localStorage.setItem("monthlyLoanTarget", monthlyLoanTarget.toString());
-    setShowLoanModal(false);
-    alert("Monthly loan target updated!");
-  };
+  }, []);
 
-  // --- Recurring Cost Handlers ---
-  const loadRecurringCosts = async () => {
+  const loadRecurringCosts = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("recurring_costs")
@@ -205,8 +138,602 @@ export default function BookkeepingApp() {
     } catch (error) {
       console.error("Error loading recurring costs:", error);
     }
+  }, []);
+
+  // --- Sync with Debounced Filters ---
+  const syncRecords = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await Promise.all([
+        loadRecords(),
+        loadBudgets(),
+        loadRecurringCosts()
+      ]);
+      await generateRecurringRecords();
+    } catch (error) {
+      console.error("Sync failed:", error);
+      alert("Failed to sync data. Please check your connection.");
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadRecords, loadBudgets, loadRecurringCosts]);
+
+  // --- Filtered Records (Memoized) ---
+  const filteredRecords = useMemo(() => {
+    if (!dateFilter.start && !dateFilter.end) return records;
+    const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
+    const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
+    return records.filter(r => {
+      const recordDate = new Date(r.date);
+      if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
+      if (startDate) return recordDate >= startDate;
+      if (endDate) return recordDate <= endDate;
+      return true;
+    });
+  }, [records, dateFilter]);
+
+  // --- Inventory Cost Map (Memoized) ---
+  const inventoryCostMap = useMemo(() => {
+    const map = new Map();
+    const inventoryRecords = filteredRecords.filter(r => r.category === "Inventory Purchase");
+    
+    for (const r of inventoryRecords) {
+      const key = r.description;
+      const qty = parseFloat(r.quantity) || 0;
+      const cost = parseFloat(r.cost_per_unit) || 0;
+      if (!key || cost <= 0) continue;
+      
+      if (!map.has(key)) {
+        map.set(key, { totalCost: 0, totalQty: 0 });
+      }
+      const entry = map.get(key);
+      entry.totalCost += cost * qty;
+      entry.totalQty += qty;
+    }
+    
+    const result = {};
+    for (const [key, entry] of map) {
+      if (entry.totalQty > 0) {
+        result[key] = entry.totalCost / entry.totalQty;
+      }
+    }
+    return result;
+  }, [filteredRecords]);
+
+  // --- Totals Calculation (Memoized) ---
+  const totals = useMemo(() => {
+    let inflow = 0, inflowCost = 0, inflowProfit = 0, outflow = 0, 
+        reinvestment = 0, overhead = 0, loanPayment = 0, loanReceived = 0,
+        logistics = 0, refund = 0, onHoldCash = 0;
+
+    for (const r of filteredRecords) {
+      if (r.category === "Cash Flow Gap") continue;
+      
+      const amount = parseFloat(r.amount) || 0;
+      const quantity = parseFloat(r.quantity) || 1;
+      const totalAmount = amount * quantity;
+
+      if (r.category === "On Hold Cash") {
+        onHoldCash += totalAmount;
+        continue;
+      }
+
+      if (r.category === "Inflow") {
+        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
+        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
+          costPerUnit = inventoryCostMap[r.description];
+        }
+        const cost = costPerUnit * quantity;
+        inflow += totalAmount;
+        inflowCost += cost;
+        if (costPerUnit > 0) inflowProfit += totalAmount - cost;
+      } else {
+        switch (r.category) {
+          case "Outflow": outflow += totalAmount; break;
+          case "Reinvestment": reinvestment += totalAmount; break;
+          case "Overhead": overhead += totalAmount; break;
+          case "Loan Payment": loanPayment += totalAmount; break;
+          case "Loan Received": loanReceived += totalAmount; break;
+          case "Logistics": logistics += totalAmount; break;
+          case "Refund": refund += totalAmount; break;
+        }
+      }
+    }
+
+    return { inflow, inflowCost, inflowProfit, outflow, reinvestment, 
+             overhead, loanPayment, loanReceived, logistics, refund, onHoldCash };
+  }, [filteredRecords, inventoryCostMap]);
+
+  // --- Derived Metrics (Memoized) ---
+  const totalRecurring = useMemo(() => 
+    recurringCosts.reduce((sum, cost) => sum + (parseFloat(cost.amount) || 0), 0),
+    [recurringCosts]
+  );
+
+  const overheadWithRecurring = totals.overhead + totalRecurring;
+  const grossProfit = totals.inflow - totals.outflow;
+  const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
+  const operatingProfit = grossProfit - overheadWithRecurring - totals.reinvestment;
+  const netLoanImpact = totals.loanReceived - totals.loanPayment;
+  const netProfit = operatingProfit + netLoanImpact;
+
+  // --- Loan Coverage ---
+  const { rollingInflow, loanCoveragePercent, loanStatus } = useMemo(() => {
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    
+    const inflow = records
+      .filter(r => 
+        r.category === "Inflow" && 
+        new Date(r.date) >= thirtyDaysAgo && 
+        new Date(r.date) <= today
+      )
+      .reduce((sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1), 0);
+    
+    const hasRecentInflow = records.some(
+      r => r.category === "Inflow" && new Date(r.date) >= thirtyDaysAgo
+    );
+    const percent = hasRecentInflow && monthlyLoanTarget > 0 
+      ? (inflow / monthlyLoanTarget) * 100 
+      : 0;
+    
+    return {
+      rollingInflow: inflow,
+      loanCoveragePercent: percent,
+      loanStatus: percent >= 100 ? "On Track" : "At Risk"
+    };
+  }, [records, monthlyLoanTarget]);
+
+  // --- Customer Concentration ---
+  const topCustomerShare = useMemo(() => {
+    const customerRevenueMap = new Map();
+    for (const r of filteredRecords) {
+      if (r.category === "Inflow" && r.customer) {
+        const rev = (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
+        customerRevenueMap.set(r.customer, (customerRevenueMap.get(r.customer) || 0) + rev);
+      }
+    }
+    const totalRevenue = Array.from(customerRevenueMap.values()).reduce((a, b) => a + b, 0);
+    if (totalRevenue === 0) return 0;
+    return Math.max(...customerRevenueMap.values()) / totalRevenue;
+  }, [filteredRecords]);
+
+  // --- Strategic Scoring (Optimized) ---
+  const recordsWithStrategicScore = useMemo(() => {
+    const scoredRecords = filteredRecords.map(r => {
+      const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
+      let marginImpact = 0, loanImpact = 0, recencyBonus = 0, 
+          customerPenalty = 0, cashFlowImpact = 0;
+      
+      const daysOld = Math.floor((new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24));
+      recencyBonus = Math.max(0, 5 - daysOld / 30);
+      
+      if (r.category === "Cash Flow Gap") {
+        recencyBonus = -2;
+        customerPenalty = -3;
+      } else if (r.category === "Refund") {
+        customerPenalty = -4;
+        recencyBonus = -3;
+      } else if (r.category === "Logistics") {
+        const avgLogistics = totals.logistics / Math.max(
+          filteredRecords.filter(rec => rec.category === "Logistics").length,
+          1
+        );
+        const actualCost = parseFloat(r.amount) || 0;
+        marginImpact = actualCost < avgLogistics ? 1 : -1;
+      } else if (r.category === "Inflow") {
+        const qty = parseFloat(r.quantity) || 1;
+        const price = parseFloat(r.amount) || 0;
+        let cost = parseFloat(r.cost_per_unit) || 0;
+        if (!cost && r.description && inventoryCostMap[r.description]) {
+          cost = inventoryCostMap[r.description];
+        }
+        const profit = (price - cost) * qty;
+        marginImpact = profit > 0 ? profit / 1000 : 0;
+        if (daysOld <= 30) {
+          loanImpact = (price * qty) / 10000;
+          cashFlowImpact = 2;
+        }
+        if (r.customer && topCustomerShare > 0.5) {
+          customerPenalty = -2;
+        }
+      } else if (r.category === "On Hold Cash") {
+        recencyBonus = -3;
+        customerPenalty = -2;
+      }
+      
+      return { 
+        ...r, 
+        strategicScore: baseWeight + marginImpact + loanImpact + 
+                       recencyBonus + customerPenalty + cashFlowImpact 
+      };
+    });
+    
+    return scoredRecords.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      if (dateB.getTime() !== dateA.getTime()) {
+        return dateB.getTime() - dateA.getTime();
+      }
+      return b.strategicScore - a.strategicScore;
+    });
+  }, [filteredRecords, inventoryCostMap, topCustomerShare, totals.logistics]);
+
+  // --- Business Health Index ---
+  const { 
+    monthlyBurn, 
+    cashRunwayMonths, 
+    liquidityRatio, 
+    recurringRatio, 
+    onHoldRatio, 
+    businessHealthIndex 
+  } = useMemo(() => {
+    const burn = overheadWithRecurring + totals.outflow + totals.reinvestment;
+    const runway = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / burn : 0;
+    const liquidity = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / burn : 0;
+    const recurring = totals.inflow > 0 ? (totalRecurring / totals.inflow) * 100 : 0;
+    const onHold = totals.inflow > 0 ? (totals.onHoldCash / totals.inflow) * 100 : 0;
+    
+    const maturityData = [
+      { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
+      {
+        stage: "Cost Tracking",
+        score: (
+          (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length /
+            Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1)) * 100
+        ).toFixed(0),
+      },
+      {
+        stage: "Customer Tracking",
+        score: (
+          (filteredRecords.filter(r => r.customer).length / Math.max(filteredRecords.length, 1)) * 100
+        ).toFixed(0),
+      },
+      { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
+    ];
+    const dataCompletenessScore = (
+      (maturityData.reduce((sum, m) => sum + parseFloat(m.score), 0) / 400) * 100
+    ).toFixed(0);
+    
+    const healthIndex = Math.min(
+      100,
+      Math.round(
+        (trueGrossMargin / 50) * 25 +
+        (loanCoveragePercent / 100) * 25 +
+        (liquidity > 1 ? 25 : liquidity * 25) +
+        parseFloat(dataCompletenessScore) * 0.25 +
+        (recurring < 30 ? 12.5 : 0) +
+        (onHold < 20 ? 12.5 : 0)
+      )
+    );
+    
+    return { 
+      monthlyBurn: burn, 
+      cashRunwayMonths: runway, 
+      liquidityRatio: liquidity, 
+      recurringRatio: recurring, 
+      onHoldRatio: onHold, 
+      businessHealthIndex: healthIndex 
+    };
+  }, [totals, overheadWithRecurring, totalRecurring, records.length, 
+      filteredRecords, budgets, trueGrossMargin, loanCoveragePercent]);
+
+  // --- Alerts (Memoized) ---
+  const onHoldAlert = useMemo(() => 
+    onHoldRatio > 20 && totals.inflow > 0 ? { percent: onHoldRatio.toFixed(1) } : null,
+    [onHoldRatio, totals.inflow]
+  );
+
+  const recurringAlert = useMemo(() => 
+    recurringRatio > 30 && totals.inflow > 0 ? { percent: recurringRatio.toFixed(1) } : null,
+    [recurringRatio, totals.inflow]
+  );
+
+  const budgetAlerts = useMemo(() => {
+    const alerts = [];
+    for (const [category, budgetAmount] of Object.entries(budgets)) {
+      const spent = filteredRecords
+        .filter(r => r.category === category)
+        .reduce((sum, r) => {
+          if (r.category === "Inflow") {
+            return sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
+          }
+          return sum + (parseFloat(r.amount) || 0);
+        }, 0);
+      const percentUsed = (spent / budgetAmount) * 100;
+      if (percentUsed >= 90) {
+        alerts.push({
+          category,
+          spent,
+          budget: budgetAmount,
+          percentUsed,
+          severity: percentUsed >= 100 ? "critical" : "warning",
+        });
+      }
+    }
+    return alerts;
+  }, [filteredRecords, budgets]);
+
+  // --- Form Handlers ---
+  const handleSubmit = useCallback(async () => {
+    if (!formData.description || !formData.amount) return;
+    if (!formData.date) {
+      alert("Please select a date");
+      return;
+    }
+    const amountNum = parseFloat(formData.amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      alert("Amount must be a positive number.");
+      return;
+    }
+    try {
+      const recordData = {
+        date: formData.date,
+        payment_date: formData.paymentDate || formData.date,
+        description: formData.description,
+        category: formData.category,
+        amount: parseFloat(formData.amount),
+        cost_per_unit: formData.costPerUnit ? parseFloat(formData.costPerUnit) : null,
+        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+        notes: formData.notes || null,
+        customer: formData.customer || null,
+        project: formData.project || null,
+        tags: formData.tags || null,
+        market_price: formData.marketPrice ? parseFloat(formData.marketPrice) : null,
+        supplied_by: formData.suppliedBy || null,
+        approved: true,
+      };
+      if (isEditing !== null) {
+        const { error } = await supabase
+          .from("bookkeeping_records")
+          .update(recordData)
+          .eq("id", isEditing);
+        if (error) throw error;
+        setRecords(records.map(r => r.id === isEditing ? { ...recordData, id: r.id } : r));
+        setIsEditing(null);
+      } else {
+        const { data, error } = await supabase
+          .from("bookkeeping_records")
+          .insert([recordData])
+          .select();
+        if (error) throw error;
+        setRecords([data[0], ...records]);
+      }
+      resetForm();
+    } catch (error) {
+      console.error("Error saving record:", error);
+      alert("Failed to save record.");
+    }
+  }, [formData, isEditing, records]);
+
+  const resetForm = () => {
+    setFormData({
+      date: new Date().toISOString().split("T")[0],
+      paymentDate: "",
+      description: "",
+      category: "Inflow",
+      amount: "",
+      costPerUnit: "",
+      quantity: "",
+      notes: "",
+      customer: "",
+      project: "",
+      tags: "",
+      marketPrice: "",
+      suppliedBy: "",
+    });
   };
 
+  const handleEdit = (index) => {
+    const record = recordsWithStrategicScore[index];
+    setFormData({
+      date: record.date,
+      paymentDate: record.payment_date || "",
+      description: record.description,
+      category: record.category,
+      amount: record.amount.toString(),
+      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
+      quantity: record.quantity ? record.quantity.toString() : "",
+      notes: record.notes || "",
+      customer: record.customer || "",
+      project: record.project || "",
+      tags: record.tags || "",
+      marketPrice: record.market_price ? record.market_price.toString() : "",
+      suppliedBy: record.supplied_by || "",
+    });
+    setIsEditing(record.id);
+    setActiveTab("overview");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancel = () => {
+    setIsEditing(null);
+    resetForm();
+  };
+
+  const handleDelete = async (index) => {
+    if (!window.confirm("Are you sure you want to delete this record?")) return;
+    try {
+      const recordToDelete = recordsWithStrategicScore[index];
+      const { error } = await supabase
+        .from("bookkeeping_records")
+        .delete()
+        .eq("id", recordToDelete.id);
+      if (error) throw error;
+      setRecords(records.filter(r => r.id !== recordToDelete.id));
+    } catch (error) {
+      console.error("Error deleting record:", error);
+      alert("Failed to delete record. Please try again.");
+    }
+  };
+
+  const handleCsvImport = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const { data } = results;
+        if (!Array.isArray(data) || data.length === 0) {
+          alert("No valid records found in CSV.");
+          return;
+        }
+        const normalizeHeader = (str) =>
+          str?.trim().toLowerCase().replace(/\s+/g, "");
+        const mappedRecords = data
+          .map((row) => {
+            const parseNumber = (val) =>
+              val === "" || val == null ? null : parseFloat(val);
+            const parseString = (val) =>
+              val === "" || val == null ? null : String(val).trim();
+            const headers = {};
+            Object.keys(row).forEach((key) => {
+              headers[normalizeHeader(key)] = row[key];
+            });
+            const categoryKey =
+              Object.entries(categoryLabels).find(
+                ([, label]) => normalizeHeader(label) === normalizeHeader(headers["category"])
+              )?.[0] ||
+              (internalCategories.includes(row["Category"])
+                ? row["Category"]
+                : "Inflow");
+            return {
+              date:
+                parseString(headers["date"]) ||
+                new Date().toISOString().split("T")[0],
+              payment_date:
+                parseString(headers["paymentdate"]) || parseString(headers["date"]),
+              description: parseString(headers["description"]),
+              category: internalCategories.includes(categoryKey)
+                ? categoryKey
+                : "Inflow",
+              amount: parseNumber(headers["unitprice(lkr)"]),
+              cost_per_unit: parseNumber(headers["costperunit(lkr)"]),
+              quantity: parseNumber(headers["quantity"]) || 1,
+              notes: parseString(headers["notes"]),
+              customer: parseString(headers["customer"]),
+              project: parseString(headers["project"]),
+              tags: parseString(headers["tags"]),
+              market_price:
+                parseNumber(headers["market/competitorprice(lkr)"]) ||
+                parseNumber(headers["marketprice"]),
+              supplied_by: parseString(headers["suppliedby"]),
+            };
+          })
+          .filter((r) => r.description && r.amount != null);
+        if (mappedRecords.length === 0) {
+          alert("No valid records to import.");
+          return;
+        }
+        try {
+          const { error } = await supabase
+            .from("bookkeeping_records")
+            .insert(mappedRecords);
+          if (error) throw error;
+          await loadRecords();
+          alert(`Successfully imported ${mappedRecords.length} records.`);
+          if (csvInputRef.current) csvInputRef.current.value = "";
+        } catch (err) {
+          console.error("Import error:", err);
+          alert("Failed to import CSV. Check format and try again.");
+        }
+      },
+      error: (error) => {
+        console.error("CSV Parse Error:", error);
+        alert("Failed to parse CSV file.");
+      },
+    });
+  };
+
+  const exportToCSV = () => {
+    const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
+    if (dataToExport.length === 0) {
+      alert("No records to export");
+      return;
+    }
+    const headers = [
+      "Date",
+      "Description",
+      "Category",
+      "Unit Price (LKR)",
+      "Cost per Unit (LKR)",
+      "Quantity",
+      "Total",
+      "Total Cost",
+      "Profit",
+      "Margin %",
+      "Customer",
+      "Project",
+      "Supplied By",
+      "Tags",
+      "Notes",
+      "Strategic Score",
+    ];
+    const csvData = dataToExport.map((r) => {
+      const qty = r.quantity || 1;
+      const price = r.amount;
+      const cost = r.cost_per_unit || 0;
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+      const margin = price > 0 ? ((price - cost) / price) * 100 : null;
+      return [
+        r.date,
+        `"${r.description}"`,
+        categoryLabels[r.category] || r.category,
+        price,
+        cost,
+        qty,
+        revenue.toFixed(2),
+        totalCost.toFixed(2),
+        profit.toFixed(2),
+        margin,
+        `"${r.customer || ""}"`,
+        `"${r.project || ""}"`,
+        `"${r.supplied_by || ""}"`,
+        `"${r.tags || ""}"`,
+        `"${r.notes || ""}"`,
+        r.strategicScore?.toFixed(1) || "0",
+      ];
+    });
+    const dateRange =
+      dateFilter.start || dateFilter.end
+        ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
+        : "";
+    const csvContent = [
+      headers.join(","),
+      ...csvData.map((row) => row.join(",")),
+    ].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `profit_analysis${dateRange}_${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const formatLKR = (amount) => {
+    return new Intl.NumberFormat("en-LK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  const clearDateFilter = () => setDateFilter({ start: "", end: "" });
+  const setQuickFilter = (days) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    setDateFilter({
+      start: start.toISOString().split("T")[0],
+      end: end.toISOString().split("T")[0],
+    });
+  };
+
+  // --- Recurring Cost Handlers ---
   const resetRecurringForm = () => {
     setRecurringForm({ description: "", amount: "", notes: "" });
     setIsEditingRecurring(null);
@@ -280,12 +807,10 @@ export default function BookkeepingApp() {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const lastGen = localStorage.getItem("lastRecurringGen");
-    if (lastGen === monthKey) return; // Prevent duplicate generation
-
+    if (lastGen === monthKey) return;
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const firstDayStr = firstDay.toISOString().split("T")[0];
     const autoGenNote = "Auto-generated from recurring cost";
-
     for (const cost of recurringCosts) {
       const exists = records.some(
         (r) =>
@@ -316,26 +841,50 @@ export default function BookkeepingApp() {
     localStorage.setItem("lastRecurringGen", monthKey);
   };
 
-  // --- Sync Data ---
-  const syncRecords = async () => {
-    setSyncing(true);
+  // --- Save Budget ---
+  const saveBudget = async () => {
+    if (!budgetAmount) {
+      alert("Please enter a budget amount");
+      return;
+    }
     try {
-      await loadRecords();
+      const { error } = await supabase.from("category_budgets").upsert({
+        category: budgetCategory,
+        amount: parseFloat(budgetAmount),
+      });
+      if (error) {
+        throw error;
+      }
       await loadBudgets();
-      await loadRecurringCosts();
-      await generateRecurringRecords();
+      setShowBudgetModal(false);
+      setBudgetAmount("");
+      alert(
+        `Budget for ${
+          categoryLabels[budgetCategory] || budgetCategory
+        } saved successfully!`
+      );
     } catch (error) {
-      console.error("Sync failed:", error);
-      alert("Failed to sync data. Please check your connection and try again.");
-    } finally {
-      setSyncing(false);
+      console.error("Error saving budget:", error);
+      alert("Failed to save budget. Please try again.");
     }
   };
 
-  // --- Load Data ---
+  // --- Save Loan Target ---
+  const saveLoanTarget = () => {
+    if (monthlyLoanTarget <= 0) {
+      alert("Please enter a valid monthly loan target");
+      return;
+    }
+    localStorage.setItem("monthlyLoanTarget", monthlyLoanTarget.toString());
+    setShowLoanModal(false);
+    alert("Monthly loan target updated!");
+  };
+
+  // --- Initial Load ---
   useEffect(() => {
     const savedLoanTarget = localStorage.getItem("monthlyLoanTarget");
     if (savedLoanTarget) setMonthlyLoanTarget(parseFloat(savedLoanTarget));
+    
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - 30);
@@ -343,1195 +892,16 @@ export default function BookkeepingApp() {
       start: start.toISOString().split("T")[0],
       end: end.toISOString().split("T")[0],
     });
-    loadRecords();
-    loadBudgets();
-    loadRecurringCosts();
+    
+    syncRecords();
   }, []);
-
-  const loadRecords = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("bookkeeping_records")
-        .select("*")
-        .order("date", { ascending: false });
-      if (error) throw error;
-      setRecords(data || []);
-    } catch (error) {
-      console.error("Error loading records:", error);
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadBudgets = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("category_budgets")
-        .select("*");
-      if (!error && data) {
-        const budgetMap = {};
-        data.forEach((b) => (budgetMap[b.category] = b.amount));
-        setBudgets(budgetMap);
-      }
-    } catch (error) {
-      console.error("Error loading budgets:", error);
-    }
-  };
-
-  const filteredRecords = useMemo(() => {
-    if (!dateFilter.start && !dateFilter.end) return records;
-    return records.filter((r) => {
-      const recordDate = new Date(r.date);
-      const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
-      const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
-      if (startDate && endDate)
-        return recordDate >= startDate && recordDate <= endDate;
-      if (startDate) return recordDate >= startDate;
-      if (endDate) return recordDate <= endDate;
-      return true;
-    });
-  }, [records, dateFilter]);
-
-  const inventoryCostMap = useMemo(() => {
-    const map = {};
-    const inventoryRecords = filteredRecords.filter(
-      (r) => r.category === "Inventory Purchase"
-    );
-    inventoryRecords.forEach((r) => {
-      const key = r.description;
-      const qty = parseFloat(r.quantity) || 0;
-      const cost = parseFloat(r.cost_per_unit) || 0;
-      if (!key || cost <= 0) return;
-      if (!map[key]) {
-        map[key] = { totalCost: 0, totalQty: 0 };
-      }
-      map[key].totalCost += cost * qty;
-      map[key].totalQty += qty;
-    });
-    Object.keys(map).forEach((key) => {
-      if (map[key].totalQty <= 0) {
-        delete map[key];
-      } else {
-        map[key] = map[key].totalCost / map[key].totalQty;
-      }
-    });
-    return map;
-  }, [filteredRecords]);
-
-  const userSelectableCategories = internalCategories.filter(
-    (cat) => cat !== "Cash Flow Gap"
-  );
-
-  const hasSufficientHistory = useMemo(() => {
-    if (records.length === 0) return false;
-    const dates = records.map((r) => new Date(r.date));
-    const minDate = new Date(Math.min(...dates));
-    const maxDate = new Date(Math.max(...dates));
-    const daysSpan = (maxDate - minDate) / (1000 * 60 * 60 * 24);
-    return daysSpan >= 90;
-  }, [records]);
-
-  // --- Totals & Loan Coverage ---
-  const totals = filteredRecords.reduce(
-    (acc, r) => {
-      const amount = parseFloat(r.amount) || 0;
-      const quantity = parseFloat(r.quantity) || 1;
-      const totalAmount = amount * quantity;
-      if (r.category === "Cash Flow Gap") return acc;
-      
-      // Handle On Hold Cash
-      if (r.category === "On Hold Cash") {
-        acc.onHoldCash += totalAmount;
-        return acc;
-      }
-
-      if (r.category === "Inflow") {
-        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
-        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-          costPerUnit = inventoryCostMap[r.description];
-        }
-        const cost = costPerUnit * quantity;
-        acc.inflow += totalAmount;
-        acc.inflowCost += cost;
-        if (costPerUnit > 0) {
-          acc.inflowProfit += totalAmount - cost;
-        }
-      } else {
-        if (r.category === "Outflow") acc.outflow += totalAmount;
-        if (r.category === "Reinvestment") acc.reinvestment += totalAmount;
-        if (r.category === "Overhead") acc.overhead += totalAmount;
-        if (r.category === "Loan Payment") acc.loanPayment += totalAmount;
-        if (r.category === "Loan Received") acc.loanReceived += totalAmount;
-        if (r.category === "Logistics") acc.logistics += totalAmount;
-        if (r.category === "Refund") acc.refund += totalAmount;
-      }
-      return acc;
-    },
-    {
-      inflow: 0,
-      inflowCost: 0,
-      inflowProfit: 0,
-      outflow: 0,
-      reinvestment: 0,
-      overhead: 0,
-      loanPayment: 0,
-      loanReceived: 0,
-      logistics: 0,
-      refund: 0,
-      onHoldCash: 0, // New accumulator
-    }
-  );
-
-  const totalRecurring = recurringCosts.reduce(
-    (sum, cost) => sum + (parseFloat(cost.amount) || 0),
-    0
-  );
-  const overheadWithRecurring = totals.overhead + totalRecurring;
-  const grossProfit = totals.inflow - totals.outflow;
-  const trueGrossMargin =
-    totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-  const operatingProfit = grossProfit - overheadWithRecurring - totals.reinvestment;
-  const netLoanImpact = totals.loanReceived - totals.loanPayment;
-  const netProfit = operatingProfit + netLoanImpact;
-
-  // Loan Coverage
-  const today = new Date();
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(today.getDate() - 30);
-  const rollingInflow = records
-    .filter(
-      (r) =>
-        r.category === "Inflow" &&
-        new Date(r.date) >= thirtyDaysAgo &&
-        new Date(r.date) <= today
-    )
-    .reduce(
-      (sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
-      0
-    );
-
-  const hasRecentInflow = records.some(
-    (r) => r.category === "Inflow" && new Date(r.date) >= thirtyDaysAgo
-  );
-  const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
-    ? (rollingInflow / monthlyLoanTarget) * 100
-    : 0;
-  const loanStatus = loanCoveragePercent >= 100 ? "On Track" : "At Risk";
-
-  // Customer Concentration
-  const customerRevenueMap = useMemo(() => {
-    const map = {};
-    filteredRecords.forEach((r) => {
-      if (r.category === "Inflow" && r.customer) {
-        const rev = (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
-        map[r.customer] = (map[r.customer] || 0) + rev;
-      }
-    });
-    return map;
-  }, [filteredRecords]);
-  const totalCustomerRevenue = Object.values(customerRevenueMap).reduce(
-    (sum, rev) => sum + rev,
-    0
-  );
-  const topCustomerShare =
-    totalCustomerRevenue > 0
-      ? Math.max(...Object.values(customerRevenueMap)) / totalCustomerRevenue
-      : 0;
-
-  // Supplier Analysis
-  const supplierAnalysis = useMemo(() => {
-    const suppliers = {};
-    filteredRecords.forEach((r) => {
-      if (r.supplied_by && r.category !== "Inflow") {
-        const amount = parseFloat(r.amount) || 0;
-        const qty = parseFloat(r.quantity) || 1;
-        const totalCost = amount * qty;
-        if (!suppliers[r.supplied_by]) {
-          suppliers[r.supplied_by] = { cost: 0, transactions: 0 };
-        }
-        suppliers[r.supplied_by].cost += totalCost;
-        suppliers[r.supplied_by].transactions += 1;
-      }
-    });
-    return Object.entries(suppliers)
-      .map(([name, data]) => ({
-        name,
-        cost: data.cost,
-        transactions: data.transactions,
-      }))
-      .sort((a, b) => b.cost - a.cost);
-  }, [filteredRecords]);
-
-  // Strategic Scoring (includes On Hold Cash)
-  const recordsWithStrategicScore = useMemo(() => {
-    return filteredRecords
-      .map((r) => {
-        const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
-        let marginImpact = 0;
-        let loanImpact = 0;
-        let recencyBonus = 0;
-        let customerPenalty = 0;
-        let cashFlowImpact = 0;
-        const daysOld = Math.floor(
-          (new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24)
-        );
-        recencyBonus = Math.max(0, 5 - daysOld / 30);
-        
-        // On Hold Cash specific logic
-        if (r.category === "On Hold Cash") {
-          recencyBonus = -3; // Older holds are riskier
-          customerPenalty = -2; // Reduces flexibility
-        }
-
-        if (r.category === "Cash Flow Gap") {
-          recencyBonus = -2;
-          customerPenalty = -3;
-        }
-        if (r.category === "Refund") {
-          customerPenalty = -4;
-          recencyBonus = -3;
-        }
-        if (r.category === "Logistics") {
-          const avgLogistics =
-            totals.logistics /
-            Math.max(
-              filteredRecords.filter((rec) => rec.category === "Logistics")
-                .length,
-              1
-            );
-          const actualCost = parseFloat(r.amount) || 0;
-          marginImpact = actualCost < avgLogistics ? 1 : -1;
-        }
-        if (r.category === "Inflow") {
-          const qty = parseFloat(r.quantity) || 1;
-          const price = parseFloat(r.amount) || 0;
-          let cost = parseFloat(r.cost_per_unit) || 0;
-          if (!cost && r.description && inventoryCostMap[r.description]) {
-            cost = inventoryCostMap[r.description];
-          }
-          const profit = (price - cost) * qty;
-          marginImpact = profit > 0 ? profit / 1000 : 0;
-          if (daysOld <= 30) {
-            loanImpact = (price * qty) / 10000;
-            cashFlowImpact = 2;
-          }
-          if (r.customer && topCustomerShare > 0.5) {
-            customerPenalty = -2;
-          }
-        }
-        const strategicScore =
-          baseWeight +
-          marginImpact +
-          loanImpact +
-          recencyBonus +
-          customerPenalty +
-          cashFlowImpact;
-        return { ...r, strategicScore };
-      })
-      .sort((a, b) => {
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        if (dateB.getTime() !== dateA.getTime()) {
-          return dateB.getTime() - dateA.getTime();
-        }
-        return b.strategicScore - a.strategicScore;
-      });
-  }, [filteredRecords, inventoryCostMap, topCustomerShare]);
-
-  // Business Health Index (now includes on-hold cash impact)
-  const monthlyBurn = overheadWithRecurring + totals.outflow + totals.reinvestment;
-  const cashRunwayMonths = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / monthlyBurn : 0;
-  const liquidityRatio = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / monthlyBurn : 0;
-  const refundRate = totals.inflow > 0 ? (totals.refund / totals.inflow) * 100 : 0;
-  const recurringRatio = totals.inflow > 0 ? (totalRecurring / totals.inflow) * 100 : 0;
-  const onHoldRatio = totals.inflow > 0 ? (totals.onHoldCash / totals.inflow) * 100 : 0;
-
-  const maturityData = [
-    { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
-    {
-      stage: "Cost Tracking",
-      score: (
-        (filteredRecords.filter(
-          (r) => r.category === "Inflow" && r.cost_per_unit
-        ).length /
-          Math.max(
-            filteredRecords.filter((r) => r.category === "Inflow").length,
-            1
-          )) *
-        100
-      ).toFixed(0),
-    },
-    {
-      stage: "Customer Tracking",
-      score: (
-        (filteredRecords.filter((r) => r.customer).length /
-          Math.max(filteredRecords.length, 1)) *
-        100
-      ).toFixed(0),
-    },
-    { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
-  ];
-  const dataCompletenessScore = (
-    (maturityData.reduce((sum, m) => sum + parseFloat(m.score), 0) / 400) *
-    100
-  ).toFixed(0);
-  const businessHealthIndex = Math.min(
-    100,
-    Math.round(
-      (trueGrossMargin / 50) * 25 +
-        (loanCoveragePercent / 100) * 25 +
-        (liquidityRatio > 1 ? 25 : liquidityRatio * 25) +
-        parseFloat(dataCompletenessScore) * 0.25 +
-        (recurringRatio < 30 ? 12.5 : 0) +
-        (onHoldRatio < 20 ? 12.5 : 0) // New: Reward low on-hold ratio
-    )
-  );
-
-  // Handle Form Submit
-  const handleSubmit = async () => {
-    if (!formData.description || !formData.amount) return;
-    if (!formData.date) {
-      alert("Please select a date");
-      return;
-    }
-    const amountNum = parseFloat(formData.amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      alert("Amount must be a positive number.");
-      return;
-    }
-    try {
-      const recordData = {
-        date: formData.date,
-        payment_date: formData.paymentDate || formData.date,
-        description: formData.description,
-        category: formData.category,
-        amount: parseFloat(formData.amount),
-        cost_per_unit: formData.costPerUnit
-          ? parseFloat(formData.costPerUnit)
-          : null,
-        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
-        notes: formData.notes || null,
-        customer: formData.customer || null,
-        project: formData.project || null,
-        tags: formData.tags || null,
-        market_price: formData.marketPrice
-          ? parseFloat(formData.marketPrice)
-          : null,
-        supplied_by: formData.suppliedBy || null,
-        approved: true,
-      };
-      if (isEditing !== null) {
-        const { error } = await supabase
-          .from("bookkeeping_records")
-          .update(recordData)
-          .eq("id", isEditing);
-        if (error) throw error;
-        setRecords(
-          records.map((r) =>
-            r.id === isEditing ? { ...recordData, id: r.id } : r
-          )
-        );
-        setIsEditing(null);
-      } else {
-        const { data, error } = await supabase
-          .from("bookkeeping_records")
-          .insert([recordData])
-          .select();
-        if (error) throw error;
-        setRecords([data[0], ...records]);
-      }
-      resetForm();
-    } catch (error) {
-      console.error("Error saving record:", error);
-      alert("Failed to save record.");
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      date: new Date().toISOString().split("T")[0],
-      paymentDate: "",
-      description: "",
-      category: "Inflow",
-      amount: "",
-      costPerUnit: "",
-      quantity: "",
-      notes: "",
-      customer: "",
-      project: "",
-      tags: "",
-      marketPrice: "",
-      suppliedBy: "",
-    });
-  };
-
-  const handleEdit = (index) => {
-    const record = recordsWithStrategicScore[index];
-    setFormData({
-      date: record.date,
-      paymentDate: record.payment_date || "",
-      description: record.description,
-      category: record.category,
-      amount: record.amount.toString(),
-      costPerUnit: record.cost_per_unit ? record.cost_per_unit.toString() : "",
-      quantity: record.quantity ? record.quantity.toString() : "",
-      notes: record.notes || "",
-      customer: record.customer || "",
-      project: record.project || "",
-      tags: record.tags || "",
-      marketPrice: record.market_price ? record.market_price.toString() : "",
-      suppliedBy: record.supplied_by || "",
-    });
-    setIsEditing(record.id);
-    setActiveTab("overview");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleCancel = () => {
-    setIsEditing(null);
-    resetForm();
-  };
-
-  const handleDelete = async (index) => {
-    if (!window.confirm("Are you sure you want to delete this record?")) return;
-    try {
-      const recordToDelete = recordsWithStrategicScore[index];
-      const { error } = await supabase
-        .from("bookkeeping_records")
-        .delete()
-        .eq("id", recordToDelete.id);
-      if (error) throw error;
-      setRecords(records.filter((r) => r.id !== recordToDelete.id));
-    } catch (error) {
-      console.error("Error deleting record:", error);
-      alert("Failed to delete record. Please try again.");
-    }
-  };
-
-  const csvInputRef = useRef(null);
-  const handleCsvImport = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        const { data } = results;
-        if (!Array.isArray(data) || data.length === 0) {
-          alert("No valid records found in CSV.");
-          return;
-        }
-        // Normalize headers
-        const normalizeHeader = (str) =>
-          str?.trim().toLowerCase().replace(/\s+/g, "");
-        const mappedRecords = data
-          .map((row) => {
-            const parseNumber = (val) =>
-              val === "" || val == null ? null : parseFloat(val);
-            const parseString = (val) =>
-              val === "" || val == null ? null : String(val).trim();
-            const headers = {};
-            Object.keys(row).forEach((key) => {
-              headers[normalizeHeader(key)] = row[key];
-            });
-            const categoryKey =
-              Object.entries(categoryLabels).find(
-                ([, label]) => normalizeHeader(label) === normalizeHeader(headers["category"])
-              )?.[0] ||
-              (internalCategories.includes(row["Category"])
-                ? row["Category"]
-                : "Inflow");
-            return {
-              date:
-                parseString(headers["date"]) ||
-                new Date().toISOString().split("T")[0],
-              payment_date:
-                parseString(headers["paymentdate"]) || parseString(headers["date"]),
-              description: parseString(headers["description"]),
-              category: internalCategories.includes(categoryKey)
-                ? categoryKey
-                : "Inflow",
-              amount: parseNumber(headers["unitprice(lkr)"]),
-              cost_per_unit: parseNumber(headers["costperunit(lkr)"]),
-              quantity: parseNumber(headers["quantity"]) || 1,
-              notes: parseString(headers["notes"]),
-              customer: parseString(headers["customer"]),
-              project: parseString(headers["project"]),
-              tags: parseString(headers["tags"]),
-              market_price:
-                parseNumber(headers["market/competitorprice(lkr)"]) ||
-                parseNumber(headers["marketprice"]),
-              supplied_by: parseString(headers["suppliedby"]),
-            };
-          })
-          .filter((r) => r.description && r.amount != null);
-        if (mappedRecords.length === 0) {
-          alert("No valid records to import.");
-          return;
-        }
-        try {
-          const { error } = await supabase
-            .from("bookkeeping_records")
-            .insert(mappedRecords);
-          if (error) throw error;
-          await loadRecords();
-          alert(`Successfully imported ${mappedRecords.length} records.`);
-          if (csvInputRef.current) csvInputRef.current.value = "";
-        } catch (err) {
-          console.error("Import error:", err);
-          alert("Failed to import CSV. Check format and try again.");
-        }
-      },
-      error: (error) => {
-        console.error("CSV Parse Error:", error);
-        alert("Failed to parse CSV file.");
-      },
-    });
-  };
-
-  // Export to CSV
-  const exportToCSV = () => {
-    const dataToExport = filteredRecords.length > 0 ? filteredRecords : records;
-    if (dataToExport.length === 0) {
-      alert("No records to export");
-      return;
-    }
-    const headers = [
-      "Date",
-      "Description",
-      "Category",
-      "Unit Price (LKR)",
-      "Cost per Unit (LKR)",
-      "Quantity",
-      "Total",
-      "Total Cost",
-      "Profit",
-      "Margin %",
-      "Customer",
-      "Project",
-      "Supplied By",
-      "Tags",
-      "Notes",
-      "Strategic Score",
-    ];
-    const csvData = dataToExport.map((r) => {
-      const qty = r.quantity || 1;
-      const price = r.amount;
-      const cost = r.cost_per_unit || 0;
-      const revenue = price * qty;
-      const totalCost = cost * qty;
-      const profit = revenue - totalCost;
-      const margin = price > 0 ? ((price - cost) / price) * 100 : null;
-      return [
-        r.date,
-        `"${r.description}"`,
-        categoryLabels[r.category] || r.category,
-        price,
-        cost,
-        qty,
-        revenue.toFixed(2),
-        totalCost.toFixed(2),
-        profit.toFixed(2),
-        margin,
-        `"${r.customer || ""}"`,
-        `"${r.project || ""}"`,
-        `"${r.supplied_by || ""}"`,
-        `"${r.tags || ""}"`,
-        `"${r.notes || ""}"`,
-        r.strategicScore?.toFixed(1) || "0",
-      ];
-    });
-    const dateRange =
-      dateFilter.start || dateFilter.end
-        ? `_${dateFilter.start || "start"}_to_${dateFilter.end || "end"}`
-        : "";
-    const csvContent = [
-      headers.join(","),
-      ...csvData.map((row) => row.join(",")),
-    ].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `profit_analysis${dateRange}_${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const formatLKR = (amount) => {
-    return new Intl.NumberFormat("en-LK", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
-
-  const clearDateFilter = () => setDateFilter({ start: "", end: "" });
-  const setQuickFilter = (days) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - days);
-    setDateFilter({
-      start: start.toISOString().split("T")[0],
-      end: end.toISOString().split("T")[0],
-    });
-  };
-
-  // Reused analytics
-  const competitiveAnalysis = useMemo(() => {
-    return filteredRecords
-      .filter(
-        (r) =>
-          r.category === "Inflow" &&
-          r.market_price != null &&
-          r.market_price > 0
-      )
-      .map((r) => {
-        const qty = parseFloat(r.quantity) || 1;
-        const sellingPrice = parseFloat(r.amount) || 0;
-        let cost = parseFloat(r.cost_per_unit) || 0;
-        if (!cost && r.description && inventoryCostMap[r.description]) {
-          cost = inventoryCostMap[r.description];
-        }
-        const marketPrice = parseFloat(r.market_price) || sellingPrice;
-        const grossProfit = (sellingPrice - cost) * qty;
-        const grossMargin =
-          sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
-        const competitiveEdge =
-          marketPrice > sellingPrice ? (marketPrice - sellingPrice) * qty : 0;
-        const underpriced = marketPrice > sellingPrice;
-        const overpriced = marketPrice < sellingPrice;
-        return {
-          id: r.id,
-          name: r.description,
-          sellingPrice,
-          cost,
-          marketPrice,
-          quantity: qty,
-          grossProfit,
-          grossMargin,
-          competitiveEdge,
-          underpriced,
-          overpriced,
-          customer: r.customer,
-          date: r.date,
-        };
-      })
-      .sort((a, b) => b.competitiveEdge - a.competitiveEdge);
-  }, [filteredRecords, inventoryCostMap]);
-
-  const isPositiveCategory = (cat) => ["Inflow", "Loan Received"].includes(cat);
-  const competitiveTotals = useMemo(() => {
-    return competitiveAnalysis.reduce(
-      (acc, item) => ({
-        totalRevenue: acc.totalRevenue + item.sellingPrice * item.quantity,
-        totalCost: acc.totalCost + item.cost * item.quantity,
-        totalProfit: acc.totalProfit + item.grossProfit,
-        totalCompetitiveEdge: acc.totalCompetitiveEdge + item.competitiveEdge,
-        avgMargin: acc.avgMargin + item.grossMargin,
-        count: acc.count + 1,
-      }),
-      {
-        totalRevenue: 0,
-        totalCost: 0,
-        totalProfit: 0,
-        totalCompetitiveEdge: 0,
-        avgMargin: 0,
-        count: 0,
-      }
-    );
-  }, [competitiveAnalysis]);
-
-  const monthlyData = useMemo(() => {
-    if (!filteredRecords || filteredRecords.length === 0) return [];
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const grouped = {};
-    filteredRecords.forEach((r) => {
-      const date = new Date(r.date);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      if (monthKey !== currentMonthKey) return;
-      if (!grouped[monthKey]) {
-        grouped[monthKey] = { revenue: 0, cogs: 0, opex: 0 };
-      }
-      const qty = parseFloat(r.quantity) || 1;
-      const price = parseFloat(r.amount) || 0;
-      let cost = parseFloat(r.cost_per_unit) || 0;
-      if (!cost && r.description && inventoryCostMap[r.description]) {
-        cost = inventoryCostMap[r.description];
-      }
-      const revenue = price * qty;
-      const totalCost = cost * qty;
-      if (r.category === "Inflow") {
-        grouped[monthKey].revenue += revenue;
-        grouped[monthKey].cogs += totalCost;
-      } else if (["Outflow", "Overhead", "Reinvestment", "Loan Payment", "Logistics", "Refund", "On Hold Cash"].includes(r.category)) {
-        grouped[monthKey].opex += price * qty;
-      }
-    });
-    return Object.entries(grouped).map(([month, vals]) => {
-      const grossProfit = vals.revenue - vals.cogs;
-      const netProfit = grossProfit - vals.opex;
-      return {
-        month,
-        revenue: vals.revenue,
-        profit: netProfit,
-        margin: vals.revenue > 0 ? (netProfit / vals.revenue) * 100 : 0,
-      };
-    }).sort((a, b) => new Date(a.month) - new Date(b.month));
-  }, [filteredRecords, inventoryCostMap]);
-
-  const dailyData = useMemo(() => {
-    if (!filteredRecords || filteredRecords.length === 0) return [];
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-    const dayMap = {};
-    for (let i = 30; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(today.getDate() - i);
-      const key = d.toISOString().split("T")[0];
-      dayMap[key] = { date: key, revenue: 0, profit: 0, cost: 0 };
-    }
-    filteredRecords.forEach((r) => {
-      const recordDate = r.date;
-      if (recordDate < thirtyDaysAgo.toISOString().split("T")[0]) return;
-      if (!dayMap[recordDate]) {
-        dayMap[recordDate] = {
-          date: recordDate,
-          revenue: 0,
-          profit: 0,
-          cost: 0,
-        };
-      }
-      const qty = parseFloat(r.quantity) || 1;
-      const price = parseFloat(r.amount) || 0;
-      let cost = parseFloat(r.cost_per_unit) || 0;
-      if (!cost && r.description && inventoryCostMap[r.description]) {
-        cost = inventoryCostMap[r.description];
-      }
-      const revenue = price * qty;
-      const totalCost = cost * qty;
-      const profit = revenue - totalCost;
-      if (r.category === "Inflow") {
-        dayMap[recordDate].revenue += revenue;
-        dayMap[recordDate].profit += profit;
-        dayMap[recordDate].cost += totalCost;
-      } else if (["Outflow", "Overhead", "Reinvestment"].includes(r.category)) {
-        dayMap[recordDate].profit -= price;
-      }
-    });
-    return Object.values(dayMap).map((day) => ({
-      ...day,
-      margin: day.revenue > 0 ? (day.profit / day.revenue) * 100 : 0,
-    }));
-  }, [filteredRecords, inventoryCostMap]);
-
-  const cashFlowGaps = useMemo(() => {
-    return filteredRecords
-      .filter((r) => r.payment_date && r.category === "Inflow")
-      .map((r) => {
-        const issueDate = new Date(r.date);
-        const paidDate = new Date(r.payment_date);
-        const gapDays = Math.max(
-          0,
-          Math.ceil((paidDate - issueDate) / (1000 * 60 * 60 * 24))
-        );
-        return {
-          id: r.id,
-          description: r.description,
-          amount: r.amount,
-          customer: r.customer,
-          gapDays,
-          status: gapDays > 30 ? "Delayed" : "On Time",
-        };
-      });
-  }, [filteredRecords]);
-
-  const roiTimeline = useMemo(() => {
-    const grouped = {};
-    filteredRecords.forEach((r) => {
-      if (!r.date) return;
-      const month = new Date(r.date).toLocaleString("default", {
-        month: "short",
-        year: "2-digit",
-      });
-      if (!grouped[month])
-        grouped[month] = { month, investment: 0, return: 0, net: 0 };
-      const amount = parseFloat(r.amount) || 0;
-      const qty = parseFloat(r.quantity) || 1;
-      const total = amount * qty;
-      if (r.category === "Reinvestment") {
-        grouped[month].investment += total;
-        grouped[month].net -= total;
-      } else if (r.category === "Inflow") {
-        grouped[month].return += total;
-        grouped[month].net += total;
-      } else if (["Outflow", "Overhead", "Loan Payment", "Logistics", "Refund", "On Hold Cash"].includes(r.category)) {
-        grouped[month].net -= total;
-      }
-    });
-    return Object.values(grouped);
-  }, [filteredRecords]);
-
-  const { breakEvenMonth, paybackMonth, roiPercentage } = useMemo(() => {
-    if (!hasSufficientHistory) {
-      return { breakEvenMonth: null, paybackMonth: null, roiPercentage: null };
-    }
-    let cumulativeInvestment = 0;
-    let cumulativeReturn = 0;
-    let cumulativeNet = 0;
-    let breakEvenFound = false;
-    let paybackFound = false;
-    let breakEvenMonth = null;
-    let paybackMonth = null;
-    roiTimeline.forEach((point) => {
-      cumulativeInvestment += point.investment;
-      cumulativeReturn += point.return;
-      cumulativeNet += point.net;
-      if (!breakEvenFound && cumulativeNet >= 0) {
-        breakEvenMonth = point.month;
-        breakEvenFound = true;
-      }
-      if (!paybackFound && cumulativeNet >= 0) {
-        paybackMonth = point.month;
-        paybackFound = true;
-      }
-    });
-    const roiPercentage =
-      cumulativeInvestment > 0
-        ? (((cumulativeReturn - cumulativeInvestment) / cumulativeInvestment) * 100).toFixed(0)
-        : 0;
-    return { breakEvenMonth, paybackMonth, roiPercentage };
-  }, [roiTimeline, hasSufficientHistory]);
-
-  const customerAnalysis = useMemo(() => {
-    const customers = {};
-    filteredRecords.forEach((r) => {
-      if (r.customer && r.category === "Inflow") {
-        if (!customers[r.customer]) {
-          customers[r.customer] = {
-            revenue: 0,
-            cost: 0,
-            transactions: 0,
-            projects: new Set(),
-            dates: [],
-          };
-        }
-        const qty = parseFloat(r.quantity) || 1;
-        const amount = parseFloat(r.amount) || 0;
-        customers[r.customer].revenue += amount * qty;
-        let costPerUnit = parseFloat(r.cost_per_unit) || 0;
-        if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
-          costPerUnit = inventoryCostMap[r.description] || 0;
-        }
-        customers[r.customer].cost += costPerUnit * qty;
-        customers[r.customer].transactions += 1;
-        if (r.project) customers[r.customer].projects.add(r.project);
-        if (r.date) customers[r.customer].dates.push(new Date(r.date));
-      }
-    });
-    return Object.entries(customers)
-      .map(([name, data]) => {
-        const firstDate = data.dates.length
-          ? new Date(Math.min(...data.dates.map((d) => d.getTime())))
-          : null;
-        const lastDate = data.dates.length
-          ? new Date(Math.max(...data.dates.map((d) => d.getTime())))
-          : null;
-        const monthsActive = firstDate && lastDate
-          ? (lastDate.getFullYear() - firstDate.getFullYear()) * 12 +
-            (lastDate.getMonth() - firstDate.getMonth()) +
-            1
-          : 0;
-        const clv =
-          hasSufficientHistory && monthsActive >= 3 && data.revenue > 0
-            ? ((data.revenue / monthsActive) * 12) *
-              ((data.revenue - data.cost) / data.revenue)
-            : null;
-        return {
-          name,
-          revenue: data.revenue,
-          cost: data.cost,
-          profit: data.revenue - data.cost,
-          margin:
-            data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0,
-          transactions: data.transactions,
-          projectCount: data.projects.size,
-          avgTransaction: data.transactions ? data.revenue / data.transactions : 0,
-          clv,
-        };
-      })
-      .sort((a, b) => b.profit - a.profit);
-  }, [filteredRecords, inventoryCostMap, hasSufficientHistory]);
-
-  const productMargins = useMemo(() => {
-    const products = {};
-    filteredRecords
-      .filter((r) => r.category === "Inflow")
-      .forEach((r) => {
-        const key = r.description;
-        if (!products[key]) {
-          products[key] = {
-            revenue: 0,
-            cost: 0,
-            quantity: 0,
-            transactions: 0,
-            customers: new Set(),
-            dates: [],
-          };
-        }
-        const qty = parseFloat(r.quantity) || 1;
-        const revenue = parseFloat(r.amount) * qty;
-        let cost = parseFloat(r.cost_per_unit) || 0;
-        if (!cost && r.description && inventoryCostMap[r.description]) {
-          cost = inventoryCostMap[r.description];
-        }
-        products[key].revenue += revenue;
-        products[key].cost += cost;
-        products[key].quantity += qty;
-        products[key].transactions += 1;
-        if (r.customer) products[key].customers.add(r.customer);
-        products[key].dates.push(new Date(r.date));
-      });
-    return Object.entries(products)
-      .map(([name, data]) => {
-        const firstDate = new Date(
-          Math.min(...data.dates.map((d) => d.getTime()))
-        );
-        const lastDate = new Date(
-          Math.max(...data.dates.map((d) => d.getTime()))
-        );
-        const daysActive = (lastDate - firstDate) / (1000 * 60 * 60 * 24) || 1;
-        const inventoryTurnover =
-          daysActive > 0 ? data.quantity / (daysActive / 30) : 0;
-        return {
-          name,
-          revenue: data.revenue,
-          cost: data.cost,
-          quantity: data.quantity,
-          transactions: data.transactions,
-          customers: data.customers.size,
-          profit: data.revenue - data.cost,
-          margin:
-            data.revenue > 0
-              ? ((data.revenue - data.cost) / data.revenue) * 100
-              : 0,
-          avgPrice: data.revenue / data.quantity,
-          avgCost: data.cost / data.quantity,
-          avgProfit: (data.revenue - data.cost) / data.quantity,
-          inventoryTurnover,
-        };
-      })
-      .sort((a, b) => b.margin - a.margin);
-  }, [filteredRecords, inventoryCostMap]);
-
-  const budgetAlerts = useMemo(() => {
-    const alerts = [];
-    Object.entries(budgets).forEach(([category, budgetAmount]) => {
-      const spent = filteredRecords
-        .filter((r) => r.category === category)
-        .reduce((sum, r) => {
-          if (r.category === "Inflow") {
-            return (
-              sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1)
-            );
-          } else {
-            return sum + (parseFloat(r.amount) || 0);
-          }
-        }, 0);
-      const percentUsed = (spent / budgetAmount) * 100;
-      if (percentUsed >= 90) {
-        alerts.push({
-          category,
-          spent,
-          budget: budgetAmount,
-          percentUsed,
-          severity: percentUsed >= 100 ? "critical" : "warning",
-        });
-      }
-    });
-    return alerts;
-  }, [filteredRecords, budgets]);
-
-  const pricingRecommendations = useMemo(() => {
-    return productMargins
-      .filter((p) => p.cost > 0)
-      .map((p) => {
-        const targetMargin = 50;
-        const recommendedPrice = p.avgCost / (1 - targetMargin / 100);
-        const priceIncrease = recommendedPrice - p.avgPrice;
-        const percentIncrease = (priceIncrease / p.avgPrice) * 100;
-        return {
-          product: p.name,
-          currentMargin: p.margin,
-          currentPrice: p.avgPrice,
-          recommendedPrice,
-          priceIncrease,
-          percentIncrease,
-          potentialRevenue: priceIncrease * p.quantity,
-          needsAction: p.margin < 30,
-        };
-      })
-      .filter((r) => r.needsAction)
-      .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
-  }, [productMargins]);
-
-  // On Hold Cash Alert
-  const onHoldAlert = useMemo(() => {
-    if (onHoldRatio > 20 && totals.inflow > 0) {
-      return {
-        percent: onHoldRatio.toFixed(1),
-        severity: "warning",
-      };
-    }
-    return null;
-  }, [onHoldRatio, totals.inflow]);
-
-  // Recurring Cost Alert
-  const recurringAlert = useMemo(() => {
-    if (recurringRatio > 30 && totals.inflow > 0) {
-      return {
-        percent: recurringRatio.toFixed(1),
-        severity: "warning",
-      };
-    }
-    return null;
-  }, [recurringRatio, totals.inflow]);
-
-  const businessValueData = [
-    {
-      metric: "Revenue",
-      current: (totals.inflow / targetRevenue) * 100,
-      target: 100,
-    },
-    { metric: "Margin", current: trueGrossMargin, target: 50 },
-    {
-      metric: "Cost Coverage",
-      current: totals.inflow > 0 ? (totals.outflow / totals.inflow) * 100 : 0,
-      target: 70,
-    },
-    {
-      metric: "Loan Coverage",
-      current: loanCoveragePercent,
-      target: 100,
-    },
-    {
-      metric: "On Hold Ratio",
-      current: onHoldRatio,
-      target: 20,
-    },
-  ];
-
-  const implementationPhases = [
-    {
-      phase: "Payments & Cash Flow",
-      duration: "2-4 weeks",
-      icon: CreditCard,
-      color: "bg-blue-500",
-      value: "$25K-50K",
-      tasks: [
-        "Supplier Payment Tracking",
-        "Cash Flow Gap Analysis",
-        "Payment Terms Optimization",
-        "Automated Reminders",
-      ],
-    },
-    {
-      phase: "Financial Controls",
-      duration: "4-6 weeks",
-      icon: Shield,
-      color: "bg-green-500",
-      value: "$50K-100K",
-      tasks: [
-        "Budget Monitoring",
-        "Expense Categorization",
-        "Compliance Tracking",
-        "Audit Readiness",
-      ],
-    },
-    {
-      phase: "Reinvestment Strategy",
-      duration: "6-8 weeks",
-      icon: Recycle,
-      color: "bg-purple-500",
-      value: "$150K-300K",
-      tasks: [
-        "ROI Tracking by Initiative",
-        "Growth Spend Allocation",
-        "Performance Benchmarking",
-        "Reinvestment Dashboard",
-      ],
-    },
-    {
-      phase: "AI-Powered Forecasting",
-      duration: "Ongoing",
-      icon: Brain,
-      color: "bg-orange-500",
-      value: "$500K+",
-      tasks: [
-        "Cash Flow Prediction",
-        "Dynamic Pricing",
-        "Customer Lifetime Value",
-        "Scenario Planning",
-      ],
-    },
-  ];
-
-  const groupedRecords = useMemo(() => {
-    if (groupBy === "none") return [];
-    const groups = {};
-    recordsWithStrategicScore.forEach((r) => {
-      let key = "-";
-      if (groupBy === "customer") key = r.customer || "-";
-      else if (groupBy === "product") key = r.description || "-";
-      else if (groupBy === "supplier") key = r.supplied_by || "-";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(r);
-    });
-    return Object.entries(groups).map(([group, items]) => ({ group, items }));
-  }, [recordsWithStrategicScore, groupBy]);
-
-  // Cash Flow Forecast (30-day) with recurring costs and on-hold cash
-  const forecastDays = 30;
-  const avgDailyInflow = rollingInflow / 30;
-  const outflowCategories = [
-    "Outflow",
-    "Overhead",
-    "Reinvestment",
-    "Loan Payment",
-    "Logistics",
-    "Refund",
-    "On Hold Cash",
-  ];
-  const recentOutflow = filteredRecords
-    .filter(
-      (r) =>
-        outflowCategories.includes(r.category) &&
-        new Date(r.date) >= thirtyDaysAgo &&
-        new Date(r.date) <= today
-    )
-    .reduce((sum, r) => sum + parseFloat(r.amount), 0);
-  const avgDailyOutflow = (recentOutflow + totalRecurring) / 30;
-  const projectedCash = Array.from({ length: forecastDays }, (_, i) => {
-    const date = new Date();
-    date.setDate(today.getDate() + i + 1);
-    const isoDate = date.toISOString().split("T")[0];
-    const net = (avgDailyInflow - avgDailyOutflow) * (i + 1);
-    return { date: isoDate, net };
-  });
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">
-            Loading your financial data...
-          </p>
+          <p className="text-gray-600 text-lg">Loading your financial data...</p>
         </div>
       </div>
     );
