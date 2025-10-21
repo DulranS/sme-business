@@ -47,7 +47,7 @@ function useDebounce(value, delay) {
 }
 
 // ==============================
-// 📊 LEAD SCORING & ACTIONS
+// 📊 LEAD SCORING (using ONLY your columns)
 // ==============================
 function calculateLeadScore(lead) {
   let score = 0;
@@ -63,11 +63,7 @@ function calculateLeadScore(lead) {
   if (rating >= 4.0) score += 15;
   if (reviews >= 20) score += 10;
 
-  const tags = (lead.tags || '').toLowerCase();
-  if (tags.includes('decision-maker')) score += 15;
-  if (tags.includes('urgent')) score += 15;
-  if (tags.includes('budget-approved')) score += 10;
-
+  // No tags → remove tag-based scoring
   return Math.min(100, Math.max(0, score));
 }
 
@@ -77,39 +73,34 @@ function getNextBestAction(lead) {
   const isHot = lead.lead_quality === 'HOT';
   const rating = parseFloat(lead.rating) || 0;
   const reviews = parseInt(lead.review_count) || 0;
-  const tags = (lead.tags || '').toLowerCase();
 
-  if (tags.includes('urgent')) return '🚨 Urgent: Call immediately';
-  if (tags.includes('decision-maker') && isHot && hasPhone) return '📞 High-priority call – decision maker';
-  if (isHot && hasEmail && !lead.last_contacted) return '📧 Send personalized intro email';
-  if (hasPhone && (rating >= 4.0 || reviews >= 20)) return '💬 WhatsApp: Leverage social proof';
+  if (isHot && hasPhone) return '📞 Call now – HOT lead';
+  if (hasPhone && (rating >= 4.0 || reviews >= 20)) return '💬 WhatsApp: High trust signal';
   if (hasPhone) return '💬 Start WhatsApp chat';
-  if (hasEmail) return '📧 Nurture via email sequence';
-  return '🔍 Research: Find contact info or intent signals';
+  if (hasEmail) return '📧 Email for initial contact';
+  return '🔍 Research: Find phone or decision-maker';
 }
 
 // ==============================
-// 💬 WHATSAPP LINK GENERATION
+// 💬 WHATSAPP LINK (only {{business_name}}, {{my_business_name}})
 // ==============================
 function generateWhatsAppLink(lead, template, myBusinessName) {
   if (typeof template !== 'string') template = '';
   const normalized = normalizePhone(lead.whatsapp_number || lead.phone_raw);
   if (!normalized || normalized.length !== 11 || !normalized.startsWith('94')) return '';
 
+  // Since no contact_name, use business_name as fallback
   let message = String(template)
-    .replace(/{{contact_name}}/g, lead.contact_name || 'there')
     .replace(/{{business_name}}/g, lead.business_name || 'your business')
     .replace(/{{my_business_name}}/g, myBusinessName || 'Your Company');
 
   const encodedMessage = encodeURIComponent(message.trim());
-  // ✅ CORRECT FORMAT — NO SPACES
   return `https://wa.me/${normalized}?text=${encodedMessage}`;
 }
 
 function renderMessagePreview(lead, template, myBusinessName) {
   if (typeof template !== 'string') template = '';
   return String(template)
-    .replace(/{{contact_name}}/g, lead.contact_name || 'there')
     .replace(/{{business_name}}/g, lead.business_name || 'your business')
     .replace(/{{my_business_name}}/g, myBusinessName || 'Your Company');
 }
@@ -129,7 +120,6 @@ export default function LeadDashboard() {
   const [minRating, setMinRating] = useState('');
   const [maxRating, setMaxRating] = useState('');
   const [minReviews, setMinReviews] = useState('');
-  const [tagFilter, setTagFilter] = useState('ALL');
   const [showFilters, setShowFilters] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '' });
   const [sortField, setSortField] = useState('score');
@@ -146,13 +136,13 @@ export default function LeadDashboard() {
     if (typeof window !== 'undefined') {
       return (
         localStorage.getItem('whatsappTemplate') ||
-        'Hi {{contact_name}}, I’m {{my_business_name}}. We help businesses like {{business_name}} grow with [your solution]. Are you open to a quick chat this week?'
+        'Hi, I’m reaching out from {{my_business_name}} regarding {{business_name}}. Are you open to a quick chat about how we can help?'
       );
     }
-    return 'Hi {{contact_name}}, I’m {{my_business_name}}. We help businesses like {{business_name}} grow with [your solution]. Are you open to a quick chat this week?';
+    return 'Hi, I’m reaching out from {{my_business_name}} regarding {{business_name}}. Are you open to a quick chat about how we can help?';
   });
 
-  // === Side Effects ===
+  // === Persist settings ===
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('myBusinessName', myBusinessName);
@@ -166,26 +156,19 @@ export default function LeadDashboard() {
   }, [whatsappTemplate]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
-
   const showToast = useCallback((msg) => {
     setToast({ show: true, message: msg });
     setTimeout(() => setToast({ show: false, message: '' }), 3000);
   }, []);
 
-  // === Data Fetching ===
+  // === Fetch leads ===
   useEffect(() => {
     const fetchLeads = async () => {
       try {
         const res = await fetch('/api/leads');
-        if (!res.ok) {
-          throw new Error(`API error: ${res.status} ${res.statusText}`);
-        }
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
-
-        // 🔥 CRITICAL: Ensure data is an array
-        if (!Array.isArray(data)) {
-          throw new Error('API response is not an array');
-        }
+        if (!Array.isArray(data)) throw new Error('Expected array of leads');
 
         const leadsWithScore = data.map((lead) => ({
           ...lead,
@@ -193,32 +176,19 @@ export default function LeadDashboard() {
         }));
         setLeads(leadsWithScore);
       } catch (err) {
-        console.error('Failed to load leads:', err);
-        setError(err.message || 'Unable to load leads. Please try again.');
+        console.error('Fetch error:', err);
+        setError(err.message || 'Failed to load leads');
       } finally {
         setLoading(false);
       }
     };
 
     fetchLeads();
-    const interval = setInterval(fetchLeads, 30000); // Refresh every 30s
+    const interval = setInterval(fetchLeads, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // === Derived Data ===
-  const allTags = useMemo(() => {
-    const tags = new Set();
-    leads.forEach((lead) => {
-      if (lead.tags) {
-        lead.tags.split(';').forEach((tag) => {
-          const t = tag.trim();
-          if (t) tags.add(t);
-        });
-      }
-    });
-    return Array.from(tags).sort();
-  }, [leads]);
-
+  // === Derived data ===
   const uniqueCategories = [...new Set(leads.map((l) => l.category).filter(Boolean))].sort();
 
   const filteredLeads = useMemo(() => {
@@ -228,11 +198,9 @@ export default function LeadDashboard() {
 
       const matchesSearch =
         fuzzyMatch(lead.business_name, debouncedSearchTerm) ||
-        fuzzyMatch(lead.contact_name, debouncedSearchTerm) ||
         fuzzyMatch(lead.email, debouncedSearchTerm) ||
         normalizedLeadPhone.includes(normalizedSearchPhone) ||
-        fuzzyMatch(lead.address, debouncedSearchTerm) ||
-        fuzzyMatch(lead.tags, debouncedSearchTerm);
+        fuzzyMatch(lead.address, debouncedSearchTerm);
 
       const matchesQuality = qualityFilter === 'ALL' || lead.lead_quality === qualityFilter;
       const matchesCategory = categoryFilter === 'ALL' || lead.category === categoryFilter;
@@ -247,14 +215,9 @@ export default function LeadDashboard() {
 
       const rating = parseFloat(lead.rating) || 0;
       const reviews = parseInt(lead.review_count) || 0;
-
       const matchesMinRating = !minRating || rating >= parseFloat(minRating);
       const matchesMaxRating = !maxRating || rating <= parseFloat(maxRating);
       const matchesReviews = !minReviews || reviews >= parseInt(minReviews);
-
-      const matchesTag =
-        tagFilter === 'ALL' ||
-        (lead.tags && lead.tags.split(';').map((t) => t.trim()).includes(tagFilter));
 
       return (
         matchesSearch &&
@@ -263,8 +226,7 @@ export default function LeadDashboard() {
         matchesContact &&
         matchesMinRating &&
         matchesMaxRating &&
-        matchesReviews &&
-        matchesTag
+        matchesReviews
       );
     });
   }, [
@@ -276,13 +238,11 @@ export default function LeadDashboard() {
     minRating,
     maxRating,
     minReviews,
-    tagFilter,
   ]);
 
   const sortedLeads = useMemo(() => {
     return [...filteredLeads].sort((a, b) => {
       let aVal, bVal;
-
       if (sortField === 'score') {
         aVal = a._score;
         bVal = b._score;
@@ -294,8 +254,8 @@ export default function LeadDashboard() {
         aVal = order[a.lead_quality] || 0;
         bVal = order[b.lead_quality] || 0;
       } else if (sortField === 'name') {
-        aVal = (a.contact_name || a.business_name || '').toLowerCase();
-        bVal = (b.contact_name || b.business_name || '').toLowerCase();
+        aVal = (a.business_name || '').toLowerCase();
+        bVal = (b.business_name || '').toLowerCase();
       } else {
         return 0;
       }
@@ -310,38 +270,29 @@ export default function LeadDashboard() {
     });
   }, [filteredLeads, sortField, sortDirection]);
 
-  // === EXPORTS ===
+  // === Exports ===
   const exportToCSV = () => {
     if (sortedLeads.length === 0) return;
-
     const headers = [
+      'place_id',
       'business_name',
-      'contact_name',
-      'category',
-      'lead_quality',
+      'address',
       'phone_raw',
       'whatsapp_number',
       'email',
       'website',
-      'address',
       'rating',
       'review_count',
-      'tags',
-      'last_contacted',
-      'lead_score',
+      'category',
+      'lead_quality',
+      'scraped_date',
     ];
-
     const csvContent = [
       headers.join(','),
       ...sortedLeads.map((lead) =>
         headers
           .map((field) => {
-            let val;
-            if (field === 'lead_score') {
-              val = lead._score;
-            } else {
-              val = lead[field] || '';
-            }
+            const val = lead[field] || '';
             return `"${String(val).replace(/"/g, '""')}"`;
           })
           .join(',')
@@ -352,12 +303,12 @@ export default function LeadDashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'colombo_b2b_leads_with_score.csv';
+    a.download = 'colombo_b2b_leads.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('✅ Leads exported with scores!');
+    showToast('✅ CSV exported!');
   };
 
   const exportWhatsAppNumbers = () => {
@@ -367,7 +318,7 @@ export default function LeadDashboard() {
       .map((n) => `+${n}`);
 
     if (numbers.length === 0) {
-      showToast('❌ No valid WhatsApp numbers to export');
+      showToast('❌ No valid WhatsApp numbers');
       return;
     }
 
@@ -380,30 +331,28 @@ export default function LeadDashboard() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast(`✅ Exported ${numbers.length} WhatsApp numbers!`);
+    showToast(`✅ ${numbers.length} numbers exported!`);
   };
 
   const copyToClipboard = async (text, label) => {
     try {
       await navigator.clipboard.writeText(text);
       showToast(`✅ ${label} copied!`);
-    } catch (err) {
+    } catch {
       showToast('❌ Failed to copy');
     }
   };
 
-  // === RENDER ===
+  // === Render ===
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="space-y-3 w-full max-w-md">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="bg-white p-4 rounded-xl shadow-sm animate-pulse">
-              <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            </div>
-          ))}
-        </div>
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="bg-white p-4 rounded-xl shadow-sm animate-pulse w-full max-w-md mb-3">
+            <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -414,10 +363,7 @@ export default function LeadDashboard() {
         <div className="text-center max-w-md">
           <p className="text-black mb-2 text-lg">⚠️ Failed to load leads</p>
           <p className="text-gray-600 text-sm mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-          >
+          <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded-lg">
             Retry
           </button>
         </div>
@@ -429,17 +375,11 @@ export default function LeadDashboard() {
     ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length)
     : 0;
 
-  const hotLeads = sortedLeads.filter((l) => l.lead_quality === 'HOT').length;
-  const withPhone = sortedLeads.filter((l) => l.phone_raw).length;
-
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       <Head>
-        <title>🚀 Colombo B2B Revenue Hub | Close Deals Faster</title>
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, viewport-fit=cover"
-        />
+        <title>Colombo B2B Leads | Revenue Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
       {toast.show && (
@@ -451,21 +391,12 @@ export default function LeadDashboard() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 py-3">
           <div className="flex justify-between items-start mb-3">
-            <div>
-              <h1 className="text-lg font-bold text-black">Colombo B2B Revenue Hub</h1>
-              <p className="text-xs text-gray-600 mt-1">
-                {hotLeads} HOT leads • {withPhone} with phone • Avg Score: {avgScore}/100
-              </p>
-            </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="text-sm text-blue-600 font-medium mt-1"
-            >
+            <h1 className="text-lg font-bold text-black">Colombo B2B Leads</h1>
+            <button onClick={() => setShowFilters(!showFilters)} className="text-sm text-blue-600 font-medium">
               {showFilters ? '▲ Hide Filters' : '▼ Show Filters'}
             </button>
           </div>
 
-          {/* Business & Template */}
           <div className="space-y-3 mb-4">
             <div>
               <label className="text-xs text-gray-600 block mb-1">Your Business Name</label>
@@ -474,15 +405,14 @@ export default function LeadDashboard() {
                 value={myBusinessName}
                 onChange={(e) => setMyBusinessName(e.target.value)}
                 className="w-full p-2.5 text-sm border border-gray-300 rounded bg-gray-50 text-black"
-                placeholder="e.g. Colombo Tech Solutions"
               />
             </div>
 
             <div>
               <label className="text-xs text-gray-600 block mb-1">
-                WhatsApp Message Template
+                WhatsApp Template
                 <span className="ml-2 text-gray-500 text-[10px]">
-                  Use: {{contact_name}}, {{business_name}}, {{my_business_name}}
+                  Use: {{business_name}}, {{my_business_name}}
                 </span>
               </label>
               <textarea
@@ -490,21 +420,19 @@ export default function LeadDashboard() {
                 onChange={(e) => setWhatsappTemplate(e.target.value)}
                 rows={2}
                 className="w-full p-2.5 text-sm border border-gray-300 rounded bg-gray-50 text-black resize-none"
-                placeholder="Hi {{contact_name}}, I'm from {{my_business_name}}..."
               />
             </div>
 
             {sortedLeads.length > 0 && (
               <div className="text-xs bg-blue-50 p-2.5 rounded text-gray-700 border border-blue-100">
-                <strong>Preview:</strong>{' '}
-                "{renderMessagePreview(sortedLeads[0], whatsappTemplate, myBusinessName)}"
+                <strong>Preview:</strong> "{renderMessagePreview(sortedLeads[0], whatsappTemplate, myBusinessName)}"
               </div>
             )}
           </div>
 
           <input
             type="text"
-            placeholder="Search business, contact, email, phone, or address..."
+            placeholder="Search business, email, phone, or address..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full p-3 text-base border border-gray-300 rounded-lg mb-3 text-black placeholder-gray-500"
@@ -513,61 +441,31 @@ export default function LeadDashboard() {
           {showFilters && (
             <div className="space-y-3 mb-3">
               <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={qualityFilter}
-                  onChange={(e) => setQualityFilter(e.target.value)}
-                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
-                >
+                <select value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value)} className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white">
                   <option value="ALL">All Qualities</option>
                   <option value="HOT">🔥 HOT</option>
                   <option value="WARM">🔸 WARM</option>
                   <option value="COLD">❄️ COLD</option>
                 </select>
-
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
-                >
+                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white">
                   <option value="ALL">All Categories</option>
                   {uniqueCategories.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
+                    <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={contactFilter}
-                  onChange={(e) => setContactFilter(e.target.value)}
-                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
-                >
-                  <option value="ALL">Any Contact</option>
-                  <option value="EMAIL">WithEmail</option>
-                  <option value="PHONE">With Phone</option>
-                  <option value="BOTH">WithEmail + Phone</option>
-                </select>
-
-                <select
-                  value={tagFilter}
-                  onChange={(e) => setTagFilter(e.target.value)}
-                  className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white"
-                >
-                  <option value="ALL">All Tags</option>
-                  {allTags.map((tag) => (
-                    <option key={tag} value={tag}>
-                      {tag}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select value={contactFilter} onChange={(e) => setContactFilter(e.target.value)} className="w-full p-3 text-base border border-gray-300 rounded-lg text-black bg-white mb-3">
+                <option value="ALL">Any Contact</option>
+                <option value="EMAIL">WithEmail</option>
+                <option value="PHONE">With Phone</option>
+                <option value="BOTH">WithEmail + Phone</option>
+              </select>
 
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="number"
-                  placeholder="Min Rating (e.g. 4.0)"
+                  placeholder="Min Rating"
                   value={minRating}
                   onChange={(e) => setMinRating(e.target.value)}
                   min="0"
@@ -577,24 +475,13 @@ export default function LeadDashboard() {
                 />
                 <input
                   type="number"
-                  placeholder="Max Rating (e.g. 4.9)"
-                  value={maxRating}
-                  onChange={(e) => setMaxRating(e.target.value)}
+                  placeholder="Min Reviews"
+                  value={minReviews}
+                  onChange={(e) => setMinReviews(e.target.value)}
                   min="0"
-                  max="5"
-                  step="0.1"
                   className="w-full p-3 text-base border border-gray-300 rounded-lg text-black placeholder-gray-500"
                 />
               </div>
-
-              <input
-                type="number"
-                placeholder="Min Reviews (e.g. 50)"
-                value={minReviews}
-                onChange={(e) => setMinReviews(e.target.value)}
-                min="0"
-                className="w-full p-3 text-base border border-gray-300 rounded-lg text-black placeholder-gray-500"
-              />
             </div>
           )}
 
@@ -603,26 +490,10 @@ export default function LeadDashboard() {
               {sortedLeads.length} leads • Avg Score: {avgScore}/100
             </span>
             <div className="flex gap-2">
-              <button
-                onClick={exportToCSV}
-                disabled={sortedLeads.length === 0}
-                className={`px-3 py-2 rounded font-medium text-sm ${
-                  sortedLeads.length === 0
-                    ? 'bg-gray-200 text-gray-500'
-                    : 'bg-green-600 text-white hover:bg-green-700'
-                }`}
-              >
-                📥 CSV+Score
+              <button onClick={exportToCSV} disabled={sortedLeads.length === 0} className={`px-3 py-2 rounded font-medium text-sm ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                📥 CSV
               </button>
-              <button
-                onClick={exportWhatsAppNumbers}
-                disabled={sortedLeads.length === 0}
-                className={`px-3 py-2 rounded font-medium text-sm ${
-                  sortedLeads.length === 0
-                    ? 'bg-gray-200 text-gray-500'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-              >
+              <button onClick={exportWhatsAppNumbers} disabled={sortedLeads.length === 0} className={`px-3 py-2 rounded font-medium text-sm ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
                 📲 WA Numbers
               </button>
             </div>
@@ -632,62 +503,49 @@ export default function LeadDashboard() {
 
       <main className="px-4 pt-4">
         {sortedLeads.length === 0 ? (
-          <div className="text-center py-12 px-4">
+          <div className="text-center py-12">
             <div className="text-5xl mb-4">🔍</div>
             <p className="text-black text-lg font-medium">No leads match your filters</p>
-            <p className="text-gray-600 mt-1">Try broadening your search or adjusting filters.</p>
             <button
               onClick={() => {
                 setSearchTerm('');
                 setQualityFilter('ALL');
                 setCategoryFilter('ALL');
                 setContactFilter('ALL');
-                setTagFilter('ALL');
                 setMinRating('');
-                setMaxRating('');
                 setMinReviews('');
               }}
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
             >
-              Reset All Filters
+              Reset Filters
             </button>
           </div>
         ) : (
           <div className="space-y-4 pb-24">
             {sortedLeads.map((lead, i) => {
-              const contactName = lead.contact_name || lead.business_name || 'Prospect';
               const waLink = generateWhatsAppLink(lead, whatsappTemplate, myBusinessName);
               const isHighValue = lead._score >= 75;
 
               return (
                 <div
-                  key={lead.id || i}
-                  className={`border rounded-xl p-4 bg-white shadow-sm transition-all ${
+                  key={lead.place_id || i}
+                  className={`border rounded-xl p-4 bg-white shadow-sm ${
                     isHighValue ? 'border-green-500 ring-1 ring-green-200' : 'border-gray-200'
                   }`}
                 >
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <h2 className="font-bold text-black text-lg leading-tight">{contactName}</h2>
-                      {lead.business_name && lead.business_name !== contactName && (
-                        <p className="text-black text-sm mt-1 opacity-90">{lead.business_name}</p>
-                      )}
+                      <h2 className="font-bold text-black text-lg">{lead.business_name || 'Unnamed Business'}</h2>
+                      {lead.address && <p className="text-black text-sm opacity-90 mt-1 truncate">{lead.address}</p>}
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {lead.lead_quality && (
-                          <span
-                            className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                              lead.lead_quality === 'HOT'
-                                ? 'bg-red-100 text-red-800'
-                                : lead.lead_quality === 'WARM'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {lead.lead_quality === 'HOT'
-                              ? '🔥 HOT'
-                              : lead.lead_quality === 'WARM'
-                              ? '🔸 WARM'
-                              : '❄️ COLD'}
+                          <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                            lead.lead_quality === 'HOT' ? 'bg-red-100 text-red-800' :
+                            lead.lead_quality === 'WARM' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {lead.lead_quality === 'HOT' ? '🔥 HOT' :
+                             lead.lead_quality === 'WARM' ? '🔸 WARM' : '❄️ COLD'}
                           </span>
                         )}
                         {lead.category && (
@@ -697,7 +555,7 @@ export default function LeadDashboard() {
                         )}
                         {isHighValue && (
                           <span className="px-2.5 py-1 text-xs bg-green-100 text-green-800 rounded-full font-bold">
-                            💎 High-Value (Score: {lead._score})
+                            💎 High-Value
                           </span>
                         )}
                         <span className="px-2.5 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">
@@ -713,11 +571,8 @@ export default function LeadDashboard() {
                         href={waLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          showToast('Opening WhatsApp...');
-                        }}
-                        className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 transition hover:bg-green-700"
+                        onClick={() => showToast('Opening WhatsApp...')}
+                        className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 hover:bg-green-700"
                         aria-label="Message on WhatsApp"
                       >
                         <span className="text-white text-xl">💬</span>
@@ -728,54 +583,23 @@ export default function LeadDashboard() {
                   <div className="mt-3 space-y-2 text-black text-base">
                     {lead.email && (
                       <div className="flex items-center justify-between">
-                        <a
-                          href={`mailto:${lead.email}`}
-                          className="truncate text-blue-600 hover:underline flex items-center gap-1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            showToast('Opening email app...');
-                          }}
-                        >
+                        <a href={`mailto:${lead.email}`} className="truncate text-blue-600 hover:underline flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           📧 {lead.email}
                         </a>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyToClipboard(lead.email, 'Email');
-                          }}
-                          className="text-gray-500 hover:text-blue-600 active:scale-95"
-                          aria-label="Copy email"
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); copyToClipboard(lead.email, 'Email'); }} className="text-gray-500 hover:text-blue-600">
                           📋
                         </button>
                       </div>
                     )}
                     {lead.phone_raw && (
                       <div className="flex items-center justify-between">
-                        <a
-                          href={`tel:+${normalizePhone(lead.phone_raw)}`}
-                          className="text-blue-600 hover:underline flex items-center gap-1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            showToast('Opening phone dialer...');
-                          }}
-                        >
+                        <a href={`tel:+${normalizePhone(lead.phone_raw)}`} className="text-blue-600 hover:underline flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           📱 {lead.phone_raw}
                         </a>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyToClipboard(lead.phone_raw, 'Phone');
-                          }}
-                          className="text-gray-500 hover:text-blue-600 active:scale-95"
-                          aria-label="Copy phone"
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); copyToClipboard(lead.phone_raw, 'Phone'); }} className="text-gray-500 hover:text-blue-600">
                           📋
                         </button>
                       </div>
-                    )}
-                    {lead.address && (
-                      <div className="text-sm opacity-90 truncate">📍 {lead.address}</div>
                     )}
                   </div>
 
@@ -785,34 +609,11 @@ export default function LeadDashboard() {
                     </div>
                   )}
 
-                  {lead.tags && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {lead.tags.split(';').map((tag, idx) => {
-                        const trimmed = tag.trim();
-                        if (!trimmed) return null;
-                        const isUrgent = trimmed.toLowerCase().includes('urgent');
-                        const isDecisionMaker = trimmed.toLowerCase().includes('decision-maker');
-                        const isBudget = trimmed.toLowerCase().includes('budget');
-                        let bgColor = 'bg-gray-100';
-                        if (isUrgent) bgColor = 'bg-red-100';
-                        else if (isDecisionMaker) bgColor = 'bg-green-100';
-                        else if (isBudget) bgColor = 'bg-blue-100';
-
-                        return (
-                          <span
-                            key={idx}
-                            className={`px-2 py-1 ${bgColor} text-black text-xs rounded-full`}
-                          >
-                            {trimmed}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {lead.last_contacted && (
-                    <div className="mt-3 text-xs text-gray-600">
-                      Last contacted: {new Date(lead.last_contacted).toLocaleDateString()}
+                  {lead.website && (
+                    <div className="mt-2 text-sm">
+                      🌐 <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate">
+                        {lead.website}
+                      </a>
                     </div>
                   )}
                 </div>
