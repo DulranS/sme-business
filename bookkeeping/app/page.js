@@ -140,6 +140,47 @@ export default function BookkeepingApp() {
     }
   }, []);
 
+  // --- Pricing Recommendations (Placeholder to prevent crash) ---
+const pricingRecommendations = useMemo(() => {
+  // Only analyze inflow records with cost and market price data
+  const candidates = filteredRecords.filter(r =>
+    r.category === "Inflow" &&
+    r.cost_per_unit != null &&
+    r.market_price != null &&
+    parseFloat(r.amount) > 0
+  );
+
+  const recommendations = candidates
+    .map(r => {
+      const sellingPrice = parseFloat(r.amount);
+      const marketPrice = parseFloat(r.market_price);
+      const cost = parseFloat(r.cost_per_unit);
+      const qty = parseFloat(r.quantity) || 1;
+
+      const currentMargin = sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
+      const underpriced = sellingPrice < marketPrice && currentMargin < 50;
+
+      if (!underpriced) return null;
+
+      const potentialIncrease = (marketPrice - sellingPrice) * qty;
+      const newMargin = marketPrice > 0 ? ((marketPrice - cost) / marketPrice) * 100 : 0;
+
+      return {
+        product: r.description,
+        currentPrice: sellingPrice,
+        recommendedPrice: marketPrice,
+        currentMargin,
+        newMargin,
+        percentIncrease: ((marketPrice - sellingPrice) / sellingPrice) * 100,
+        potentialRevenue: potentialIncrease,
+      };
+    })
+    .filter(Boolean) // Remove nulls
+    .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
+
+  return recommendations;
+}, [filteredRecords]);
+
   // --- Sync with Debounced Filters ---
   const syncRecords = useCallback(async () => {
     setSyncing(true);
