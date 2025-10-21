@@ -7,7 +7,7 @@ import {
   AlertTriangle, CheckCircle, Database, RefreshCw, Brain, Users,
   FileText, Bell, Calculator, Percent, ShoppingCart, Package,
   Sparkles, Zap, Clock, Factory, CreditCard, Shield, Recycle,
-  ArrowUp, HeartPulse, Repeat, Lock
+  ArrowUp, HeartPulse, Repeat, Lock, ArrowRight, Layers, ChevronUp, ChevronDown
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -55,6 +55,7 @@ const internalCategories = [
 ];
 
 const userSelectableCategories = internalCategories.filter(cat => cat !== "Cash Flow Gap");
+const categories = userSelectableCategories; // Added missing `categories`
 
 export default function BookkeepingApp() {
   const [records, setRecords] = useState([]);
@@ -90,6 +91,8 @@ export default function BookkeepingApp() {
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [showStrategyModal, setShowStrategyModal] = useState(false); // Added
+  const [expandedSection, setExpandedSection] = useState(null); // Added
   const [activeTab, setActiveTab] = useState("overview");
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState("Overhead");
@@ -140,10 +143,6 @@ export default function BookkeepingApp() {
     }
   }, []);
 
-  // --- Pricing Recommendations (Placeholder to prevent crash) ---
-
-
-  // --- Sync with Debounced Filters ---
   const syncRecords = useCallback(async () => {
     setSyncing(true);
     try {
@@ -161,7 +160,6 @@ export default function BookkeepingApp() {
     }
   }, [loadRecords, loadBudgets, loadRecurringCosts]);
 
-  // --- Filtered Records (Memoized) ---
   const filteredRecords = useMemo(() => {
     if (!dateFilter.start && !dateFilter.end) return records;
     const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
@@ -175,57 +173,14 @@ export default function BookkeepingApp() {
     });
   }, [records, dateFilter]);
 
-  const pricingRecommendations = useMemo(() => {
-  // Only analyze inflow records with cost and market price data
-  const candidates = filteredRecords.filter(r =>
-    r.category === "Inflow" &&
-    r.cost_per_unit != null &&
-    r.market_price != null &&
-    parseFloat(r.amount) > 0
-  );
-
-  const recommendations = candidates
-    .map(r => {
-      const sellingPrice = parseFloat(r.amount);
-      const marketPrice = parseFloat(r.market_price);
-      const cost = parseFloat(r.cost_per_unit);
-      const qty = parseFloat(r.quantity) || 1;
-
-      const currentMargin = sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
-      const underpriced = sellingPrice < marketPrice && currentMargin < 50;
-
-      if (!underpriced) return null;
-
-      const potentialIncrease = (marketPrice - sellingPrice) * qty;
-      const newMargin = marketPrice > 0 ? ((marketPrice - cost) / marketPrice) * 100 : 0;
-
-      return {
-        product: r.description,
-        currentPrice: sellingPrice,
-        recommendedPrice: marketPrice,
-        currentMargin,
-        newMargin,
-        percentIncrease: ((marketPrice - sellingPrice) / sellingPrice) * 100,
-        potentialRevenue: potentialIncrease,
-      };
-    })
-    .filter(Boolean) // Remove nulls
-    .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
-
-  return recommendations;
-}, [filteredRecords]);
-
-  // --- Inventory Cost Map (Memoized) ---
   const inventoryCostMap = useMemo(() => {
     const map = new Map();
     const inventoryRecords = filteredRecords.filter(r => r.category === "Inventory Purchase");
-    
     for (const r of inventoryRecords) {
       const key = r.description;
       const qty = parseFloat(r.quantity) || 0;
       const cost = parseFloat(r.cost_per_unit) || 0;
       if (!key || cost <= 0) continue;
-      
       if (!map.has(key)) {
         map.set(key, { totalCost: 0, totalQty: 0 });
       }
@@ -233,7 +188,6 @@ export default function BookkeepingApp() {
       entry.totalCost += cost * qty;
       entry.totalQty += qty;
     }
-    
     const result = {};
     for (const [key, entry] of map) {
       if (entry.totalQty > 0) {
@@ -243,24 +197,19 @@ export default function BookkeepingApp() {
     return result;
   }, [filteredRecords]);
 
-  // --- Totals Calculation (Memoized) ---
   const totals = useMemo(() => {
     let inflow = 0, inflowCost = 0, inflowProfit = 0, outflow = 0, 
         reinvestment = 0, overhead = 0, loanPayment = 0, loanReceived = 0,
         logistics = 0, refund = 0, onHoldCash = 0;
-
     for (const r of filteredRecords) {
       if (r.category === "Cash Flow Gap") continue;
-      
       const amount = parseFloat(r.amount) || 0;
       const quantity = parseFloat(r.quantity) || 1;
       const totalAmount = amount * quantity;
-
       if (r.category === "On Hold Cash") {
         onHoldCash += totalAmount;
         continue;
       }
-
       if (r.category === "Inflow") {
         let costPerUnit = parseFloat(r.cost_per_unit) || 0;
         if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
@@ -282,12 +231,43 @@ export default function BookkeepingApp() {
         }
       }
     }
-
     return { inflow, inflowCost, inflowProfit, outflow, reinvestment, 
              overhead, loanPayment, loanReceived, logistics, refund, onHoldCash };
   }, [filteredRecords, inventoryCostMap]);
 
-  // --- Derived Metrics (Memoized) ---
+  const pricingRecommendations = useMemo(() => {
+    const candidates = filteredRecords.filter(r =>
+      r.category === "Inflow" &&
+      r.cost_per_unit != null &&
+      r.market_price != null &&
+      parseFloat(r.amount) > 0
+    );
+    const recommendations = candidates
+      .map(r => {
+        const sellingPrice = parseFloat(r.amount);
+        const marketPrice = parseFloat(r.market_price);
+        const cost = parseFloat(r.cost_per_unit);
+        const qty = parseFloat(r.quantity) || 1;
+        const currentMargin = sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
+        const underpriced = sellingPrice < marketPrice && currentMargin < 50;
+        if (!underpriced) return null;
+        const potentialIncrease = (marketPrice - sellingPrice) * qty;
+        const newMargin = marketPrice > 0 ? ((marketPrice - cost) / marketPrice) * 100 : 0;
+        return {
+          product: r.description,
+          currentPrice: sellingPrice,
+          recommendedPrice: marketPrice,
+          currentMargin,
+          newMargin,
+          percentIncrease: ((marketPrice - sellingPrice) / sellingPrice) * 100,
+          potentialRevenue: potentialIncrease,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
+    return recommendations;
+  }, [filteredRecords]);
+
   const totalRecurring = useMemo(() => 
     recurringCosts.reduce((sum, cost) => sum + (parseFloat(cost.amount) || 0), 0),
     [recurringCosts]
@@ -300,12 +280,10 @@ export default function BookkeepingApp() {
   const netLoanImpact = totals.loanReceived - totals.loanPayment;
   const netProfit = operatingProfit + netLoanImpact;
 
-  // --- Loan Coverage ---
   const { rollingInflow, loanCoveragePercent, loanStatus } = useMemo(() => {
     const today = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
-    
     const inflow = records
       .filter(r => 
         r.category === "Inflow" && 
@@ -313,14 +291,12 @@ export default function BookkeepingApp() {
         new Date(r.date) <= today
       )
       .reduce((sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1), 0);
-    
     const hasRecentInflow = records.some(
       r => r.category === "Inflow" && new Date(r.date) >= thirtyDaysAgo
     );
     const percent = hasRecentInflow && monthlyLoanTarget > 0 
       ? (inflow / monthlyLoanTarget) * 100 
       : 0;
-    
     return {
       rollingInflow: inflow,
       loanCoveragePercent: percent,
@@ -328,30 +304,30 @@ export default function BookkeepingApp() {
     };
   }, [records, monthlyLoanTarget]);
 
-  // --- Customer Concentration ---
-  const topCustomerShare = useMemo(() => {
-    const customerRevenueMap = new Map();
+  const customerRevenueMap = useMemo(() => {
+    const map = new Map();
     for (const r of filteredRecords) {
       if (r.category === "Inflow" && r.customer) {
         const rev = (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
-        customerRevenueMap.set(r.customer, (customerRevenueMap.get(r.customer) || 0) + rev);
+        map.set(r.customer, (map.get(r.customer) || 0) + rev);
       }
     }
+    return map;
+  }, [filteredRecords]);
+
+  const topCustomerShare = useMemo(() => {
     const totalRevenue = Array.from(customerRevenueMap.values()).reduce((a, b) => a + b, 0);
     if (totalRevenue === 0) return 0;
     return Math.max(...customerRevenueMap.values()) / totalRevenue;
-  }, [filteredRecords]);
+  }, [customerRevenueMap]);
 
-  // --- Strategic Scoring (Optimized) ---
   const recordsWithStrategicScore = useMemo(() => {
     const scoredRecords = filteredRecords.map(r => {
       const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
       let marginImpact = 0, loanImpact = 0, recencyBonus = 0, 
           customerPenalty = 0, cashFlowImpact = 0;
-      
       const daysOld = Math.floor((new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24));
       recencyBonus = Math.max(0, 5 - daysOld / 30);
-      
       if (r.category === "Cash Flow Gap") {
         recencyBonus = -2;
         customerPenalty = -3;
@@ -385,14 +361,12 @@ export default function BookkeepingApp() {
         recencyBonus = -3;
         customerPenalty = -2;
       }
-      
       return { 
         ...r, 
         strategicScore: baseWeight + marginImpact + loanImpact + 
                        recencyBonus + customerPenalty + cashFlowImpact 
       };
     });
-    
     return scoredRecords.sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
@@ -403,7 +377,6 @@ export default function BookkeepingApp() {
     });
   }, [filteredRecords, inventoryCostMap, topCustomerShare, totals.logistics]);
 
-  // --- Business Health Index ---
   const { 
     monthlyBurn, 
     cashRunwayMonths, 
@@ -417,7 +390,6 @@ export default function BookkeepingApp() {
     const liquidity = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / burn : 0;
     const recurring = totals.inflow > 0 ? (totalRecurring / totals.inflow) * 100 : 0;
     const onHold = totals.inflow > 0 ? (totals.onHoldCash / totals.inflow) * 100 : 0;
-    
     const maturityData = [
       { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
       {
@@ -438,7 +410,6 @@ export default function BookkeepingApp() {
     const dataCompletenessScore = (
       (maturityData.reduce((sum, m) => sum + parseFloat(m.score), 0) / 400) * 100
     ).toFixed(0);
-    
     const healthIndex = Math.min(
       100,
       Math.round(
@@ -450,7 +421,6 @@ export default function BookkeepingApp() {
         (onHold < 20 ? 12.5 : 0)
       )
     );
-    
     return { 
       monthlyBurn: burn, 
       cashRunwayMonths: runway, 
@@ -462,7 +432,6 @@ export default function BookkeepingApp() {
   }, [totals, overheadWithRecurring, totalRecurring, records.length, 
       filteredRecords, budgets, trueGrossMargin, loanCoveragePercent]);
 
-  // --- Alerts (Memoized) ---
   const onHoldAlert = useMemo(() => 
     onHoldRatio > 20 && totals.inflow > 0 ? { percent: onHoldRatio.toFixed(1) } : null,
     [onHoldRatio, totals.inflow]
@@ -497,6 +466,350 @@ export default function BookkeepingApp() {
     }
     return alerts;
   }, [filteredRecords, budgets]);
+
+  // --- Customer Analysis ---
+  const customerAnalysis = useMemo(() => {
+    const map = new Map();
+    for (const r of filteredRecords) {
+      if (r.category !== "Inflow" || !r.customer) continue;
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+      const key = r.customer;
+      if (!map.has(key)) {
+        map.set(key, {
+          name: key,
+          revenue: 0,
+          cost: 0,
+          profit: 0,
+          transactions: 0,
+          avgTransaction: 0,
+          clv: null,
+          margin: 0
+        });
+      }
+      const entry = map.get(key);
+      entry.revenue += revenue;
+      entry.cost += totalCost;
+      entry.profit += profit;
+      entry.transactions += 1;
+    }
+    return Array.from(map.values()).map(c => ({
+      ...c,
+      avgTransaction: c.revenue / c.transactions,
+      margin: c.revenue > 0 ? (c.profit / c.revenue) * 100 : 0
+    })).sort((a, b) => b.profit - a.profit);
+  }, [filteredRecords, inventoryCostMap]);
+
+  const hasSufficientHistory = useMemo(() => {
+    if (records.length === 0) return false;
+    const dates = records.map(r => new Date(r.date));
+    const min = new Date(Math.min(...dates));
+    const max = new Date(Math.max(...dates));
+    const diffDays = (max - min) / (1000 * 60 * 60 * 24);
+    return diffDays >= 90;
+  }, [records]);
+
+  // --- Supplier Analysis ---
+  const supplierAnalysis = useMemo(() => {
+    const map = new Map();
+    for (const r of filteredRecords) {
+      if (!r.supplied_by || r.category !== "Inventory Purchase") continue;
+      const cost = (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
+      const key = r.supplied_by;
+      if (!map.has(key)) {
+        map.set(key, { name: key, cost: 0, transactions: 0 });
+      }
+      const entry = map.get(key);
+      entry.cost += cost;
+      entry.transactions += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+  }, [filteredRecords]);
+
+  // --- Product Margins ---
+  const productMargins = useMemo(() => {
+    const map = new Map();
+    for (const r of filteredRecords) {
+      if (r.category !== "Inflow" || !r.description) continue;
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+      const key = r.description;
+      if (!map.has(key)) {
+        map.set(key, {
+          name: key,
+          quantity: 0,
+          totalRevenue: 0,
+          totalCost: 0,
+          customers: new Set(),
+          inventoryTurnover: 0
+        });
+      }
+      const entry = map.get(key);
+      entry.quantity += qty;
+      entry.totalRevenue += price * qty;
+      entry.totalCost += cost * qty;
+      if (r.customer) entry.customers.add(r.customer);
+    }
+    return Array.from(map.values()).map(p => {
+      const avgPrice = p.totalRevenue / p.quantity;
+      const avgCost = p.totalCost / p.quantity;
+      const avgProfit = avgPrice - avgCost;
+      const profit = p.totalRevenue - p.totalCost;
+      const margin = p.totalRevenue > 0 ? (profit / p.totalRevenue) * 100 : 0;
+      return {
+        name: p.name,
+        quantity: p.quantity,
+        avgPrice,
+        avgCost,
+        avgProfit,
+        profit,
+        margin,
+        customers: p.customers.size,
+        inventoryTurnover: p.quantity / (p.totalCost > 0 ? p.totalCost : 1)
+      };
+    }).sort((a, b) => b.profit - a.profit);
+  }, [filteredRecords, inventoryCostMap]);
+
+  // --- Competitive Analysis ---
+  const competitiveAnalysis = useMemo(() => {
+    return filteredRecords
+      .filter(r => r.category === "Inflow" && r.market_price != null)
+      .map(r => {
+        const sellingPrice = parseFloat(r.amount);
+        const marketPrice = parseFloat(r.market_price);
+        const cost = parseFloat(r.cost_per_unit) || 0;
+        const qty = parseFloat(r.quantity) || 1;
+        const revenue = sellingPrice * qty;
+        const totalCost = cost * qty;
+        const profit = revenue - totalCost;
+        const grossMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+        const competitiveEdge = (marketPrice - sellingPrice) * qty;
+        return {
+          id: r.id,
+          name: r.description,
+          sellingPrice,
+          marketPrice,
+          grossMargin,
+          competitiveEdge,
+          underpriced: sellingPrice < marketPrice,
+          overpriced: sellingPrice > marketPrice * 1.1
+        };
+      });
+  }, [filteredRecords]);
+
+  const competitiveTotals = useMemo(() => {
+    const totalCompetitiveEdge = competitiveAnalysis.reduce((sum, a) => sum + a.competitiveEdge, 0);
+    const avgMargin = competitiveAnalysis.reduce((sum, a) => sum + a.grossMargin, 0);
+    return {
+      totalCompetitiveEdge,
+      avgMargin,
+      count: competitiveAnalysis.length
+    };
+  }, [competitiveAnalysis]);
+
+  // --- Cash Flow Gaps ---
+  const cashFlowGaps = useMemo(() => {
+    return filteredRecords
+      .filter(r => r.category === "Inflow" && r.payment_date)
+      .map(r => {
+        const invoiceDate = new Date(r.date);
+        const paymentDate = new Date(r.payment_date);
+        const gapDays = (paymentDate - invoiceDate) / (1000 * 60 * 60 * 24);
+        return {
+          id: r.id,
+          customer: r.customer,
+          description: r.description,
+          amount: parseFloat(r.amount) * (parseFloat(r.quantity) || 1),
+          gapDays,
+          status: gapDays > 30 ? "Delayed" : "On Time"
+        };
+      });
+  }, [filteredRecords]);
+
+  // --- Daily Data ---
+  const dailyData = useMemo(() => {
+    const map = new Map();
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+    for (const r of filteredRecords) {
+      if (r.category !== "Inflow") continue;
+      const recordDate = new Date(r.date);
+      if (recordDate < thirtyDaysAgo || recordDate > now) continue;
+      const dateStr = recordDate.toISOString().split('T')[0];
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+      if (!map.has(dateStr)) {
+        map.set(dateStr, { date: dateStr, revenue: 0, profit: 0, margin: 0, count: 0 });
+      }
+      const entry = map.get(dateStr);
+      entry.revenue += revenue;
+      entry.profit += profit;
+      entry.margin += margin;
+      entry.count += 1;
+    }
+    return Array.from(map.values()).map(d => ({
+      ...d,
+      margin: d.count > 0 ? d.margin / d.count : 0
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredRecords, inventoryCostMap]);
+
+  // --- Monthly Data ---
+  const monthlyData = useMemo(() => {
+    const map = new Map();
+    for (const r of filteredRecords) {
+      if (r.category !== "Inflow") continue;
+      const recordDate = new Date(r.date);
+      const monthStr = `${recordDate.getFullYear()}-${String(recordDate.getMonth() + 1).padStart(2, '0')}`;
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const profit = revenue - totalCost;
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+      if (!map.has(monthStr)) {
+        map.set(monthStr, { month: monthStr, revenue: 0, profit: 0, margin: 0, count: 0 });
+      }
+      const entry = map.get(monthStr);
+      entry.revenue += revenue;
+      entry.profit += profit;
+      entry.margin += margin;
+      entry.count += 1;
+    }
+    return Array.from(map.values()).map(d => ({
+      ...d,
+      margin: d.count > 0 ? d.margin / d.count : 0
+    })).sort((a, b) => a.month.localeCompare(b.month));
+  }, [filteredRecords, inventoryCostMap]);
+
+  // --- Projected Cash ---
+  const projectedCash = useMemo(() => {
+    const now = new Date();
+    const data = [];
+    let netCash = totals.inflow - totals.outflow - overheadWithRecurring - totals.reinvestment;
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(now);
+      date.setDate(now.getDate() + i);
+      data.push({
+        date: date.toISOString().split('T')[0],
+        net: netCash
+      });
+      // Simplified: assume linear burn
+      netCash -= monthlyBurn / 30;
+    }
+    return data;
+  }, [totals, overheadWithRecurring, monthlyBurn]);
+
+  // --- Business Value Data ---
+  const businessValueData = useMemo(() => [
+    { metric: "Margin Health", current: trueGrossMargin, target: 50 },
+    { metric: "Loan Coverage", current: loanCoveragePercent, target: 100 },
+    { metric: "Liquidity", current: liquidityRatio * 100, target: 100 },
+    { metric: "Data Quality", current: parseFloat((
+      (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length /
+        Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1)) * 100
+    ).toFixed(0)), target: 90 },
+    { metric: "Customer Divers.", current: (1 - topCustomerShare) * 100, target: 80 }
+  ], [trueGrossMargin, loanCoveragePercent, liquidityRatio, filteredRecords, topCustomerShare]);
+
+  // --- ROI Timeline (mock) ---
+  const roiTimeline = useMemo(() => {
+    return [
+      { month: "M0", investment: 100, return: 0, net: -100 },
+      { month: "M1", investment: 0, return: 30, net: -70 },
+      { month: "M2", investment: 0, return: 50, net: -20 },
+      { month: "M3", investment: 0, return: 80, net: 60 },
+      { month: "M4", investment: 0, return: 100, net: 160 },
+      { month: "M5", investment: 0, return: 120, net: 280 }
+    ];
+  }, []);
+
+  const breakEvenMonth = "M3";
+  const roiPercentage = "180%";
+  const paybackMonth = "M3";
+
+  // --- Maturity Data (already computed above in businessHealthIndex calc) ---
+  const maturityData = useMemo(() => [
+    { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
+    {
+      stage: "Cost Tracking",
+      score: (
+        (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length /
+          Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1)) * 100
+      ).toFixed(0),
+    },
+    {
+      stage: "Customer Tracking",
+      score: (
+        (filteredRecords.filter(r => r.customer).length / Math.max(filteredRecords.length, 1)) * 100
+      ).toFixed(0),
+    },
+    { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
+  ], [records.length, filteredRecords, budgets]);
+
+  // --- Implementation Phases ---
+  const implementationPhases = [
+    {
+      phase: "Data Foundation",
+      duration: "2-4 weeks",
+      value: "Accurate Profitability",
+      icon: Database,
+      color: "bg-green-500",
+      tasks: [
+        "Add cost tracking to all sales",
+        "Tag every transaction with customer & supplier",
+        "Set up recurring costs and budgets"
+      ]
+    },
+    {
+      phase: "Margin Optimization",
+      duration: "4-6 weeks",
+      value: "+15-30% Gross Margin",
+      icon: Percent,
+      color: "bg-blue-500",
+      tasks: [
+        "Implement pricing recommendations",
+        "Negotiate with top suppliers",
+        "Eliminate unprofitable products"
+      ]
+    },
+    {
+      phase: "Cash Flow Control",
+      duration: "6-8 weeks",
+      value: "3+ Month Runway",
+      icon: DollarSign,
+      color: "bg-purple-500",
+      tasks: [
+        "Reduce on-hold cash by 50%",
+        "Automate collections",
+        "Refinance high-cost debt"
+      ]
+    }
+  ];
 
   // --- Form Handlers ---
   const handleSubmit = useCallback(async () => {
@@ -845,7 +1158,6 @@ export default function BookkeepingApp() {
     }
   };
 
-  // --- Generate Actual Records from Recurring Costs ---
   const generateRecurringRecords = async () => {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -884,7 +1196,6 @@ export default function BookkeepingApp() {
     localStorage.setItem("lastRecurringGen", monthKey);
   };
 
-  // --- Save Budget ---
   const saveBudget = async () => {
     if (!budgetAmount) {
       alert("Please enter a budget amount");
@@ -912,7 +1223,6 @@ export default function BookkeepingApp() {
     }
   };
 
-  // --- Save Loan Target ---
   const saveLoanTarget = () => {
     if (monthlyLoanTarget <= 0) {
       alert("Please enter a valid monthly loan target");
@@ -923,11 +1233,9 @@ export default function BookkeepingApp() {
     alert("Monthly loan target updated!");
   };
 
-  // --- Initial Load ---
   useEffect(() => {
     const savedLoanTarget = localStorage.getItem("monthlyLoanTarget");
     if (savedLoanTarget) setMonthlyLoanTarget(parseFloat(savedLoanTarget));
-    
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - 30);
@@ -935,7 +1243,6 @@ export default function BookkeepingApp() {
       start: start.toISOString().split("T")[0],
       end: end.toISOString().split("T")[0],
     });
-    
     syncRecords();
   }, []);
 
@@ -949,6 +1256,21 @@ export default function BookkeepingApp() {
       </div>
     );
   }
+
+  // --- Grouped Records for Records Tab ---
+  const groupedRecords = useMemo(() => {
+    if (groupBy === "none") return [];
+    const map = new Map();
+    for (const r of recordsWithStrategicScore) {
+      let key = "";
+      if (groupBy === "customer") key = r.customer || "Uncategorized";
+      else if (groupBy === "product") key = r.description || "Uncategorized";
+      else if (groupBy === "supplier") key = r.supplied_by || "Uncategorized";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    }
+    return Array.from(map.entries()).map(([group, items]) => ({ group, items }));
+  }, [recordsWithStrategicScore, groupBy]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-2 sm:p-4 md:p-6">
@@ -1174,9 +1496,7 @@ export default function BookkeepingApp() {
               { id: "pricing", label: "Pricing Intel", icon: Sparkles },
               { id: "recurring", label: "Recurring Costs", icon: Repeat },
               {
-                id: "analytics",
-                label: "Strategic Analytics",
-                icon: TrendingUp,
+                id: "analytics", label: "Strategic Analytics", icon: TrendingUp,
               },
               { id: "records", label: "All Records", icon: FileText },
             ].map((tab) => {
@@ -1425,7 +1745,6 @@ export default function BookkeepingApp() {
                 </p>
               </div>
             </div>
-
             {/* AI Insights Summary */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-5 border border-blue-200">
               <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 text-blue-900">
@@ -1473,7 +1792,7 @@ export default function BookkeepingApp() {
                     </span>
                   </li>
                 )}
-                {dataCompletenessScore < 70 && (
+                {parseFloat(maturityData[1].score) < 70 && (
                   <li className="flex items-start gap-1 sm:gap-2">
                     <Database className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
                     <span>
@@ -1512,7 +1831,6 @@ export default function BookkeepingApp() {
                 )}
               </ul>
             </div>
-
             {cashFlowGaps.length > 0 &&
               cashFlowGaps.filter((g) => g.status === "Delayed").length > 0 && (
                 <div className="bg-red-50 border-l-4 border-red-400 p-3 sm:p-4 rounded-r-lg mb-4 sm:mb-6">
@@ -1538,7 +1856,6 @@ export default function BookkeepingApp() {
                   </div>
                 </div>
               )}
-
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
               <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
                 <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
@@ -1628,7 +1945,6 @@ export default function BookkeepingApp() {
                 </div>
               )}
             </div>
-
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
               <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
@@ -1701,7 +2017,6 @@ export default function BookkeepingApp() {
                 </div>
               )}
             </div>
-
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
               <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
                 30-Day Cash Flow Forecast (incl. Recurring & On Hold)
@@ -1822,7 +2137,6 @@ export default function BookkeepingApp() {
                 <p className="text-xs sm:text-sm opacity-90">On Hold Cash</p>
               </div>
             </div>
-
             {/* Entry Form */}
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
               <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
@@ -1935,7 +2249,6 @@ export default function BookkeepingApp() {
                   />
                 </div>
               </div>
-
               {/* Profit Preview */}
               {formData.quantity &&
                 formData.amount &&
@@ -1993,7 +2306,6 @@ export default function BookkeepingApp() {
                     </div>
                   </div>
                 )}
-
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <input
                   type="text"
@@ -2049,7 +2361,6 @@ export default function BookkeepingApp() {
                 )}
               </div>
             </div>
-
             {/* Recent Records Preview */}
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
               <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">Recent Transactions</h2>
@@ -2189,7 +2500,6 @@ export default function BookkeepingApp() {
           </>
         )}
 
-        {/* Remaining tabs unchanged except for category handling */}
         {/* Suppliers Tab */}
         {activeTab === "suppliers" && (
           <div className="space-y-4 sm:space-y-6">
