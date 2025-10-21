@@ -55,7 +55,7 @@ const internalCategories = [
 ];
 
 const userSelectableCategories = internalCategories.filter(cat => cat !== "Cash Flow Gap");
-const categories = userSelectableCategories; // Added missing `categories`
+const categories = userSelectableCategories;
 
 export default function BookkeepingApp() {
   const [records, setRecords] = useState([]);
@@ -91,8 +91,8 @@ export default function BookkeepingApp() {
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
-  const [showStrategyModal, setShowStrategyModal] = useState(false); // Added
-  const [expandedSection, setExpandedSection] = useState(null); // Added
+  const [showStrategyModal, setShowStrategyModal] = useState(false);
+  const [expandedSection, setExpandedSection] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [budgets, setBudgets] = useState({});
   const [budgetCategory, setBudgetCategory] = useState("Overhead");
@@ -467,7 +467,7 @@ export default function BookkeepingApp() {
     return alerts;
   }, [filteredRecords, budgets]);
 
-  // --- Customer Analysis ---
+  // --- NEW: Missing Analysis Hooks ---
   const customerAnalysis = useMemo(() => {
     const map = new Map();
     for (const r of filteredRecords) {
@@ -517,7 +517,6 @@ export default function BookkeepingApp() {
     return diffDays >= 90;
   }, [records]);
 
-  // --- Supplier Analysis ---
   const supplierAnalysis = useMemo(() => {
     const map = new Map();
     for (const r of filteredRecords) {
@@ -534,7 +533,6 @@ export default function BookkeepingApp() {
     return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
   }, [filteredRecords]);
 
-  // --- Product Margins ---
   const productMargins = useMemo(() => {
     const map = new Map();
     for (const r of filteredRecords) {
@@ -582,7 +580,6 @@ export default function BookkeepingApp() {
     }).sort((a, b) => b.profit - a.profit);
   }, [filteredRecords, inventoryCostMap]);
 
-  // --- Competitive Analysis ---
   const competitiveAnalysis = useMemo(() => {
     return filteredRecords
       .filter(r => r.category === "Inflow" && r.market_price != null)
@@ -619,7 +616,6 @@ export default function BookkeepingApp() {
     };
   }, [competitiveAnalysis]);
 
-  // --- Cash Flow Gaps ---
   const cashFlowGaps = useMemo(() => {
     return filteredRecords
       .filter(r => r.category === "Inflow" && r.payment_date)
@@ -638,7 +634,6 @@ export default function BookkeepingApp() {
       });
   }, [filteredRecords]);
 
-  // --- Daily Data ---
   const dailyData = useMemo(() => {
     const map = new Map();
     const now = new Date();
@@ -674,7 +669,6 @@ export default function BookkeepingApp() {
     })).sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredRecords, inventoryCostMap]);
 
-  // --- Monthly Data ---
   const monthlyData = useMemo(() => {
     const map = new Map();
     for (const r of filteredRecords) {
@@ -706,7 +700,6 @@ export default function BookkeepingApp() {
     })).sort((a, b) => a.month.localeCompare(b.month));
   }, [filteredRecords, inventoryCostMap]);
 
-  // --- Projected Cash ---
   const projectedCash = useMemo(() => {
     const now = new Date();
     const data = [];
@@ -718,13 +711,11 @@ export default function BookkeepingApp() {
         date: date.toISOString().split('T')[0],
         net: netCash
       });
-      // Simplified: assume linear burn
       netCash -= monthlyBurn / 30;
     }
     return data;
   }, [totals, overheadWithRecurring, monthlyBurn]);
 
-  // --- Business Value Data ---
   const businessValueData = useMemo(() => [
     { metric: "Margin Health", current: trueGrossMargin, target: 50 },
     { metric: "Loan Coverage", current: loanCoveragePercent, target: 100 },
@@ -736,23 +727,19 @@ export default function BookkeepingApp() {
     { metric: "Customer Divers.", current: (1 - topCustomerShare) * 100, target: 80 }
   ], [trueGrossMargin, loanCoveragePercent, liquidityRatio, filteredRecords, topCustomerShare]);
 
-  // --- ROI Timeline (mock) ---
-  const roiTimeline = useMemo(() => {
-    return [
-      { month: "M0", investment: 100, return: 0, net: -100 },
-      { month: "M1", investment: 0, return: 30, net: -70 },
-      { month: "M2", investment: 0, return: 50, net: -20 },
-      { month: "M3", investment: 0, return: 80, net: 60 },
-      { month: "M4", investment: 0, return: 100, net: 160 },
-      { month: "M5", investment: 0, return: 120, net: 280 }
-    ];
-  }, []);
+  const roiTimeline = useMemo(() => [
+    { month: "M0", investment: 100, return: 0, net: -100 },
+    { month: "M1", investment: 0, return: 30, net: -70 },
+    { month: "M2", investment: 0, return: 50, net: -20 },
+    { month: "M3", investment: 0, return: 80, net: 60 },
+    { month: "M4", investment: 0, return: 100, net: 160 },
+    { month: "M5", investment: 0, return: 120, net: 280 }
+  ], []);
 
   const breakEvenMonth = "M3";
   const roiPercentage = "180%";
   const paybackMonth = "M3";
 
-  // --- Maturity Data (already computed above in businessHealthIndex calc) ---
   const maturityData = useMemo(() => [
     { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
     {
@@ -771,7 +758,6 @@ export default function BookkeepingApp() {
     { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
   ], [records.length, filteredRecords, budgets]);
 
-  // --- Implementation Phases ---
   const implementationPhases = [
     {
       phase: "Data Foundation",
@@ -810,6 +796,21 @@ export default function BookkeepingApp() {
       ]
     }
   ];
+
+  // --- Grouped Records for Records Tab ---
+  const groupedRecords = useMemo(() => {
+    if (groupBy === "none") return [];
+    const map = new Map();
+    for (const r of recordsWithStrategicScore) {
+      let key = "";
+      if (groupBy === "customer") key = r.customer || "Uncategorized";
+      else if (groupBy === "product") key = r.description || "Uncategorized";
+      else if (groupBy === "supplier") key = r.supplied_by || "Uncategorized";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    }
+    return Array.from(map.entries()).map(([group, items]) => ({ group, items }));
+  }, [recordsWithStrategicScore, groupBy]);
 
   // --- Form Handlers ---
   const handleSubmit = useCallback(async () => {
@@ -1257,21 +1258,6 @@ export default function BookkeepingApp() {
     );
   }
 
-  // --- Grouped Records for Records Tab ---
-  const groupedRecords = useMemo(() => {
-    if (groupBy === "none") return [];
-    const map = new Map();
-    for (const r of recordsWithStrategicScore) {
-      let key = "";
-      if (groupBy === "customer") key = r.customer || "Uncategorized";
-      else if (groupBy === "product") key = r.description || "Uncategorized";
-      else if (groupBy === "supplier") key = r.supplied_by || "Uncategorized";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(r);
-    }
-    return Array.from(map.entries()).map(([group, items]) => ({ group, items }));
-  }, [recordsWithStrategicScore, groupBy]);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
@@ -1496,7 +1482,9 @@ export default function BookkeepingApp() {
               { id: "pricing", label: "Pricing Intel", icon: Sparkles },
               { id: "recurring", label: "Recurring Costs", icon: Repeat },
               {
-                id: "analytics", label: "Strategic Analytics", icon: TrendingUp,
+                id: "analytics",
+                label: "Strategic Analytics",
+                icon: TrendingUp,
               },
               { id: "records", label: "All Records", icon: FileText },
             ].map((tab) => {
@@ -1575,7 +1563,7 @@ export default function BookkeepingApp() {
           </div>
         </div>
 
-        {/* Recurring Costs Tab */}
+        {/* All Tabs Rendered Below - No Changes Needed */}
         {activeTab === "recurring" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -1680,7 +1668,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Business Health Tab */}
         {activeTab === "health" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-rose-500 to-rose-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -2050,7 +2037,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Overview Tab */}
         {activeTab === "overview" && (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
@@ -2500,7 +2486,6 @@ export default function BookkeepingApp() {
           </>
         )}
 
-        {/* Suppliers Tab */}
         {activeTab === "suppliers" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -2571,7 +2556,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Records Tab */}
         {activeTab === "records" && (
           <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 sm:mb-4">
@@ -2819,7 +2803,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Margins Tab */}
         {activeTab === "margins" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -2913,7 +2896,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Products Tab */}
         {activeTab === "products" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-teal-500 to-teal-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -3036,7 +3018,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Customers Tab */}
         {activeTab === "customers" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -3169,7 +3150,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Pricing Tab */}
         {activeTab === "pricing" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -3335,7 +3315,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Analytics Tab */}
         {activeTab === "analytics" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -3741,7 +3720,6 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {/* Competitive Tab */}
         {activeTab === "competitive" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
