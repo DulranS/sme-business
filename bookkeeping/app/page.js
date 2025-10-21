@@ -41,6 +41,7 @@ import {
   ArrowUp,
   HeartPulse,
   Repeat,
+  Lock,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -68,6 +69,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Added "On Hold Cash" with negative strategic weight
 const STRATEGIC_WEIGHTS = {
   Inflow: 10,
   Reinvestment: 8,
@@ -79,6 +81,7 @@ const STRATEGIC_WEIGHTS = {
   Overhead: -4,
   "Loan Payment": -2,
   "Cash Flow Gap": -5,
+  "On Hold Cash": -7, // New: Committed funds reduce strategic flexibility
 };
 
 const categoryLabels = {
@@ -92,6 +95,7 @@ const categoryLabels = {
   Logistics: "Logistics",
   Refund: "Refund",
   "Cash Flow Gap": "Cash Flow Gap (Delayed)",
+  "On Hold Cash": "On Hold Cash", // New label
 };
 
 const internalCategories = [
@@ -105,6 +109,7 @@ const internalCategories = [
   "Logistics",
   "Refund",
   "Cash Flow Gap",
+  "On Hold Cash", // Added to internal categories
 ];
 
 export default function BookkeepingApp() {
@@ -435,6 +440,13 @@ export default function BookkeepingApp() {
       const quantity = parseFloat(r.quantity) || 1;
       const totalAmount = amount * quantity;
       if (r.category === "Cash Flow Gap") return acc;
+      
+      // Handle On Hold Cash
+      if (r.category === "On Hold Cash") {
+        acc.onHoldCash += totalAmount;
+        return acc;
+      }
+
       if (r.category === "Inflow") {
         let costPerUnit = parseFloat(r.cost_per_unit) || 0;
         if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
@@ -468,6 +480,7 @@ export default function BookkeepingApp() {
       loanReceived: 0,
       logistics: 0,
       refund: 0,
+      onHoldCash: 0, // New accumulator
     }
   );
 
@@ -487,7 +500,6 @@ export default function BookkeepingApp() {
   const today = new Date();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
-
   const rollingInflow = records
     .filter(
       (r) =>
@@ -500,12 +512,12 @@ export default function BookkeepingApp() {
       0
     );
 
-const hasRecentInflow = records.some(
-  r => r.category === "Inflow" && new Date(r.date) >= thirtyDaysAgo
-);
-const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
-  ? (rollingInflow / monthlyLoanTarget) * 100
-  : 0;
+  const hasRecentInflow = records.some(
+    (r) => r.category === "Inflow" && new Date(r.date) >= thirtyDaysAgo
+  );
+  const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
+    ? (rollingInflow / monthlyLoanTarget) * 100
+    : 0;
   const loanStatus = loanCoveragePercent >= 100 ? "On Track" : "At Risk";
 
   // Customer Concentration
@@ -519,7 +531,6 @@ const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
     });
     return map;
   }, [filteredRecords]);
-
   const totalCustomerRevenue = Object.values(customerRevenueMap).reduce(
     (sum, rev) => sum + rev,
     0
@@ -553,7 +564,7 @@ const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
       .sort((a, b) => b.cost - a.cost);
   }, [filteredRecords]);
 
-  // Strategic Scoring
+  // Strategic Scoring (includes On Hold Cash)
   const recordsWithStrategicScore = useMemo(() => {
     return filteredRecords
       .map((r) => {
@@ -567,6 +578,13 @@ const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
           (new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24)
         );
         recencyBonus = Math.max(0, 5 - daysOld / 30);
+        
+        // On Hold Cash specific logic
+        if (r.category === "On Hold Cash") {
+          recencyBonus = -3; // Older holds are riskier
+          customerPenalty = -2; // Reduces flexibility
+        }
+
         if (r.category === "Cash Flow Gap") {
           recencyBonus = -2;
           customerPenalty = -3;
@@ -622,12 +640,13 @@ const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
       });
   }, [filteredRecords, inventoryCostMap, topCustomerShare]);
 
-  // Business Health Index
+  // Business Health Index (now includes on-hold cash impact)
   const monthlyBurn = overheadWithRecurring + totals.outflow + totals.reinvestment;
-  const cashRunwayMonths = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
-  const liquidityRatio = totals.inflow > 0 ? totals.inflow / monthlyBurn : 0;
+  const cashRunwayMonths = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / monthlyBurn : 0;
+  const liquidityRatio = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / monthlyBurn : 0;
   const refundRate = totals.inflow > 0 ? (totals.refund / totals.inflow) * 100 : 0;
   const recurringRatio = totals.inflow > 0 ? (totalRecurring / totals.inflow) * 100 : 0;
+  const onHoldRatio = totals.inflow > 0 ? (totals.onHoldCash / totals.inflow) * 100 : 0;
 
   const maturityData = [
     { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
@@ -654,12 +673,10 @@ const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
     },
     { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
   ];
-
   const dataCompletenessScore = (
     (maturityData.reduce((sum, m) => sum + parseFloat(m.score), 0) / 400) *
     100
   ).toFixed(0);
-
   const businessHealthIndex = Math.min(
     100,
     Math.round(
@@ -667,7 +684,8 @@ const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
         (loanCoveragePercent / 100) * 25 +
         (liquidityRatio > 1 ? 25 : liquidityRatio * 25) +
         parseFloat(dataCompletenessScore) * 0.25 +
-        (recurringRatio < 30 ? 25 : 0)
+        (recurringRatio < 30 ? 12.5 : 0) +
+        (onHoldRatio < 20 ? 12.5 : 0) // New: Reward low on-hold ratio
     )
   );
 
@@ -678,11 +696,11 @@ const loanCoveragePercent = hasRecentInflow && monthlyLoanTarget > 0
       alert("Please select a date");
       return;
     }
-const amountNum = parseFloat(formData.amount);
-if (isNaN(amountNum) || amountNum <= 0) {
-  alert("Amount must be a positive number.");
-  return;
-}
+    const amountNum = parseFloat(formData.amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      alert("Amount must be a positive number.");
+      return;
+    }
     try {
       const recordData = {
         date: formData.date,
@@ -805,23 +823,19 @@ if (isNaN(amountNum) || amountNum <= 0) {
           alert("No valid records found in CSV.");
           return;
         }
-
         // Normalize headers
         const normalizeHeader = (str) =>
           str?.trim().toLowerCase().replace(/\s+/g, "");
-
         const mappedRecords = data
           .map((row) => {
             const parseNumber = (val) =>
               val === "" || val == null ? null : parseFloat(val);
             const parseString = (val) =>
               val === "" || val == null ? null : String(val).trim();
-
             const headers = {};
             Object.keys(row).forEach((key) => {
               headers[normalizeHeader(key)] = row[key];
             });
-
             const categoryKey =
               Object.entries(categoryLabels).find(
                 ([, label]) => normalizeHeader(label) === normalizeHeader(headers["category"])
@@ -829,7 +843,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
               (internalCategories.includes(row["Category"])
                 ? row["Category"]
                 : "Inflow");
-
             return {
               date:
                 parseString(headers["date"]) ||
@@ -854,7 +867,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
             };
           })
           .filter((r) => r.description && r.amount != null);
-
         if (mappedRecords.length === 0) {
           alert("No valid records to import.");
           return;
@@ -1012,7 +1024,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
   }, [filteredRecords, inventoryCostMap]);
 
   const isPositiveCategory = (cat) => ["Inflow", "Loan Received"].includes(cat);
-
   const competitiveTotals = useMemo(() => {
     return competitiveAnalysis.reduce(
       (acc, item) => ({
@@ -1057,7 +1068,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
       if (r.category === "Inflow") {
         grouped[monthKey].revenue += revenue;
         grouped[monthKey].cogs += totalCost;
-      } else if (["Outflow", "Overhead", "Reinvestment", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
+      } else if (["Outflow", "Overhead", "Reinvestment", "Loan Payment", "Logistics", "Refund", "On Hold Cash"].includes(r.category)) {
         grouped[monthKey].opex += price * qty;
       }
     });
@@ -1159,7 +1170,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
       } else if (r.category === "Inflow") {
         grouped[month].return += total;
         grouped[month].net += total;
-      } else if (["Outflow", "Overhead", "Loan Payment", "Logistics", "Refund"].includes(r.category)) {
+      } else if (["Outflow", "Overhead", "Loan Payment", "Logistics", "Refund", "On Hold Cash"].includes(r.category)) {
         grouped[month].net -= total;
       }
     });
@@ -1369,6 +1380,17 @@ if (isNaN(amountNum) || amountNum <= 0) {
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
   }, [productMargins]);
 
+  // On Hold Cash Alert
+  const onHoldAlert = useMemo(() => {
+    if (onHoldRatio > 20 && totals.inflow > 0) {
+      return {
+        percent: onHoldRatio.toFixed(1),
+        severity: "warning",
+      };
+    }
+    return null;
+  }, [onHoldRatio, totals.inflow]);
+
   // Recurring Cost Alert
   const recurringAlert = useMemo(() => {
     if (recurringRatio > 30 && totals.inflow > 0) {
@@ -1396,6 +1418,11 @@ if (isNaN(amountNum) || amountNum <= 0) {
       metric: "Loan Coverage",
       current: loanCoveragePercent,
       target: 100,
+    },
+    {
+      metric: "On Hold Ratio",
+      current: onHoldRatio,
+      target: 20,
     },
   ];
 
@@ -1468,7 +1495,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
     return Object.entries(groups).map(([group, items]) => ({ group, items }));
   }, [recordsWithStrategicScore, groupBy]);
 
-  // Cash Flow Forecast (30-day) with recurring costs
+  // Cash Flow Forecast (30-day) with recurring costs and on-hold cash
   const forecastDays = 30;
   const avgDailyInflow = rollingInflow / 30;
   const outflowCategories = [
@@ -1478,6 +1505,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
     "Loan Payment",
     "Logistics",
     "Refund",
+    "On Hold Cash",
   ];
   const recentOutflow = filteredRecords
     .filter(
@@ -1531,6 +1559,10 @@ if (isNaN(amountNum) || amountNum <= 0) {
                 <div className="flex items-center gap-1">
                   <DollarSign className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Loan Coverage: {loanCoveragePercent.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Lock className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span>On Hold: {onHoldRatio.toFixed(1)}%</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <Database className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -1697,6 +1729,22 @@ if (isNaN(amountNum) || amountNum <= 0) {
               </div>
             </div>
           )}
+          {onHoldAlert && (
+            <div className="bg-amber-50 border-l-4 border-amber-400 p-3 sm:p-4 rounded-r-lg">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-amber-900 text-sm sm:text-base mb-1 sm:mb-2">
+                    On Hold Cash Alert
+                  </h3>
+                  <p className="text-xs sm:text-sm text-amber-800">
+                    {onHoldAlert.percent}% of revenue is committed but not spent.
+                    Review pending commitments if above 20%.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Navigation Tabs */}
@@ -1793,10 +1841,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
             </div>
           </div>
         </div>
-
-        {/* ... Rest of the component remains the same with only minor responsive tweaks ... */}
-        {/* For brevity, only key responsive changes shown above. All tables already wrapped in overflow-x-auto in original code. */}
-        {/* Modals are already responsive in original; no change needed beyond what's above. */}
 
         {/* Recurring Costs Tab */}
         {activeTab === "recurring" && (
@@ -1937,7 +1981,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
                   months
                 </p>
                 <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
-                  At current burn rate
+                  At current burn rate (excl. on-hold cash)
                 </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
@@ -1955,16 +1999,16 @@ if (isNaN(amountNum) || amountNum <= 0) {
                   {liquidityRatio > 0 ? liquidityRatio.toFixed(2) : "0"}x
                 </p>
                 <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
-                  Revenue vs monthly burn
+                  Available cash vs monthly burn
                 </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
-                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Recurring Ratio</h3>
-                <p className="text-lg sm:text-2xl font-bold text-purple-600">
-                  {recurringRatio > 0 ? recurringRatio.toFixed(1) : "0"}%
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">On Hold Ratio</h3>
+                <p className="text-lg sm:text-2xl font-bold text-amber-600">
+                  {onHoldRatio > 0 ? onHoldRatio.toFixed(1) : "0"}%
                 </p>
                 <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
-                  Recurring / Revenue
+                  Committed but not spent
                 </p>
               </div>
             </div>
@@ -1982,7 +2026,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
                   : "⚠️ Action needed: improve cash flow, reduce dependency, and enhance data tracking."}
               </p>
             </div>
-
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-5 border border-blue-200">
               <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 text-blue-900">
                 Strategic Recommendations
@@ -2036,6 +2079,16 @@ if (isNaN(amountNum) || amountNum <= 0) {
                     </span>
                   </li>
                 )}
+                {onHoldRatio > 20 && (
+                  <li className="flex items-start gap-1 sm:gap-2">
+                    <Lock className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>On Hold Cash Review:</strong> Over 20% of revenue
+                      is committed but not spent. Release trapped cash by
+                      finalizing or canceling pending commitments.
+                    </span>
+                  </li>
+                )}
                 {hasSufficientHistory && customerAnalysis.some(c => c.clv !== null) && (
                   <li className="flex items-start gap-1 sm:gap-2">
                     <Users className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
@@ -2047,7 +2100,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
               </ul>
             </div>
 
-            {/* Rest of health tab unchanged... */}
             {cashFlowGaps.length > 0 &&
               cashFlowGaps.filter((g) => g.status === "Delayed").length > 0 && (
                 <div className="bg-red-50 border-l-4 border-red-400 p-3 sm:p-4 rounded-r-lg mb-4 sm:mb-6">
@@ -2239,7 +2291,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
 
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
               <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
-                30-Day Cash Flow Forecast (incl. Recurring)
+                30-Day Cash Flow Forecast (incl. Recurring & On Hold)
               </h3>
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={projectedCash}>
@@ -2344,17 +2396,17 @@ if (isNaN(amountNum) || amountNum <= 0) {
                 <h3 className="text-lg sm:text-2xl font-bold mb-1">Loan Health</h3>
                 <p className="text-xs sm:text-sm opacity-90">{loanStatus}</p>
               </div>
-              <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+              <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
                 <div className="flex justify-between items-start mb-1 sm:mb-2">
-                  <HeartPulse className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <Lock className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
                   <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
-                    Health
+                    {onHoldRatio.toFixed(0)}%
                   </span>
                 </div>
                 <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                  {businessHealthIndex}
+                  LKR {formatLKR(totals.onHoldCash)}
                 </h3>
-                <p className="text-xs sm:text-sm opacity-90">Business Health Index</p>
+                <p className="text-xs sm:text-sm opacity-90">On Hold Cash</p>
               </div>
             </div>
 
@@ -2643,6 +2695,8 @@ if (isNaN(amountNum) || amountNum <= 0) {
                                   ? "bg-green-100 text-green-800"
                                   : record.category === "Outflow"
                                   ? "bg-red-100 text-red-800"
+                                  : record.category === "On Hold Cash"
+                                  ? "bg-amber-100 text-amber-800"
                                   : "bg-blue-100 text-blue-800"
                               }`}
                             >
@@ -2722,8 +2776,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
           </>
         )}
 
-        {/* Remaining tabs are already responsive in original; no changes needed beyond what's above */}
-
+        {/* Remaining tabs unchanged except for category handling */}
         {/* Suppliers Tab */}
         {activeTab === "suppliers" && (
           <div className="space-y-4 sm:space-y-6">
@@ -2891,6 +2944,8 @@ if (isNaN(amountNum) || amountNum <= 0) {
                                   ? "bg-blue-100 text-blue-800"
                                   : record.category === "Overhead"
                                   ? "bg-yellow-100 text-yellow-800"
+                                  : record.category === "On Hold Cash"
+                                  ? "bg-amber-100 text-amber-800"
                                   : "bg-gray-100 text-gray-800"
                               }`}
                             >
@@ -3583,6 +3638,8 @@ if (isNaN(amountNum) || amountNum <= 0) {
                             ? " High customer dissatisfaction risk"
                             : r.category === "Logistics"
                             ? " Above-average logistics cost"
+                            : r.category === "On Hold Cash"
+                            ? " High committed cash ratio"
                             : "Low strategic impact"}
                         </span>
                       </li>
@@ -3631,7 +3688,7 @@ if (isNaN(amountNum) || amountNum <= 0) {
                   <Legend />
                 </RadarChart>
               </ResponsiveContainer>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-3 sm:mt-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mt-3 sm:mt-4">
                 {businessValueData.map((item, idx) => (
                   <div key={idx} className="text-center">
                     <p className="text-xs sm:text-sm text-gray-600">{item.metric}</p>
@@ -3858,6 +3915,12 @@ if (isNaN(amountNum) || amountNum <= 0) {
                           fixed expenses managed
                         </span>
                       </li>
+                      <li className="flex items-start gap-1 sm:gap-2">
+                        <Lock className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          <strong>On Hold Cash:</strong> {totals.onHoldCash > 0 ? `LKR ${formatLKR(totals.onHoldCash)}` : "None"} tracked
+                        </span>
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -3936,6 +3999,14 @@ if (isNaN(amountNum) || amountNum <= 0) {
                           <span>
                             Add recurring costs to automate overhead tracking
                             and improve forecasting
+                          </span>
+                        </li>
+                      )}
+                      {totals.onHoldCash === 0 && (
+                        <li className="flex items-start gap-1 sm:gap-2">
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
+                          <span>
+                            Start tracking "On Hold Cash" to monitor committed funds and improve cash flow visibility
                           </span>
                         </li>
                       )}
@@ -4246,7 +4317,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
             </div>
           </div>
         )}
-
         {showLoanModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4284,7 +4354,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
             </div>
           </div>
         )}
-
         {showBudgetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4330,7 +4399,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
             </div>
           </div>
         )}
-
         {showRecurringModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4388,7 +4456,6 @@ if (isNaN(amountNum) || amountNum <= 0) {
             </div>
           </div>
         )}
-
         {showStrategyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-4xl sm:max-w-6xl w-full my-4 sm:my-8 mx-auto">
