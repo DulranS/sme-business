@@ -10,19 +10,15 @@ function normalizePhone(phone) {
   if (!phone) return '';
   let digits = phone.toString().replace(/\D/g, '');
 
-  // Already in 94XXXXXXXXX (11-digit) format
   if (digits.startsWith('94') && digits.length === 11) {
     return digits;
   }
-  // Starts with 0 (local format): 0771234567 → 94771234567
   if (digits.startsWith('0') && digits.length === 10) {
     return '94' + digits.substring(1);
   }
-  // Pure 9-digit mobile: 771234567 → 94771234567
   if (digits.length === 9 && /^[789]/.test(digits)) {
     return '94' + digits;
   }
-  // Fallback: assume last 9 digits are the number
   if (digits.length >= 9) {
     const last9 = digits.slice(-9);
     if (/^[789]/.test(last9)) {
@@ -181,7 +177,7 @@ export default function LeadDashboard() {
         }));
         setLeads(leadsWithScore);
       } catch (err) {
-        setError(err.message);
+        setError(err.message || 'Unknown error');
       } finally {
         setLoading(false);
       }
