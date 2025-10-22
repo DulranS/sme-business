@@ -65,6 +65,7 @@ export default function BookkeepingApp() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [dateFilter, setDateFilter] = useState({ start: "", end: "" });
+  const [categoryFilter, setCategoryFilter] = useState([]);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
     paymentDate: "",
@@ -160,18 +161,29 @@ export default function BookkeepingApp() {
     }
   }, [loadRecords, loadBudgets, loadRecurringCosts]);
 
-  const filteredRecords = useMemo(() => {
-    if (!dateFilter.start && !dateFilter.end) return records;
+const filteredRecords = useMemo(() => {
+  let result = records;
+
+  // Date filter
+  if (dateFilter.start || dateFilter.end) {
     const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
     const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
-    return records.filter(r => {
+    result = result.filter(r => {
       const recordDate = new Date(r.date);
       if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
       if (startDate) return recordDate >= startDate;
       if (endDate) return recordDate <= endDate;
       return true;
     });
-  }, [records, dateFilter]);
+  }
+
+  // Category filter
+  if (categoryFilter.length > 0) {
+    result = result.filter(r => categoryFilter.includes(r.category));
+  }
+
+  return result;
+}, [records, dateFilter, categoryFilter]);
 
   const inventoryCostMap = useMemo(() => {
     const map = new Map();
@@ -1562,7 +1574,41 @@ export default function BookkeepingApp() {
             </div>
           </div>
         </div>
-
+              {/* Category Filter */}
+<div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
+  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+    <div className="flex flex-wrap gap-1 sm:gap-2">
+      {userSelectableCategories.map((cat) => (
+        <button
+          key={cat}
+          onClick={() => {
+            setCategoryFilter(prev =>
+              prev.includes(cat)
+                ? prev.filter(c => c !== cat)
+                : [...prev, cat]
+            );
+          }}
+          className={`px-2 py-1 text-xs sm:text-sm rounded-full border ${
+            categoryFilter.includes(cat)
+              ? "bg-blue-100 border-blue-500 text-blue-700 font-medium"
+              : "bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          {categoryLabels[cat] || cat}
+        </button>
+      ))}
+    </div>
+    {(categoryFilter.length > 0) && (
+      <button
+        onClick={() => setCategoryFilter([])}
+        className="ml-auto px-3 py-1 text-xs sm:text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+      >
+        Clear Filters
+      </button>
+    )}
+  </div>
+</div>
         {/* All Tabs Rendered Below - No Changes Needed */}
         {activeTab === "recurring" && (
           <div className="space-y-4 sm:space-y-6">
