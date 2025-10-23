@@ -422,11 +422,12 @@ const [whatsappTemplate, setWhatsappTemplate] = useState(() => {
               />
             </div>
 
-            // {sortedLeads.length > 0 && (
-            //   <div className="text-xs bg-blue-50 p-2.5 rounded text-gray-700 border border-blue-100">
-            //     <strong>Preview:</strong> "{renderMessagePreview(sortedLeads[0], whatsappTemplate, myBusinessName)}"
-            //   </div>
-            // )}
+{/* {sortedLeads.length > 0 && (
+  <div className="text-xs bg-blue-50 p-2.5 rounded text-gray-700 border border-blue-100">
+    <strong>Preview:</strong> "{renderMessagePreview(sortedLeads[0], whatsappTemplate, myBusinessName)}"
+  </div>
+)} */}
+
           </div>
 
           <input
