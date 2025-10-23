@@ -89,10 +89,9 @@ function generateWhatsAppLink(lead, template, myBusinessName) {
   const normalized = normalizePhone(lead.whatsapp_number || lead.phone_raw);
   if (!normalized || normalized.length !== 11 || !normalized.startsWith('94')) return '';
 
-  // Since no contact_name, use business_name as fallback
-  let message = String(template)
-    .replace(/{{business_name}}/g, lead.business_name || 'your business')
-    .replace(/{{my_business_name}}/g, myBusinessName || 'Your Company');
+let message = String(template)
+  .replace(/{business_name}/g, lead.business_name || 'your business')
+  .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
 
   const encodedMessage = encodeURIComponent(message.trim());
   return `https://wa.me/${normalized}?text=${encodedMessage}`;
@@ -100,9 +99,9 @@ function generateWhatsAppLink(lead, template, myBusinessName) {
 
 function renderMessagePreview(lead, template, myBusinessName) {
   if (typeof template !== 'string') template = '';
-  return String(template)
-    .replace(/{{business_name}}/g, lead.business_name || 'your business')
-    .replace(/{{my_business_name}}/g, myBusinessName || 'Your Company');
+return String(template)
+  .replace(/{business_name}/g, lead.business_name || 'your business')
+  .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
 }
 
 // ==============================
@@ -132,15 +131,15 @@ export default function LeadDashboard() {
     return 'Your Company';
   });
 
-  const [whatsappTemplate, setWhatsappTemplate] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return (
-        localStorage.getItem('whatsappTemplate') ||
-        'Hi, I’m reaching out from {{my_business_name}} regarding {{business_name}}. Are you open to a quick chat about how we can help?'
-      );
-    }
-    return 'Hi, I’m reaching out from {{my_business_name}} regarding {{business_name}}. Are you open to a quick chat about how we can help?';
-  });
+const [whatsappTemplate, setWhatsappTemplate] = useState(() => {
+  if (typeof window !== 'undefined') {
+    return (
+      localStorage.getItem('whatsappTemplate') ||
+      'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat about how we can help?'
+    );
+  }
+  return 'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat about how we can help?';
+});
 
   // === Persist settings ===
   useEffect(() => {
@@ -151,7 +150,7 @@ export default function LeadDashboard() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('whatsappTemplate', whatsappTemplate);
+      localStorage.setItem('whatsappTemplate', template.replace(/{{/g, '__OB__').replace(/}}/g, '__CB__'));
     }
   }, [whatsappTemplate]);
 
@@ -411,9 +410,9 @@ export default function LeadDashboard() {
             <div>
               <label className="text-xs text-gray-600 block mb-1">
                 WhatsApp Template
-                <span className="ml-2 text-gray-500 text-[10px]">
-                  Use: {{business_name}}, {{my_business_name}}
-                </span>
+<span className="ml-2 text-gray-500 text-[10px]">
+  Use: {'{business_name}'}, {'{my_business_name}'}
+</span>
               </label>
               <textarea
                 value={whatsappTemplate}
@@ -423,11 +422,11 @@ export default function LeadDashboard() {
               />
             </div>
 
-            {sortedLeads.length > 0 && (
-              <div className="text-xs bg-blue-50 p-2.5 rounded text-gray-700 border border-blue-100">
-                <strong>Preview:</strong> "{renderMessagePreview(sortedLeads[0], whatsappTemplate, myBusinessName)}"
-              </div>
-            )}
+            // {sortedLeads.length > 0 && (
+            //   <div className="text-xs bg-blue-50 p-2.5 rounded text-gray-700 border border-blue-100">
+            //     <strong>Preview:</strong> "{renderMessagePreview(sortedLeads[0], whatsappTemplate, myBusinessName)}"
+            //   </div>
+            // )}
           </div>
 
           <input
