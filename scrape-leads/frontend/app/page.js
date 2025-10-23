@@ -148,11 +148,11 @@ const [whatsappTemplate, setWhatsappTemplate] = useState(() => {
     }
   }, [myBusinessName]);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('whatsappTemplate', template.replace(/{{/g, '__OB__').replace(/}}/g, '__CB__'));
-    }
-  }, [whatsappTemplate]);
+useEffect(() => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('whatsappTemplate', whatsappTemplate);
+  }
+}, [whatsappTemplate]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const showToast = useCallback((msg) => {
