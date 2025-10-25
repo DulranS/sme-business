@@ -9,24 +9,63 @@ from googleapiclient.discovery import build
 from email.mime.text import MIMEText
 import base64
 
-# === CONFIG (USE ENV VARS) ===
-HUNTER_API_KEY = os.getenv("HUNTER_API_KEY")  # 50 free/mo
-GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")  # Free 100/day
-GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
-SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+# === CONFIG (HARDCODED FOR TESTING ONLY) ===
+APOLLO_API_KEY = "xJt-EnnoiYBbX9LvCG-6u"  # ⚠️ From apollo.io (likely inactive in 2025)
+HUNTER_API_KEY = "b7365d0ed1796ba7c82e51363db7c29353dcb5c7"
+GOOGLE_SHEET_ID = "Y1HhNMNiQdeOtbUeog1Q2JczCrP4-58Zi0SASqdW7yJRw"
+GOOGLE_SEARCH_API_KEY = "AIzaSyAMFaeJPb0XGiUh4OnJMVl7jce87aVvWrA"
+GOOGLE_SEARCH_ENGINE_ID = "53e151b118e714d88"
 
-if not all([HUNTER_API_KEY, GOOGLE_SEARCH_API_KEY, GOOGLE_SEARCH_ENGINE_ID, SHEET_ID]):
-    raise ValueError("❌ Missing env vars. Set: HUNTER_API_KEY, GOOGLE_SEARCH_API_KEY, GOOGLE_SEARCH_ENGINE_ID, GOOGLE_SHEET_ID")
+# Fallback: Use Apollo if key works, else use Hunter + Google
+USE_APOLLO = True  # Set to False if Apollo fails
 
 GMAIL_SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/spreadsheets'
 ]
 
-DAILY_EMAIL_LIMIT = 30  # Stay safe
-DELAY = 180  # 3 mins between emails
+DAILY_EMAIL_LIMIT = 30
+DELAY = 180  # 3 minutes
 
-# === 1. FIND COMPANY WEBSITE VIA GOOGLE ===
+# === 1. FIND LEADS VIA APOLLO (IF WORKING) ===
+def find_leads_via_apollo():
+    url = "https://api.apollo.io/v1/mixed_people/search"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Api-Key": APOLLO_API_KEY
+    }
+    data = {
+        "page": 1,
+        "per_page": 20,
+        "q_organization_industry": "Software",
+        "q_title": "Head of Marketing",
+        "person_locations": ["United States"],
+        "organization_num_employees_min": 50,
+        "organization_num_employees_max": 200,
+        "contact_email_status": ["verified"]
+    }
+    try:
+        response = requests.post(url, json=data, headers=headers, timeout=10)
+        if response.status_code == 200:
+            leads = []
+            for person in response.json().get("people", []):
+                if person.get("email"):
+                    leads.append({
+                        "name": person.get("name"),
+                        "title": person.get("title"),
+                        "company": person.get("organization", {}).get("name"),
+                        "email": person.get("email"),
+                        "linkedin_url": person.get("linkedin_url")
+                    })
+            return leads[:20]
+        else:
+            print(f"❌ Apollo returned {response.status_code}. Trying fallback...")
+            return None
+    except Exception as e:
+        print(f"❌ Apollo failed: {e}")
+        return None
+
+# === 2. FALLBACK: HUNTER + GOOGLE SEARCH ===
 def find_company_website(company_name):
     query = f"{company_name} official site"
     url = "https://www.googleapis.com/customsearch/v1"
@@ -42,76 +81,68 @@ def find_company_website(company_name):
             items = res.json().get("items", [])
             if items:
                 return items[0]["link"]
-    except Exception as e:
-        print(f"⚠️ Google Search error: {e}")
+    except:
+        pass
     return None
 
-# === 2. FIND EMAIL VIA HUNTER.IO ===
-def find_email_from_company(company_name, domain=None):
-    if not domain:
-        website = find_company_website(company_name)
+def find_leads_via_hunter():
+    TARGET_COMPANIES = [
+        "Notion", "Linear", "Figma", "Vercel", "Airtable",
+        "Webflow", "Coda", "ClickUp", "Miro", "Zapier"
+    ]
+    leads = []
+    for company in TARGET_COMPANIES[:10]:
+        website = find_company_website(company)
         if not website:
-            return None
-        # Extract domain (simple)
+            continue
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         if domain.startswith("www."):
             domain = domain[4:]
 
-    url = "https://api.hunter.io/v2/domain-search"
-    params = {
-        "domain": domain,
-        "api_key": HUNTER_API_KEY,
-        "limit": 1,
-        "seniority": "executive,management",
-        "department": "marketing"
-    }
-    try:
-        res = requests.get(url, params=params, timeout=5)
-        if res.status_code == 200:
-            data = res.json().get("data", {})
-            for email_data in data.get("emails", []):
-                if email_data.get("confidence") in ["high", "medium"]:
-                    first_name = email_data["first_name"] or ""
-                    last_name = email_data["last_name"] or ""
-                    name = f"{first_name} {last_name}".strip()
-                    if name and email_data["value"]:
-                        return {
-                            "name": name,
-                            "email": email_data["value"],
-                            "company": company_name,
-                            "title": email_data.get("position", "Marketing Leader")
-                        }
-    except Exception as e:
-        print(f"⚠️ Hunter.io error: {e}")
-    return None
-
-# === 3. HARD-CODED TARGET COMPANIES (REPLACE WITH YOUR LIST) ===
-TARGET_COMPANIES = [
-    "Notion",
-    "Linear",
-    "Figma",
-    "Vercel",
-    "Airtable",
-    "Webflow",
-    "Coda",
-    "ClickUp",
-    "Miro",
-    "Zapier"
-]
-
-def find_leads():
-    leads = []
-    for company in TARGET_COMPANIES[:10]:  # Max 10 to stay under Hunter limit
-        print(f"🔍 Searching for lead at {company}...")
-        lead = find_email_from_company(company)
-        if lead:
-            leads.append(lead)
-        time.sleep(1)  # Be kind to APIs
+        # Hunter domain search
+        hunter_url = "https://api.hunter.io/v2/domain-search"
+        params = {
+            "domain": domain,
+            "api_key": HUNTER_API_KEY,
+            "limit": 1,
+            "seniority": "executive,management",
+            "department": "marketing"
+        }
+        try:
+            res = requests.get(hunter_url, params=params, timeout=5)
+            if res.status_code == 200:
+                data = res.json().get("data", {})
+                for email_data in data.get("emails", []):
+                    if email_data.get("confidence") in ["high", "medium"]:
+                        name = f"{email_data.get('first_name', '')} {email_data.get('last_name', '')}".strip()
+                        email = email_data.get("value")
+                        if name and email:
+                            leads.append({
+                                "name": name,
+                                "title": email_data.get("position", "Marketing Leader"),
+                                "company": company,
+                                "email": email,
+                                "linkedin_url": None
+                            })
+                            break
+        except:
+            continue
+        time.sleep(1)
     return leads
 
-# === 4. VERIFY EMAIL (Hunter already verifies, so skip extra call) ===
+# === 3. GET LEADS (PREFER APOLLO, FALLBACK TO HUNTER) ===
+def find_leads():
+    if USE_APOLLO:
+        leads = find_leads_via_apollo()
+        if leads is not None:
+            print("✅ Using Apollo.io for leads")
+            return leads
+    print("🔄 Falling back to Hunter.io + Google Search")
+    return find_leads_via_hunter()
+
+# === 4. VERIFY EMAIL (SKIP IF USING HUNTER) ===
 def verify_email(email):
-    return True  # Hunter gives verified emails
+    return True  # Hunter already verifies; Apollo returns verified
 
 # === 5. BUILD MESSAGE ===
 def build_message(name, company, title):
@@ -130,7 +161,7 @@ Best,
 """
     return subject, body
 
-# === 6. GMAIL & SHEETS (SAME AS BEFORE) ===
+# === 6. GMAIL & SHEETS ===
 def get_gmail_service():
     creds = None
     if os.path.exists('token.json'):
@@ -156,7 +187,7 @@ def log_to_sheet(row_data):
     creds = Credentials.from_authorized_user_file('token.json', GMAIL_SCOPES)
     service = build('sheets', 'v4', credentials=creds)
     service.spreadsheets().values().append(
-        spreadsheetId=SHEET_ID,
+        spreadsheetId=GOOGLE_SHEET_ID,
         range='A:H',
         valueInputOption='USER_ENTERED',
         body={'values': [row_data]}
@@ -164,12 +195,12 @@ def log_to_sheet(row_data):
 
 # === MAIN ===
 def main():
-    print("🚀 Starting $0 lead gen + outreach...")
+    print("🚀 Starting outreach with hardcoded keys...")
     leads = find_leads()
     print(f"✅ Found {len(leads)} leads")
 
     if not leads:
-        print("⚠️ No leads found. Check API keys or company list.")
+        print("❌ No leads found. Check API keys or internet.")
         return
 
     gmail_service = get_gmail_service()
@@ -178,9 +209,6 @@ def main():
     for lead in leads:
         if email_count >= DAILY_EMAIL_LIMIT:
             break
-
-        if not verify_email(lead["email"]):
-            continue
 
         subject, body = build_message(lead["name"], lead["company"], lead["title"])
         
@@ -201,16 +229,20 @@ def main():
             
             email_count += 1
             if email_count < DAILY_EMAIL_LIMIT:
-                print(f"⏳ Sleeping {DELAY} sec...")
+                print(f"⏳ Sleeping {DELAY} seconds...")
                 time.sleep(DELAY)
 
         except Exception as e:
-            print(f"❌ Error: {str(e)[:150]}")
-            log_to_sheet([lead["name"], lead["title"], lead["company"], lead["email"], "email", "", "", "Send failed"])
+            error_msg = str(e)[:150]
+            print(f"❌ Failed: {error_msg}")
+            log_to_sheet([
+                lead["name"], lead["title"], lead["company"], lead["email"],
+                "email", "", "", f"Error: {error_msg}"
+            ])
 
         # LinkedIn manual message
-        role = lead["title"].split()[-1].lower()
-        print(f"\n🔗 [LINKEDIN] Send manually:\nHi {lead['name']}, loved {lead['company']}'s work in {role}! Quick idea to help — happy to share if useful.\n")
+        role = lead["title"].split()[-1].lower() if lead["title"] else "your space"
+        print(f"\n🔗 [LINKEDIN] Copy-paste:\nHi {lead['name']}, loved {lead['company']}'s work in {role}! Quick idea to help — happy to share if useful.\n")
 
     print(f"\n🎉 Done! Sent {email_count} emails.")
 
