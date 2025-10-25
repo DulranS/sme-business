@@ -23,16 +23,25 @@ from datetime import datetime
 # ==============================
 LOG_FILE = "lead_pipeline.log"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "lean_business_scraper.py")
 PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "whatsapp_lead_preparer.py")
 
-# Expected output from scraper → input for preparer
-DEFAULT_LEADS_NAME = "b2b_leads.csv"
-# target directory under project root: ./frontend/app/api/leads
+# Use a dedicated data directory for intermediate files
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Intermediate file (scraper output → preparer input)
+LEADS_FILE = os.path.join(DATA_DIR, "b2b_leads.csv")
+
+# Final output from preparer
+WHATSAPP_OUTPUT = os.path.join(DATA_DIR, "output_business_leads.csv")
+
+# Frontend target (only for final, clean leads)
 FRONTEND_LEADS_DIR = os.path.normpath(
     os.path.join(SCRIPT_DIR, "..", "frontend", "app", "api", "leads")
 )
-TARGET_LEADS_PATH = os.path.join(FRONTEND_LEADS_DIR, DEFAULT_LEADS_NAME)
+FRONTEND_FINAL_PATH = os.path.join(FRONTEND_LEADS_DIR, "whatsapp_leads.csv")
 
 # Setup logging
 logging.basicConfig(
@@ -48,105 +57,102 @@ logger = logging.getLogger("LeadPipeline")
 # ==============================
 # 🚀 EXECUTION FUNCTIONS
 # ==============================
-def run_script(script_name):
+def run_script(script_path, env_vars=None):
     """Run a Python script as a subprocess with error capture."""
-    logger.info(f"▶️ Launching: {script_name}")
+    logger.info(f"▶️ Launching: {os.path.basename(script_path)}")
     try:
+        env = os.environ.copy()
+        if env_vars:
+            env.update(env_vars)
         result = subprocess.run(
-            [sys.executable, script_name],
+            [sys.executable, script_path],
             capture_output=True,
             text=True,
-            cwd=os.getcwd(),
+            cwd=SCRIPT_DIR,
+            env=env,
             timeout=300  # 5 minutes
         )
         if result.returncode != 0:
-            logger.error(f"❌ {script_name} FAILED with exit code {result.returncode}")
+            logger.error(f"❌ FAILED with exit code {result.returncode}")
             logger.error(f"STDERR: {result.stderr}")
             return False
         else:
-            logger.info(f"✅ {script_name} completed successfully")
+            logger.info(f"✅ Completed successfully")
             return True
     except Exception as e:
-        logger.exception(f"💥 Failed to execute {script_name}: {e}")
+        logger.exception(f"💥 Execution failed: {e}")
         return False
 
-
 def main():
-    os.chdir(SCRIPT_DIR)
-    logger.info(f"Working directory set to: {SCRIPT_DIR}")
     logger.info("=" * 60)
     logger.info("🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)")
     logger.info("=" * 60)
 
     # === PHASE 1: Scrape B2B Leads ===
     if not os.path.exists(SCRAPER_SCRIPT):
-        logger.error(f"❌ Scraper script not found: {SCRAPER_SCRIPT}")
+        logger.error(f"❌ Scraper not found: {SCRAPER_SCRIPT}")
         return False
 
-    success = run_script(SCRAPER_SCRIPT)
+    # Tell scraper where to write
+    success = run_script(SCRAPER_SCRIPT, env_vars={"LEADS_FILE": LEADS_FILE})
     if not success:
         logger.critical("🛑 Pipeline halted: Scraper failed.")
         return False
 
-    # Ensure frontend target directory exists
-    try:
-        os.makedirs(FRONTEND_LEADS_DIR, exist_ok=True)
-    except Exception:
-        logger.exception(f"💥 Failed to create leads directory: {FRONTEND_LEADS_DIR}")
+    # Verify scraper output
+    if not os.path.exists(LEADS_FILE):
+        logger.error(f"❌ Scraper did not produce expected file: {LEADS_FILE}")
+        return False
 
-    # Try to locate the scraper output in common locations and copy to frontend folder
-    possible_sources = [
-        os.path.join(os.getcwd(), DEFAULT_LEADS_NAME),
-        os.path.join(SCRIPT_DIR, DEFAULT_LEADS_NAME),
-        os.path.join(os.path.dirname(SCRAPER_SCRIPT), DEFAULT_LEADS_NAME),
-    ]
-    source_path = next((p for p in possible_sources if os.path.exists(p)), None)
-
-    if source_path:
-        try:
-            shutil.copy2(source_path, TARGET_LEADS_PATH)
-            logger.info(f"📥 Copied leads file to frontend API dir: {TARGET_LEADS_PATH}")
-        except Exception:
-            logger.exception(f"💥 Failed to copy leads file from {source_path} to {TARGET_LEADS_PATH}")
+    file_size = os.path.getsize(LEADS_FILE)
+    if file_size == 0:
+        logger.warning("EmptyEntries: Leads file is empty.")
     else:
-        logger.warning(f"⚠️ Could not find '{DEFAULT_LEADS_NAME}' after scraping. Expected one of: {possible_sources}")
-        logger.info("   → Proceeding to preparer anyway (it will handle missing file gracefully)")
-
-    # Verify leads file was created in the frontend target
-    if not os.path.exists(TARGET_LEADS_PATH):
-        logger.warning(f"⚠️ Scraper did not produce '{TARGET_LEADS_PATH}'")
-    else:
-        file_size = os.path.getsize(TARGET_LEADS_PATH)
-        if file_size == 0:
-            logger.warning("EmptyEntries: Leads file is empty.")
-        else:
-            with open(TARGET_LEADS_PATH, "r", encoding="utf-8") as f:
-                line_count = sum(1 for _ in f)
-            logger.info(f"📥 Scraper output: {line_count - 1} leads (excluding header)")
+        with open(LEADS_FILE, "r", encoding="utf-8") as f:
+            line_count = sum(1 for _ in f)
+        logger.info(f"📥 Scraper output: {line_count - 1} leads (excluding header)")
 
     # === PHASE 2: Prepare for WhatsApp ===
     if not os.path.exists(PREPARER_SCRIPT):
-        logger.error(f"❌ Preparer script not found: {PREPARER_SCRIPT}")
+        logger.error(f"❌ Preparer not found: {PREPARER_SCRIPT}")
         return False
 
-    success = run_script(PREPARER_SCRIPT)
+    # Tell preparer where to read from and write to
+    success = run_script(
+        PREPARER_SCRIPT,
+        env_vars={
+            "INPUT_FILE": LEADS_FILE,
+            "OUTPUT_FILE": WHATSAPP_OUTPUT,
+            "INVALID_FILE": os.path.join(DATA_DIR, "invalid_or_landline_leads.csv")
+        }
+    )
     if not success:
         logger.critical("🛑 Pipeline halted: WhatsApp preparer failed.")
         return False
 
-    # Final check
-    whatsapp_file = "output_business_leads.csv"
-    if os.path.exists(whatsapp_file):
-        with open(whatsapp_file, "r", encoding="utf-8") as f:
-            lines = sum(1 for _ in f)
-        if lines > 1:
-            logger.info(f"🎉 PIPELINE SUCCESS! WhatsApp-ready leads: {lines - 1}")
-        else:
-            logger.warning("📭 WhatsApp file exists but contains no leads.")
-    else:
-        logger.warning("⚠️ WhatsApp output file not found — check preparer logs.")
+    # Verify final output
+    if not os.path.exists(WHATSAPP_OUTPUT):
+        logger.error("❌ WhatsApp preparer did not produce output file.")
+        return False
 
-    logger.info("🔚 Lead pipeline completed.")
+    with open(WHATSAPP_OUTPUT, "r", encoding="utf-8") as f:
+        lines = sum(1 for _ in f)
+    lead_count = max(0, lines - 1)  # minus header
+
+    if lead_count == 0:
+        logger.warning("📭 WhatsApp output exists but contains no leads.")
+    else:
+        logger.info(f"🎉 SUCCESS: {lead_count} WhatsApp-ready leads generated!")
+
+    # === PHASE 3: Publish to Frontend (Optional) ===
+    try:
+        os.makedirs(FRONTEND_LEADS_DIR, exist_ok=True)
+        shutil.copy2(WHATSAPP_OUTPUT, FRONTEND_FINAL_PATH)
+        logger.info(f"📤 Published clean leads to frontend: {FRONTEND_FINAL_PATH}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to publish to frontend (non-fatal): {e}")
+
+    logger.info("🔚 Lead pipeline completed successfully.")
     return True
 
 # ==============================

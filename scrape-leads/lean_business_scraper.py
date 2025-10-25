@@ -35,24 +35,25 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise EnvironmentError("❌ Missing GOOGLE_API_KEY in .env")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Accept a human-friendly location name (env or runtime input).
+
+# Accept location via env only (no interactive input for headless runs)
 LOCATION_NAME = os.getenv("LOCATION_NAME", "").strip()
 
-# Default fallback center (Colombo) used only if geocoding fails.
-DEFAULT_CENTER = (6.86026115, 79.912990)  # Colombo city center (lat, lng)
+# Default fallback center (Colombo city center)
+DEFAULT_CENTER = (6.86026115, 79.912990)  # Near Colombo Fort
 
 SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km radius
 
 # I/O
-DEFAULT_LEADS_NAME = "b2b_leads.csv"  # matches scraper output
+DEFAULT_LEADS_NAME = "b2b_leads.csv"
 LEADS_FILE = os.getenv("LEADS_FILE", DEFAULT_LEADS_NAME)
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
 LAST_RUN_FILE = "last_run.txt"
 
-# 🔒 BUDGET & SAFETY GUARDRAILS (Optimized for 4x/month under $4 total)
-MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "4"))        # ↓ from 5
-MAX_RESULTS_PER_QUERY = int(os.getenv("MAX_RESULTS_PER_QUERY", "8"))  # ↓ from 10
-MAX_TOTAL_BUSINESSES = int(os.getenv("MAX_TOTAL_BUSINESSES", "30"))   # ↓ from 50
+# 🔒 BUDGET & SAFETY GUARDRAILS
+MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "4"))
+MAX_RESULTS_PER_QUERY = int(os.getenv("MAX_RESULTS_PER_QUERY", "8"))
+MAX_TOTAL_BUSINESSES = int(os.getenv("MAX_TOTAL_BUSINESSES", "30"))
 
 # Quality Filters
 MIN_RATING = 3.5
@@ -72,14 +73,12 @@ logger = logging.getLogger("LeadEngine")
 # ==============================
 # 🎯 BUSINESS LOGIC & SCORING
 # ==============================
-# High-signal B2B keywords (Colombo-relevant)
 B2B_KEYWORDS = [
     "marketing", "advertising", "consulting", "law", "legal", "accounting",
     "software", "it", "technology", "real estate", "insurance", "finance",
     "architecture", "engineering", "digital", "agency", "solutions", "services"
 ]
 
-# Prioritized, Colombo-specific search terms (B2B intent)
 SEARCH_TERMS = [
     "marketing agency Colombo",
     "IT consulting Colombo",
@@ -91,11 +90,12 @@ SEARCH_TERMS = [
 ]
 
 def is_professional_email(email):
-    """Reject disposable/temp emails; allow personal only as last resort."""
+    """Allow info@ but reject disposable/temp/admin emails."""
     if not email:
         return False
     email = email.lower()
-    if any(bad in email for bad in ["noreply", "example", "test", "admin", "info@"]):
+    # Allow info@ — common for SMEs in Sri Lanka
+    if any(bad in email for bad in ["noreply", "example", "test", "admin"]):
         return False
     domain = email.split("@")[-1]
     disposable_domains = {
@@ -132,11 +132,10 @@ def extract_email_from_website(base_url):
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "B2BLeadBot/1.0 (ethical scraping; contact: yourname@yourcompany.com)"
+        "User-Agent": "B2BLeadBot/1.0 (ethical scraping; contact: leads@yourcompany.lk)"
     })
 
-    # Common contact paths (prioritize English & local)
-    paths = ["", "/contact", "/about", "/en/contact", "/contact-us", "/reach-us", "/team"]
+    paths = ["", "/contact", "/about", "/en/contact", "/contact-us", "/reach-us", "/team", "/contactus", "/en/contact-us"]
     for path in paths:
         try:
             url = urljoin(base_url, path)
@@ -144,7 +143,6 @@ def extract_email_from_website(base_url):
             if response.status_code != 200:
                 continue
 
-            # Extract emails with basic context filtering
             emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", response.text)
             for email in emails:
                 email = email.lower().strip()
@@ -156,7 +154,6 @@ def extract_email_from_website(base_url):
     return None
 
 def categorize_business(name, types):
-    """Categorize as B2B if keyword matches; else OTHER."""
     text = f"{name} {' '.join(types)}".lower()
     for kw in B2B_KEYWORDS:
         if kw in text:
@@ -164,7 +161,6 @@ def categorize_business(name, types):
     return "OTHER"
 
 def score_and_tag_lead(rating, reviews, has_phone, has_email, has_website, category):
-    """Return (score, quality_label, tags)."""
     score = 0
     tags = []
 
@@ -177,7 +173,7 @@ def score_and_tag_lead(rating, reviews, has_phone, has_email, has_website, categ
     elif reviews >= 30: score += 15
     elif reviews >= 10: score += 10
 
-    # Contact Info (Email is gold)
+    # Contact Info
     if has_email: 
         score += 30
         tags.append("Email Verified")
@@ -220,12 +216,13 @@ class RateLimiter:
         self.calls.append(time.time())
 
 # ==============================
-# 💰 COST ESTIMATION
+# 💰 COST ESTIMATION (with geocoding)
 # ==============================
-def estimate_cost(search_calls, details_calls):
+def estimate_cost(search_calls, details_calls, geocode_calls=0):
     search_cost = (search_calls * 32) / 1000
     details_cost = (details_calls * 17) / 1000
-    return round(search_cost + details_cost, 2)
+    geocode_cost = (geocode_calls * 5) / 1000
+    return round(search_cost + details_cost + geocode_cost, 2)
 
 # ==============================
 # 🕵️ SCRAPING & PROCESSING
@@ -249,7 +246,8 @@ def scrape_businesses(location, location_label="Location"):
             results = gmaps.places(
                 query=query,
                 location=location,
-                radius=SEARCH_RADIUS
+                radius=SEARCH_RADIUS,
+                timeout=10
             ).get("results", [])
             api_calls += 1
 
@@ -278,7 +276,6 @@ def scrape_businesses(location, location_label="Location"):
 def enrich_and_filter_leads(places):
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
     leads = []
-    seen_contacts = set()  # Dedup by (phone, email)
     rate_limiter = RateLimiter()
     api_calls = 0
 
@@ -292,7 +289,8 @@ def enrich_and_filter_leads(places):
         try:
             details = gmaps.place(
                 place_id=place["place_id"],
-                fields=["formatted_phone_number", "website", "formatted_address", "name"]
+                fields=["formatted_phone_number", "website", "formatted_address", "name"],
+                timeout=10
             ).get("result", {})
             api_calls += 1
 
@@ -304,13 +302,7 @@ def enrich_and_filter_leads(places):
             if not phone and not email:
                 continue
 
-            # Deduplication key
-            contact_key = (phone or "", email or "")
-            if contact_key in seen_contacts:
-                continue
-            seen_contacts.add(contact_key)
-
-            # Categorize & Score
+            # Categorize & Score (NO contact-based dedup — rely on place_id uniqueness)
             category = categorize_business(place.get("name", ""), place.get("types", []))
             rating = place.get("rating", 0)
             reviews = place.get("user_ratings_total", 0)
@@ -364,6 +356,7 @@ def save_leads(leads):
     warm = sum(1 for l in leads if "WARM" in l["lead_quality"])
     cold = len(leads) - hot - warm
 
+    # Append human-readable summary (not part of CSV data)
     with open(LEADS_FILE, "a", encoding="utf-8") as f:
         f.write("\n")
         f.write(f"SUMMARY: HOT={hot}, WARM={warm}, COLD={cold} | Total Leads={len(leads)}\n")
@@ -388,19 +381,19 @@ def main():
             return
 
     start_time = time.time()
+    geocode_calls = 0
 
     try:
-        # Resolve location
+        # Resolve location (headless — no input())
         gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
-        location_label = "Colombo (default)"
-        location_query = LOCATION_NAME or input(
-            "Enter location (e.g., 'Colombo, Sri Lanka') [Default: Colombo]: "
-        ).strip()
-
+        location_query = LOCATION_NAME or "Colombo, Sri Lanka"
         location = DEFAULT_CENTER
+        location_label = "Colombo (default)"
+
         if location_query:
             try:
-                geocode_results = gmaps.geocode(location_query)
+                geocode_results = gmaps.geocode(location_query, timeout=10)
+                geocode_calls += 1
                 if geocode_results:
                     geom = geocode_results[0]["geometry"]["location"]
                     location = (geom["lat"], geom["lng"])
@@ -408,7 +401,6 @@ def main():
                     logger.info(f"🔎 Resolved '{location_query}' → {location_label} @ {location}")
                 else:
                     logger.warning(f"⚠️ Geocode failed for '{location_query}'. Using default.")
-                time.sleep(0.2)
             except Exception as e:
                 logger.warning(f"⚠️ Geocoding error: {e}. Using default center.")
 
@@ -426,7 +418,7 @@ def main():
 
         # Phase 3: Save & Report
         save_leads(leads)
-        total_cost = estimate_cost(search_calls, details_calls)
+        total_cost = estimate_cost(search_calls, details_calls, geocode_calls)
         duration = (time.time() - start_time) / 60
 
         # Final Summary
