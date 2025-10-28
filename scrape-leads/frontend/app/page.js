@@ -47,7 +47,7 @@ function useDebounce(value, delay) {
 }
 
 // ==============================
-// 📊 LEAD SCORING (using ONLY your columns)
+// 📊 LEAD SCORING
 // ==============================
 function calculateLeadScore(lead) {
   let score = 0;
@@ -63,7 +63,6 @@ function calculateLeadScore(lead) {
   if (rating >= 4.0) score += 15;
   if (reviews >= 20) score += 10;
 
-  // No tags → remove tag-based scoring
   return Math.min(100, Math.max(0, score));
 }
 
@@ -82,16 +81,16 @@ function getNextBestAction(lead) {
 }
 
 // ==============================
-// 💬 WHATSAPP LINK (only {{business_name}}, {{my_business_name}})
+// 💬 WHATSAPP LINK
 // ==============================
 function generateWhatsAppLink(lead, template, myBusinessName) {
   if (typeof template !== 'string') template = '';
   const normalized = normalizePhone(lead.whatsapp_number || lead.phone_raw);
   if (!normalized || normalized.length !== 11 || !normalized.startsWith('94')) return '';
 
-let message = String(template)
-  .replace(/{business_name}/g, lead.business_name || 'your business')
-  .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
+  let message = String(template)
+    .replace(/{business_name}/g, lead.business_name || 'your business')
+    .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
 
   const encodedMessage = encodeURIComponent(message.trim());
   return `https://wa.me/${normalized}?text=${encodedMessage}`;
@@ -99,16 +98,16 @@ let message = String(template)
 
 function renderMessagePreview(lead, template, myBusinessName) {
   if (typeof template !== 'string') template = '';
-return String(template)
-  .replace(/{business_name}/g, lead.business_name || 'your business')
-  .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
+  return String(template)
+    .replace(/{business_name}/g, lead.business_name || 'your business')
+    .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
 }
 
 // ==============================
 // 🧩 MAIN COMPONENT
 // ==============================
 export default function LeadDashboard() {
-  // === State ===
+  // === Core State ===
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -124,6 +123,7 @@ export default function LeadDashboard() {
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
 
+  // === Personalization ===
   const [myBusinessName, setMyBusinessName] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('myBusinessName') || 'Your Company';
@@ -131,28 +131,55 @@ export default function LeadDashboard() {
     return 'Your Company';
   });
 
-const [whatsappTemplate, setWhatsappTemplate] = useState(() => {
-  if (typeof window !== 'undefined') {
-    return (
-      localStorage.getItem('whatsappTemplate') ||
-      'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat about how we can help?'
-    );
-  }
-  return 'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat about how we can help?';
-});
+  const [whatsappTemplate, setWhatsappTemplate] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return (
+        localStorage.getItem('whatsappTemplate') ||
+        'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat about how we can help?'
+      );
+    }
+    return 'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat about how we can help?';
+  });
 
-  // === Persist settings ===
+  // === Strategic Business Features ===
+  const [leadNotes, setLeadNotes] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return JSON.parse(localStorage.getItem('leadNotes') || '{}');
+    }
+    return {};
+  });
+
+  const [lastContacted, setLastContacted] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return JSON.parse(localStorage.getItem('lastContacted') || '{}');
+    }
+    return {};
+  });
+
+  // === Persist Settings ===
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('myBusinessName', myBusinessName);
     }
   }, [myBusinessName]);
 
-useEffect(() => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('whatsappTemplate', whatsappTemplate);
-  }
-}, [whatsappTemplate]);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('whatsappTemplate', whatsappTemplate);
+    }
+  }, [whatsappTemplate]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('leadNotes', JSON.stringify(leadNotes));
+    }
+  }, [leadNotes]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lastContacted', JSON.stringify(lastContacted));
+    }
+  }, [lastContacted]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const showToast = useCallback((msg) => {
@@ -359,14 +386,14 @@ useEffect(() => {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="text-center max-w-md">
-          <p className="text-black mb-2 text-lg">⚠️ Failed to load leads</p>
-          <p className="text-gray-600 text-sm mb-4">{error}</p>
-          <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded-lg">
-            Retry
-          </button>
-        </div>
+      <div className="text-center max-w-md">
+        <p className="text-black mb-2 text-lg">⚠️ Failed to load leads</p>
+        <p className="text-gray-600 text-sm mb-4">{error}</p>
+        <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded-lg">
+          Retry
+        </button>
       </div>
+    </div>
     );
   }
 
@@ -410,9 +437,9 @@ useEffect(() => {
             <div>
               <label className="text-xs text-gray-600 block mb-1">
                 WhatsApp Template
-<span className="ml-2 text-gray-500 text-[10px]">
-  Use: {'{business_name}'}, {'{my_business_name}'}
-</span>
+                <span className="ml-2 text-gray-500 text-[10px]">
+                  Use: {'{business_name}'}, {'{my_business_name}'}
+                </span>
               </label>
               <textarea
                 value={whatsappTemplate}
@@ -421,13 +448,6 @@ useEffect(() => {
                 className="w-full p-2.5 text-sm border border-gray-300 rounded bg-gray-50 text-black resize-none"
               />
             </div>
-
-{/* {sortedLeads.length > 0 && (
-  <div className="text-xs bg-blue-50 p-2.5 rounded text-gray-700 border border-blue-100">
-    <strong>Preview:</strong> "{renderMessagePreview(sortedLeads[0], whatsappTemplate, myBusinessName)}"
-  </div>
-)} */}
-
           </div>
 
           <input
@@ -526,6 +546,13 @@ useEffect(() => {
               const waLink = generateWhatsAppLink(lead, whatsappTemplate, myBusinessName);
               const isHighValue = lead._score >= 75;
 
+              // Build score tooltip
+              const scoreBreakdown = [
+                `Quality: ${lead.lead_quality || 'N/A'}`,
+                `Contact: ${lead.email && lead.phone_raw ? 'Email + Phone' : lead.email ? 'Email' : lead.phone_raw ? 'Phone' : 'None'}`,
+                `Rating: ${lead.rating || 'N/A'} (${lead.review_count || 0} reviews)`
+              ].join('\n');
+
               return (
                 <div
                   key={lead.place_id || i}
@@ -536,7 +563,20 @@ useEffect(() => {
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <h2 className="font-bold text-black text-lg">{lead.business_name || 'Unnamed Business'}</h2>
-                      {lead.address && <p className="text-black text-sm opacity-90 mt-1 truncate">{lead.address}</p>}
+                      
+                      {/* 📍 Clickable Address → Google Maps */}
+                      {lead.address && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.address)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline text-sm opacity-90 mt-1 block truncate"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          📍 {lead.address}
+                        </a>
+                      )}
+
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {lead.lead_quality && (
                           <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
@@ -558,7 +598,11 @@ useEffect(() => {
                             💎 High-Value
                           </span>
                         )}
-                        <span className="px-2.5 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">
+                        {/* 💡 Score with tooltip */}
+                        <span
+                          title={`Lead Score Breakdown:\n${scoreBreakdown}`}
+                          className="px-2.5 py-1 text-xs bg-purple-100 text-purple-800 rounded-full cursor-help"
+                        >
                           {lead._score}/100
                         </span>
                       </div>
@@ -616,6 +660,42 @@ useEffect(() => {
                       </a>
                     </div>
                   )}
+
+                  {/* ====== Strategic Business Section ====== */}
+                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                    {/* Notes */}
+                    <div>
+                      <label className="text-xs text-gray-600 block mb-1">📝 Internal Notes</label>
+                      <textarea
+                        value={leadNotes[lead.place_id] || ''}
+                        onChange={(e) => setLeadNotes(prev => ({ ...prev, [lead.place_id]: e.target.value }))}
+                        placeholder="Add notes for your team..."
+                        className="w-full text-sm p-2 border border-gray-300 rounded bg-gray-50 text-black"
+                        rows={2}
+                      />
+                    </div>
+
+                    {/* Last Contacted + Mark Button */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-600">📅 Last contacted:</span>
+                      <span className="text-sm font-medium" style={{color:"black"}}>
+                        {lastContacted[lead.place_id] 
+                          ? new Date(lastContacted[lead.place_id]).toLocaleDateString() 
+                          : 'Never'}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const today = new Date().toISOString().split('T')[0];
+                          setLastContacted(prev => ({ ...prev, [lead.place_id]: today }));
+                          showToast('✅ Marked as contacted today');
+                        }}
+                        className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-1 rounded whitespace-nowrap"
+                      >
+                        Mark Today
+                      </button>
+                    </div>
+                  </div>
                 </div>
               );
             })}
