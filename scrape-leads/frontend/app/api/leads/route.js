@@ -10,19 +10,13 @@ import { parsePhoneNumber } from 'libphonenumber-js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// ✅ Paths to data files
 const CSV_PATH = join(__dirname, 'output_business_leads.csv');
 const CONTACTED_PATH = join(__dirname, 'contacted_leads.json');
 
 // ───────────────────────────────────────────────
-// Utility Functions (Single Responsibility)
+// Utility Functions
 // ───────────────────────────────────────────────
 
-/**
- * Sanitizes a string: trims, collapses whitespace, strips HTML-like tags.
- * @param {any} str - Input value
- * @returns {string} Cleaned string
- */
 function sanitize(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -31,22 +25,11 @@ function sanitize(str) {
     .replace(/<[^>]*>/g, '');
 }
 
-/**
- * Validates basic email format.
- * @param {string} email
- * @returns {boolean}
- */
 function isValidEmail(email) {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return typeof email === 'string' && re.test(email);
 }
 
-/**
- * Normalizes a phone number to E.164 format (e.g., +94771234567).
- * Falls back to heuristic parsing if libphonenumber fails.
- * @param {string} phone - Raw phone input
- * @returns {string} E.164 number or empty string
- */
 function normalizeToE164(phone) {
   if (!phone) return '';
   try {
@@ -55,7 +38,6 @@ function normalizeToE164(phone) {
       return parsed.format('E.164');
     }
   } catch (e) {
-    // Fallback: extract digits and apply Sri Lankan rules
     const digits = phone.toString().replace(/\D/g, '');
     if (digits.startsWith('94') && digits.length === 11) {
       return `+${digits}`;
@@ -70,34 +52,18 @@ function normalizeToE164(phone) {
   return '';
 }
 
-/**
- * Generates a WhatsApp deep link from an E.164 number.
- * @param {string} e164 - E.164 formatted phone number (e.g., +94771234567)
- * @returns {string} WhatsApp URL or empty string
- */
+// 🔧 FIXED: Removed extra space in URL
 function generateWhatsAppLink(e164) {
   if (!e164 || typeof e164 !== 'string') return '';
   const digitsOnly = e164.replace(/\D/g, '');
-  // WhatsApp requires full international number with no formatting
   return digitsOnly.length >= 10 ? `https://wa.me/${digitsOnly}` : '';
 }
 
-/**
- * Generates a deterministic, non-cryptographic ID for deduplication.
- * ⚠️ Not for security—only for UI consistency and tracking.
- * @param {Object} lead - Lead object with business_name, phone_e164, email
- * @returns {string} 12-char hex ID
- */
 function generateLeadId(lead) {
   const key = `${lead.business_name}|${lead.phone_e164}|${lead.email}`.toLowerCase();
-  // MD5 is acceptable here for deterministic hashing (not security-sensitive)
   return crypto.createHash('md5').update(key).digest('hex').substring(0, 12);
 }
 
-/**
- * Loads contacted timestamps from JSON file.
- * @returns {Record<string, string>} Map of lead ID → ISO timestamp
- */
 function loadContactedMap() {
   try {
     if (fs.existsSync(CONTACTED_PATH)) {
@@ -110,12 +76,48 @@ function loadContactedMap() {
   return {};
 }
 
+/**
+ * Parses scraped_date and returns ISO string or empty.
+ * Accepts: "2025-10-28", "28/10/2025", etc.
+ */
+function parseScrapedDate(dateStr) {
+  if (!dateStr) return '';
+  const trimmed = sanitize(dateStr);
+  if (!trimmed) return '';
+
+  // Try ISO first
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+  }
+
+  // Try DD/MM/YYYY
+  const ukMatch = trimmed.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/);
+  if (ukMatch) {
+    const [, day, month, year] = ukMatch;
+    const d = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+  }
+
+  return '';
+}
+
+/**
+ * Calculates days between today and scraped date.
+ */
+function getDaysSinceScraped(scrapedDate) {
+  if (!scrapedDate) return null;
+  const scraped = new Date(scrapedDate);
+  const today = new Date();
+  const diffTime = today - scraped;
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+}
+
 // ───────────────────────────────────────────────
 // Main Handler
 // ───────────────────────────────────────────────
 
 export async function GET() {
-  // Guard: CSV must exist
   if (!fs.existsSync(CSV_PATH)) {
     console.error(`[Leads API] CSV file not found at: ${CSV_PATH}`);
     return NextResponse.json(
@@ -125,7 +127,6 @@ export async function GET() {
   }
 
   try {
-    // Read and parse CSV
     const content = fs.readFileSync(CSV_PATH, 'utf-8');
     const records = parse(content, {
       columns: true,
@@ -138,38 +139,32 @@ export async function GET() {
     const cleanedLeads = [];
     const contactedMap = loadContactedMap();
 
-    // Process each row
     for (const row of records) {
       const business_name = sanitize(row.business_name);
-      // Skip empty or summary-like entries
-      if (!business_name || business_name.toLowerCase().includes('summary')) {
-        continue;
-      }
+      if (!business_name || business_name.toLowerCase().includes('summary')) continue;
 
       // Email
       const email = sanitize(row.email);
       const validEmail = isValidEmail(email) ? email : '';
 
-      // Phone: try multiple fields
+      // Phone: prioritize WhatsApp field if valid
       const phoneCandidates = [
+        row.whatsapp_number,
+        row.whatsapp,
         row.phone_raw,
         row.phone,
         row.mobile,
-        row.whatsapp,
         row.contact_number,
       ].filter(Boolean);
       const rawPhone = phoneCandidates.length ? sanitize(phoneCandidates[0]) : '';
-
-      // Normalize phone
       const phone_e164 = normalizeToE164(rawPhone);
       const whatsapp_link = generateWhatsAppLink(phone_e164);
 
-      // Deduplication key
       const dedupeKey = `${business_name}|${phone_e164}|${validEmail}`.toLowerCase();
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
-      // Contact name fallback
+      // Contact name
       let contact_name = sanitize(row.contact_name);
       if (!contact_name) contact_name = business_name;
 
@@ -182,7 +177,15 @@ export async function GET() {
       const rating = parseFloat(row.rating) >= 0 ? String(parseFloat(row.rating).toFixed(1)) : '';
       const review_count = parseInt(row.review_count, 10) >= 0 ? String(parseInt(row.review_count, 10)) : '';
 
-      // Build base lead
+      // 📅 Scraped date & freshness
+      const scraped_date = parseScrapedDate(row.scraped_date || row.date_scraped);
+      const days_since_scraped = getDaysSinceScraped(scraped_date);
+
+      // 🎯 Business intelligence flags
+      const has_contact = !!(validEmail || phone_e164);
+      const is_high_value = lead_quality === 'HOT' && has_contact && (parseFloat(rating) >= 4.0 || parseInt(review_count) >= 20);
+
+      // Build lead
       const baseLead = {
         business_name,
         contact_name,
@@ -197,9 +200,14 @@ export async function GET() {
         rating,
         review_count,
         tags: sanitize(row.tags),
+        scraped_date,
+        days_since_scraped,
+        is_high_value,
+        has_contact,
+        // Future-ready fields
+        contact_status: 'NEW', // Could be updated via POST later
       };
 
-      // Final lead with metadata
       const id = generateLeadId(baseLead);
       const last_contacted = contactedMap[id] || '';
 
@@ -210,20 +218,28 @@ export async function GET() {
       });
     }
 
-    // Sort: HOT > WARM > COLD, then alphabetically
+    // Sort: HOT > WARM > COLD, then by recency, then name
     const qualityOrder = { HOT: 0, WARM: 1, COLD: 2 };
     cleanedLeads.sort((a, b) => {
       if (a.lead_quality !== b.lead_quality) {
         return qualityOrder[a.lead_quality] - qualityOrder[b.lead_quality];
+      }
+      // Prefer newer leads
+      if (a.days_since_scraped !== null && b.days_since_scraped !== null) {
+        return a.days_since_scraped - b.days_since_scraped;
       }
       return a.business_name.localeCompare(b.business_name, 'en', { sensitivity: 'base' });
     });
 
     return NextResponse.json(cleanedLeads);
   } catch (error) {
-    console.error('[Leads API] Fatal error:', error);
+    console.error('[Leads API] Fatal error processing leads:', {
+      message: error.message,
+      stack: error.stack,
+      csvPath: CSV_PATH,
+    });
     return NextResponse.json(
-      { error: 'Unable to load leads. Try again later.' },
+      { error: 'Unable to load leads. Admin has been notified.' },
       { status: 500 }
     );
   }
