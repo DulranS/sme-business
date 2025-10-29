@@ -2,10 +2,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BUSINESS_CONFIG } from '@/config/business-config';
-import BusinessHeader from '@/components/BusinessHeader';
-import ContactForm from '@/components/ContactForm';
-import TrustIndicators from '@/components/TrustIndicators';
+import { BUSINESS_CONFIG } from './config/business-config';
+import BusinessHeader from './components/BusinessHeader';
+import ContactForm from './components/ContactForm';
+import TrustIndicators from './components/TrustIndicators';
 
 const updateDocumentHead = () => {
   const metaThemeColor = document.querySelector('meta[name="theme-color"]');
