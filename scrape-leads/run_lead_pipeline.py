@@ -2,13 +2,13 @@
 run_lead_pipeline.py
 
 🎯 END-TO-END B2B LEAD PIPELINE — Colombo → WhatsApp
-✅ Runs scraper → preparer in sequence
-✅ Validates handoff between stages
-✅ Preserves audit trail & cost control
-✅ Safe for scheduled execution (e.g., cron)
+Now supports weekly automation with 4 precise Monday week-start dates.
 
-Designed for founders & sales teams in Sri Lanka who want:
-   High-intent B2B leads → Ready-to-message on WhatsApp
+Arguments added:
+    --week0    (current Monday)
+    --week1    (1 week ago Monday)
+    --week2    (2 weeks ago Monday)
+    --week3    (3 weeks ago Monday)
 """
 
 import os
@@ -16,7 +16,9 @@ import sys
 import subprocess
 import logging
 import shutil
+import argparse
 from datetime import datetime
+
 
 # ==============================
 # 🔧 CONFIGURATION
@@ -27,23 +29,23 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRAPER_SCRIPT = os.path.join(SCRIPT_DIR, "lean_business_scraper.py")
 PREPARER_SCRIPT = os.path.join(SCRIPT_DIR, "whatsapp_lead_preparer.py")
 
-# Use a dedicated data directory for intermediate files
+# Temporary working data
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Intermediate file (scraper output → preparer input)
 LEADS_FILE = os.path.join(DATA_DIR, "b2b_leads.csv")
-
-# Final output from preparer
 WHATSAPP_OUTPUT = os.path.join(DATA_DIR, "output_business_leads.csv")
 
-# Frontend target (only for final, clean leads)
+# Final publishing location
 FRONTEND_LEADS_DIR = os.path.normpath(
     os.path.join(SCRIPT_DIR, "..", "frontend", "app", "api", "leads")
 )
 FRONTEND_FINAL_PATH = os.path.join(FRONTEND_LEADS_DIR, "whatsapp_leads.csv")
 
-# Setup logging
+
+# ==============================
+# 📝 LOGGING SETUP
+# ==============================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
@@ -54,16 +56,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("LeadPipeline")
 
+
 # ==============================
-# 🚀 EXECUTION FUNCTIONS
+# 🔧 Subprocess wrapper
 # ==============================
 def run_script(script_path, env_vars=None):
     """Run a Python script as a subprocess with error capture."""
     logger.info(f"▶️ Launching: {os.path.basename(script_path)}")
+
     try:
         env = os.environ.copy()
         if env_vars:
             env.update(env_vars)
+
         result = subprocess.run(
             [sys.executable, script_path],
             capture_output=True,
@@ -72,88 +77,131 @@ def run_script(script_path, env_vars=None):
             env=env,
             timeout=300  # 5 minutes
         )
+
         if result.returncode != 0:
             logger.error(f"❌ FAILED with exit code {result.returncode}")
             logger.error(f"STDERR: {result.stderr}")
             return False
-        else:
-            logger.info(f"✅ Completed successfully")
-            return True
+
+        logger.info(f"✅ Completed successfully")
+        return True
+
     except Exception as e:
         logger.exception(f"💥 Execution failed: {e}")
         return False
 
+
+# ==============================
+# 🔍 Argument parsing
+# ==============================
+def parse_args():
+    parser = argparse.ArgumentParser(description="Weekly B2B Lead Pipeline")
+
+    parser.add_argument("--week0", type=str, help="Current Monday")
+    parser.add_argument("--week1", type=str, help="Last Monday")
+    parser.add_argument("--week2", type=str, help="Monday -2 weeks")
+    parser.add_argument("--week3", type=str, help="Monday -3 weeks")
+
+    return parser.parse_args()
+
+
+# ==============================
+# 🚀 MAIN PIPELINE
+# ==============================
 def main():
+    args = parse_args()
+
     logger.info("=" * 60)
     logger.info("🚀 STARTING END-TO-END B2B LEAD PIPELINE (Colombo → WhatsApp)")
     logger.info("=" * 60)
 
-    # === PHASE 1: Scrape B2B Leads ===
+    # Log week parameters (even if None)
+    logger.info("📅 WEEK PARAMETERS RECEIVED:")
+    logger.info(f"    WEEK0: {args.week0}")
+    logger.info(f"    WEEK1: {args.week1}")
+    logger.info(f"    WEEK2: {args.week2}")
+    logger.info(f"    WEEK3: {args.week3}")
+
+    # ==============================
+    # 🔵 PHASE 1 — Scraper
+    # ==============================
     if not os.path.exists(SCRAPER_SCRIPT):
         logger.error(f"❌ Scraper not found: {SCRAPER_SCRIPT}")
         return False
 
-    # Tell scraper where to write
-    success = run_script(SCRAPER_SCRIPT, env_vars={"LEADS_FILE": LEADS_FILE})
+    # Send week data into scraper via environment variables
+    scraper_env = {
+        "LEADS_FILE": LEADS_FILE,
+        "WEEK0": args.week0 or "",
+        "WEEK1": args.week1 or "",
+        "WEEK2": args.week2 or "",
+        "WEEK3": args.week3 or "",
+    }
+
+    success = run_script(SCRAPER_SCRIPT, env_vars=scraper_env)
     if not success:
         logger.critical("🛑 Pipeline halted: Scraper failed.")
         return False
 
-    # Verify scraper output
+    # Validate scraper output
     if not os.path.exists(LEADS_FILE):
-        logger.error(f"❌ Scraper did not produce expected file: {LEADS_FILE}")
+        logger.error(f"❌ Scraper did not create expected file: {LEADS_FILE}")
         return False
 
-    file_size = os.path.getsize(LEADS_FILE)
-    if file_size == 0:
-        logger.warning("EmptyEntries: Leads file is empty.")
-    else:
+    try:
         with open(LEADS_FILE, "r", encoding="utf-8") as f:
-            line_count = sum(1 for _ in f)
-        logger.info(f"📥 Scraper output: {line_count - 1} leads (excluding header)")
+            lines = sum(1 for _ in f)
+        logger.info(f"📥 Scraper output: {max(0, lines - 1)} leads")
+    except:
+        logger.warning("⚠️ Failed to read scraper output file.")
 
-    # === PHASE 2: Prepare for WhatsApp ===
+    # ==============================
+    # 🟢 PHASE 2 — Preparer
+    # ==============================
     if not os.path.exists(PREPARER_SCRIPT):
         logger.error(f"❌ Preparer not found: {PREPARER_SCRIPT}")
         return False
 
-    # Tell preparer where to read from and write to
-    success = run_script(
-        PREPARER_SCRIPT,
-        env_vars={
-            "INPUT_FILE": LEADS_FILE,
-            "OUTPUT_FILE": WHATSAPP_OUTPUT,
-            "INVALID_FILE": os.path.join(DATA_DIR, "invalid_or_landline_leads.csv")
-        }
-    )
+    preparer_env = {
+        "INPUT_FILE": LEADS_FILE,
+        "OUTPUT_FILE": WHATSAPP_OUTPUT,
+        "INVALID_FILE": os.path.join(DATA_DIR, "invalid_or_landline_leads.csv"),
+        "WEEK0": args.week0 or "",
+        "WEEK1": args.week1 or "",
+        "WEEK2": args.week2 or "",
+        "WEEK3": args.week3 or "",
+    }
+
+    success = run_script(PREPARER_SCRIPT, env_vars=preparer_env)
     if not success:
-        logger.critical("🛑 Pipeline halted: WhatsApp preparer failed.")
+        logger.critical("🛑 Pipeline halted: Preparer failed.")
         return False
 
-    # Verify final output
     if not os.path.exists(WHATSAPP_OUTPUT):
-        logger.error("❌ WhatsApp preparer did not produce output file.")
+        logger.error("❌ Preparer did not produce final WhatsApp file.")
         return False
 
-    with open(WHATSAPP_OUTPUT, "r", encoding="utf-8") as f:
-        lines = sum(1 for _ in f)
-    lead_count = max(0, lines - 1)  # minus header
+    # Count WhatsApp-ready leads
+    try:
+        with open(WHATSAPP_OUTPUT, "r", encoding="utf-8") as f:
+            lines = sum(1 for _ in f)
+        logger.info(f"🎉 Final WhatsApp-ready lead count: {max(0, lines - 1)}")
+    except:
+        logger.warning("⚠️ Could not count WhatsApp leads.")
 
-    if lead_count == 0:
-        logger.warning("📭 WhatsApp output exists but contains no leads.")
-    else:
-        logger.info(f"🎉 SUCCESS: {lead_count} WhatsApp-ready leads generated!")
-
-    # === PHASE 3: Publish to Frontend (Optional) ===
+    # ==============================
+    # 🟣 PHASE 3 — Publish to frontend
+    # ==============================
     try:
         os.makedirs(FRONTEND_LEADS_DIR, exist_ok=True)
         shutil.copy2(WHATSAPP_OUTPUT, FRONTEND_FINAL_PATH)
         logger.info(f"📤 Published clean leads to frontend: {FRONTEND_FINAL_PATH}")
     except Exception as e:
-        logger.warning(f"⚠️ Failed to publish to frontend (non-fatal): {e}")
+        logger.warning(f"⚠️ Failed to publish to frontend: {e}")
 
     logger.info("🔚 Lead pipeline completed successfully.")
     return True
+
 
 # ==============================
 # ▶️ EXECUTION
