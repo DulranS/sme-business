@@ -43,17 +43,30 @@ export default function Dashboard() {
     }
   }, [])
 
-  const loadJobs = async () => {
-    try {
-      const res = await fetch("/api/jobs")
-      if (!res.ok) throw new Error("Failed to load jobs")
-      const data: Job[] = await res.json()
-      setJobs(data)
-    } catch (error) {
-      console.error("Failed to load jobs:", error)
-      alert("Failed to load jobs. Check console for details.")
-    }
+// In Dashboard component
+const loadJobs = async () => {
+  try {
+    const res = await fetch("/api/jobs");
+    if (!res.ok) throw new Error("Failed to load jobs");
+    const jobsData: Job[] = await res.json();
+    
+    // Fetch full job details with bids for each job
+    const jobsWithBids = await Promise.all(
+      jobsData.map(async (job) => {
+        const jobRes = await fetch(`/api/jobs/${job.id}`);
+        if (jobRes.ok) {
+          return jobRes.json();
+        }
+        return job; // fallback
+      })
+    );
+    
+    setJobs(jobsWithBids);
+  } catch (error) {
+    console.error("Failed to load jobs:", error);
+    alert("Failed to load jobs. Check console for details.");
   }
+};
 
   const handleAuth = (e: React.FormEvent) => {
     e.preventDefault()
