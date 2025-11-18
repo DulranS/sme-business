@@ -2,7 +2,7 @@ name: Weekly Lead Engine
 
 on:
   schedule:
-    - cron: "0 0 * * 1"
+    - cron: "0 0 * * 1"   # Runs every Monday 00:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -24,23 +24,20 @@ jobs:
       - name: 📦 Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt     # make sure this file exists here!
+          pip install -r requirements.txt
 
       - name: 🔐 Set environment variables
         run: |
-          echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" >> $GITHUB_ENV
+          echo "GOOGLE_SEARCH_API_KEY=${{ secrets.GOOGLE_SEARCH_API_KEY }}" >> $GITHUB_ENV
           echo "SEARCH_RADIUS=8000" >> $GITHUB_ENV
 
-      - name: 🚀 Run lead scraper
-        run: python lean_business_scraper.py
+      - name: 🚀 Run full pipeline (scraper → preparer → publish)
+        run: python run_lead_pipeline.py
 
-      - name: 🔧 Run WhatsApp lead formatter
-        run: python whatsapp_lead_preparer.py
-
-      - name: 📝 Prepare output for commit
+      - name: 📝 Copy final output to public_output for commit
         run: |
           mkdir -p public_output
-          cp output_business_leads.csv public_output/output_business_leads.csv
+          cp frontend/app/api/leads/whatsapp_leads.csv public_output/output_business_leads.csv
 
       - name: 📤 Commit & publish output CSV
         uses: stefanzweifel/git-auto-commit-action@v5
