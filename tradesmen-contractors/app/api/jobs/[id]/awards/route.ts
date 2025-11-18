@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const authHeader = request.headers.get("x-admin-secret");
-  if (authHeader !== process.env.ADMIN_SECRET) {
+  if (authHeader !== process.env.NEXT_PUBLIC_ADMIN_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
