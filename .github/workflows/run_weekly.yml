@@ -2,15 +2,15 @@ name: Weekly Lead Engine
 
 on:
   schedule:
-    - cron: "0 0 * * 1"   # Every Monday 00:00 UTC
-  workflow_dispatch:       # Allows manual trigger
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write     # Needed to push CSV output to repo
+      contents: write
 
     steps:
       - name: ⬇️ Checkout repository
@@ -24,13 +24,12 @@ jobs:
       - name: 📦 Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt     # make sure this file exists here!
 
       - name: 🔐 Set environment variables
         run: |
-          echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" >> $ GITHUB_ENV
-          echo "SEARCH_RADIUS=8000" >> $ GITHUB_ENV
-        shell: bash
+          echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" >> $GITHUB_ENV
+          echo "SEARCH_RADIUS=8000" >> $GITHUB_ENV
 
       - name: 🚀 Run lead scraper
         run: python lean_business_scraper.py
