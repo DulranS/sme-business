@@ -3,7 +3,7 @@ name: Weekly Lead Pipeline
 on:
   schedule:
     - cron: "0 2 * * MON"  # Every Monday at 02:00 UTC
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   run-pipeline:
@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false  # 👈 Fixes the 'twenty' submodule error
+          submodules: false
 
       - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
