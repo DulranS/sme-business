@@ -21,7 +21,7 @@ import requests
 from datetime import datetime
 from collections import deque
 from urllib.parse import urljoin
-from dotenv import load_dotenv  # Keep for local development
+from dotenv import load_dotenv
 import googlemaps
 import phonenumbers
 
@@ -34,7 +34,6 @@ if os.path.exists(".env"):
     load_dotenv()
 elif os.path.exists(os.path.join("scrape-leads", ".env")):
     load_dotenv(os.path.join("scrape-leads", ".env"))
-# Otherwise, rely on system environment variables (e.g., GitHub Secrets)
 
 # API & Location
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -45,6 +44,7 @@ if not GOOGLE_API_KEY:
     )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_LEADS_NAME = "b2b_leads.csv"
 
 # 📍 HARD-CODED FOR COLOMBO — NO GEOCODING
 DEFAULT_CENTER = (6.86026115, 79.912990)  # Colombo city center (near Fort)
@@ -52,11 +52,16 @@ LOCATION_LABEL = "Colombo, Sri Lanka"
 
 SEARCH_RADIUS = int(os.getenv("SEARCH_RADIUS", "8000"))  # 8km radius
 
-# I/O
-DEFAULT_LEADS_NAME = "b2b_leads.csv"
-LEADS_FILE = os.getenv("LEADS_FILE", DEFAULT_LEADS_NAME)
+# I/O — Respect LEADS_FILE from environment (passed by pipeline)
+LEADS_FILE = os.getenv("LEADS_FILE")
+if not LEADS_FILE:
+    # Fallback for local testing: use data/ subfolder
+    data_dir = os.path.join(SCRIPT_DIR, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    LEADS_FILE = os.path.join(data_dir, DEFAULT_LEADS_NAME)
+
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
-LAST_RUN_FILE = "last_run.txt"
+LAST_RUN_FILE = os.path.join(os.path.dirname(LEADS_FILE), "last_run.txt")
 
 # 🔒 BUDGET & SAFETY GUARDRAILS
 MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "4"))
@@ -349,8 +354,12 @@ def save_leads(leads):
         "rating", "review_count", "scraped_at"
     ]
 
-    # Save to the same directory as the script (scrape-leads/)
-    output_path = os.path.join(SCRIPT_DIR, LEADS_FILE)
+    # Use exact path provided via LEADS_FILE (from pipeline)
+    output_path = LEADS_FILE
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
@@ -377,9 +386,8 @@ def main():
 
     # 🔒 Prevent duplicate runs on same day
     today = datetime.now().strftime("%Y-%m-%d")
-    last_run_path = os.path.join(SCRIPT_DIR, LAST_RUN_FILE)
-    if os.path.exists(last_run_path):
-        with open(last_run_path) as f:
+    if os.path.exists(LAST_RUN_FILE):
+        with open(LAST_RUN_FILE) as f:
             last_run = f.read().strip()
         if last_run == today:
             logger.warning("🚫 Already ran today. Skipping to preserve budget.")
@@ -419,7 +427,7 @@ def main():
         logger.info(f"📤 Ready for outreach: {LEADS_FILE}")
 
         # Record run date
-        with open(last_run_path, "w") as f:
+        with open(LAST_RUN_FILE, "w") as f:
             f.write(today)
 
     except Exception as e:
