@@ -7,7 +7,7 @@ import { Lead } from '@/app/types/lead';
 // Initialize Supabase server client (using service role for full access)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // ⚠️ Server-side only!
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! // ⚠️ Server-side only!
 );
 
 export async function POST(request: NextRequest) {
