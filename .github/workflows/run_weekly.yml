@@ -34,6 +34,9 @@ jobs:
         run: python scrape-leads/run_lead_pipeline.py
         env:
           PYTHONUNBUFFERED: "1"
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          # Add other secrets here if needed, e.g.:
+          # GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
 
       - name: 📁 Verify output files exist
         run: |
