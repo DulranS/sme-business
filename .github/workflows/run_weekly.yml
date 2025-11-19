@@ -2,7 +2,7 @@ name: Weekly Lead Pipeline
 
 on:
   schedule:
-    - cron: "0 2 * * MON"
+    - cron: "0 2 * * MON"  # Every Monday at 02:00 UTC
   workflow_dispatch: {}
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          submodules: false      # ← This disables submodules (fixes your error)
+          submodules: false
           fetch-depth: 1
 
       - name: 🐍 Set up Python 3.10
@@ -28,23 +28,23 @@ jobs:
       - name: 📦 Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r scrape-leads/requirements.txt
 
       - name: ⚙️ Run lead pipeline script
-        run: python run_lead_pipeline.py
+        run: python scrape-leads/run_lead_pipeline.py
         env:
           PYTHONUNBUFFERED: "1"
 
       - name: 📁 Verify output files exist
         run: |
-          if [ ! -f "output_business_leads.csv" ]; then
-            echo "❌ ERROR: output_business_leads.csv was not generated!"
+          if [ ! -f "scrape-leads/output_business_leads.csv" ]; then
+            echo "❌ ERROR: scrape-leads/output_business_leads.csv was not generated!"
             exit 1
           fi
           mkdir -p frontend/app/api/leads
 
       - name: 📤 Copy CSV to frontend API directory
-        run: cp output_business_leads.csv frontend/app/api/leads/
+        run: cp scrape-leads/output_business_leads.csv frontend/app/api/leads/
 
       - name: 📝 Commit & push CSV update (if changed)
         run: |
