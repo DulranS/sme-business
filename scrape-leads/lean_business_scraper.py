@@ -21,19 +21,29 @@ import requests
 from datetime import datetime
 from collections import deque
 from urllib.parse import urljoin
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # Keep for local development
 import googlemaps
 import phonenumbers
 
 # ==============================
 # 🔐 CONFIGURATION & SECURITY
 # ==============================
-load_dotenv()
+
+# 🌟 Load .env ONLY if it exists (safe for GitHub Actions)
+if os.path.exists(".env"):
+    load_dotenv()
+elif os.path.exists(os.path.join("scrape-leads", ".env")):
+    load_dotenv(os.path.join("scrape-leads", ".env"))
+# Otherwise, rely on system environment variables (e.g., GitHub Secrets)
 
 # API & Location
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
-    raise EnvironmentError("❌ Missing GOOGLE_API_KEY in .env")
+    raise EnvironmentError(
+        "❌ Missing GOOGLE_API_KEY. "
+        "Please set it in a .env file (local) or as a GitHub Secret named 'GOOGLE_API_KEY' (CI)."
+    )
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 📍 HARD-CODED FOR COLOMBO — NO GEOCODING
@@ -339,7 +349,9 @@ def save_leads(leads):
         "rating", "review_count", "scraped_at"
     ]
 
-    with open(LEADS_FILE, "w", newline="", encoding="utf-8") as f:
+    # Save to the same directory as the script (scrape-leads/)
+    output_path = os.path.join(SCRIPT_DIR, LEADS_FILE)
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
         for lead in leads:
@@ -349,12 +361,12 @@ def save_leads(leads):
     warm = sum(1 for l in leads if "WARM" in l["lead_quality"])
     cold = len(leads) - hot - warm
 
-    with open(LEADS_FILE, "a", encoding="utf-8") as f:
+    with open(output_path, "a", encoding="utf-8") as f:
         f.write("\n")
         f.write(f"SUMMARY: HOT={hot}, WARM={warm}, COLD={cold} | Total Leads={len(leads)}\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Source: Google Maps (Colombo)\n")
 
-    logger.info(f"💾 Saved {len(leads)} leads to '{LEADS_FILE}'")
+    logger.info(f"💾 Saved {len(leads)} leads to '{output_path}'")
 
 # ==============================
 # 🚀 MAIN EXECUTION
@@ -365,8 +377,9 @@ def main():
 
     # 🔒 Prevent duplicate runs on same day
     today = datetime.now().strftime("%Y-%m-%d")
-    if os.path.exists(LAST_RUN_FILE):
-        with open(LAST_RUN_FILE) as f:
+    last_run_path = os.path.join(SCRIPT_DIR, LAST_RUN_FILE)
+    if os.path.exists(last_run_path):
+        with open(last_run_path) as f:
             last_run = f.read().strip()
         if last_run == today:
             logger.warning("🚫 Already ran today. Skipping to preserve budget.")
@@ -406,7 +419,7 @@ def main():
         logger.info(f"📤 Ready for outreach: {LEADS_FILE}")
 
         # Record run date
-        with open(LAST_RUN_FILE, "w") as f:
+        with open(last_run_path, "w") as f:
             f.write(today)
 
     except Exception as e:
