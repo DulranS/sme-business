@@ -1,6 +1,6 @@
 googlemaps
 phonenumbers
 python-dotenv
-requests
-pandas
 openpyxl
+pandas
+requests
