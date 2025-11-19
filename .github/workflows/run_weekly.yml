@@ -9,14 +9,14 @@ jobs:
   run-pipeline:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # Required for git push
 
     steps:
       - name: 🛎️ Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          submodules: false
+          fetch-depth: 1      # Faster; full history not needed
+          submodules: false   # ⚠️ CRITICAL: avoids broken 'twenty' submodule error
 
       - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
@@ -40,9 +40,7 @@ jobs:
             echo "❌ ERROR: output_business_leads.csv was not generated!"
             exit 1
           fi
-          if [ ! -d "frontend/app/api/leads" ]; then
-            mkdir -p frontend/app/api/leads
-          fi
+          mkdir -p frontend/app/api/leads  # Simplified: always create if missing
 
       - name: 📤 Copy CSV to frontend API directory
         run: cp output_business_leads.csv frontend/app/api/leads/
@@ -57,6 +55,8 @@ jobs:
             echo "ℹ️ No changes detected. Skipping commit."
           else
             git commit -m "chore(data): weekly update of output_business_leads.csv"
+            # Fetch latest to avoid push rejection due to concurrent changes
+            git pull --ff-only origin ${GITHUB_REF#refs/heads/} || echo "Warning: Could not fast-forward (proceeding anyway)."
             git push
           fi
 
@@ -75,8 +75,7 @@ jobs:
             DESCRIPTION="The pipeline encountered an error. Check the [workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           fi
 
-          WEBHOOK_URL="${{ env.DISCORD_WEBHOOK_URL }}"
-          if [ -z "$WEBHOOK_URL" ]; then
+          if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
             echo "⚠️ DISCORD_WEBHOOK_URL secret is not set. Skipping notification."
             exit 0
           fi
@@ -94,4 +93,4 @@ jobs:
               \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\", \
               \"footer\": { \"text\": \"GitHub Actions • Lead Pipeline\" } \
             }] \
-          }" "$WEBHOOK_URL"
+          }" "${DISCORD_WEBHOOK_URL}"
