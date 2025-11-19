@@ -30,7 +30,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: ⚙️ Run lead pipeline script
-        run: python run_lead_pipeline.py
+        run: python scripts/run_lead_pipeline.py
         env:
           PYTHONUNBUFFERED: "1"
 
