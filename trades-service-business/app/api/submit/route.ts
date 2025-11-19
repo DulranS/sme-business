@@ -4,14 +4,26 @@ import { NextRequest } from 'next/server';
 import { BUSINESS_CONFIG } from '@/app/config/business-config';
 import { Lead } from '@/app/types/lead';
 
-// Initialize Supabase with service role (server-side only!)
-const supabase = createClient(
-  process.env.SUPABASE_URL!, // ✅ No NEXT_PUBLIC_
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // ✅ Full access, server-only
-);
+// ✅ Do NOT initialize client at the top level
+// Move it inside the handler
 
 export async function POST(request: NextRequest) {
+  // 🔐 Initialize Supabase client inside the request handler
+  const supabase = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
   try {
+    // Validate env vars early (optional but helpful)
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('Missing Supabase environment variables');
+      return Response.json(
+        { message: 'Server misconfiguration.' },
+        { status: 500 }
+      );
+    }
+
     const formData = await request.json();
 
     if (!formData.name || !formData.phone || !formData.address) {
