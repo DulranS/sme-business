@@ -2,7 +2,7 @@ name: Weekly Lead Pipeline
 
 on:
   schedule:
-    - cron: "0 2 * * MON"
+    - cron: "0 2 * * MON"  # Every Monday at 02:00 UTC
   workflow_dispatch: {}
 
 jobs:
@@ -19,8 +19,8 @@ jobs:
           submodules: false
           fetch-depth: 1
 
-      - name: 🧹 Clear last run marker (allow fresh test runs)
-        run: rm -f scrape-leads/data/last_run.txt
+      - name: 🧹 Clear last run marker (allow fresh runs during testing)
+        run: rm -f scrape-leads/data/last_run.txt || true
 
       - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
@@ -42,13 +42,13 @@ jobs:
       - name: 📁 Verify output files exist
         run: |
           if [ ! -f "scrape-leads/data/output_business_leads.csv" ]; then
-            echo "❌ ERROR: Final output file not found!"
+            echo "❌ ERROR: Final output file 'scrape-leads/data/output_business_leads.csv' was not generated!"
             exit 1
           fi
           mkdir -p frontend/app/api/leads
 
       - name: 📤 Copy CSV to frontend API directory
-        run: cp scrape-leads/data/output_business_leads.csv frontend/app/api/leads/
+        run: cp scrape-leads/data/output_business_leads.csv frontend/app/api/leads/output_business_leads.csv
 
       - name: 📝 Commit & push CSV update (if changed)
         run: |
