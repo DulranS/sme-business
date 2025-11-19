@@ -9,14 +9,15 @@ jobs:
   run-pipeline:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for git push
+      contents: write
 
     steps:
       - name: 🛎️ Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1      # Faster; full history not needed
-          submodules: false   # ⚠️ CRITICAL: avoids broken 'twenty' submodule error
+          ref: main
+          submodules: false      # ✅ CRITICAL: prevents broken submodule error
+          fetch-depth: 1         # Faster; full history not needed
 
       - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
@@ -30,7 +31,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: ⚙️ Run lead pipeline script
-        run: python scripts/run_lead_pipeline.py
+        run: python run_lead_pipeline.py
         env:
           PYTHONUNBUFFERED: "1"
 
@@ -40,7 +41,7 @@ jobs:
             echo "❌ ERROR: output_business_leads.csv was not generated!"
             exit 1
           fi
-          mkdir -p frontend/app/api/leads  # Simplified: always create if missing
+          mkdir -p frontend/app/api/leads
 
       - name: 📤 Copy CSV to frontend API directory
         run: cp output_business_leads.csv frontend/app/api/leads/
@@ -55,8 +56,7 @@ jobs:
             echo "ℹ️ No changes detected. Skipping commit."
           else
             git commit -m "chore(data): weekly update of output_business_leads.csv"
-            # Fetch latest to avoid push rejection due to concurrent changes
-            git pull --ff-only origin ${GITHUB_REF#refs/heads/} || echo "Warning: Could not fast-forward (proceeding anyway)."
+            git pull --ff-only origin main || true  # avoid push failure due to race
             git push
           fi
 
