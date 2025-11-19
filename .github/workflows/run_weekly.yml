@@ -2,7 +2,7 @@ name: Weekly Lead Pipeline
 
 on:
   schedule:
-    - cron: "0 2 * * MON"  # Every Monday at 02:00 UTC
+    - cron: "0 2 * * MON"
   workflow_dispatch: {}
 
 jobs:
@@ -16,8 +16,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          submodules: false      # ✅ CRITICAL: prevents broken submodule error
-          fetch-depth: 1         # Faster; full history not needed
+          submodules: false      # ← This disables submodules (fixes your error)
+          fetch-depth: 1
 
       - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
@@ -56,7 +56,6 @@ jobs:
             echo "ℹ️ No changes detected. Skipping commit."
           else
             git commit -m "chore(data): weekly update of output_business_leads.csv"
-            git pull --ff-only origin main || true  # avoid push failure due to race
             git push
           fi
 
