@@ -2,53 +2,97 @@ name: Weekly Lead Pipeline
 
 on:
   schedule:
-    - cron: "0 2 * * MON"   # Runs every Monday at 02:00 UTC
+    - cron: "0 2 * * MON"  # Every Monday at 02:00 UTC
   workflow_dispatch:
+
+env:
+  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}  # Recommended for public repos
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-
-    # Needed to push CSV updates back to the repo
     permissions:
       contents: write
 
     steps:
-      - name: Checkout repository
+      - name: 🛎️ Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Ensure history available for committing
+          fetch-depth: 0
 
-      - name: Set up Python
+      - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: "pip"
 
-      - name: Install dependencies
+      - name: 📦 Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run lead pipeline script
-        run: |
-          python run_lead_pipeline.py
+      - name: ⚙️ Run lead pipeline script
+        run: python run_lead_pipeline.py
+        env:
+          PYTHONUNBUFFERED: "1"
 
-      - name: Copy output CSV to /frontend/app/api/leads
+      - name: 📁 Verify output files exist
         run: |
-          echo "Copying output_business_leads.csv -> frontend/app/api/leads/output_business_leads.csv"
-          cp -f output_business_leads.csv frontend/app/api/leads/output_business_leads.csv
+          if [ ! -f "output_business_leads.csv" ]; then
+            echo "❌ ERROR: output_business_leads.csv was not generated!"
+            exit 1
+          fi
+          if [ ! -d "frontend/app/api/leads" ]; then
+            mkdir -p frontend/app/api/leads
+          fi
 
-      - name: Commit & push CSV update
+      - name: 📤 Copy CSV to frontend API directory
+        run: cp output_business_leads.csv frontend/app/api/leads/
+
+      - name: 📝 Commit & push CSV update (if changed)
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/app/api/leads/output_business_leads.csv
 
-          # Commit only if file actually changed
           if git diff --cached --quiet; then
-            echo "No update needed. CSV unchanged."
+            echo "ℹ️ No changes detected. Skipping commit."
           else
-            git commit -m "Weekly update of output_business_leads.csv"
+            git commit -m "chore(data): weekly update of output_business_leads.csv"
             git push
           fi
+
+    # === DISCORD NOTIFICATION (runs regardless of success/failure) ===
+    - name: 📢 Send Discord Notification
+      if: always()  # Ensures it runs even if previous steps fail
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          STATUS_COLOR=65280  # Green
+          STATUS_MESSAGE="✅ **SUCCESS**"
+          DESCRIPTION="The weekly lead pipeline completed successfully."
+        else
+          STATUS_COLOR=16711680  # Red
+          STATUS_MESSAGE="❌ **FAILED**"
+          DESCRIPTION="The pipeline encountered an error. Check the [workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+        fi
+
+        # Use secret if available; fallback to hardcoded URL only if in private repo
+        WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK_URL }}"
+        if [ -z "$WEBHOOK_URL" ]; then
+          WEBHOOK_URL="https://discord.com/api/webhooks/1440667201332838400/2zeZ3LrC8wTtH2UgBXNVMyAePdr3jqHtkMM5S6In8OVACDntc5DD6J0Cp9Yh7-vfnqAM"
+        fi
+
+        curl -X POST -H "Content-Type: application/json" -d "{ \
+          \"embeds\": [{ \
+            \"title\": \"Weekly Lead Pipeline\", \
+            \"description\": \"$DESCRIPTION\", \
+            \"color\": $STATUS_COLOR, \
+            \"fields\": [ \
+              { \"name\": \"Status\", \"value\": \"$STATUS_MESSAGE\", \"inline\": true }, \
+              { \"name\": \"Repository\", \"value\": \"${{ github.repository }}\", \"inline\": true }, \
+              { \"name\": \"Triggered by\", \"value\": \"${{ github.event_name }}\", \"inline\": true } \
+            ], \
+            \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\", \
+            \"footer\": { \"text\": \"GitHub Actions • Lead Pipeline\" } \
+          }] \
+        }" "$WEBHOOK_URL"
