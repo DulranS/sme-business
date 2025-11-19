@@ -1,0 +1,6 @@
+googlemaps
+phonenumbers
+python-dotenv
+requests
+pandas
+openpyxl
