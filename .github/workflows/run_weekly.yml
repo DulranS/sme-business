@@ -9,7 +9,7 @@ jobs:
   run-pipeline:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # Required for git push
 
     steps:
       - name: 🛎️ Checkout repository
@@ -19,7 +19,7 @@ jobs:
           submodules: false
           fetch-depth: 1
 
-      - name: 🧹 Clear last run marker (allow fresh runs during testing)
+      - name: 🧹 Clear last run marker (for testing flexibility)
         run: rm -f scrape-leads/data/last_run.txt || true
 
       - name: 🐍 Set up Python 3.10
@@ -33,22 +33,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r scrape-leads/requirements.txt
 
-      - name: ⚙️ Run lead pipeline script
-        run: python scrape-leads/run_lead_pipeline.py
+      - name: ⚙️ Run lead pipeline script (with 10m timeout)
+        run: timeout 600 python scrape-leads/run_lead_pipeline.py
         env:
           PYTHONUNBUFFERED: "1"
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        timeout-minutes: 12  # GitHub-level timeout
 
-      - name: 📁 Verify output files exist
+      - name: 📁 Ensure frontend API directory exists
+        run: mkdir -p frontend/app/api/leads
+
+      - name: 📤 Copy CSV to frontend
+        run: cp scrape-leads/data/output_business_leads.csv frontend/app/api/leads/output_business_leads.csv
+
+      - name: 🔍 Validate output is non-empty and has data
         run: |
-          if [ ! -f "scrape-leads/data/output_business_leads.csv" ]; then
-            echo "❌ ERROR: Final output file 'scrape-leads/data/output_business_leads.csv' was not generated!"
+          FILE="scrape-leads/data/output_business_leads.csv"
+          if [ ! -s "$FILE" ]; then
+            echo "❌ ERROR: Output file is missing or empty!"
             exit 1
           fi
-          mkdir -p frontend/app/api/leads
+          ROW_COUNT=$(wc -l < "$FILE")
+          if [ "$ROW_COUNT" -le 1 ]; then
+            echo "⚠️ WARNING: Output file has only header (0 leads)."
+            # Decide: fail or allow? For now, allow but log.
+          fi
+          echo "✅ Output has $(($ROW_COUNT - 1)) leads."
 
-      - name: 📤 Copy CSV to frontend API directory
-        run: cp scrape-leads/data/output_business_leads.csv frontend/app/api/leads/output_business_leads.csv
+      - name: 📎 Upload output as artifact (for audit/debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-leads-csv
+          path: scrape-leads/data/output_business_leads.csv
+          retention-days: 7
 
       - name: 📝 Commit & push CSV update (if changed)
         run: |
@@ -57,9 +74,9 @@ jobs:
           git add frontend/app/api/leads/output_business_leads.csv
 
           if git diff --cached --quiet; then
-            echo "ℹ️ No changes detected. Skipping commit."
+            echo "ℹ️ No changes. Skipping commit."
           else
-            git commit -m "chore(data): weekly update of output_business_leads.csv"
+            git commit -m "chore(data): weekly update of output_business_leads.csv [skip ci]"
             git push
           fi
 
@@ -68,6 +85,7 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          # Determine status
           if [ "${{ job.status }}" == "success" ]; then
             STATUS_COLOR=65280
             STATUS_MESSAGE="✅ **SUCCESS**"
@@ -78,22 +96,27 @@ jobs:
             DESCRIPTION="The pipeline encountered an error. Check the [workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           fi
 
+          # Skip if no webhook
           if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
-            echo "⚠️ DISCORD_WEBHOOK_URL secret is not set. Skipping notification."
+            echo "⚠️ DISCORD_WEBHOOK_URL not set. Skipping notification."
             exit 0
           fi
 
-          curl -X POST -H "Content-Type: application/json" -d "{ \
-            \"embeds\": [{ \
-              \"title\": \"Weekly Lead Pipeline\", \
-              \"description\": \"$DESCRIPTION\", \
-              \"color\": $STATUS_COLOR, \
-              \"fields\": [ \
-                { \"name\": \"Status\", \"value\": \"$STATUS_MESSAGE\", \"inline\": true }, \
-                { \"name\": \"Repository\", \"value\": \"${{ github.repository }}\", \"inline\": true }, \
-                { \"name\": \"Triggered by\", \"value\": \"${{ github.event_name }}\", \"inline\": true } \
-              ], \
-              \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\", \
-              \"footer\": { \"text\": \"GitHub Actions • Lead Pipeline\" } \
-            }] \
-          }" "${DISCORD_WEBHOOK_URL}"
+          # Send webhook (quietly, to avoid leaking in logs)
+          curl --fail-with-body --silent --show-error -X POST \
+            -H "Content-Type: application/json" \
+            -d "{ \
+              \"embeds\": [{ \
+                \"title\": \"Weekly Lead Pipeline\", \
+                \"description\": \"$DESCRIPTION\", \
+                \"color\": $STATUS_COLOR, \
+                \"fields\": [ \
+                  { \"name\": \"Status\", \"value\": \"$STATUS_MESSAGE\", \"inline\": true }, \
+                  { \"name\": \"Repository\", \"value\": \"${{ github.repository }}\", \"inline\": true }, \
+                  { \"name\": \"Triggered by\", \"value\": \"${{ github.event_name }}\", \"inline\": true }, \
+                  { \"name\": \"Leads Generated\", \"value\": \"$(($ROW_COUNT - 1))\", \"inline\": true } \
+                ], \
+                \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\", \
+                \"footer\": { \"text\": \"GitHub Actions • Lead Pipeline\" } \
+              }] \
+            }" "${DISCORD_WEBHOOK_URL}"
