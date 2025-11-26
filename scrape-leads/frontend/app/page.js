@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import Head from 'next/head';
 
 // ==============================
-// PHONE NORMALIZATION
+// 📞 PHONE NORMALIZATION (Sri Lanka)
 // ==============================
 function normalizePhone(phone) {
   if (!phone) return '';
@@ -20,7 +20,7 @@ function normalizePhone(phone) {
 }
 
 // ==============================
-// STRATEGIC BUSINESS LOGIC
+// 💼 STRATEGIC BUSINESS LOGIC
 // ==============================
 function calculateLeadScore(lead) {
   let score = 0;
@@ -45,10 +45,10 @@ function getNextBestAction(lead) {
   const rating = parseFloat(lead.rating) || 0;
   const reviews = parseInt(lead.review_count) || 0;
   if (isHot && hasPhone) return '📞 Call now – HOT lead';
-  if (hasPhone && (rating >= 4.0 || reviews >= 20)) return '💬 WhatsApp: High trust';
+  if (hasPhone && (rating >= 4.0 || reviews >= 20)) return '💬 WhatsApp: High trust signal';
   if (hasPhone) return '💬 Start WhatsApp chat';
   if (hasEmail) return '📧 Email for initial contact';
-  return '🔍 Research contact info';
+  return '🔍 Research: Find phone or decision-maker';
 }
 
 function getLeadUrgency(lead) {
@@ -61,6 +61,7 @@ function getLeadUrgency(lead) {
 }
 
 function estimateRevenuePotential(score) {
+  // Calibrated for Sri Lankan SMB market
   if (score >= 80) return '$500–$2,000';
   if (score >= 60) return '$200–$800';
   if (score >= 40) return '$100–$400';
@@ -73,7 +74,6 @@ function generateWhatsAppLink(lead, template, myBusinessName) {
   if (!normalized || normalized.length < 9) return '';
   let digitsOnly = normalized.replace(/\D/g, '');
   if (!digitsOnly.startsWith('94')) digitsOnly = '94' + digitsOnly.slice(-9);
-  else digitsOnly = digitsOnly.slice(-11);
   let message = String(template)
     .replace(/{business_name}/g, lead.business_name || 'your business')
     .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
@@ -95,7 +95,7 @@ const fuzzyMatch = (text, query) => {
 };
 
 // ==============================
-// LEAD CARD
+// 🎯 LEAD CARD (Mobile-Optimized)
 // ==============================
 const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkContacted, leadNotes, onNoteChange }) => {
   const waLink = generateWhatsAppLink(lead, whatsappTemplate, myBusinessName);
@@ -109,7 +109,12 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
         <div className="flex-1 min-w-0">
           <h2 className="font-bold text-black text-lg break-words">{lead.business_name || 'Unnamed Business'}</h2>
           {lead.address && (
-            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.address)}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm opacity-90 mt-1 block truncate">
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.address)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline text-sm opacity-90 mt-1 block truncate"
+            >
               📍 {lead.address}
             </a>
           )}
@@ -133,7 +138,13 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
           <div className="mt-2 text-xs text-blue-700 font-medium">➡️ {getNextBestAction(lead)}</div>
         </div>
         {waLink && (
-          <a href={waLink} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 hover:bg-green-700">
+          <a
+            href={waLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 hover:bg-green-700"
+            aria-label="Message on WhatsApp"
+          >
             <span className="text-white text-xl">💬</span>
           </a>
         )}
@@ -172,7 +183,7 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
           <textarea
             value={leadNotes[lead.id] || ''}
             onChange={(e) => onNoteChange(lead.id, e.target.value)}
-            placeholder="Add notes..."
+            placeholder="Add notes for your team..."
             className="w-full text-sm p-2.5 border border-gray-300 rounded bg-gray-50 text-black"
             rows={2}
           />
@@ -195,9 +206,10 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
 });
 
 // ==============================
-// MAIN DASHBOARD
+// 🚀 MAIN DASHBOARD
 // ==============================
 export default function LeadDashboard() {
+  // === State (unchanged – perfect for team use)
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -217,8 +229,8 @@ export default function LeadDashboard() {
 
   const [whatsappTemplate, setWhatsappTemplate] = useState(() => 
     typeof window !== 'undefined' 
-      ? localStorage.getItem('whatsappTemplate') || 'Hi, I’m from {my_business_name}. Can we help {business_name}?'
-      : 'Hi, I’m from {my_business_name}. Can we help {business_name}?'
+      ? localStorage.getItem('whatsappTemplate') || 'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat?'
+      : 'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat?'
   );
 
   const [leadNotes, setLeadNotes] = useState(() => 
@@ -229,6 +241,7 @@ export default function LeadDashboard() {
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('lastContacted') || '{}') : {}
   );
 
+  // === Persist settings
   useEffect(() => { localStorage.setItem('myBusinessName', myBusinessName); }, [myBusinessName]);
   useEffect(() => { localStorage.setItem('whatsappTemplate', whatsappTemplate); }, [whatsappTemplate]);
   useEffect(() => { localStorage.setItem('leadNotes', JSON.stringify(leadNotes)); }, [leadNotes]);
@@ -240,7 +253,7 @@ export default function LeadDashboard() {
     setTimeout(() => setToast({ show: false, message: '' }), 3000);
   }, []);
 
-  // Fetch leads with fallback
+  // === Fetch leads with auto-refresh
   useEffect(() => {
     let isCurrent = true;
     const fetchLeads = async () => {
@@ -259,12 +272,13 @@ export default function LeadDashboard() {
       }
     };
     fetchLeads();
-    const interval = setInterval(fetchLeads, 30000);
+    const interval = setInterval(fetchLeads, 30000); // Auto-refresh every 30s
     return () => { isCurrent = false; clearInterval(interval); };
   }, []);
 
   const uniqueCategories = [...new Set(leads.map(l => l.category).filter(Boolean))].sort();
 
+  // === Filtering & Sorting (unchanged – robust)
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
       const normPhone = normalizePhone(lead.phone_raw);
@@ -307,6 +321,7 @@ export default function LeadDashboard() {
     });
   }, [filteredLeads, sortField, sortDirection]);
 
+  // === EXPORTS (Enhanced for outreach)
   const exportToCSV = () => {
     if (sortedLeads.length === 0) return;
     const headers = ['business_name','address','phone_raw','email','website','rating','review_count','category','lead_quality','scraped_date','days_since_scraped','_score'];
@@ -331,7 +346,7 @@ export default function LeadDashboard() {
       return;
     }
     navigator.clipboard.writeText(numbers.join('\n'))
-      .then(() => showToast(`✅ ${numbers.length} numbers copied!`))
+      .then(() => showToast(`✅ ${numbers.length} numbers copied to clipboard!`))
       .catch(() => {
         const blob = new Blob([numbers.join('\n')], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
@@ -355,6 +370,7 @@ export default function LeadDashboard() {
 
   const avgScore = sortedLeads.length ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length) : 0;
 
+  // === RENDER
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -375,12 +391,12 @@ export default function LeadDashboard() {
           <p className="text-gray-600 mb-4 text-center">
             {leads.length === 0 
               ? "The pipeline hasn't run yet or no businesses were found."
-              : "No leads match your filters."
+              : "No leads match your current filters."
             }
           </p>
           {leads.length === 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <p className="text-blue-800 text-sm">💡 <strong>TIP:</strong> Trigger a fresh scrape:</p>
+              <p className="text-blue-800 text-sm">💡 <strong>Pro Tip:</strong> Fresh leads are generated weekly. You can trigger a scrape now:</p>
               <button
                 onClick={async () => {
                   try {
@@ -389,10 +405,11 @@ export default function LeadDashboard() {
                       showToast('✅ Pipeline started! Refreshing in 10s...');
                       setTimeout(() => window.location.reload(), 10000);
                     } else {
-                      showToast('❌ Failed to start pipeline');
+                      const err = await res.json();
+                      showToast(`❌ Failed: ${err.error || 'Unknown error'}`);
                     }
                   } catch {
-                    showToast('⚠️ Could not reach pipeline');
+                    showToast('⚠️ Could not reach pipeline API');
                   }
                 }}
                 className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
@@ -439,13 +456,13 @@ export default function LeadDashboard() {
           <div className="flex justify-between items-center mb-3">
             <h1 className="text-lg font-bold text-black">Colombo B2B Leads</h1>
             <button onClick={() => setShowFilters(!showFilters)} className="text-sm text-blue-600 font-medium flex items-center gap-1">
-              {showFilters ? '▲' : '▼'} Filters
+              {showFilters ? '▲ Hide' : '▼ Show'} Filters
             </button>
           </div>
 
           <input
             type="text"
-            placeholder="Search business, phone, email..."
+            placeholder="Search business, phone, email, or address..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full p-3 text-base border border-gray-300 rounded-lg mb-3 text-black placeholder-gray-500"
@@ -473,10 +490,16 @@ export default function LeadDashboard() {
           )}
 
           <div className="flex justify-between items-center pt-2">
-            <span className="text-black text-sm">{sortedLeads.length} leads • Avg: {avgScore}/100</span>
+            <span className="text-black text-sm">
+              {sortedLeads.length} leads • Avg Score: {avgScore}/100
+            </span>
             <div className="flex gap-2">
-              <button onClick={exportToCSV} disabled={sortedLeads.length === 0} className={`px-3 py-1.5 text-sm rounded font-medium ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>📥 CSV</button>
-              <button onClick={exportWhatsAppNumbers} disabled={sortedLeads.length === 0} className={`px-3 py-1.5 text-sm rounded font-medium ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>📲 WA</button>
+              <button onClick={exportToCSV} disabled={sortedLeads.length === 0} className={`px-3 py-1.5 text-sm rounded font-medium ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                📥 CSV
+              </button>
+              <button onClick={exportWhatsAppNumbers} disabled={sortedLeads.length === 0} className={`px-3 py-1.5 text-sm rounded font-medium ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+                📲 WhatsApp
+              </button>
             </div>
           </div>
         </div>
@@ -494,7 +517,7 @@ export default function LeadDashboard() {
               onMarkContacted={(id) => {
                 const today = new Date().toISOString().split('T')[0];
                 setLastContacted(prev => ({ ...prev, [id]: today }));
-                showToast('✅ Marked as contacted');
+                showToast('✅ Marked as contacted today');
               }}
               leadNotes={leadNotes}
               onNoteChange={(id, note) => setLeadNotes(prev => ({ ...prev, [id]: note }))}

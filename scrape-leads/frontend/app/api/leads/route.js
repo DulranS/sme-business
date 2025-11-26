@@ -6,16 +6,12 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import crypto from 'crypto';
 
-// 🔧 FIXED PATH: CSV is in the same directory as this route
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CSV_PATH = join(__dirname, 'output_business_leads.csv');
 const CONTACTED_PATH = join(__dirname, 'contacted_leads.json');
 
-// ───────────────────────────────────────────────
-// Utility Functions (unchanged)
-// ───────────────────────────────────────────────
-
+// ─── Utility Functions ────────────────────────────────────────
 function sanitize(str) {
   if (typeof str !== 'string') return '';
   return str.trim().replace(/[\r\n\t]+/g, ' ').replace(/<[^>]*>/g, '');
@@ -91,18 +87,14 @@ function getDaysSinceScraped(scrapedDate) {
   return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
 
-// ───────────────────────────────────────────────
-// Main Handler (unchanged logic)
-// ───────────────────────────────────────────────
-
+// ─── Main Handler ─────────────────────────────────────────────
 export async function GET() {
   let records = [];
   let source = 'live';
 
-  // 🔄 Attempt to read fresh CSV (now from correct path)
   try {
     if (!fs.existsSync(CSV_PATH)) {
-      throw new Error('CSV file not found');
+      throw new Error('CSV not found');
     }
     const content = fs.readFileSync(CSV_PATH, 'utf-8');
     records = parse(content, {
