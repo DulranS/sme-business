@@ -47,8 +47,9 @@ LEADS_FILE = DATA_DIR / "b2b_leads.csv"
 WHATSAPP_OUTPUT = DATA_DIR / "output_business_leads.csv"
 INVALID_LEADS_FILE = DATA_DIR / "invalid_or_landline_leads.csv"
 
-FRONTEND_LEADS_DIR = SCRIPT_DIR.parent / "frontend" / "app" / "api" / "leads"
-FRONTEND_FINAL_PATH = FRONTEND_LEADS_DIR / "whatsapp_leads.csv"
+# 🔥 CORRECTED: Publish directly to Next.js API route folder
+FRONTEND_LEADS_DIR = SCRIPT_DIR.parent / "app" / "api" / "leads"
+FRONTEND_FINAL_PATH = FRONTEND_LEADS_DIR / "output_business_leads.csv"
 
 
 # ==============================
@@ -236,16 +237,15 @@ def run_pipeline_core(week0: str, week1: str, week2: str, week3: str):
             logger.info(f"📊 Funnel efficiency: {efficiency:.1f}%")
 
         # ==============================
-        # 🟣 PHASE 3 — Publish
+        # 🟣 PHASE 3 — Publish to Next.js API folder
         # ==============================
-        FRONTEND_LEADS_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(WHATSAPP_OUTPUT, FRONTEND_FINAL_PATH)
-
-        # Verify copy
-        if not FRONTEND_FINAL_PATH.exists():
-            raise RuntimeError("Failed to publish to frontend — file missing after copy.")
-
-        logger.info(f"📤 Published to: {FRONTEND_FINAL_PATH}")
+        try:
+            FRONTEND_LEADS_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(WHATSAPP_OUTPUT, FRONTEND_FINAL_PATH)
+            logger.info(f"📤 Published to Next.js API: {FRONTEND_FINAL_PATH}")
+        except Exception as e:
+            logger.error(f"💥 Failed to publish to frontend: {e}")
+            raise RuntimeError("Failed to sync leads to frontend API")
 
         # ✅ SUCCESS
         metrics["success"] = True
