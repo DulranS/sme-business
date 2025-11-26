@@ -21,16 +21,9 @@ export async function POST() {
       cwd: process.cwd(),
     });
 
-    const metricsPath = join(process.cwd(), 'scrape-leads', 'last_run_metrics.json');
-    let metrics = {};
-    if (fs.existsSync(metricsPath)) {
-      metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
-    }
-
     return NextResponse.json({
       success: true,
-      message: 'Pipeline completed',
-      metrics,
+      message: 'Pipeline completed successfully',
     });
   } catch (error) {
     console.error('[Pipeline] Failed:', error);
