@@ -38,7 +38,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        timeout-minutes: 12  # GitHub-level timeout
+        timeout-minutes: 12
 
       - name: 📁 Ensure frontend API directory exists
         run: mkdir -p frontend/app/api/leads
@@ -47,6 +47,7 @@ jobs:
         run: cp scrape-leads/data/output_business_leads.csv frontend/app/api/leads/output_business_leads.csv
 
       - name: 🔍 Validate output is non-empty and has data
+        id: validate_output  # ← Added ID for later reference
         run: |
           FILE="scrape-leads/data/output_business_leads.csv"
           if [ ! -s "$FILE" ]; then
@@ -54,9 +55,9 @@ jobs:
             exit 1
           fi
           ROW_COUNT=$(wc -l < "$FILE")
+          echo "row_count=$(($ROW_COUNT - 1))" >> "$GITHUB_OUTPUT"  # ← Expose to later steps
           if [ "$ROW_COUNT" -le 1 ]; then
             echo "⚠️ WARNING: Output file has only header (0 leads)."
-            # Decide: fail or allow? For now, allow but log.
           fi
           echo "✅ Output has $(($ROW_COUNT - 1)) leads."
 
@@ -85,7 +86,12 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          # Determine status
+          # Get lead count from previous step
+          ROW_COUNT_MINUS_ONE="${{ steps.validate_output.outputs.row_count }}"
+          if [ -z "$ROW_COUNT_MINUS_ONE" ]; then
+            ROW_COUNT_MINUS_ONE="N/A"
+          fi
+
           if [ "${{ job.status }}" == "success" ]; then
             STATUS_COLOR=65280
             STATUS_MESSAGE="✅ **SUCCESS**"
@@ -96,13 +102,11 @@ jobs:
             DESCRIPTION="The pipeline encountered an error. Check the [workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           fi
 
-          # Skip if no webhook
           if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
             echo "⚠️ DISCORD_WEBHOOK_URL not set. Skipping notification."
             exit 0
           fi
 
-          # Send webhook (quietly, to avoid leaking in logs)
           curl --fail-with-body --silent --show-error -X POST \
             -H "Content-Type: application/json" \
             -d "{ \
@@ -114,7 +118,7 @@ jobs:
                   { \"name\": \"Status\", \"value\": \"$STATUS_MESSAGE\", \"inline\": true }, \
                   { \"name\": \"Repository\", \"value\": \"${{ github.repository }}\", \"inline\": true }, \
                   { \"name\": \"Triggered by\", \"value\": \"${{ github.event_name }}\", \"inline\": true }, \
-                  { \"name\": \"Leads Generated\", \"value\": \"$(($ROW_COUNT - 1))\", \"inline\": true } \
+                  { \"name\": \"Leads Generated\", \"value\": \"$ROW_COUNT_MINUS_ONE\", \"inline\": true } \
                 ], \
                 \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\", \
                 \"footer\": { \"text\": \"GitHub Actions • Lead Pipeline\" } \
