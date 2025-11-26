@@ -5,14 +5,14 @@ run_lead_pipeline.py
 High-leverage, auditable, failure-resilient pipeline for revenue-critical lead gen.
 
 🧠 Strategic Features:
-- Auto-infers current Monday if no --week0 provided
+- Auto-infers current Monday if no --week0 provided (CLI only)
 - Validates date formats
 - Measures funnel conversion (scraped → WhatsApp-ready)
 - Outputs structured success/failure report
-- Safe for CI/CD, manual runs, and scheduled automation
+- Safe for CI/CD, manual runs, and API-triggered automation
 - Ready for monitoring/alerting integration
 
-Arguments:
+Arguments (CLI only):
     --week0    (current Monday, YYYY-MM-DD) → auto-filled if missing
     --week1    (1 week ago Monday)
     --week2    (2 weeks ago Monday)
@@ -147,7 +147,141 @@ def count_csv_rows(filepath: Path) -> int:
 
 
 # ==============================
-# 🔍 Argument parsing with smart defaults
+# 🚀 CORE PIPELINE FUNCTION — Callable from API or CLI
+# ==============================
+def run_pipeline_core(week0: str, week1: str, week2: str, week3: str):
+    """
+    Run the full lead pipeline with given week parameters.
+    Returns a structured metrics dictionary.
+    """
+    start_time = datetime.now()
+
+    logger.info("=" * 60)
+    logger.info("🚀 STRATEGIC B2B LEAD PIPELINE — Colombo → WhatsApp")
+    logger.info(f"⏱️  Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    logger.info("=" * 60)
+
+    logger.info("📅 WEEK PARAMETERS:")
+    logger.info(f"    WEEK0: {week0} (current)")
+    logger.info(f"    WEEK1: {week1}")
+    logger.info(f"    WEEK2: {week2}")
+    logger.info(f"    WEEK3: {week3}")
+
+    metrics = {
+        "run_id": start_time.isoformat(),
+        "week0": week0,
+        "week1": week1,
+        "week2": week2,
+        "week3": week3,
+        "scraped_leads": 0,
+        "whatsapp_ready_leads": 0,
+        "invalid_leads": 0,
+        "success": False,
+        "error": None,
+        "runtime_seconds": 0,
+    }
+
+    try:
+        # ==============================
+        # 🔵 PHASE 1 — Scraper
+        # ==============================
+        scraper_env = {
+            "LEADS_FILE": str(LEADS_FILE),
+            "WEEK0": week0,
+            "WEEK1": week1,
+            "WEEK2": week2,
+            "WEEK3": week3,
+        }
+
+        if not run_script(SCRAPER_SCRIPT, env_vars=scraper_env):
+            raise RuntimeError("Scraper failed to execute or crashed.")
+
+        if not LEADS_FILE.exists():
+            raise FileNotFoundError(f"Scraper did not produce {LEADS_FILE}")
+
+        metrics["scraped_leads"] = count_csv_rows(LEADS_FILE)
+        logger.info(f"📥 Scraped {metrics['scraped_leads']} leads")
+
+        if metrics["scraped_leads"] == 0:
+            logger.warning("⚠️  Zero leads scraped — check data sources or week filters.")
+
+        # ==============================
+        # 🟢 PHASE 2 — Preparer
+        # ==============================
+        preparer_env = {
+            "INPUT_FILE": str(LEADS_FILE),
+            "OUTPUT_FILE": str(WHATSAPP_OUTPUT),
+            "INVALID_FILE": str(INVALID_LEADS_FILE),
+            "WEEK0": week0,
+            "WEEK1": week1,
+            "WEEK2": week2,
+            "WEEK3": week3,
+        }
+
+        if not run_script(PREPARER_SCRIPT, env_vars=preparer_env):
+            raise RuntimeError("Preparer failed.")
+
+        if not WHATSAPP_OUTPUT.exists():
+            raise FileNotFoundError("Preparer did not generate WhatsApp output.")
+
+        metrics["whatsapp_ready_leads"] = count_csv_rows(WHATSAPP_OUTPUT)
+        metrics["invalid_leads"] = count_csv_rows(INVALID_LEADS_FILE)
+
+        logger.info(f"📱 WhatsApp-ready: {metrics['whatsapp_ready_leads']}")
+        logger.info(f"🗑️  Invalid/landline: {metrics['invalid_leads']}")
+
+        # Funnel efficiency
+        if metrics["scraped_leads"] > 0:
+            efficiency = (metrics["whatsapp_ready_leads"] / metrics["scraped_leads"]) * 100
+            logger.info(f"📊 Funnel efficiency: {efficiency:.1f}%")
+
+        # ==============================
+        # 🟣 PHASE 3 — Publish
+        # ==============================
+        FRONTEND_LEADS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(WHATSAPP_OUTPUT, FRONTEND_FINAL_PATH)
+
+        # Verify copy
+        if not FRONTEND_FINAL_PATH.exists():
+            raise RuntimeError("Failed to publish to frontend — file missing after copy.")
+
+        logger.info(f"📤 Published to: {FRONTEND_FINAL_PATH}")
+
+        # ✅ SUCCESS
+        metrics["success"] = True
+        logger.info("✅ PIPELINE COMPLETED SUCCESSFULLY — leads ready for sales outreach!")
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"💥 PIPELINE FAILED: {error_msg}")
+        metrics["error"] = error_msg
+        # send_failure_alert(error_msg)  # Uncomment if needed
+    finally:
+        # Finalize metrics
+        runtime = (datetime.now() - start_time).total_seconds()
+        metrics["runtime_seconds"] = round(runtime, 2)
+
+        # Save structured metrics for BI/dashboards
+        try:
+            with open(METRICS_FILE, "w", encoding="utf-8") as f:
+                json.dump(metrics, f, indent=2)
+            logger.debug(f"📊 Metrics saved to: {METRICS_FILE}")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to save metrics: {e}")
+
+        # Summary log
+        if metrics["success"]:
+            logger.info(
+                f"📈 BUSINESS IMPACT: {metrics['whatsapp_ready_leads']} new leads ready for WhatsApp outreach."
+            )
+        else:
+            logger.info("📉 BUSINESS IMPACT: Pipeline failure — no new leads generated.")
+
+    return metrics
+
+
+# ==============================
+# 🔍 Argument parsing with smart defaults (CLI only)
 # ==============================
 def parse_args():
     parser = argparse.ArgumentParser(description="Strategic B2B Lead Pipeline")
@@ -193,144 +327,26 @@ def send_failure_alert(message: str):
 
 
 # ==============================
-# 🚀 MAIN PIPELINE — Business-Ready
+# ▶️ CLI EXECUTION
 # ==============================
 def main():
-    start_time = datetime.now()
     args = parse_args()
-
-    logger.info("=" * 60)
-    logger.info("🚀 STRATEGIC B2B LEAD PIPELINE — Colombo → WhatsApp")
-    logger.info(f"⏱️  Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    logger.info("=" * 60)
-
-    logger.info("📅 WEEK PARAMETERS:")
-    logger.info(f"    WEEK0: {args.week0} (current)")
-    logger.info(f"    WEEK1: {args.week1}")
-    logger.info(f"    WEEK2: {args.week2}")
-    logger.info(f"    WEEK3: {args.week3}")
-
-    metrics = {
-        "run_id": start_time.isoformat(),
-        "week0": args.week0,
-        "week1": args.week1,
-        "week2": args.week2,
-        "week3": args.week3,
-        "scraped_leads": 0,
-        "whatsapp_ready_leads": 0,
-        "invalid_leads": 0,
-        "success": False,
-        "error": None,
-        "runtime_seconds": 0,
-    }
-
-    try:
-        # ==============================
-        # 🔵 PHASE 1 — Scraper
-        # ==============================
-        scraper_env = {
-            "LEADS_FILE": str(LEADS_FILE),
-            "WEEK0": args.week0,
-            "WEEK1": args.week1,
-            "WEEK2": args.week2,
-            "WEEK3": args.week3,
-        }
-
-        if not run_script(SCRAPER_SCRIPT, env_vars=scraper_env):
-            raise RuntimeError("Scraper failed to execute or crashed.")
-
-        if not LEADS_FILE.exists():
-            raise FileNotFoundError(f"Scraper did not produce {LEADS_FILE}")
-
-        metrics["scraped_leads"] = count_csv_rows(LEADS_FILE)
-        logger.info(f"📥 Scraped {metrics['scraped_leads']} leads")
-
-        if metrics["scraped_leads"] == 0:
-            logger.warning("⚠️  Zero leads scraped — check data sources or week filters.")
-
-        # ==============================
-        # 🟢 PHASE 2 — Preparer
-        # ==============================
-        preparer_env = {
-            "INPUT_FILE": str(LEADS_FILE),
-            "OUTPUT_FILE": str(WHATSAPP_OUTPUT),
-            "INVALID_FILE": str(INVALID_LEADS_FILE),
-            "WEEK0": args.week0,
-            "WEEK1": args.week1,
-            "WEEK2": args.week2,
-            "WEEK3": args.week3,
-        }
-
-        if not run_script(PREPARER_SCRIPT, env_vars=preparer_env):
-            raise RuntimeError("Preparer failed.")
-
-        if not WHATSAPP_OUTPUT.exists():
-            raise FileNotFoundError("Preparer did not generate WhatsApp output.")
-
-        metrics["whatsapp_ready_leads"] = count_csv_rows(WHATSAPP_OUTPUT)
-        metrics["invalid_leads"] = count_csv_rows(INVALID_LEADS_FILE)
-
-        logger.info(f"📱 WhatsApp-ready: {metrics['whatsapp_ready_leads']}")
-        logger.info(f"🗑️  Invalid/landline: {metrics['invalid_leads']}")
-
-        # Funnel efficiency
-        if metrics["scraped_leads"] > 0:
-            efficiency = (metrics["whatsapp_ready_leads"] / metrics["scraped_leads"]) * 100
-            logger.info(f"📊 Funnel efficiency: {efficiency:.1f}%")
-
-        # ==============================
-        # 🟣 PHASE 3 — Publish
-        # ==============================
-        FRONTEND_LEADS_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(WHATSAPP_OUTPUT, FRONTEND_FINAL_PATH)
-
-        # Verify copy
-        if not FRONTEND_FINAL_PATH.exists():
-            raise RuntimeError("Failed to publish to frontend — file missing after copy.")
-
-        logger.info(f"📤 Published to: {FRONTEND_FINAL_PATH}")
-
-        # ✅ SUCCESS
-        metrics["success"] = True
-        logger.info("✅ PIPELINE COMPLETED SUCCESSFULLY — leads ready for sales outreach!")
-
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f"💥 PIPELINE FAILED: {error_msg}")
-        metrics["error"] = error_msg
-        send_failure_alert(error_msg)
-        return False
-    finally:
-        # Finalize metrics
-        runtime = (datetime.now() - start_time).total_seconds()
-        metrics["runtime_seconds"] = round(runtime, 2)
-
-        # Save structured metrics for BI/dashboards
-        try:
-            with open(METRICS_FILE, "w", encoding="utf-8") as f:
-                json.dump(metrics, f, indent=2)
-            logger.debug(f"📊 Metrics saved to: {METRICS_FILE}")
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to save metrics: {e}")
-
-        # Summary log
-        if metrics["success"]:
-            logger.info(
-                f"📈 BUSINESS IMPACT: {metrics['whatsapp_ready_leads']} new leads ready for WhatsApp outreach."
-            )
-        else:
-            logger.info("📉 BUSINESS IMPACT: Pipeline failure — no new leads generated.")
-
-    return metrics["success"]
+    metrics = run_pipeline_core(
+        week0=args.week0,
+        week1=args.week1,
+        week2=args.week2,
+        week3=args.week3
+    )
+    success = metrics["success"]
+    sys.exit(0 if success else 1)
 
 
 # ==============================
-# ▶️ EXECUTION
+# 🔌 MODULE ENTRY POINT
 # ==============================
 if __name__ == "__main__":
     try:
-        success = main()
-        sys.exit(0 if success else 1)
+        main()
     except KeyboardInterrupt:
         logger.info("🛑 Pipeline interrupted by user.")
         sys.exit(1)
