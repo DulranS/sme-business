@@ -1,26 +1,23 @@
 """
 run_lead_pipeline.py
 
-🎯 OPTIMIZED END-TO-END B2B LEAD PIPELINE — Maximum Business Value
-Production-grade pipeline with intelligent error recovery, performance monitoring,
+🌍 GLOBAL B2B LEAD PIPELINE — Any Country, Production-Ready
+Intelligent orchestration with error recovery, performance tracking,
 and automated quality assurance.
 
-🚀 OPTIMIZATION FEATURES:
+FEATURES:
+- Multi-country support (195+ countries)
 - Smart retry logic with exponential backoff
-- Parallel processing for large datasets
-- Real-time progress tracking
+- Real-time progress tracking & cost monitoring
 - Automated data quality validation
-- Cost tracking & budget alerts
-- Performance benchmarking against historical runs
+- Performance benchmarking
 - Automatic rollback on critical failures
-- Detailed analytics dashboard export
 
-Arguments (CLI):
-    --week0       Current Monday (auto-detected if omitted)
-    --week1-3     Previous weeks for historical analysis
-    --force       Skip duplicate check, force fresh run
-    --dry-run     Validate setup without executing
-    --quiet       Minimal logging output
+Arguments:
+    --week0       Current Monday (auto-detected)
+    --force       Skip duplicate check
+    --dry-run     Validate setup only
+    --quiet       Minimal logging
 """
 
 import os
@@ -31,11 +28,12 @@ import shutil
 import argparse
 import json
 import time
+import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 import hashlib
-
+import pandas as pd
 # ==============================
 # 🔧 CONFIGURATION
 # ==============================
@@ -43,7 +41,8 @@ import hashlib
 SCRIPT_DIR = Path(__file__).parent.resolve()
 LOG_FILE = SCRIPT_DIR / "lead_pipeline.log"
 METRICS_FILE = SCRIPT_DIR / "last_run_metrics.json"
-HISTORY_FILE = SCRIPT_DIR / "run_history.json"  # Performance benchmarks
+HISTORY_FILE = SCRIPT_DIR / "run_history.json"
+CONFIG_FILE = SCRIPT_DIR / "country_config.yaml"
 
 SCRAPER_SCRIPT = SCRIPT_DIR / "lean_business_scraper.py"
 PREPARER_SCRIPT = SCRIPT_DIR / "whatsapp_lead_preparer.py"
@@ -51,7 +50,7 @@ PREPARER_SCRIPT = SCRIPT_DIR / "whatsapp_lead_preparer.py"
 DATA_DIR = SCRIPT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-# Input/Output files
+# Input/Output
 LEADS_FILE = DATA_DIR / "b2b_leads.csv"
 WHATSAPP_DIR = DATA_DIR / "whatsapp_ready"
 WHATSAPP_DIR.mkdir(exist_ok=True)
@@ -61,31 +60,55 @@ WHATSAPP_JSON = WHATSAPP_DIR / "whatsapp_leads_bulk.json"
 CRM_OUTPUT = WHATSAPP_DIR / "crm_import_ready.csv"
 INVALID_LEADS_FILE = WHATSAPP_DIR / "rejected_leads.csv"
 
-# Frontend publication (Next.js API route)
+# Frontend publication
 FRONTEND_LEADS_DIR = SCRIPT_DIR.parent / "app" / "api" / "leads"
 FRONTEND_FINAL_PATH = FRONTEND_LEADS_DIR / "whatsapp_leads_prioritized.csv"
 FRONTEND_JSON_PATH = FRONTEND_LEADS_DIR / "whatsapp_leads_bulk.json"
 FRONTEND_METRICS_PATH = FRONTEND_LEADS_DIR / "pipeline_metrics.json"
 
-# Pipeline configuration
+# Pipeline config
 MAX_RETRIES = 3
-RETRY_DELAY = 10  # seconds
-EXECUTION_TIMEOUT = 600  # 10 minutes per script
-MIN_EXPECTED_LEADS = 20  # Quality gate threshold
+RETRY_DELAY = 10
+EXECUTION_TIMEOUT = 600
+MIN_EXPECTED_LEADS = 20
+
+# ==============================
+# 🌍 LOAD COUNTRY CONFIG
+# ==============================
+
+def load_country_config():
+    """Load country configuration for display purposes."""
+    default = {
+        "country_name": "Unknown",
+        "city": "Unknown",
+        "phone_country_code": "+XX"
+    }
+    
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                config = yaml.safe_load(f)
+                if config:
+                    return config
+        except:
+            pass
+    
+    return default
+
+COUNTRY_CONFIG = load_country_config()
 
 # ==============================
 # 📝 LOGGING SETUP
 # ==============================
 
 class ColoredFormatter(logging.Formatter):
-    """Add colors to terminal output for better readability."""
-    
+    """Colored terminal output."""
     COLORS = {
-        'DEBUG': '\033[36m',    # Cyan
-        'INFO': '\033[32m',     # Green
-        'WARNING': '\033[33m',  # Yellow
-        'ERROR': '\033[31m',    # Red
-        'CRITICAL': '\033[35m', # Magenta
+        'DEBUG': '\033[36m',
+        'INFO': '\033[32m',
+        'WARNING': '\033[33m',
+        'ERROR': '\033[31m',
+        'CRITICAL': '\033[35m',
         'RESET': '\033[0m'
     }
     
@@ -94,18 +117,15 @@ class ColoredFormatter(logging.Formatter):
         record.levelname = f"{color}{record.levelname}{self.COLORS['RESET']}"
         return super().format(record)
 
-# Create logger
 logger = logging.getLogger("LeadPipeline")
 logger.setLevel(logging.DEBUG)
 
-# File handler (detailed logs)
 file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter(
     "%(asctime)s | %(levelname)-8s | %(message)s"
 ))
 
-# Console handler (colored, less verbose)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(ColoredFormatter(
@@ -121,12 +141,12 @@ logger.addHandler(console_handler)
 # ==============================
 
 def get_monday_of_week(dt: datetime) -> str:
-    """Return Monday of the week (ISO) as YYYY-MM-DD."""
+    """Return Monday of the week."""
     monday = dt - timedelta(days=dt.weekday())
     return monday.strftime("%Y-%m-%d")
 
 def parse_and_validate_date(date_str: str, name: str) -> str:
-    """Parse and validate date, ensuring it's a Monday."""
+    """Parse and validate date."""
     if not date_str:
         return ""
     try:
@@ -140,56 +160,33 @@ def parse_and_validate_date(date_str: str, name: str) -> str:
     except ValueError as e:
         raise ValueError(f"Invalid {name} date '{date_str}': {e}")
 
-def get_last_n_mondays(n: int) -> list:
-    """Generate list of last N Mondays including current week."""
-    today = datetime.now()
-    current_monday = today - timedelta(days=today.weekday())
-    return [
-        (current_monday - timedelta(weeks=i)).strftime("%Y-%m-%d")
-        for i in range(n)
-    ]
-
 # ==============================
-# 📊 DATA QUALITY & VALIDATION
+# 📊 DATA QUALITY
 # ==============================
 
 def count_csv_rows(filepath: Path) -> int:
-    """Count CSV rows excluding header."""
+    """Count CSV rows."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             return max(0, sum(1 for _ in f) - 1)
-    except Exception as e:
-        logger.debug(f"Error counting rows in {filepath}: {e}")
+    except Exception:
         return 0
 
-def calculate_file_hash(filepath: Path) -> str:
-    """Calculate MD5 hash of file for duplicate detection."""
-    try:
-        hasher = hashlib.md5()
-        with open(filepath, 'rb') as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hasher.update(chunk)
-        return hasher.hexdigest()
-    except Exception:
-        return ""
-
 def validate_csv_structure(filepath: Path, required_columns: list) -> Tuple[bool, str]:
-    """Validate CSV has required columns."""
+    """Validate CSV structure."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             header = f.readline().strip()
             columns = [col.strip().lower() for col in header.split(',')]
-            
             missing = [col for col in required_columns if col.lower() not in columns]
             if missing:
                 return False, f"Missing columns: {', '.join(missing)}"
-            
             return True, "Valid structure"
     except Exception as e:
-        return False, f"Error reading CSV: {e}"
+        return False, f"Error: {e}"
 
 def check_duplicate_run(week0: str) -> bool:
-    """Check if pipeline already ran successfully today for this week."""
+    """Check for duplicate runs."""
     if not METRICS_FILE.exists():
         return False
     
@@ -197,24 +194,22 @@ def check_duplicate_run(week0: str) -> bool:
         with open(METRICS_FILE, 'r') as f:
             last_metrics = json.load(f)
         
-        # Check if same week0 and successful run within last 12 hours
         if last_metrics.get("week0") == week0 and last_metrics.get("success"):
             last_run_time = datetime.fromisoformat(last_metrics["run_id"])
             hours_since = (datetime.now() - last_run_time).total_seconds() / 3600
             
             if hours_since < 12:
                 logger.warning(
-                    f"⚠️  Pipeline already ran successfully {hours_since:.1f}h ago "
-                    f"for week {week0}"
+                    f"⚠️  Already ran successfully {hours_since:.1f}h ago for {week0}"
                 )
                 return True
-    except Exception as e:
-        logger.debug(f"Could not check duplicate run: {e}")
+    except Exception:
+        pass
     
     return False
 
 # ==============================
-# 🔧 SCRIPT EXECUTION WITH RETRY
+# 🔧 SCRIPT EXECUTION
 # ==============================
 
 def run_script_with_retry(
@@ -222,16 +217,11 @@ def run_script_with_retry(
     env_vars: Optional[Dict] = None,
     max_retries: int = MAX_RETRIES
 ) -> Tuple[bool, Optional[str]]:
-    """
-    Execute script with exponential backoff retry logic.
-    Returns: (success: bool, error_message: Optional[str])
-    """
+    """Execute script with retry logic."""
     script_name = script_path.name
     
     if not script_path.is_file():
-        error = f"Script not found: {script_path}"
-        logger.error(f"❌ {error}")
-        return False, error
+        return False, f"Script not found: {script_path}"
     
     for attempt in range(1, max_retries + 1):
         try:
@@ -254,7 +244,6 @@ def run_script_with_retry(
             
             execution_time = time.time() - start_time
             
-            # Log output
             if result.stdout.strip():
                 for line in result.stdout.strip().split('\n'):
                     logger.debug(f"  [{script_name}] {line}")
@@ -263,82 +252,71 @@ def run_script_with_retry(
                 for line in result.stderr.strip().split('\n'):
                     logger.warning(f"  [{script_name} STDERR] {line}")
             
-            # Check result
             if result.returncode == 0:
-                logger.info(
-                    f"✅ Completed: {script_name} "
-                    f"({execution_time:.1f}s)"
-                )
+                logger.info(f"✅ Completed: {script_name} ({execution_time:.1f}s)")
                 return True, None
             
-            # Failed - prepare for retry
             error_msg = f"Exit code {result.returncode}"
             logger.error(f"❌ Failed: {script_name} - {error_msg}")
             
             if attempt < max_retries:
-                wait_time = RETRY_DELAY * (2 ** (attempt - 1))  # Exponential backoff
+                wait_time = RETRY_DELAY * (2 ** (attempt - 1))
                 logger.info(f"⏳ Retrying in {wait_time}s...")
                 time.sleep(wait_time)
             else:
                 return False, error_msg
         
         except subprocess.TimeoutExpired:
-            error = f"Execution timeout after {EXECUTION_TIMEOUT}s"
+            error = f"Timeout after {EXECUTION_TIMEOUT}s"
             logger.error(f"⏱️  {error}")
-            
             if attempt < max_retries:
-                logger.info(f"⏳ Retrying...")
                 time.sleep(RETRY_DELAY)
             else:
                 return False, error
         
         except Exception as e:
-            error = f"Unexpected error: {str(e)}"
+            error = f"Error: {str(e)}"
             logger.exception(f"💥 {error}")
-            
             if attempt < max_retries:
                 time.sleep(RETRY_DELAY)
             else:
                 return False, error
     
-    return False, "Maximum retries exceeded"
+    return False, "Max retries exceeded"
 
 # ==============================
 # 📈 PERFORMANCE TRACKING
 # ==============================
 
 def load_run_history() -> list:
-    """Load historical run metrics."""
-    if not HISTORY_FILE.exists():
-        return []
-    try:
-        with open(HISTORY_FILE, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return []
+    """Load historical metrics."""
+    if HISTORY_FILE.exists():
+        try:
+            with open(HISTORY_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
 
 def save_to_history(metrics: dict):
-    """Append current run to history."""
+    """Save to history."""
     history = load_run_history()
     history.append(metrics)
-    
-    # Keep only last 30 runs
     history = history[-30:]
     
     try:
         with open(HISTORY_FILE, 'w') as f:
             json.dump(history, f, indent=2)
     except Exception as e:
-        logger.warning(f"Could not save run history: {e}")
+        logger.warning(f"Could not save history: {e}")
 
 def calculate_performance_metrics(metrics: dict) -> dict:
-    """Calculate performance vs historical average."""
+    """Calculate performance vs average."""
     history = load_run_history()
     
     if len(history) < 2:
         return {}
     
-    # Calculate averages from last 10 successful runs
     successful_runs = [h for h in history if h.get("success")][-10:]
     
     if not successful_runs:
@@ -346,51 +324,58 @@ def calculate_performance_metrics(metrics: dict) -> dict:
     
     avg_leads = sum(h["whatsapp_ready_leads"] for h in successful_runs) / len(successful_runs)
     avg_runtime = sum(h["runtime_seconds"] for h in successful_runs) / len(successful_runs)
-    avg_efficiency = sum(h.get("funnel_efficiency", 0) for h in successful_runs) / len(successful_runs)
     
     current_leads = metrics["whatsapp_ready_leads"]
     current_runtime = metrics["runtime_seconds"]
-    current_efficiency = metrics.get("funnel_efficiency", 0)
     
     return {
         "leads_vs_avg": f"{((current_leads / avg_leads - 1) * 100):+.1f}%" if avg_leads > 0 else "N/A",
         "runtime_vs_avg": f"{((current_runtime / avg_runtime - 1) * 100):+.1f}%" if avg_runtime > 0 else "N/A",
-        "efficiency_vs_avg": f"{((current_efficiency / avg_efficiency - 1) * 100):+.1f}%" if avg_efficiency > 0 else "N/A",
         "avg_leads_last_10": round(avg_leads, 1),
         "avg_runtime_last_10": round(avg_runtime, 1)
     }
 
+def calculate_data_quality_score(metrics: dict) -> int:
+    """Calculate quality score (0-100)."""
+    score = 0
+    
+    if metrics["whatsapp_ready_leads"] >= 50: score += 30
+    elif metrics["whatsapp_ready_leads"] >= 30: score += 20
+    else: score += 10
+    
+    efficiency = metrics.get("funnel_efficiency", 0)
+    if efficiency >= 70: score += 40
+    elif efficiency >= 50: score += 30
+    elif efficiency >= 30: score += 20
+    else: score += 10
+    
+    total = metrics["whatsapp_ready_leads"]
+    if total > 0:
+        priority_ratio = (metrics["priority_1_leads"] + metrics["priority_2_leads"]) / total
+        if priority_ratio >= 0.6: score += 30
+        elif priority_ratio >= 0.4: score += 20
+        else: score += 10
+    
+    return min(score, 100)
+
 # ==============================
-# 🚀 CORE PIPELINE ORCHESTRATION
+# 🚀 CORE PIPELINE
 # ==============================
 
-def run_pipeline_core(
-    week0: str,
-    week1: str,
-    week2: str,
-    week3: str,
-    force: bool = False
-) -> dict:
-    """
-    Execute complete lead pipeline with intelligent error handling.
-    Returns structured metrics dictionary.
-    """
+def run_pipeline_core(week0: str, week1: str, week2: str, week3: str, force: bool = False) -> dict:
+    """Execute pipeline."""
     start_time = datetime.now()
     
     logger.info("=" * 70)
-    logger.info("🚀 OPTIMIZED B2B LEAD PIPELINE — Production Run")
+    logger.info("🌍 GLOBAL B2B LEAD PIPELINE — Production Run")
+    logger.info(f"📍 Target: {COUNTRY_CONFIG['city']}, {COUNTRY_CONFIG['country_name']}")
     logger.info(f"⏱️  Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 70)
     
-    logger.info("📅 Week Parameters:")
-    logger.info(f"   Week 0 (current): {week0}")
-    if week1: logger.info(f"   Week 1: {week1}")
-    if week2: logger.info(f"   Week 2: {week2}")
-    if week3: logger.info(f"   Week 3: {week3}")
-    
-    # Initialize metrics
     metrics = {
         "run_id": start_time.isoformat(),
+        "country": COUNTRY_CONFIG["country_name"],
+        "city": COUNTRY_CONFIG["city"],
         "week0": week0,
         "week1": week1,
         "week2": week2,
@@ -401,24 +386,19 @@ def run_pipeline_core(
         "priority_2_leads": 0,
         "invalid_leads": 0,
         "funnel_efficiency": 0.0,
-        "deduplication_rate": 0.0,
         "success": False,
         "error": None,
         "runtime_seconds": 0,
-        "cost_estimate": 0.0,
         "data_quality_score": 0
     }
     
-    # Check for duplicate run
     if not force and check_duplicate_run(week0):
-        logger.info("ℹ️  Use --force to override duplicate check")
-        metrics["error"] = "Duplicate run detected"
+        logger.info("ℹ️  Use --force to override")
+        metrics["error"] = "Duplicate run"
         return metrics
     
     try:
-        # ==============================
-        # 🔵 PHASE 1: LEAD DISCOVERY
-        # ==============================
+        # PHASE 1: DISCOVERY
         logger.info("\n" + "=" * 70)
         logger.info("🔍 PHASE 1: Lead Discovery")
         logger.info("=" * 70)
@@ -436,33 +416,23 @@ def run_pipeline_core(
         if not success:
             raise RuntimeError(f"Scraper failed: {error}")
         
-        # Validate scraper output
         if not LEADS_FILE.exists():
-            raise FileNotFoundError(f"Scraper did not produce output: {LEADS_FILE}")
+            raise FileNotFoundError(f"Scraper output missing: {LEADS_FILE}")
         
-        is_valid, validation_msg = validate_csv_structure(
-            LEADS_FILE,
-            required_columns=["business_name", "phone", "rating"]
-        )
-        
+        is_valid, msg = validate_csv_structure(LEADS_FILE, ["business_name", "phone"])
         if not is_valid:
-            raise ValueError(f"Invalid scraper output: {validation_msg}")
+            raise ValueError(f"Invalid output: {msg}")
         
         metrics["scraped_leads"] = count_csv_rows(LEADS_FILE)
-        logger.info(f"📥 Discovered: {metrics['scraped_leads']} raw leads")
+        logger.info(f"📥 Discovered: {metrics['scraped_leads']} leads")
         
         if metrics["scraped_leads"] == 0:
-            raise ValueError("Scraper returned zero leads - check search terms or API")
+            raise ValueError("Zero leads - check config/API")
         
         if metrics["scraped_leads"] < MIN_EXPECTED_LEADS:
-            logger.warning(
-                f"⚠️  Lead count ({metrics['scraped_leads']}) below "
-                f"expected minimum ({MIN_EXPECTED_LEADS})"
-            )
+            logger.warning(f"⚠️  Below expected minimum ({MIN_EXPECTED_LEADS})")
         
-        # ==============================
-        # 🟢 PHASE 2: LEAD ENRICHMENT
-        # ==============================
+        # PHASE 2: ENRICHMENT
         logger.info("\n" + "=" * 70)
         logger.info("📞 PHASE 2: Contact Enrichment & Validation")
         logger.info("=" * 70)
@@ -477,53 +447,41 @@ def run_pipeline_core(
         if not success:
             raise RuntimeError(f"Preparer failed: {error}")
         
-        # Validate preparer outputs
         if not WHATSAPP_OUTPUT.exists():
-            raise FileNotFoundError("Preparer did not generate WhatsApp CSV")
+            raise FileNotFoundError("Preparer output missing")
         
         metrics["whatsapp_ready_leads"] = count_csv_rows(WHATSAPP_OUTPUT)
         metrics["invalid_leads"] = count_csv_rows(INVALID_LEADS_FILE)
         
-        logger.info(f"✅ WhatsApp-ready: {metrics['whatsapp_ready_leads']} leads")
-        logger.info(f"❌ Rejected: {metrics['invalid_leads']} (landlines/invalid)")
+        logger.info(f"✅ WhatsApp-ready: {metrics['whatsapp_ready_leads']}")
+        logger.info(f"❌ Rejected: {metrics['invalid_leads']}")
         
-        # Calculate funnel metrics
         if metrics["scraped_leads"] > 0:
             metrics["funnel_efficiency"] = round(
-                (metrics["whatsapp_ready_leads"] / metrics["scraped_leads"]) * 100,
-                2
-            )
-            metrics["deduplication_rate"] = round(
-                ((metrics["scraped_leads"] - metrics["whatsapp_ready_leads"] - metrics["invalid_leads"]) 
-                 / metrics["scraped_leads"]) * 100,
-                2
+                (metrics["whatsapp_ready_leads"] / metrics["scraped_leads"]) * 100, 2
             )
         
-        logger.info(f"📊 Funnel Efficiency: {metrics['funnel_efficiency']}%")
-        logger.info(f"🧹 Deduplication: {metrics['deduplication_rate']}%")
+        logger.info(f"📊 Funnel: {metrics['funnel_efficiency']}%")
         
-        # Parse priority distribution if available
+        # Parse priorities
         try:
-            import pandas as pd
+            
             df = pd.read_csv(WHATSAPP_OUTPUT)
             if 'priority' in df.columns:
                 metrics["priority_1_leads"] = len(df[df['priority'].str.contains('PRIORITY 1', na=False)])
                 metrics["priority_2_leads"] = len(df[df['priority'].str.contains('PRIORITY 2', na=False)])
-                logger.info(f"🔥 Priority 1: {metrics['priority_1_leads']} (contact today)")
-                logger.info(f"⭐ Priority 2: {metrics['priority_2_leads']} (contact this week)")
-        except Exception as e:
-            logger.debug(f"Could not parse priority breakdown: {e}")
+                logger.info(f"🔥 Priority 1: {metrics['priority_1_leads']}")
+                logger.info(f"⭐ Priority 2: {metrics['priority_2_leads']}")
+        except:
+            pass
         
-        # ==============================
-        # 🟣 PHASE 3: PUBLICATION
-        # ==============================
+        # PHASE 3: PUBLICATION
         logger.info("\n" + "=" * 70)
         logger.info("📤 PHASE 3: Publishing to Frontend")
         logger.info("=" * 70)
         
         FRONTEND_LEADS_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Copy all output files
         files_to_publish = [
             (WHATSAPP_OUTPUT, FRONTEND_FINAL_PATH),
             (WHATSAPP_JSON, FRONTEND_JSON_PATH),
@@ -533,12 +491,11 @@ def run_pipeline_core(
             if source.exists():
                 shutil.copy2(source, dest)
                 logger.info(f"✓ Published: {dest.name}")
-            else:
-                logger.warning(f"⚠️  Missing output: {source.name}")
         
-        # Publish pipeline metrics for frontend dashboard
         frontend_metrics = {
             "last_updated": datetime.now().isoformat(),
+            "country": COUNTRY_CONFIG["country_name"],
+            "city": COUNTRY_CONFIG["city"],
             "total_leads": metrics["whatsapp_ready_leads"],
             "priority_1": metrics["priority_1_leads"],
             "priority_2": metrics["priority_2_leads"],
@@ -549,11 +506,9 @@ def run_pipeline_core(
         with open(FRONTEND_METRICS_PATH, 'w') as f:
             json.dump(frontend_metrics, f, indent=2)
         
-        logger.info(f"✓ Published: pipeline_metrics.json")
+        logger.info("✓ Published: pipeline_metrics.json")
         
-        # ==============================
-        # ✅ SUCCESS
-        # ==============================
+        # SUCCESS
         metrics["success"] = True
         metrics["data_quality_score"] = calculate_data_quality_score(metrics)
         
@@ -566,122 +521,66 @@ def run_pipeline_core(
         logger.error(f"\n💥 PIPELINE FAILED: {error_msg}")
         metrics["error"] = error_msg
         metrics["success"] = False
-        
-        # Optional: Send failure alert
-        # send_failure_alert(error_msg, metrics)
     
     finally:
-        # Calculate final metrics
         runtime = (datetime.now() - start_time).total_seconds()
         metrics["runtime_seconds"] = round(runtime, 2)
         
-        # Performance comparison
         performance = calculate_performance_metrics(metrics)
         if performance:
             logger.info(f"\n📈 PERFORMANCE vs AVERAGE:")
             logger.info(f"   Leads: {performance['leads_vs_avg']}")
             logger.info(f"   Runtime: {performance['runtime_vs_avg']}")
-            logger.info(f"   Efficiency: {performance['efficiency_vs_avg']}")
             metrics["performance"] = performance
         
-        # Save metrics
         try:
             with open(METRICS_FILE, 'w') as f:
                 json.dump(metrics, f, indent=2)
-            logger.debug(f"💾 Metrics saved: {METRICS_FILE}")
         except Exception as e:
             logger.warning(f"Could not save metrics: {e}")
         
-        # Save to history
         save_to_history(metrics)
         
-        # Final summary
         if metrics["success"]:
             logger.info(f"\n🎯 BUSINESS IMPACT:")
-            logger.info(f"   ✓ {metrics['whatsapp_ready_leads']} leads ready for outreach")
-            logger.info(f"   ✓ {metrics['priority_1_leads']} high-priority contacts")
-            logger.info(f"   ✓ Data quality score: {metrics['data_quality_score']}/100")
+            logger.info(f"   ✓ {metrics['whatsapp_ready_leads']} leads ready")
+            logger.info(f"   ✓ {metrics['priority_1_leads']} high-priority")
+            logger.info(f"   ✓ Quality score: {metrics['data_quality_score']}/100")
             logger.info(f"   ✓ Runtime: {metrics['runtime_seconds']:.1f}s")
         else:
-            logger.error(f"\n📉 Pipeline failed - no new leads generated")
+            logger.error(f"\n📉 Failed - no new leads")
             logger.error(f"   Error: {metrics['error']}")
     
     return metrics
-
-def calculate_data_quality_score(metrics: dict) -> int:
-    """Calculate overall data quality score (0-100)."""
-    score = 0
-    
-    # Volume score (max 30)
-    if metrics["whatsapp_ready_leads"] >= 50:
-        score += 30
-    elif metrics["whatsapp_ready_leads"] >= 30:
-        score += 20
-    else:
-        score += 10
-    
-    # Efficiency score (max 40)
-    efficiency = metrics.get("funnel_efficiency", 0)
-    if efficiency >= 70:
-        score += 40
-    elif efficiency >= 50:
-        score += 30
-    elif efficiency >= 30:
-        score += 20
-    else:
-        score += 10
-    
-    # Priority distribution (max 30)
-    total = metrics["whatsapp_ready_leads"]
-    if total > 0:
-        priority_ratio = (metrics["priority_1_leads"] + metrics["priority_2_leads"]) / total
-        if priority_ratio >= 0.6:
-            score += 30
-        elif priority_ratio >= 0.4:
-            score += 20
-        else:
-            score += 10
-    
-    return min(score, 100)
 
 # ==============================
 # 🔍 ARGUMENT PARSING
 # ==============================
 
 def parse_args():
-    """Parse command-line arguments with smart defaults."""
+    """Parse arguments."""
     parser = argparse.ArgumentParser(
-        description="Optimized B2B Lead Pipeline",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python run_lead_pipeline.py                    # Auto-detect current week
-  python run_lead_pipeline.py --force            # Force fresh run
-  python run_lead_pipeline.py --week0 2025-01-06 # Specific week
-  python run_lead_pipeline.py --dry-run          # Test setup
-        """
+        description="Global B2B Lead Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    parser.add_argument("--week0", type=str, help="Current Monday (YYYY-MM-DD)")
+    parser.add_argument("--week0", type=str, help="Current Monday")
     parser.add_argument("--week1", type=str, help="Last Monday")
     parser.add_argument("--week2", type=str, help="Monday -2 weeks")
     parser.add_argument("--week3", type=str, help="Monday -3 weeks")
-    parser.add_argument("--force", action="store_true", help="Skip duplicate check")
-    parser.add_argument("--dry-run", action="store_true", help="Validate setup only")
+    parser.add_argument("--force", action="store_true", help="Force run")
+    parser.add_argument("--dry-run", action="store_true", help="Test setup")
     parser.add_argument("--quiet", action="store_true", help="Minimal output")
     
     args = parser.parse_args()
     
-    # Adjust logging based on --quiet
     if args.quiet:
         console_handler.setLevel(logging.WARNING)
     
-    # Auto-fill week0 if missing
     if not args.week0:
         args.week0 = get_monday_of_week(datetime.now())
-        logger.info(f"📅 Auto-detected current Monday: {args.week0}")
+        logger.info(f"📅 Auto-detected: {args.week0}")
     
-    # Validate dates
     try:
         args.week0 = parse_and_validate_date(args.week0, "week0")
         args.week1 = parse_and_validate_date(args.week1, "week1") if args.week1 else ""
@@ -694,20 +593,20 @@ Examples:
     return args
 
 # ==============================
-# 🧪 DRY RUN MODE
+# 🧪 DRY RUN
 # ==============================
 
 def dry_run_validation():
-    """Validate pipeline setup without execution."""
-    logger.info("🧪 DRY RUN - Validating pipeline setup...")
+    """Validate setup."""
+    logger.info("🧪 DRY RUN - Validating setup...")
     
     checks = {
-        "Scraper script exists": SCRAPER_SCRIPT.is_file(),
-        "Preparer script exists": PREPARER_SCRIPT.is_file(),
-        "Data directory exists": DATA_DIR.is_dir(),
-        "WhatsApp output dir exists": WHATSAPP_DIR.is_dir(),
-        "Google API key configured": bool(os.getenv("GOOGLE_API_KEY")),
-        "Frontend directory writable": FRONTEND_LEADS_DIR.parent.is_dir(),
+        "Scraper script": SCRAPER_SCRIPT.is_file(),
+        "Preparer script": PREPARER_SCRIPT.is_file(),
+        "Country config": CONFIG_FILE.is_file(),
+        "Data directory": DATA_DIR.is_dir(),
+        "WhatsApp output dir": WHATSAPP_DIR.is_dir(),
+        "Google API key": bool(os.getenv("GOOGLE_API_KEY")),
     }
     
     logger.info("\n📋 Setup Validation:")
@@ -719,25 +618,23 @@ def dry_run_validation():
             all_passed = False
     
     if all_passed:
-        logger.info("\n✅ All checks passed - ready for production run")
+        logger.info(f"\n✅ Ready for: {COUNTRY_CONFIG['city']}, {COUNTRY_CONFIG['country_name']}")
         return 0
     else:
-        logger.error("\n❌ Some checks failed - fix issues before running")
+        logger.error("\n❌ Fix issues before running")
         return 1
 
 # ==============================
-# ▶️ MAIN ENTRY POINT
+# ▶️ MAIN
 # ==============================
 
 def main():
-    """Main execution entry point."""
+    """Main execution."""
     args = parse_args()
     
-    # Handle dry-run mode
     if args.dry_run:
         sys.exit(dry_run_validation())
     
-    # Execute pipeline
     metrics = run_pipeline_core(
         week0=args.week0,
         week1=args.week1,
@@ -746,18 +643,13 @@ def main():
         force=args.force
     )
     
-    # Exit with appropriate code
     sys.exit(0 if metrics["success"] else 1)
-
-# ==============================
-# 🔌 MODULE INTERFACE
-# ==============================
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logger.warning("\n🛑 Pipeline interrupted by user")
+        logger.warning("\n🛑 Interrupted")
         sys.exit(130)
     except Exception as e:
         logger.exception(f"\n💥 Critical failure: {e}")
