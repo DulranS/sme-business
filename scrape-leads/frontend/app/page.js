@@ -53,11 +53,11 @@ function getNextBestAction(lead) {
 
 function getLeadUrgency(lead) {
   const days = lead.days_since_scraped;
-  if (days === null) return { label: 'Unknown', color: 'gray' };
-  if (days <= 1) return { label: '🔥 TODAY', color: 'red' };
-  if (days <= 3) return { label: '⏰ This week', color: 'orange' };
-  if (days <= 7) return { label: '📆 This month', color: 'yellow' };
-  return { label: '⏳ Expired', color: 'gray' };
+  if (days === null) return { label: 'Unknown', color: 'gray-400' };
+  if (days <= 1) return { label: '🔥 TODAY', color: 'red-500' };
+  if (days <= 3) return { label: '⏰ This week', color: 'orange-500' };
+  if (days <= 7) return { label: '📆 This month', color: 'yellow-500' };
+  return { label: '⏳ Expired', color: 'gray-500' };
 }
 
 function estimateRevenuePotential(score) {
@@ -77,6 +77,13 @@ function generateMessage1(lead, template) {
 }
 
 function generateMessage2(lead, myBusinessName, linkedInUrl, template) {
+  return template
+    .replace(/{business_name}/g, lead?.business_name?.trim() || 'your business')
+    .replace(/{my_business_name}/g, myBusinessName)
+    .replace(/{linkedInUrl}/g, linkedInUrl);
+}
+
+function generateEmailMessage(lead, myBusinessName, linkedInUrl, template) {
   return template
     .replace(/{business_name}/g, lead?.business_name?.trim() || 'your business')
     .replace(/{my_business_name}/g, myBusinessName)
@@ -111,7 +118,7 @@ const fuzzyMatch = (text, query) => {
 // ==============================
 // 🎯 LEAD CARD
 // ==============================
-const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, message2Template, onCopy, onMarkContacted, leadNotes, onNoteChange, showToast }) => {
+const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, message2Template, emailTemplate, onCopy, onMarkContacted, leadNotes, onNoteChange, showToast }) => {
   const msg1 = generateMessage1(lead, message1Template);
   const msg2 = generateMessage2(lead, myBusinessName, linkedInUrl, message2Template);
   const waLink = generateWhatsAppLink(lead, msg1);
@@ -122,15 +129,22 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
       .catch(() => showToast('❌ Failed to copy'));
   };
 
+  const handleComposeEmail = () => {
+    const emailBody = generateEmailMessage(lead, myBusinessName, linkedInUrl, emailTemplate);
+    const subject = `Quick question for ${lead.business_name || 'your business'}`;
+    const mailtoLink = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+    window.location.href = mailtoLink;
+  };
+
   const isHighValue = lead._score >= 75;
   const urgency = getLeadUrgency(lead);
   const revenue = estimateRevenuePotential(lead._score);
 
   return (
-    <div className={`border rounded-xl p-4 bg-white shadow-sm mb-4 ${isHighValue ? 'border-green-500 ring-1 ring-green-100' : 'border-gray-200'}`}>
+    <div className={`rounded-xl p-4 bg-white shadow-sm mb-4 border ${isHighValue ? 'border-green-300 ring-1 ring-green-50' : 'border-gray-200'}`}>
       <div className="flex justify-between items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h2 className="font-bold text-black text-lg break-words">{lead.business_name || 'Unnamed Business'}</h2>
+          <h2 className="font-bold text-gray-900 text-lg break-words">{lead.business_name || 'Unnamed Business'}</h2>
           {lead.address && (
             <a
               href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.address)}`}
@@ -141,53 +155,44 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
               📍 {lead.address}
             </a>
           )}
-          <div className="flex flex-wrap gap-1.5 mt-2">
+          <div className="flex flex-wrap gap-2 mt-2">
             {lead.lead_quality && (
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                lead.lead_quality === 'HOT' ? 'bg-red-100 text-red-800' :
-                lead.lead_quality === 'WARM' ? 'bg-yellow-100 text-yellow-800' :
-                'bg-gray-100 text-gray-800'
+              <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                lead.lead_quality === 'HOT' ? 'bg-red-100 text-red-700' :
+                lead.lead_quality === 'WARM' ? 'bg-yellow-100 text-yellow-700' :
+                'bg-gray-100 text-gray-700'
               }`}>
                 {lead.lead_quality}
               </span>
             )}
             {urgency.label && (
-              <span className={`px-2 py-1 text-xs font-medium rounded-full bg-${urgency.color}-100 text-${urgency.color}-800`}>
+              <span className={`px-2.5 py-1 text-xs font-medium rounded-full bg-${urgency.color.replace('-', '-100 text-')} bg-opacity-20`}>
                 {urgency.label}
               </span>
             )}
-            <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">{revenue}</span>
+            <span className="px-2.5 py-1 text-xs bg-purple-100 text-purple-700 rounded-full">{revenue}</span>
           </div>
           <div className="mt-2 text-xs text-blue-700 font-medium">➡️ {getNextBestAction(lead)}</div>
-          
-          {/* Smart Reasoning */}
-          <div className="mt-2 text-xs text-gray-600">
-            💡 Score: {lead._score}/100 (
-            {lead.lead_quality && `Quality: ${lead.lead_quality}, `}
-            {lead.rating >= 4 && `Rating: ${lead.rating}, `}
-            {lead.days_since_scraped <= 3 && `Fresh: ${lead.days_since_scraped}d ago`}
-            )
-          </div>
         </div>
       </div>
 
-      <div className="mt-3 space-y-2 text-black text-base">
+      <div className="mt-3 space-y-1.5 text-gray-800 text-sm">
         {lead.email && (
           <div className="flex items-center justify-between">
             <a href={`mailto:${lead.email}`} className="truncate text-blue-600 hover:underline flex items-center gap-1">📧 {lead.email}</a>
-            <button onClick={() => onCopy(lead.email, 'Email')} className="text-gray-500 hover:text-blue-600 text-lg">📋</button>
+            <button onClick={() => onCopy(lead.email, 'Email')} className="text-gray-400 hover:text-blue-600 text-base">📋</button>
           </div>
         )}
         {lead.phone_raw && (
           <div className="flex items-center justify-between">
             <a href={`tel:+${normalizePhone(lead.phone_raw)}`} className="text-blue-600 hover:underline flex items-center gap-1">📱 {lead.phone_raw}</a>
-            <button onClick={() => onCopy(lead.phone_raw, 'Phone')} className="text-gray-500 hover:text-blue-600 text-lg">📋</button>
+            <button onClick={() => onCopy(lead.phone_raw, 'Phone')} className="text-gray-400 hover:text-blue-600 text-base">📋</button>
           </div>
         )}
       </div>
 
       {(lead.rating || lead.review_count) && (
-        <div className="mt-2 text-black text-sm opacity-90">⭐ {lead.rating || 'N/A'} ({lead.review_count || 0} reviews)</div>
+        <div className="mt-2 text-gray-700 text-sm">⭐ {lead.rating || 'N/A'} ({lead.review_count || 0} reviews)</div>
       )}
 
       {lead.website && (
@@ -200,47 +205,55 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
 
       <div className="mt-4 pt-3 border-t border-gray-100 space-y-3">
         <div>
-          <label className="text-xs text-gray-600 block mb-1">📝 Notes</label>
+          <label className="text-xs text-gray-500 block mb-1">📝 Notes</label>
           <textarea
             value={leadNotes[lead.id] || ''}
             onChange={(e) => onNoteChange(lead.id, e.target.value)}
             placeholder="Add notes for your team..."
-            className="w-full text-sm p-2.5 border border-gray-300 rounded bg-gray-50 text-black"
+            className="w-full text-sm p-2 border border-gray-300 rounded bg-gray-50 text-gray-800"
             rows={2}
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-600">📅 Last contacted:</span>
-          <span className="text-sm font-medium">
+          <span className="text-xs text-gray-500">📅 Last contacted:</span>
+          <span className="text-sm text-gray-800">
             {lead.last_contacted ? new Date(lead.last_contacted).toLocaleDateString() : 'Never'}
           </span>
           <button
             onClick={() => onMarkContacted(lead.id)}
-            className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-2.5 py-1 rounded whitespace-nowrap"
+            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded"
           >
-            Mark Contacted
+            Mark Today
           </button>
         </div>
 
-        {/* === STRATEGIC TWO-MESSAGE OUTREACH === */}
-        <div className="flex flex-col gap-2">
+        {/* === OUTREACH ACTIONS === */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {waLink && (
             <>
               <a
                 href={waLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-2.5 text-center rounded-lg bg-green-600 text-white font-medium hover:bg-green-700"
+                className="w-full py-2 text-center rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition"
               >
-                💬 Send Message 1: “{msg1.substring(0, 25)}{msg1.length > 25 ? '…' : ''}”
+                💬 Msg 1
               </a>
               <button
                 onClick={copyMessage2}
-                className="w-full py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+                className="w-full py-2 text-center rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition"
               >
-                📋 Copy Message 2 (Paste & Send After)
+                📋 Msg 2
               </button>
             </>
+          )}
+          {lead.email && (
+            <button
+              onClick={handleComposeEmail}
+              className="w-full py-2 text-center rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition col-span-full"
+            >
+              📧 Compose Email
+            </button>
           )}
         </div>
       </div>
@@ -252,7 +265,8 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
 // 🚀 MAIN DASHBOARD
 // ==============================
 export default function LeadDashboard() {
-  // UI State
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -262,12 +276,13 @@ export default function LeadDashboard() {
   const [minRating, setMinRating] = useState('');
   const [minReviews, setMinReviews] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '' });
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Outreach Identity & Templates
+  // Templates & Identity
   const [myBusinessName, setMyBusinessName] = useState(() => 
     typeof window !== 'undefined' ? localStorage.getItem('myBusinessName') || 'Dulran Samarasinghe' : 'Dulran Samarasinghe'
   );
@@ -289,7 +304,11 @@ export default function LeadDashboard() {
     return saved || `I hope you’re doing well. I’m reaching out because I currently offer a range of digital freelance services, including content creation, design, automation, and general online support.\n\nIf you need reliable, fast, and high-quality digital work done, I’d be happy to help.\nLet me know what you’re working on, and I’ll share how I can support you.\n\nBest regards,\n{my_business_name} - {linkedInUrl}`;
   });
 
-  // Local Data
+  const [emailTemplate, setEmailTemplate] = useState(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('emailTemplate') : null;
+    return saved || `Hi,\n\nIs this {business_name}?\n\nI hope you’re doing well. I’m reaching out because I currently offer a range of digital freelance services—including content creation, design, automation, and general online support.\n\nIf you need reliable, fast, and high-quality digital work done, I’d be happy to help.\nLet me know what you’re working on, and I’ll share how I can support you.\n\nBest regards,\n{my_business_name}\n{linkedInUrl}`;
+  });
+
   const [leadNotes, setLeadNotes] = useState(() => 
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('leadNotes') || '{}') : {}
   );
@@ -298,17 +317,18 @@ export default function LeadDashboard() {
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('lastContacted') || '{}') : {}
   );
 
-  // Persist settings
+  // Persist
   useEffect(() => { localStorage.setItem('myBusinessName', myBusinessName); }, [myBusinessName]);
   useEffect(() => { localStorage.setItem('linkedInUrl', linkedInUrl); }, [linkedInUrl]);
   useEffect(() => { localStorage.setItem('message1Template', message1Template); }, [message1Template]);
   useEffect(() => { localStorage.setItem('message2Template', message2Template); }, [message2Template]);
+  useEffect(() => { localStorage.setItem('emailTemplate', emailTemplate); }, [emailTemplate]);
   useEffect(() => { localStorage.setItem('leadNotes', JSON.stringify(leadNotes)); }, [leadNotes]);
   useEffect(() => { localStorage.setItem('lastContacted', JSON.stringify(lastContacted)); }, [lastContacted]);
 
-  // Scroll-to-top visibility
+  // Scroll to top button
   useEffect(() => {
-    const handleScroll = () => setShowScrollTop(window.scrollY > 300);
+    const handleScroll = () => setShowScrollTop(window.scrollY > 400);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
@@ -392,12 +412,12 @@ export default function LeadDashboard() {
     });
   }, [filteredLeads, sortField, sortDirection]);
 
-  // Business Intelligence
+  // Business metrics
   const urgentLeads = sortedLeads.filter(l => (l.days_since_scraped || 999) <= 3);
   const contactedToday = Object.values(lastContacted).filter(date => date === new Date().toISOString().split('T')[0]).length;
   const avgScore = sortedLeads.length ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length) : 0;
 
-  // Export & Reports
+  // Export functions
   const exportOutreachReport = () => {
     const today = new Date().toISOString().split('T')[0];
     const contacted = sortedLeads.filter(l => lastContacted[l.id] === today);
@@ -408,9 +428,7 @@ export default function LeadDashboard() {
     contacted.forEach(l => {
       report += `${l.business_name} (${l.phone_raw || l.email}) – Notes: ${leadNotes[l.id] || 'None'}\n`;
     });
-    navigator.clipboard.writeText(report)
-      .then(() => showToast('✅ Daily report copied to clipboard!'))
-      .catch(() => showToast('❌ Failed to copy report'));
+    navigator.clipboard.writeText(report).then(() => showToast('✅ Daily report copied!')).catch(() => showToast('❌ Failed'));
   };
 
   const exportToCSV = () => {
@@ -437,7 +455,7 @@ export default function LeadDashboard() {
       return;
     }
     navigator.clipboard.writeText(numbers.join('\n'))
-      .then(() => showToast(`✅ ${numbers.length} WhatsApp numbers copied!`))
+      .then(() => showToast(`✅ ${numbers.length} numbers copied!`))
       .catch(() => {
         const blob = new Blob([numbers.join('\n')], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
@@ -459,72 +477,49 @@ export default function LeadDashboard() {
     }
   };
 
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Loading State
+  // Loading
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="text-4xl mb-2">⏳</div>
-          <p className="text-black">Loading Colombo B2B leads...</p>
+          <p className="text-gray-800">Loading Colombo B2B leads...</p>
         </div>
       </div>
     );
   }
 
-  // Empty State
+  // Empty
   if (sortedLeads.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
         <div className="text-center max-w-md">
           <div className="text-5xl mb-4">📊</div>
-          <h2 className="text-xl font-bold text-black mb-2">No B2B Leads Available</h2>
-          <p className="text-gray-600 mb-4 text-center">
-            {leads.length === 0 
-              ? "The pipeline hasn't run yet or no businesses were found."
-              : "No leads match your current filters."
-            }
+          <h2 className="text-xl font-bold text-gray-900 mb-2">No B2B Leads Available</h2>
+          <p className="text-gray-600 mb-4">
+            {leads.length === 0 ? "Pipeline hasn't run yet." : "No leads match your filters."}
           </p>
           {leads.length === 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <p className="text-blue-800 text-sm">💡 <strong>Pro Tip:</strong> Fresh leads are generated weekly. You can trigger a scrape now:</p>
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/leads/trigger-pipeline', { method: 'POST' });
-                    if (res.ok) {
-                      showToast('✅ Pipeline started! Refreshing in 10s...');
-                      setTimeout(() => window.location.reload(), 10000);
-                    } else {
-                      const err = await res.json();
-                      showToast(`❌ Failed: ${err.error || 'Unknown error'}`);
-                    }
-                  } catch {
-                    showToast('⚠️ Could not reach pipeline API');
-                  }
-                }}
-                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
-              >
-                🔄 Trigger Fresh Scrape
-              </button>
-            </div>
-          )}
-          {leads.length > 0 && (
             <button
-              onClick={() => {
-                setSearchTerm('');
-                setQualityFilter('ALL');
-                setCategoryFilter('ALL');
-                setContactFilter('ALL');
-                setMinRating('');
-                setMinReviews('');
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/leads/trigger-pipeline', { method: 'POST' });
+                  if (res.ok) {
+                    showToast('✅ Pipeline started! Refreshing in 10s...');
+                    setTimeout(() => window.location.reload(), 10000);
+                  } else {
+                    const err = await res.json();
+                    showToast(`❌ Failed: ${err.error}`);
+                  }
+                } catch {
+                  showToast('⚠️ API unavailable');
+                }
               }}
-              className="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium"
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
             >
-              Reset Filters
+              🔄 Trigger Fresh Scrape
             </button>
           )}
         </div>
@@ -532,136 +527,140 @@ export default function LeadDashboard() {
     );
   }
 
-  // Render Dashboard
+  // Render
   return (
-    <div className="min-h-screen bg-gray-50 pb-32 relative">
+    <div className="min-h-screen bg-gray-50 pb-24">
       <Head>
-        <title>Colombo B2B Leads | Strategic Two-Message Outreach</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>Colombo B2B Leads | Strategic Outreach</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
       {toast.show && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-black text-white px-4 py-2.5 rounded-lg shadow-lg text-center text-sm font-medium">
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-gray-900 text-white px-4 py-2.5 rounded-lg shadow-lg text-center text-sm font-medium">
           {toast.message}
         </div>
       )}
 
-      {/* Scroll-to-Top Button */}
+      {/* Scroll-to-top */}
       {showScrollTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-20 right-4 z-50 w-12 h-12 rounded-full bg-blue-600 text-white shadow-lg flex items-center justify-center hover:bg-blue-700"
+          className="fixed bottom-6 right-4 z-50 w-11 h-11 rounded-full bg-blue-600 text-white shadow-lg flex items-center justify-center hover:bg-blue-700 transition-all"
           aria-label="Scroll to top"
         >
-          🔝
+          ↑
         </button>
       )}
 
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      {/* Header – sticky only on desktop */}
+      <header className={`${isMobile ? '' : 'sticky top-0 z-40'} bg-white border-b border-gray-200`}>
         <div className="px-4 py-3">
-          {/* 📊 Daily Action Summary */}
-          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3 text-emerald-800 text-sm">
-            🎯 <strong>Today’s Focus:</strong> {urgentLeads.length} urgent leads | {contactedToday} contacted today
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 mb-3">
+            <p className="text-blue-800 text-xs font-medium">
+              🎯 <strong>Today:</strong> {urgentLeads.length} urgent leads • {contactedToday} contacted
+            </p>
           </div>
 
           <div className="flex justify-between items-center mb-3">
-            <h1 className="text-lg font-bold text-black">Colombo B2B Leads</h1>
-            <button onClick={() => setShowFilters(!showFilters)} className="text-sm text-blue-600 font-medium flex items-center gap-1">
-              {showFilters ? '▲ Hide' : '▼ Show'} Filters
-            </button>
+            <h1 className="text-lg font-bold text-gray-900">Colombo B2B Leads</h1>
+            <div className="flex gap-2">
+              <button onClick={() => setShowSettings(!showSettings)} className="text-xs text-gray-600 hover:text-gray-900">
+                {showSettings ? '▲' : '▼'} Settings
+              </button>
+              <button onClick={() => setShowFilters(!showFilters)} className="text-xs text-gray-600 hover:text-gray-900">
+                {showFilters ? '▲' : '▼'} Filters
+              </button>
+            </div>
           </div>
 
-          {/* ✅ FIXED: searchTerm (not searchTerms) */}
           <input
             type="text"
             placeholder="Search business, phone, email, or address..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-3 text-base border border-gray-300 rounded-lg mb-3 text-black placeholder-gray-500"
+            className="w-full p-2.5 text-sm border border-gray-300 rounded-lg mb-3 text-gray-800 placeholder-gray-500"
           />
 
           {showFilters && (
-            <div className="space-y-3 mb-3">
+            <div className="space-y-2.5 mb-3">
               <div className="grid grid-cols-2 gap-2">
-                <select value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value)} className="w-full p-2.5 text-sm border border-gray-300 rounded bg-white text-black">
+                <select value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-gray-800">
                   <option value="ALL">All Qualities</option>
                   <option value="HOT">🔥 HOT</option>
                   <option value="WARM">🔸 WARM</option>
                   <option value="COLD">❄️ COLD</option>
                 </select>
-                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-full p-2.5 text-sm border border-gray-300 rounded bg-white text-black">
+                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-gray-800">
                   <option value="ALL">All Categories</option>
                   {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <input type="number" placeholder="Min Rating" value={minRating} onChange={(e) => setMinRating(e.target.value)} min="0" max="5" step="0.1" className="w-full p-2.5 text-sm border border-gray-300 rounded bg-white text-black" />
-                <input type="number" placeholder="Min Reviews" value={minReviews} onChange={(e) => setMinReviews(e.target.value)} min="0" className="w-full p-2.5 text-sm border border-gray-300 rounded bg-white text-black" />
+                <input type="number" placeholder="Min Rating" value={minRating} onChange={(e) => setMinRating(e.target.value)} min="0" max="5" step="0.1" className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-gray-800" />
+                <input type="number" placeholder="Min Reviews" value={minReviews} onChange={(e) => setMinReviews(e.target.value)} min="0" className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-gray-800" />
               </div>
             </div>
           )}
 
-          {/* === STRATEGIC OUTREACH TEMPLATES === */}
-          <div className="mt-4 p-3 bg-gray-100 rounded-lg space-y-2">
-            <h3 className="font-bold text-black text-sm">Customize Your 2-Message Sequence</h3>
-            
-            <input
-              type="text"
-              value={myBusinessName}
-              onChange={(e) => setMyBusinessName(e.target.value)}
-              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
-              placeholder="Your name"
-            />
-            
-            <input
-              type="url"
-              value={linkedInUrl}
-              onChange={(e) => setLinkedInUrl(e.target.value)}
-              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
-              placeholder="LinkedIn URL"
-            />
-            
-            <input
-              type="text"
-              value={message1Template}
-              onChange={(e) => setMessage1Template(e.target.value)}
-              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
-              placeholder="Message 1 (e.g., Hi, is this {business_name}?)"
-            />
-            
-            <textarea
-              value={message2Template}
-              onChange={(e) => setMessage2Template(e.target.value)}
-              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
-              rows="3"
-              placeholder="Message 2 (your pitch)"
-            />
-          </div>
+          {showSettings && (
+            <div className="space-y-2.5 mb-3 p-3 bg-gray-50 rounded-lg">
+              <input
+                type="text"
+                value={myBusinessName}
+                onChange={(e) => setMyBusinessName(e.target.value)}
+                className="w-full p-2 text-sm border border-gray-300 rounded text-gray-800"
+                placeholder="Your name"
+              />
+              <input
+                type="url"
+                value={linkedInUrl}
+                onChange={(e) => setLinkedInUrl(e.target.value)}
+                className="w-full p-2 text-sm border border-gray-300 rounded text-gray-800"
+                placeholder="LinkedIn URL"
+              />
+              <input
+                type="text"
+                value={message1Template}
+                onChange={(e) => setMessage1Template(e.target.value)}
+                className="w-full p-2 text-sm border border-gray-300 rounded text-gray-800"
+                placeholder="WhatsApp Msg 1"
+              />
+              <textarea
+                value={message2Template}
+                onChange={(e) => setMessage2Template(e.target.value)}
+                className="w-full p-2 text-sm border border-gray-300 rounded text-gray-800"
+                rows="2"
+                placeholder="WhatsApp Msg 2"
+              />
+              <textarea
+                value={emailTemplate}
+                onChange={(e) => setEmailTemplate(e.target.value)}
+                className="w-full p-2 text-sm border border-gray-300 rounded text-gray-800"
+                rows="3"
+                placeholder="📧 Email Template"
+              />
+            </div>
+          )}
 
-          <div className="flex justify-between items-center pt-3">
-            <span className="text-black text-sm">
-              {sortedLeads.length} leads • Avg Score: {avgScore}/100
+          <div className="flex justify-between items-center pt-2">
+            <span className="text-gray-800 text-sm">
+              {sortedLeads.length} leads • Avg: {avgScore}/100
             </span>
-            <div className="flex gap-2">
-              <button onClick={exportOutreachReport} className="px-3 py-1.5 text-sm rounded font-medium bg-indigo-600 text-white hover:bg-indigo-700">
-                📝 Daily Report
-              </button>
-              <button onClick={exportToCSV} disabled={sortedLeads.length === 0} className={`px-3 py-1.5 text-sm rounded font-medium ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                📥 CSV
-              </button>
-              <button onClick={exportWhatsAppNumbers} disabled={sortedLeads.length === 0} className={`px-3 py-1.5 text-sm rounded font-medium ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
-                📲 WhatsApp
-              </button>
+            <div className="flex gap-1.5">
+              <button onClick={exportOutreachReport} className="px-2.5 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700">📝 Report</button>
+              <button onClick={exportToCSV} className="px-2.5 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700">📥 CSV</button>
+              <button onClick={exportWhatsAppNumbers} className="px-2.5 py-1 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700">📲 WhatsApp</button>
             </div>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            ℹ️ This tool supports WhatsApp’s human-first ethos: messages are sent manually to ensure safety, privacy, and trust.
+
+          <p className="text-[10px] text-gray-500 mt-2">
+            ℹ️ Manual outreach ensures safety & privacy — aligned with WhatsApp’s human-first ethos.
           </p>
         </div>
       </header>
 
       <main className="px-4 pt-4">
-        <div className="space-y-3">
+        <div className="space-y-4">
           {sortedLeads.map(lead => (
             <LeadCard
               key={lead.id}
@@ -670,6 +669,7 @@ export default function LeadDashboard() {
               linkedInUrl={linkedInUrl}
               message1Template={message1Template}
               message2Template={message2Template}
+              emailTemplate={emailTemplate}
               onCopy={copyToClipboard}
               onMarkContacted={(id) => {
                 const today = new Date().toISOString().split('T')[0];
