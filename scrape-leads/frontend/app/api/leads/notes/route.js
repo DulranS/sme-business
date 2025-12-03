@@ -1,7 +1,7 @@
 // app/api/leads/notes/route.js
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
