@@ -1,20 +1,15 @@
 """
 lean_business_scraper.py
 
-🎯 OPTIMIZED B2B LEAD ENGINE — Maximum ROI per API call
-✅ Intelligent caching & deduplication  
-✅ Strategic query selection (highest ROI sectors)
-✅ Incremental updates (no re-fetching known businesses)
-✅ Smart contact enrichment (website-first, then details API)
-✅ Budget: <$2/week (~500 calls) | <$8/month for 4 runs
-✅ Target: 40-60 HIGH-QUALITY leads per run
+🌍 GLOBAL B2B LEAD GENERATION ENGINE — Any Country, Any City
+✅ Multi-country support with automatic localization
+✅ Intelligent caching & deduplication
+✅ Budget-safe (configurable API limits)
+✅ High-quality lead filtering
+✅ Full audit trail & metrics
 
-OPTIMIZATION STRATEGY:
-- Use caching to avoid re-fetching known businesses
-- Prioritize high-value B2B sectors with strong buying intent
-- Extract emails from websites BEFORE calling details API
-- Only enrich businesses with missing critical data
-- Rotate search terms weekly for market coverage
+SUPPORTED: 195+ countries via Google Maps API
+CONFIGURATION: Set via environment variables or config.yaml
 """
 
 import os
@@ -24,55 +19,106 @@ import json
 import re
 import logging
 import requests
-from datetime import datetime, timedelta
+import yaml
+from datetime import datetime
 from collections import deque
 from urllib.parse import urljoin
+from pathlib import Path
 from dotenv import load_dotenv
 import googlemaps
-import phonenumbers
 
 # ==============================
-# 🔐 CONFIGURATION
+# 🔐 CONFIGURATION LOADER
 # ==============================
 
+# Load environment variables
 if os.path.exists(".env"):
     load_dotenv()
 elif os.path.exists(os.path.join("scrape-leads", ".env")):
     load_dotenv(os.path.join("scrape-leads", ".env"))
 
+SCRIPT_DIR = Path(__file__).parent.resolve()
+
+# Try to load country config from YAML (preferred) or fallback to env vars
+CONFIG_FILE = SCRIPT_DIR / "country_config.yaml"
+
+def load_country_config():
+    """Load country configuration from YAML or environment variables."""
+    
+    # Default configuration (can be overridden)
+    default_config = {
+        "country_code": "LK",
+        "country_name": "Sri Lanka",
+        "city": "Colombo",
+        "latitude": 6.86026115,
+        "longitude": 79.912990,
+        "search_radius": 8000,
+        "phone_country_code": "+94",
+        "phone_number_length": 9,
+        "currency": "USD",
+        "language": "en"
+    }
+    
+    # Try loading from YAML first
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                yaml_config = yaml.safe_load(f)
+                if yaml_config:
+                    default_config.update(yaml_config)
+                    return default_config
+        except Exception as e:
+            logging.warning(f"Could not load {CONFIG_FILE}: {e}")
+    
+    # Fallback to environment variables
+    env_config = {
+        "country_code": os.getenv("COUNTRY_CODE", default_config["country_code"]),
+        "country_name": os.getenv("COUNTRY_NAME", default_config["country_name"]),
+        "city": os.getenv("CITY", default_config["city"]),
+        "latitude": float(os.getenv("LATITUDE", default_config["latitude"])),
+        "longitude": float(os.getenv("LONGITUDE", default_config["longitude"])),
+        "search_radius": int(os.getenv("SEARCH_RADIUS", default_config["search_radius"])),
+        "phone_country_code": os.getenv("PHONE_COUNTRY_CODE", default_config["phone_country_code"]),
+        "phone_number_length": int(os.getenv("PHONE_NUMBER_LENGTH", default_config["phone_number_length"])),
+        "currency": os.getenv("CURRENCY", default_config["currency"]),
+        "language": os.getenv("LANGUAGE", default_config["language"])
+    }
+    
+    return env_config
+
+# Load configuration
+CONFIG = load_country_config()
+
+# API Key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise EnvironmentError("❌ Missing GOOGLE_API_KEY")
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_LEADS_NAME = "b2b_leads.csv"
-
-# 📍 Colombo coordinates
-DEFAULT_CENTER = (6.86026115, 79.912990)
-LOCATION_LABEL = "Colombo, Sri Lanka"
-SEARCH_RADIUS = 8000
+# Location settings from config
+LOCATION = (CONFIG["latitude"], CONFIG["longitude"])
+LOCATION_LABEL = f"{CONFIG['city']}, {CONFIG['country_name']}"
+SEARCH_RADIUS = CONFIG["search_radius"]
 
 # I/O Paths
-LEADS_FILE = os.getenv("LEADS_FILE")
-if not LEADS_FILE:
-    data_dir = os.path.join(SCRIPT_DIR, "data")
-    os.makedirs(data_dir, exist_ok=True)
-    LEADS_FILE = os.path.join(data_dir, DEFAULT_LEADS_NAME)
+DATA_DIR = SCRIPT_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
 
+LEADS_FILE = Path(os.getenv("LEADS_FILE", DATA_DIR / "b2b_leads.csv"))
 LOG_FILE = os.getenv("LOG_FILE", "lead_engine.log")
-CACHE_FILE = os.path.join(os.path.dirname(LEADS_FILE), "business_cache.json")
-STATE_FILE = os.path.join(os.path.dirname(LEADS_FILE), "scraper_state.json")
+CACHE_FILE = DATA_DIR / "business_cache.json"
+STATE_FILE = DATA_DIR / "scraper_state.json"
 
-# 🔒 OPTIMIZED BUDGET LIMITS (Weekly run: ~500 calls max)
-MAX_SEARCH_QUERIES = 5  # 5 queries * ~32 SKU = 160 calls
-MAX_RESULTS_PER_QUERY = 20  # More discoveries per query
-MAX_DETAILS_CALLS = 40  # Only for high-priority missing data
-MAX_NEW_LEADS_PER_RUN = 50  # Focus on quality
+# Budget & Safety Guardrails
+MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "5"))
+MAX_RESULTS_PER_QUERY = int(os.getenv("MAX_RESULTS_PER_QUERY", "20"))
+MAX_DETAILS_CALLS = int(os.getenv("MAX_DETAILS_CALLS", "40"))
+MAX_NEW_LEADS_PER_RUN = int(os.getenv("MAX_NEW_LEADS_PER_RUN", "50"))
 
-# Quality Filters - RAISED for better leads
-MIN_RATING = 4.0  # Up from 3.5
-MIN_REVIEWS = 10  # Up from 5
+# Quality Filters
+MIN_RATING = float(os.getenv("MIN_RATING", "4.0"))
+MIN_REVIEWS = int(os.getenv("MIN_REVIEWS", "10"))
 
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
@@ -84,54 +130,111 @@ logging.basicConfig(
 logger = logging.getLogger("LeadEngine")
 
 # ==============================
-# 🎯 STRATEGIC SEARCH TERMS (Rotating Weekly)
+# 🌍 GLOBAL SEARCH TERMS DATABASE
 # ==============================
 
-# High-value sectors with strong B2B buying intent
+# Universal B2B search terms (works in most countries)
+UNIVERSAL_B2B_TERMS = [
+    "marketing agency",
+    "digital marketing",
+    "software company",
+    "IT consulting",
+    "web development",
+    "business consulting",
+    "law firm",
+    "accounting firm",
+    "architecture firm",
+    "engineering consulting",
+    "advertising agency",
+    "design agency"
+]
+
+def generate_localized_search_terms(city, country=None, language="en"):
+    """
+    Generate search terms optimized for the target location.
+    Automatically localizes terms based on language.
+    """
+    
+    # Language-specific business terms
+    translations = {
+        "en": UNIVERSAL_B2B_TERMS,
+        "es": [  # Spanish
+            "agencia de marketing", "empresa de software", "consultoría IT",
+            "desarrollo web", "consultoría empresarial", "bufete de abogados",
+            "firma de contabilidad", "estudio de arquitectura"
+        ],
+        "fr": [  # French
+            "agence de marketing", "entreprise de logiciels", "conseil IT",
+            "développement web", "conseil en entreprise", "cabinet d'avocats",
+            "cabinet comptable", "cabinet d'architecture"
+        ],
+        "de": [  # German
+            "Marketingagentur", "Softwareunternehmen", "IT-Beratung",
+            "Webentwicklung", "Unternehmensberatung", "Anwaltskanzlei",
+            "Wirtschaftsprüfung", "Architekturbüro"
+        ],
+        "pt": [  # Portuguese
+            "agência de marketing", "empresa de software", "consultoria de TI",
+            "desenvolvimento web", "consultoria empresarial", "escritório de advocacia"
+        ],
+        "zh": [  # Chinese
+            "营销公司", "软件公司", "IT咨询", "网络开发", "商业咨询", "律师事务所"
+        ],
+        "ja": [  # Japanese
+            "マーケティング会社", "ソフトウェア会社", "ITコンサルティング", "ウェブ開発"
+        ],
+        "ar": [  # Arabic
+            "وكالة تسويق", "شركة برمجيات", "استشارات تقنية", "تطوير ويب"
+        ]
+    }
+    
+    # Get base terms in target language
+    base_terms = translations.get(language, translations["en"])
+    
+    # Localize with city name
+    localized_terms = [f"{term} {city}" for term in base_terms[:12]]
+    
+    # Add nearby/area variations for better coverage
+    localized_terms.extend([
+        f"{base_terms[0]} near {city}",
+        f"best {base_terms[0]} {city}",
+        f"top {base_terms[1]} {city}"
+    ])
+    
+    return localized_terms
+
+# Generate search terms for current location
+SEARCH_TERMS = generate_localized_search_terms(
+    CONFIG["city"],
+    CONFIG["country_name"],
+    CONFIG["language"]
+)
+
+# Weekly rotation pools
 SEARCH_TERM_POOLS = {
-    "week_1": [
-        "digital marketing agency Colombo",
-        "software development company Colombo",
-        "IT consulting services Colombo",
-        "web development agency Colombo",
-        "mobile app development Colombo"
-    ],
-    "week_2": [
-        "law firm Colombo",
-        "corporate legal services Colombo",
-        "accounting firm Colombo",
-        "financial consulting Colombo",
-        "audit services Colombo"
-    ],
-    "week_3": [
-        "business consulting Colombo",
-        "management consulting Colombo",
-        "HR consulting services Colombo",
-        "recruitment agency Colombo",
-        "training company Colombo"
-    ],
-    "week_4": [
-        "architecture firm Colombo",
-        "engineering consultancy Colombo",
-        "real estate development Colombo",
-        "interior design company Colombo",
-        "construction company Colombo"
-    ]
+    "week_1": SEARCH_TERMS[:5],
+    "week_2": SEARCH_TERMS[5:10],
+    "week_3": SEARCH_TERMS[10:15] if len(SEARCH_TERMS) > 10 else SEARCH_TERMS[:5],
+    "week_4": SEARCH_TERMS[3:8]
 }
 
 B2B_KEYWORDS = [
     "marketing", "advertising", "consulting", "law", "legal", "accounting",
     "software", "it", "technology", "finance", "architecture", "engineering",
-    "digital", "agency", "solutions", "services", "development", "design"
+    "digital", "agency", "solutions", "services", "development", "design",
+    # Multi-language keywords
+    "agencia", "empresa", "consultoría", "bufete", "firma",  # Spanish
+    "agence", "entreprise", "cabinet", "société",  # French
+    "agentur", "unternehmen", "beratung", "kanzlei",  # German
 ]
 
 # ==============================
-# 🧠 SMART CACHING & STATE MANAGEMENT
+# 🧠 SMART CACHING & STATE
 # ==============================
 
 def load_cache():
-    """Load previously discovered businesses to avoid re-fetching."""
-    if os.path.exists(CACHE_FILE):
+    """Load previously discovered businesses."""
+    if CACHE_FILE.exists():
         try:
             with open(CACHE_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -145,8 +248,8 @@ def save_cache(cache):
         json.dump(cache, f, indent=2, ensure_ascii=False)
 
 def load_state():
-    """Load scraper state (week rotation, run history)."""
-    if os.path.exists(STATE_FILE):
+    """Load scraper state."""
+    if STATE_FILE.exists():
         try:
             with open(STATE_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -160,18 +263,13 @@ def save_state(state):
         json.dump(state, f, indent=2, ensure_ascii=False)
 
 def get_weekly_search_terms():
-    """Rotate search terms weekly for comprehensive market coverage."""
+    """Rotate search terms weekly."""
     state = load_state()
-    
-    # Determine current week cycle (1-4)
     last_week = state.get("last_week_number", 0)
-    today = datetime.now()
-    
-    # Simple rotation: increment each run
     current_week = (last_week % 4) + 1
     
     state["last_week_number"] = current_week
-    state["last_run_date"] = today.isoformat()
+    state["last_run_date"] = datetime.now().isoformat()
     save_state(state)
     
     week_key = f"week_{current_week}"
@@ -184,45 +282,28 @@ def get_weekly_search_terms():
 # ==============================
 
 def is_professional_email(email):
-    """Enhanced email validation."""
+    """Validate professional email addresses."""
     if not email:
         return False
     email = email.lower()
     
-    # Reject common non-business emails
-    if any(bad in email for bad in ["noreply", "example", "test", "admin", "support@", "info@gmail", "info@yahoo"]):
+    # Reject non-business patterns
+    if any(bad in email for bad in ["noreply", "example", "test", "admin", "support@"]):
         return False
     
     domain = email.split("@")[-1]
-    disposable_domains = {
-        "mailinator.com", "10minutemail.com", "guerrillamail.com", 
-        "yopmail.com", "tempmail.com", "throwaway.email", "fakeinbox.com",
-        "gmail.com", "yahoo.com", "hotmail.com"  # Personal emails
+    
+    # Common disposable/personal email domains
+    personal_domains = {
+        "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
+        "mailinator.com", "10minutemail.com", "guerrillamail.com",
+        "yopmail.com", "tempmail.com", "throwaway.email"
     }
     
-    return domain not in disposable_domains
-
-def clean_phone_number(phone_str):
-    """Standardize to E.164 Sri Lankan format."""
-    if not phone_str:
-        return None
-    digits = re.sub(r"[^\d+]", "", phone_str.strip())
-    if digits.startswith("0"):
-        digits = "+94" + digits[1:]
-    elif digits.startswith("94"):
-        digits = "+" + digits
-    elif not digits.startswith("+"):
-        digits = "+94" + digits
-    try:
-        parsed = phonenumbers.parse(digits, "LK")
-        if phonenumbers.is_valid_number(parsed):
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-    except:
-        pass
-    return None
+    return domain not in personal_domains
 
 def extract_email_from_website(base_url, max_attempts=3):
-    """Optimized email extraction with smart page prioritization."""
+    """Smart email extraction from websites."""
     if not base_url:
         return None
     if not base_url.startswith(("http://", "https://")):
@@ -230,11 +311,12 @@ def extract_email_from_website(base_url, max_attempts=3):
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept-Language": f"{CONFIG['language']},en;q=0.9"
     })
 
-    # Prioritized paths (most likely to have business emails)
-    paths = ["/contact", "/contact-us", "/about", "/team"]
+    # Prioritized paths (most likely to have emails)
+    paths = ["/contact", "/contact-us", "/about", "/team", "/contacto", "/kontakt"]
     
     for path in paths[:max_attempts]:
         try:
@@ -243,13 +325,18 @@ def extract_email_from_website(base_url, max_attempts=3):
             if response.status_code != 200:
                 continue
 
-            emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", response.text)
+            emails = re.findall(
+                r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+                response.text
+            )
+            
             for email in emails:
                 email = email.lower().strip()
                 if is_professional_email(email):
                     return email
         except:
             continue
+    
     return None
 
 def categorize_business(name, types):
@@ -261,34 +348,34 @@ def categorize_business(name, types):
     return "B2C"
 
 def score_lead(rating, reviews, has_phone, has_email, has_website, category):
-    """Enhanced lead scoring."""
+    """Score lead quality (0-100)."""
     score = 0
     tags = []
 
-    # Rating score (max 35)
+    # Rating (max 35)
     if rating >= 4.7: score += 35
     elif rating >= 4.5: score += 30
     elif rating >= 4.3: score += 25
     elif rating >= 4.0: score += 15
 
-    # Reviews score (max 25)
+    # Reviews (max 25)
     if reviews >= 150: score += 25
     elif reviews >= 75: score += 20
     elif reviews >= 30: score += 15
     elif reviews >= 10: score += 10
 
     # Contact info (max 35)
-    if has_email: 
+    if has_email:
         score += 30
         tags.append("Email✓")
-    if has_phone: 
+    if has_phone:
         score += 15
         tags.append("Phone✓")
-    if has_website and not has_email: 
+    if has_website and not has_email:
         score += 5
         tags.append("Website")
 
-    # Category bonus (max 15)
+    # Category (max 15)
     if category == "B2B":
         score += 15
         tags.append("B2B")
@@ -324,18 +411,20 @@ class RateLimiter:
         self.calls.append(time.time())
 
 # ==============================
-# 🔍 SMART DISCOVERY & ENRICHMENT
+# 🔍 DISCOVERY & ENRICHMENT
 # ==============================
 
 def discover_businesses(location, search_terms, cache):
-    """Phase 1: Discover new businesses (cached + fresh)."""
+    """Discover new businesses with caching."""
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
     rate_limiter = RateLimiter()
     api_calls = 0
     new_discoveries = []
     cached_count = 0
 
-    logger.info(f"🔍 Starting discovery with {len(search_terms)} queries...")
+    logger.info(f"🔍 Starting discovery in {LOCATION_LABEL}...")
+    logger.info(f"📍 Coordinates: {location[0]:.4f}, {location[1]:.4f}")
+    logger.info(f"🔎 Using {len(search_terms)} search queries")
 
     for i, query in enumerate(search_terms, 1):
         rate_limiter.wait_if_needed()
@@ -346,6 +435,7 @@ def discover_businesses(location, search_terms, cache):
                 query=query,
                 location=location,
                 radius=SEARCH_RADIUS,
+                language=CONFIG["language"],
                 timeout=10
             ).get("results", [])
             api_calls += 1
@@ -355,7 +445,6 @@ def discover_businesses(location, search_terms, cache):
                 if not pid:
                     continue
 
-                # Check cache first
                 if pid in cache:
                     cached_count += 1
                     continue
@@ -363,11 +452,8 @@ def discover_businesses(location, search_terms, cache):
                 rating = place.get("rating", 0)
                 reviews = place.get("user_ratings_total", 0)
 
-                # Apply quality filters early
                 if rating >= MIN_RATING and reviews >= MIN_REVIEWS:
                     new_discoveries.append(place)
-                    
-                    # Basic cache entry
                     cache[pid] = {
                         "name": place.get("name"),
                         "rating": rating,
@@ -384,11 +470,11 @@ def discover_businesses(location, search_terms, cache):
         except Exception as e:
             logger.error(f"   ❌ Search error: {e}")
 
-    logger.info(f"📊 Discovery complete: {len(new_discoveries)} new | {cached_count} cached | API calls: {api_calls}")
+    logger.info(f"📊 Discovery complete: {len(new_discoveries)} new | API calls: {api_calls}")
     return new_discoveries, api_calls, cache
 
 def enrich_leads_smartly(places, cache):
-    """Phase 2: Smart enrichment (website-first, then selective details API)."""
+    """Smart enrichment (website-first, then selective details API)."""
     gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
     rate_limiter = RateLimiter()
     leads = []
@@ -400,15 +486,12 @@ def enrich_leads_smartly(places, cache):
     for i, place in enumerate(places, 1):
         pid = place["place_id"]
         
-        # Try to get website without details API first
         website = place.get("website", "").strip()
-        
-        # Extract email from website (no API cost!)
         email = None
+        
         if website:
             email = extract_email_from_website(website)
         
-        # Only call details API if we need phone OR don't have email yet
         phone = None
         address = place.get("vicinity", "")
         
@@ -418,12 +501,13 @@ def enrich_leads_smartly(places, cache):
                 details = gmaps.place(
                     place_id=pid,
                     fields=["formatted_phone_number", "website", "formatted_address"],
+                    language=CONFIG["language"],
                     timeout=8
                 ).get("result", {})
                 api_calls += 1
                 details_calls_used += 1
 
-                phone = clean_phone_number(details.get("formatted_phone_number"))
+                phone = details.get("formatted_phone_number")
                 if not website:
                     website = details.get("website", "").strip()
                     if website and not email:
@@ -431,13 +515,11 @@ def enrich_leads_smartly(places, cache):
                 address = details.get("formatted_address", address)
 
             except Exception as e:
-                logger.debug(f"   Details API error for {place.get('name')}: {e}")
+                logger.debug(f"   Details API error: {e}")
 
-        # Must have at least ONE contact method
         if not phone and not email:
             continue
 
-        # Build lead entry
         category = categorize_business(place.get("name", ""), place.get("types", []))
         rating = place.get("rating", 0)
         reviews = place.get("user_ratings_total", 0)
@@ -458,12 +540,13 @@ def enrich_leads_smartly(places, cache):
             "rating": rating,
             "review_count": reviews,
             "place_id": pid,
+            "country": CONFIG["country_name"],
+            "city": CONFIG["city"],
             "scraped_at": datetime.now().isoformat()
         }
 
         leads.append(lead)
 
-        # Update cache with enriched data
         cache[pid].update({
             "phone": phone,
             "email": email,
@@ -472,11 +555,10 @@ def enrich_leads_smartly(places, cache):
         })
 
         if (i % 10 == 0):
-            logger.info(f"   Progress: {i}/{len(places)} | Details API: {details_calls_used}/{MAX_DETAILS_CALLS}")
+            logger.info(f"   Progress: {i}/{len(places)} | Details calls: {details_calls_used}/{MAX_DETAILS_CALLS}")
 
-    logger.info(f"✅ Enrichment done: {len(leads)} leads | Details API calls: {details_calls_used}")
+    logger.info(f"✅ Enrichment done: {len(leads)} leads | Details calls: {details_calls_used}")
     
-    # Sort by quality score
     leads.sort(key=lambda x: x["score"], reverse=True)
     return leads, api_calls, cache
 
@@ -485,7 +567,7 @@ def enrich_leads_smartly(places, cache):
 # ==============================
 
 def save_leads(leads):
-    """Save leads with summary."""
+    """Save leads to CSV."""
     if not leads:
         logger.warning("📭 No leads to save.")
         return
@@ -493,12 +575,11 @@ def save_leads(leads):
     columns = [
         "lead_quality", "score", "business_name", "category", "tags",
         "phone", "email", "website", "address",
-        "rating", "review_count", "scraped_at"
+        "rating", "review_count", "country", "city", "scraped_at"
     ]
 
-    output_dir = os.path.dirname(LEADS_FILE)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    output_dir = LEADS_FILE.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     with open(LEADS_FILE, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=columns)
@@ -506,7 +587,6 @@ def save_leads(leads):
         for lead in leads:
             writer.writerow({col: lead.get(col, "") for col in columns})
 
-    # Summary stats
     hot = sum(1 for l in leads if "HOT" in l["lead_quality"])
     warm = sum(1 for l in leads if "WARM" in l["lead_quality"])
     potential = sum(1 for l in leads if "POTENTIAL" in l["lead_quality"])
@@ -514,13 +594,14 @@ def save_leads(leads):
     with open(LEADS_FILE, "a", encoding="utf-8") as f:
         f.write("\n")
         f.write(f"SUMMARY: HOT={hot}, WARM={warm}, POTENTIAL={potential} | Total={len(leads)}\n")
+        f.write(f"Location: {LOCATION_LABEL}\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     logger.info(f"💾 Saved {len(leads)} leads → {LEADS_FILE}")
-    logger.info(f"🎯 Quality breakdown: HOT={hot} | WARM={warm} | POTENTIAL={potential}")
+    logger.info(f"🎯 Quality: HOT={hot} | WARM={warm} | POTENTIAL={potential}")
 
 # ==============================
-# 💰 COST TRACKING
+# 💰 COST ESTIMATION
 # ==============================
 
 def estimate_cost(search_calls, details_calls):
@@ -534,25 +615,23 @@ def estimate_cost(search_calls, details_calls):
 # ==============================
 
 def main():
-    logger.info("🚀 OPTIMIZED B2B LEAD ENGINE — STARTED")
+    logger.info("🚀 GLOBAL B2B LEAD ENGINE — STARTED")
+    logger.info("=" * 70)
+    logger.info(f"🌍 Target Location: {LOCATION_LABEL}")
+    logger.info(f"🗣️  Language: {CONFIG['language'].upper()}")
+    logger.info(f"📞 Phone Format: {CONFIG['phone_country_code']}XXXXXXXXX")
     logger.info("=" * 70)
     
     start_time = time.time()
     
-    # Load cache & state
     cache = load_cache()
     logger.info(f"📦 Loaded cache: {len(cache)} known businesses")
     
-    # Get weekly search terms
     search_terms = get_weekly_search_terms()
     
     try:
         # Phase 1: Discover
-        places, search_calls, cache = discover_businesses(
-            DEFAULT_CENTER, 
-            search_terms, 
-            cache
-        )
+        places, search_calls, cache = discover_businesses(LOCATION, search_terms, cache)
         
         if not places:
             logger.warning("🔍 No new businesses discovered")
@@ -565,11 +644,11 @@ def main():
             logger.warning("📭 No qualified leads after enrichment")
             return
         
-        # Save outputs
+        # Save
         save_leads(leads)
         save_cache(cache)
         
-        # Final report
+        # Report
         total_calls = search_calls + details_calls
         cost = estimate_cost(search_calls, details_calls)
         duration = (time.time() - start_time) / 60
@@ -578,16 +657,14 @@ def main():
         logger.info("✅ RUN COMPLETE")
         logger.info(f"⏱️  Duration: {duration:.1f} minutes")
         logger.info(f"📊 API Calls: {total_calls} (Search: {search_calls}, Details: {details_calls})")
-        logger.info(f"💰 Cost: ${cost:.2f} | Monthly (4 runs): ~${cost * 4:.2f}")
-        logger.info(f"🎯 Leads Generated: {len(leads)}")
-        logger.info(f"📈 Cost per Lead: ${cost/len(leads):.3f}")
+        logger.info(f"💰 Cost: ${cost:.2f} | Monthly (4x): ~${cost * 4:.2f}")
+        logger.info(f"🎯 Leads: {len(leads)} | Cost/Lead: ${cost/len(leads):.3f}")
         logger.info(f"💾 Output: {LEADS_FILE}")
         
-        # Budget warning
         if cost * 4 > 8:
-            logger.warning("⚠️  Monthly projection > $8 — consider reducing limits")
+            logger.warning("⚠️  Monthly projection > $8")
         else:
-            logger.info(f"✅ Well within free tier budget!")
+            logger.info("✅ Within budget!")
         
     except Exception as e:
         logger.exception(f"💥 CRITICAL ERROR: {e}")

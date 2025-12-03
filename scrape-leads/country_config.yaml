@@ -1,0 +1,372 @@
+# ========================================
+# 🌍 GLOBAL LEAD SCRAPER CONFIGURATION
+# ========================================
+# 
+# Save this as: country_config.yaml
+# Place in same directory as your scripts
+#
+# Quick setup for popular countries:
+# - Copy the section for your target country
+# - Uncomment the lines (remove #)
+# - Adjust city/coordinates as needed
+#
+
+# ========================================
+# 🇱🇰 SRI LANKA (DEFAULT)
+# ========================================
+country_code: "LK"
+country_name: "Sri Lanka"
+city: "Colombo"
+latitude: 6.86026115
+longitude: 79.912990
+search_radius: 8000  # meters
+phone_country_code: "+94"
+phone_number_length: 9
+currency: "LKR"
+language: "en"
+
+# ========================================
+# 🇺🇸 UNITED STATES
+# ========================================
+# Uncomment below for USA (New York example)
+#
+# country_code: "US"
+# country_name: "United States"
+# city: "New York"
+# latitude: 40.7128
+# longitude: -74.0060
+# search_radius: 10000
+# phone_country_code: "+1"
+# phone_number_length: 10
+# currency: "USD"
+# language: "en"
+#
+# Other US cities:
+# Los Angeles: 34.0522, -118.2437
+# Chicago: 41.8781, -87.6298
+# Houston: 29.7604, -95.3698
+# Miami: 25.7617, -80.1918
+# San Francisco: 37.7749, -122.4194
+
+# ========================================
+# 🇬🇧 UNITED KINGDOM
+# ========================================
+# country_code: "GB"
+# country_name: "United Kingdom"
+# city: "London"
+# latitude: 51.5074
+# longitude: -0.1278
+# search_radius: 8000
+# phone_country_code: "+44"
+# phone_number_length: 10  # Variable: 9-10 digits
+# currency: "GBP"
+# language: "en"
+#
+# Other UK cities:
+# Manchester: 53.4808, -2.2426
+# Birmingham: 52.4862, -1.8904
+# Edinburgh: 55.9533, -3.1883
+
+# ========================================
+# 🇸🇬 SINGAPORE
+# ========================================
+# country_code: "SG"
+# country_name: "Singapore"
+# city: "Singapore"
+# latitude: 1.3521
+# longitude: 103.8198
+# search_radius: 6000
+# phone_country_code: "+65"
+# phone_number_length: 8
+# currency: "SGD"
+# language: "en"
+
+# ========================================
+# 🇦🇪 UNITED ARAB EMIRATES
+# ========================================
+# country_code: "AE"
+# country_name: "United Arab Emirates"
+# city: "Dubai"
+# latitude: 25.2048
+# longitude: 55.2708
+# search_radius: 10000
+# phone_country_code: "+971"
+# phone_number_length: 9
+# currency: "AED"
+# language: "en"
+#
+# Other UAE cities:
+# Abu Dhabi: 24.4539, 54.3773
+# Sharjah: 25.3463, 55.4209
+
+# ========================================
+# 🇮🇳 INDIA
+# ========================================
+# country_code: "IN"
+# country_name: "India"
+# city: "Mumbai"
+# latitude: 19.0760
+# longitude: 72.8777
+# search_radius: 12000
+# phone_country_code: "+91"
+# phone_number_length: 10
+# currency: "INR"
+# language: "en"
+#
+# Other Indian cities:
+# Delhi: 28.6139, 77.2090
+# Bangalore: 12.9716, 77.5946
+# Hyderabad: 17.3850, 78.4867
+# Chennai: 13.0827, 80.2707
+# Pune: 18.5204, 73.8567
+
+# ========================================
+# 🇦🇺 AUSTRALIA
+# ========================================
+# country_code: "AU"
+# country_name: "Australia"
+# city: "Sydney"
+# latitude: -33.8688
+# longitude: 151.2093
+# search_radius: 10000
+# phone_country_code: "+61"
+# phone_number_length: 9
+# currency: "AUD"
+# language: "en"
+#
+# Other Australian cities:
+# Melbourne: -37.8136, 144.9631
+# Brisbane: -27.4698, 153.0251
+# Perth: -31.9505, 115.8605
+
+# ========================================
+# 🇨🇦 CANADA
+# ========================================
+# country_code: "CA"
+# country_name: "Canada"
+# city: "Toronto"
+# latitude: 43.6532
+# longitude: -79.3832
+# search_radius: 10000
+# phone_country_code: "+1"
+# phone_number_length: 10
+# currency: "CAD"
+# language: "en"
+#
+# Other Canadian cities:
+# Vancouver: 49.2827, -123.1207
+# Montreal: 45.5017, -73.5673
+# Calgary: 51.0447, -114.0719
+
+# ========================================
+# 🇩🇪 GERMANY
+# ========================================
+# country_code: "DE"
+# country_name: "Germany"
+# city: "Berlin"
+# latitude: 52.5200
+# longitude: 13.4050
+# search_radius: 8000
+# phone_country_code: "+49"
+# phone_number_length: 11  # Variable length
+# currency: "EUR"
+# language: "de"
+#
+# Other German cities:
+# Munich: 48.1351, 11.5820
+# Hamburg: 53.5511, 9.9937
+# Frankfurt: 50.1109, 8.6821
+
+# ========================================
+# 🇫🇷 FRANCE
+# ========================================
+# country_code: "FR"
+# country_name: "France"
+# city: "Paris"
+# latitude: 48.8566
+# longitude: 2.3522
+# search_radius: 8000
+# phone_country_code: "+33"
+# phone_number_length: 9
+# currency: "EUR"
+# language: "fr"
+#
+# Other French cities:
+# Lyon: 45.7640, 4.8357
+# Marseille: 43.2965, 5.3698
+
+# ========================================
+# 🇪🇸 SPAIN
+# ========================================
+# country_code: "ES"
+# country_name: "Spain"
+# city: "Madrid"
+# latitude: 40.4168
+# longitude: -3.7038
+# search_radius: 8000
+# phone_country_code: "+34"
+# phone_number_length: 9
+# currency: "EUR"
+# language: "es"
+#
+# Other Spanish cities:
+# Barcelona: 41.3851, 2.1734
+# Valencia: 39.4699, -0.3763
+
+# ========================================
+# 🇧🇷 BRAZIL
+# ========================================
+# country_code: "BR"
+# country_name: "Brazil"
+# city: "São Paulo"
+# latitude: -23.5505
+# longitude: -46.6333
+# search_radius: 12000
+# phone_country_code: "+55"
+# phone_number_length: 11  # Including area code
+# currency: "BRL"
+# language: "pt"
+#
+# Other Brazilian cities:
+# Rio de Janeiro: -22.9068, -43.1729
+# Brasília: -15.7975, -47.8919
+
+# ========================================
+# 🇲🇽 MEXICO
+# ========================================
+# country_code: "MX"
+# country_name: "Mexico"
+# city: "Mexico City"
+# latitude: 19.4326
+# longitude: -99.1332
+# search_radius: 12000
+# phone_country_code: "+52"
+# phone_number_length: 10
+# currency: "MXN"
+# language: "es"
+#
+# Other Mexican cities:
+# Guadalajara: 20.6597, -103.3496
+# Monterrey: 25.6866, -100.3161
+
+# ========================================
+# 🇯🇵 JAPAN
+# ========================================
+# country_code: "JP"
+# country_name: "Japan"
+# city: "Tokyo"
+# latitude: 35.6762
+# longitude: 139.6503
+# search_radius: 10000
+# phone_country_code: "+81"
+# phone_number_length: 10
+# currency: "JPY"
+# language: "ja"
+#
+# Other Japanese cities:
+# Osaka: 34.6937, 135.5023
+# Kyoto: 35.0116, 135.7681
+
+# ========================================
+# 🇿🇦 SOUTH AFRICA
+# ========================================
+# country_code: "ZA"
+# country_name: "South Africa"
+# city: "Johannesburg"
+# latitude: -26.2041
+# longitude: 28.0473
+# search_radius: 10000
+# phone_country_code: "+27"
+# phone_number_length: 9
+# currency: "ZAR"
+# language: "en"
+#
+# Other South African cities:
+# Cape Town: -33.9249, 18.4241
+# Durban: -29.8587, 31.0218
+
+# ========================================
+# 🇮🇩 INDONESIA
+# ========================================
+# country_code: "ID"
+# country_name: "Indonesia"
+# city: "Jakarta"
+# latitude: -6.2088
+# longitude: 106.8456
+# search_radius: 12000
+# phone_country_code: "+62"
+# phone_number_length: 10  # Variable: 9-11
+# currency: "IDR"
+# language: "id"
+
+# ========================================
+# 🇹🇭 THAILAND
+# ========================================
+# country_code: "TH"
+# country_name: "Thailand"
+# city: "Bangkok"
+# latitude: 13.7563
+# longitude: 100.5018
+# search_radius: 10000
+# phone_country_code: "+66"
+# phone_number_length: 9
+# currency: "THB"
+# language: "th"
+
+# ========================================
+# 🇵🇭 PHILIPPINES
+# ========================================
+# country_code: "PH"
+# country_name: "Philippines"
+# city: "Manila"
+# latitude: 14.5995
+# longitude: 120.9842
+# search_radius: 10000
+# phone_country_code: "+63"
+# phone_number_length: 10
+# currency: "PHP"
+# language: "en"
+
+# ========================================
+# 🇲🇾 MALAYSIA
+# ========================================
+# country_code: "MY"
+# country_name: "Malaysia"
+# city: "Kuala Lumpur"
+# latitude: 3.1390
+# longitude: 101.6869
+# search_radius: 8000
+# phone_country_code: "+60"
+# phone_number_length: 9  # Variable: 9-10
+# currency: "MYR"
+# language: "en"
+
+# ========================================
+# 📝 NOTES FOR CUSTOM SETUP
+# ========================================
+#
+# 1. To find coordinates for any city:
+#    - Go to Google Maps
+#    - Right-click on the city center
+#    - Click on the coordinates to copy
+#
+# 2. Search radius recommendations:
+#    - Small cities: 5000-6000 meters
+#    - Medium cities: 8000-10000 meters
+#    - Large cities: 12000-15000 meters
+#
+# 3. Language codes (ISO 639-1):
+#    en = English    es = Spanish    fr = French
+#    de = German     pt = Portuguese zh = Chinese
+#    ja = Japanese   ar = Arabic     hi = Hindi
+#    id = Indonesian th = Thai
+#
+# 4. Phone validation is automatic via phonenumbers library
+#    - No need to manually set mobile prefixes
+#    - Works for 195+ countries
+#
+# 5. For multi-city scraping:
+#    - Create separate config files: config_nyc.yaml, config_la.yaml
+#    - Run with: CONFIG_FILE=config_nyc.yaml python lean_business_scraper.py
+#
+# ========================================
