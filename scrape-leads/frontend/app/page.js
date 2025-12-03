@@ -129,12 +129,23 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
       .catch(() => showToast('❌ Failed to copy'));
   };
 
-  const handleComposeEmail = () => {
-    const emailBody = generateEmailMessage(lead, myBusinessName, linkedInUrl, emailTemplate);
-    const subject = `Quick question for ${lead.business_name || 'your business'}`;
-    const mailtoLink = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
-    window.location.href = mailtoLink;
-  };
+const handleComposeEmail = () => {
+  const emailBody = generateEmailMessage(lead, myBusinessName, linkedInUrl, emailTemplate);
+  const subject = `Quick question for ${lead.business_name || 'your business'}`;
+  // Encode email to prevent issues with special characters
+  const mailtoLink = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+
+  // Attempt to open the default email client
+  const emailWindow = window.open(mailtoLink, '_self');
+
+  // If the browser blocks the mailto (common on iOS/Safari or secure environments), copy to clipboard as fallback
+  if (!emailWindow || emailWindow.closed || emailWindow.closed === undefined) {
+    const fallbackMessage = `To: ${lead.email}\nSubject: ${subject}\n\n${emailBody}`;
+    navigator.clipboard.writeText(fallbackMessage)
+      .then(() => showToast('📧 Email client unavailable — full message copied to clipboard!'))
+      .catch(() => showToast('❌ Unable to open email or copy message. Please check browser permissions.'));
+  }
+};
 
   const isHighValue = lead._score >= 75;
   const urgency = getLeadUrgency(lead);
