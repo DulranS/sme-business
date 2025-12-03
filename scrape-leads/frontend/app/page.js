@@ -61,25 +61,39 @@ function getLeadUrgency(lead) {
 }
 
 function estimateRevenuePotential(score) {
-  // Calibrated for Sri Lankan SMB market
   if (score >= 80) return '$500–$2,000';
   if (score >= 60) return '$200–$800';
   if (score >= 40) return '$100–$400';
   return 'Low';
 }
 
-function generateWhatsAppLink(lead, template, myBusinessName) {
-  if (!template || !lead) return '';
+// ==============================
+// 💬 MESSAGE GENERATORS (FULLY CUSTOMIZABLE)
+// ==============================
+function generateMessage1(lead, template) {
+  return lead?.business_name
+    ? template.replace(/{business_name}/g, lead.business_name.trim())
+    : template.replace(/{business_name}/g, 'your business');
+}
+
+function generateMessage2(lead, myBusinessName, linkedInUrl, template) {
+  return template
+    .replace(/{business_name}/g, lead?.business_name?.trim() || 'your business')
+    .replace(/{my_business_name}/g, myBusinessName)
+    .replace(/{linkedInUrl}/g, linkedInUrl);
+}
+
+function generateWhatsAppLink(lead, message1) {
   const normalized = normalizePhone(lead.whatsapp_number || lead.phone_raw);
   if (!normalized || normalized.length < 9) return '';
   let digitsOnly = normalized.replace(/\D/g, '');
   if (!digitsOnly.startsWith('94')) digitsOnly = '94' + digitsOnly.slice(-9);
-  let message = String(template)
-    .replace(/{business_name}/g, lead.business_name || 'your business')
-    .replace(/{my_business_name}/g, myBusinessName || 'Your Company');
-  return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message.trim())}`;
+  return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message1)}`;
 }
 
+// ==============================
+// 🛠️ HOOKS
+// ==============================
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
@@ -95,10 +109,19 @@ const fuzzyMatch = (text, query) => {
 };
 
 // ==============================
-// 🎯 LEAD CARD (Mobile-Optimized)
+// 🎯 LEAD CARD
 // ==============================
-const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkContacted, leadNotes, onNoteChange }) => {
-  const waLink = generateWhatsAppLink(lead, whatsappTemplate, myBusinessName);
+const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, message2Template, onCopy, onMarkContacted, leadNotes, onNoteChange, showToast }) => {
+  const msg1 = generateMessage1(lead, message1Template);
+  const msg2 = generateMessage2(lead, myBusinessName, linkedInUrl, message2Template);
+  const waLink = generateWhatsAppLink(lead, msg1);
+
+  const copyMessage2 = () => {
+    navigator.clipboard.writeText(msg2)
+      .then(() => showToast('✅ Follow-up message copied! Paste & send after your first message.'))
+      .catch(() => showToast('❌ Failed to copy'));
+  };
+
   const isHighValue = lead._score >= 75;
   const urgency = getLeadUrgency(lead);
   const revenue = estimateRevenuePotential(lead._score);
@@ -137,17 +160,6 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
           </div>
           <div className="mt-2 text-xs text-blue-700 font-medium">➡️ {getNextBestAction(lead)}</div>
         </div>
-        {waLink && (
-          <a
-            href={waLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-shrink-0 w-12 h-12 rounded-full bg-green-600 flex items-center justify-center active:scale-95 hover:bg-green-700"
-            aria-label="Message on WhatsApp"
-          >
-            <span className="text-white text-xl">💬</span>
-          </a>
-        )}
       </div>
 
       <div className="mt-3 space-y-2 text-black text-base">
@@ -177,7 +189,7 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+      <div className="mt-4 pt-3 border-t border-gray-100 space-y-3">
         <div>
           <label className="text-xs text-gray-600 block mb-1">📝 Notes</label>
           <textarea
@@ -190,7 +202,7 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-gray-600">📅 Last contacted:</span>
-          <span className="text-sm font-medium">
+          <span className="text-sm font-medium" style={{color:'black'}}>
             {lead.last_contacted ? new Date(lead.last_contacted).toLocaleDateString() : 'Never'}
           </span>
           <button
@@ -199,6 +211,28 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
           >
             Mark Today
           </button>
+        </div>
+
+        {/* === STRATEGIC TWO-MESSAGE OUTREACH === */}
+        <div className="flex flex-col gap-2">
+          {waLink && (
+            <>
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2.5 text-center rounded-lg bg-green-600 text-white font-medium hover:bg-green-700"
+              >
+                💬 Send Message 1: “{msg1.substring(0, 25)}{msg1.length > 25 ? '…' : ''}”
+              </a>
+              <button
+                onClick={copyMessage2}
+                className="w-full py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+              >
+                📋 Copy Message 2 (Paste & Send After)
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -209,7 +243,7 @@ const LeadCard = memo(({ lead, myBusinessName, whatsappTemplate, onCopy, onMarkC
 // 🚀 MAIN DASHBOARD
 // ==============================
 export default function LeadDashboard() {
-  // === State (unchanged – perfect for team use)
+  // UI State
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -223,16 +257,29 @@ export default function LeadDashboard() {
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
 
+  // Outreach Identity & Templates
   const [myBusinessName, setMyBusinessName] = useState(() => 
-    typeof window !== 'undefined' ? localStorage.getItem('myBusinessName') || 'Your Company' : 'Your Company'
+    typeof window !== 'undefined' ? localStorage.getItem('myBusinessName') || 'Dulran Samarasinghe' : 'Dulran Samarasinghe'
   );
 
-  const [whatsappTemplate, setWhatsappTemplate] = useState(() => 
+  const [linkedInUrl, setLinkedInUrl] = useState(() => 
     typeof window !== 'undefined' 
-      ? localStorage.getItem('whatsappTemplate') || 'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat?'
-      : 'Hi, I’m reaching out from {my_business_name} regarding {business_name}. Are you open to a quick chat?'
+      ? localStorage.getItem('linkedInUrl') || 'https://www.linkedin.com/in/dulran-samarasinghe-13941b175/'
+      : 'https://www.linkedin.com/in/dulran-samarasinghe-13941b175/'
   );
 
+  const [message1Template, setMessage1Template] = useState(() => 
+    typeof window !== 'undefined' 
+      ? localStorage.getItem('message1Template') || 'Hi, is this {business_name}?'
+      : 'Hi, is this {business_name}?'
+  );
+
+  const [message2Template, setMessage2Template] = useState(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('message2Template') : null;
+    return saved || `I hope you’re doing well. I’m reaching out because I currently offer a range of digital freelance services, including content creation, design, automation, and general online support.\n\nIf you need reliable, fast, and high-quality digital work done, I’d be happy to help.\nLet me know what you’re working on, and I’ll share how I can support you.\n\nBest regards,\n{my_business_name} - {linkedInUrl}`;
+  });
+
+  // Local Data
   const [leadNotes, setLeadNotes] = useState(() => 
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('leadNotes') || '{}') : {}
   );
@@ -241,19 +288,21 @@ export default function LeadDashboard() {
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('lastContacted') || '{}') : {}
   );
 
-  // === Persist settings
+  // Persist
   useEffect(() => { localStorage.setItem('myBusinessName', myBusinessName); }, [myBusinessName]);
-  useEffect(() => { localStorage.setItem('whatsappTemplate', whatsappTemplate); }, [whatsappTemplate]);
+  useEffect(() => { localStorage.setItem('linkedInUrl', linkedInUrl); }, [linkedInUrl]);
+  useEffect(() => { localStorage.setItem('message1Template', message1Template); }, [message1Template]);
+  useEffect(() => { localStorage.setItem('message2Template', message2Template); }, [message2Template]);
   useEffect(() => { localStorage.setItem('leadNotes', JSON.stringify(leadNotes)); }, [leadNotes]);
   useEffect(() => { localStorage.setItem('lastContacted', JSON.stringify(lastContacted)); }, [lastContacted]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const showToast = useCallback((msg) => {
     setToast({ show: true, message: msg });
-    setTimeout(() => setToast({ show: false, message: '' }), 3000);
+    setTimeout(() => setToast({ show: false, message: '' }), 3500);
   }, []);
 
-  // === Fetch leads with auto-refresh
+  // Fetch leads
   useEffect(() => {
     let isCurrent = true;
     const fetchLeads = async () => {
@@ -262,8 +311,12 @@ export default function LeadDashboard() {
         const data = await res.json();
         if (!isCurrent) return;
         if (Array.isArray(data.leads)) {
-          const leadsWithScore = data.leads.map(lead => ({ ...lead, _score: calculateLeadScore(lead) }));
-          setLeads(leadsWithScore);
+          const enriched = data.leads.map(lead => ({
+            ...lead,
+            _score: calculateLeadScore(lead),
+            last_contacted: lastContacted[lead.id] || lead.last_contacted
+          }));
+          setLeads(enriched);
         }
       } catch (err) {
         console.error('Fetch error:', err);
@@ -272,13 +325,12 @@ export default function LeadDashboard() {
       }
     };
     fetchLeads();
-    const interval = setInterval(fetchLeads, 30000); // Auto-refresh every 30s
+    const interval = setInterval(fetchLeads, 30000);
     return () => { isCurrent = false; clearInterval(interval); };
-  }, []);
+  }, [lastContacted]);
 
   const uniqueCategories = [...new Set(leads.map(l => l.category).filter(Boolean))].sort();
 
-  // === Filtering & Sorting (unchanged – robust)
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
       const normPhone = normalizePhone(lead.phone_raw);
@@ -321,7 +373,7 @@ export default function LeadDashboard() {
     });
   }, [filteredLeads, sortField, sortDirection]);
 
-  // === EXPORTS (Enhanced for outreach)
+  // Exports
   const exportToCSV = () => {
     if (sortedLeads.length === 0) return;
     const headers = ['business_name','address','phone_raw','email','website','rating','review_count','category','lead_quality','scraped_date','days_since_scraped','_score'];
@@ -346,7 +398,7 @@ export default function LeadDashboard() {
       return;
     }
     navigator.clipboard.writeText(numbers.join('\n'))
-      .then(() => showToast(`✅ ${numbers.length} numbers copied to clipboard!`))
+      .then(() => showToast(`✅ ${numbers.length} numbers copied!`))
       .catch(() => {
         const blob = new Blob([numbers.join('\n')], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
@@ -370,7 +422,7 @@ export default function LeadDashboard() {
 
   const avgScore = sortedLeads.length ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length) : 0;
 
-  // === RENDER
+  // Loading & Empty States
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -438,10 +490,11 @@ export default function LeadDashboard() {
     );
   }
 
+  // Render
   return (
     <div className="min-h-screen bg-gray-50 pb-32 relative">
       <Head>
-        <title>Colombo B2B Leads | Revenue Dashboard</title>
+        <title>Colombo B2B Leads | Strategic Two-Message Outreach</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
@@ -489,7 +542,44 @@ export default function LeadDashboard() {
             </div>
           )}
 
-          <div className="flex justify-between items-center pt-2">
+          {/* === STRATEGIC OUTREACH TEMPLATES === */}
+          <div className="mt-4 p-3 bg-gray-100 rounded-lg space-y-2">
+            <h3 className="font-bold text-black text-sm">Customize Your 2-Message Sequence</h3>
+            
+            <input
+              type="text"
+              value={myBusinessName}
+              onChange={(e) => setMyBusinessName(e.target.value)}
+              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
+              placeholder="Your name"
+            />
+            
+            <input
+              type="url"
+              value={linkedInUrl}
+              onChange={(e) => setLinkedInUrl(e.target.value)}
+              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
+              placeholder="LinkedIn URL"
+            />
+            
+            <input
+              type="text"
+              value={message1Template}
+              onChange={(e) => setMessage1Template(e.target.value)}
+              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
+              placeholder="Message 1 (e.g., Hi, is this {business_name}?)"
+            />
+            
+            <textarea
+              value={message2Template}
+              onChange={(e) => setMessage2Template(e.target.value)}
+              className="w-full p-2 text-sm border border-gray-300 rounded bg-white text-black"
+              rows="3"
+              placeholder="Message 2 (your pitch)"
+            />
+          </div>
+
+          <div className="flex justify-between items-center pt-3">
             <span className="text-black text-sm">
               {sortedLeads.length} leads • Avg Score: {avgScore}/100
             </span>
@@ -512,7 +602,9 @@ export default function LeadDashboard() {
               key={lead.id}
               lead={lead}
               myBusinessName={myBusinessName}
-              whatsappTemplate={whatsappTemplate}
+              linkedInUrl={linkedInUrl}
+              message1Template={message1Template}
+              message2Template={message2Template}
               onCopy={copyToClipboard}
               onMarkContacted={(id) => {
                 const today = new Date().toISOString().split('T')[0];
@@ -521,6 +613,7 @@ export default function LeadDashboard() {
               }}
               leadNotes={leadNotes}
               onNoteChange={(id, note) => setLeadNotes(prev => ({ ...prev, [id]: note }))}
+              showToast={showToast}
             />
           ))}
         </div>
