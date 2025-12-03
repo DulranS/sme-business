@@ -68,7 +68,7 @@ function estimateRevenuePotential(score) {
 }
 
 // ==============================
-// 💬 MESSAGE GENERATORS (FULLY CUSTOMIZABLE)
+// 💬 MESSAGE GENERATORS
 // ==============================
 function generateMessage1(lead, template) {
   return lead?.business_name
@@ -92,7 +92,7 @@ function generateWhatsAppLink(lead, message1) {
 }
 
 // ==============================
-// 🛠️ HOOKS
+// 🛠️ UTILS
 // ==============================
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -159,6 +159,15 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
             <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">{revenue}</span>
           </div>
           <div className="mt-2 text-xs text-blue-700 font-medium">➡️ {getNextBestAction(lead)}</div>
+          
+          {/* Smart Reasoning */}
+          <div className="mt-2 text-xs text-gray-600">
+            💡 Score: {lead._score}/100 (
+            {lead.lead_quality && `Quality: ${lead.lead_quality}, `}
+            {lead.rating >= 4 && `Rating: ${lead.rating}, `}
+            {lead.days_since_scraped <= 3 && `Fresh: ${lead.days_since_scraped}d ago`}
+            )
+          </div>
         </div>
       </div>
 
@@ -202,14 +211,14 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-gray-600">📅 Last contacted:</span>
-          <span className="text-sm font-medium" style={{color:'black'}}>
+          <span className="text-sm font-medium">
             {lead.last_contacted ? new Date(lead.last_contacted).toLocaleDateString() : 'Never'}
           </span>
           <button
             onClick={() => onMarkContacted(lead.id)}
             className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-2.5 py-1 rounded whitespace-nowrap"
           >
-            Mark Today
+            Mark Contacted
           </button>
         </div>
 
@@ -256,6 +265,7 @@ export default function LeadDashboard() {
   const [toast, setToast] = useState({ show: false, message: '' });
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Outreach Identity & Templates
   const [myBusinessName, setMyBusinessName] = useState(() => 
@@ -288,13 +298,20 @@ export default function LeadDashboard() {
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('lastContacted') || '{}') : {}
   );
 
-  // Persist
+  // Persist settings
   useEffect(() => { localStorage.setItem('myBusinessName', myBusinessName); }, [myBusinessName]);
   useEffect(() => { localStorage.setItem('linkedInUrl', linkedInUrl); }, [linkedInUrl]);
   useEffect(() => { localStorage.setItem('message1Template', message1Template); }, [message1Template]);
   useEffect(() => { localStorage.setItem('message2Template', message2Template); }, [message2Template]);
   useEffect(() => { localStorage.setItem('leadNotes', JSON.stringify(leadNotes)); }, [leadNotes]);
   useEffect(() => { localStorage.setItem('lastContacted', JSON.stringify(lastContacted)); }, [lastContacted]);
+
+  // Scroll-to-top visibility
+  useEffect(() => {
+    const handleScroll = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const showToast = useCallback((msg) => {
@@ -331,6 +348,7 @@ export default function LeadDashboard() {
 
   const uniqueCategories = [...new Set(leads.map(l => l.category).filter(Boolean))].sort();
 
+  // Filtering
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
       const normPhone = normalizePhone(lead.phone_raw);
@@ -357,6 +375,7 @@ export default function LeadDashboard() {
     });
   }, [leads, debouncedSearchTerm, qualityFilter, categoryFilter, contactFilter, minRating, minReviews]);
 
+  // Sorting
   const sortedLeads = useMemo(() => {
     return [...filteredLeads].sort((a, b) => {
       let aVal = 0, bVal = 0;
@@ -373,7 +392,27 @@ export default function LeadDashboard() {
     });
   }, [filteredLeads, sortField, sortDirection]);
 
-  // Exports
+  // Business Intelligence
+  const urgentLeads = sortedLeads.filter(l => (l.days_since_scraped || 999) <= 3);
+  const contactedToday = Object.values(lastContacted).filter(date => date === new Date().toISOString().split('T')[0]).length;
+  const avgScore = sortedLeads.length ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length) : 0;
+
+  // Export & Reports
+  const exportOutreachReport = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const contacted = sortedLeads.filter(l => lastContacted[l.id] === today);
+    let report = `OUTREACH REPORT – ${today}\n\n`;
+    report += `Total leads contacted today: ${contacted.length}\n`;
+    report += `Urgent leads (≤3 days old): ${urgentLeads.length}\n`;
+    report += `\n--- CONTACTED TODAY ---\n`;
+    contacted.forEach(l => {
+      report += `${l.business_name} (${l.phone_raw || l.email}) – Notes: ${leadNotes[l.id] || 'None'}\n`;
+    });
+    navigator.clipboard.writeText(report)
+      .then(() => showToast('✅ Daily report copied to clipboard!'))
+      .catch(() => showToast('❌ Failed to copy report'));
+  };
+
   const exportToCSV = () => {
     if (sortedLeads.length === 0) return;
     const headers = ['business_name','address','phone_raw','email','website','rating','review_count','category','lead_quality','scraped_date','days_since_scraped','_score'];
@@ -398,7 +437,7 @@ export default function LeadDashboard() {
       return;
     }
     navigator.clipboard.writeText(numbers.join('\n'))
-      .then(() => showToast(`✅ ${numbers.length} numbers copied!`))
+      .then(() => showToast(`✅ ${numbers.length} WhatsApp numbers copied!`))
       .catch(() => {
         const blob = new Blob([numbers.join('\n')], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
@@ -420,9 +459,11 @@ export default function LeadDashboard() {
     }
   };
 
-  const avgScore = sortedLeads.length ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length) : 0;
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-  // Loading & Empty States
+  // Loading State
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -434,6 +475,7 @@ export default function LeadDashboard() {
     );
   }
 
+  // Empty State
   if (sortedLeads.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -490,7 +532,7 @@ export default function LeadDashboard() {
     );
   }
 
-  // Render
+  // Render Dashboard
   return (
     <div className="min-h-screen bg-gray-50 pb-32 relative">
       <Head>
@@ -504,8 +546,24 @@ export default function LeadDashboard() {
         </div>
       )}
 
+      {/* Scroll-to-Top Button */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-20 right-4 z-50 w-12 h-12 rounded-full bg-blue-600 text-white shadow-lg flex items-center justify-center hover:bg-blue-700"
+          aria-label="Scroll to top"
+        >
+          🔝
+        </button>
+      )}
+
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 py-3">
+          {/* 📊 Daily Action Summary */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3 text-emerald-800 text-sm">
+            🎯 <strong>Today’s Focus:</strong> {urgentLeads.length} urgent leads | {contactedToday} contacted today
+          </div>
+
           <div className="flex justify-between items-center mb-3">
             <h1 className="text-lg font-bold text-black">Colombo B2B Leads</h1>
             <button onClick={() => setShowFilters(!showFilters)} className="text-sm text-blue-600 font-medium flex items-center gap-1">
@@ -513,6 +571,7 @@ export default function LeadDashboard() {
             </button>
           </div>
 
+          {/* ✅ FIXED: searchTerm (not searchTerms) */}
           <input
             type="text"
             placeholder="Search business, phone, email, or address..."
@@ -584,6 +643,9 @@ export default function LeadDashboard() {
               {sortedLeads.length} leads • Avg Score: {avgScore}/100
             </span>
             <div className="flex gap-2">
+              <button onClick={exportOutreachReport} className="px-3 py-1.5 text-sm rounded font-medium bg-indigo-600 text-white hover:bg-indigo-700">
+                📝 Daily Report
+              </button>
               <button onClick={exportToCSV} disabled={sortedLeads.length === 0} className={`px-3 py-1.5 text-sm rounded font-medium ${sortedLeads.length === 0 ? 'bg-gray-200 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'}`}>
                 📥 CSV
               </button>
@@ -592,6 +654,9 @@ export default function LeadDashboard() {
               </button>
             </div>
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            ℹ️ This tool supports WhatsApp’s human-first ethos: messages are sent manually to ensure safety, privacy, and trust.
+          </p>
         </div>
       </header>
 
