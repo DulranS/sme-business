@@ -3,4 +3,5 @@ phonenumbers
 python-dotenv
 pandas
 openpyxl
+pyyaml
 requests
