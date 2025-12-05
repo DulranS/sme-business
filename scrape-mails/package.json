@@ -10,18 +10,17 @@
   },
   "dependencies": {
     "@googleapis/gmail": "^16.1.0",
-    "csv-parse": "^6.1.0",
+    "firebase": "^12.6.0",
     "googleapis": "^167.0.0",
-    "next": "^14.2.33",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "next": "16.0.7",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-firebase-hooks": "^5.1.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "autoprefixer": "^10.4.22",
     "eslint": "^9",
     "eslint-config-next": "16.0.7",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^4"
   }
 }
