@@ -1,23 +1,16 @@
-// Install: npm install googleapis
+// app/api/auth/callback/route.js
+import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
 
 export async function GET(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const code = searchParams.get('code');
-    const error = searchParams.get('error');
-    
-    if (error) {
-      console.error('OAuth error:', error);
-      redirect('/?auth=cancelled');
-    }
-    
-    if (!code) {
-      return Response.json({ error: 'No authorization code provided' }, { status: 400 });
-    }
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get('code');
 
+  if (!code) {
+    return NextResponse.redirect(new URL('/?error=auth_failed', request.url));
+  }
+
+  try {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -25,39 +18,20 @@ export async function GET(request) {
     );
 
     const { tokens } = await oauth2Client.getToken(code);
-    
-    if (!tokens.refresh_token) {
-      console.error('No refresh token received');
-      redirect('/?auth=error&message=no_refresh_token');
-    }
+    oauth2Client.setCredentials(tokens);
 
-    const cookieStore = await cookies();
-    cookieStore.set('refresh_token', tokens.refresh_token, { 
+    // Store token in secure HTTP-only cookie (simplified here)
+    const response = NextResponse.redirect(new URL('/dashboard', request.url));
+    response.cookies.set('gmail_access_token', tokens.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 365,
+      maxAge: 3600, // 1 hour
       path: '/'
     });
 
-    if (tokens.expiry_date) {
-      cookieStore.set('token_expiry', tokens.expiry_date.toString(), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 365,
-        path: '/'
-      });
-    }
-
-    redirect('/?auth=success');
+    return response;
   } catch (error) {
-    console.error('OAuth callback error:', error);
-    
-    if (error.message?.includes('invalid_grant')) {
-      redirect('/?auth=error&message=invalid_code');
-    }
-    
-    redirect('/?auth=error&message=unknown');
+    console.error('Auth error:', error);
+    return NextResponse.redirect(new URL('/?error=token_exchange_failed', request.url));
   }
 }
