@@ -1,6 +1,7 @@
 // src/lib/firebase.js
-import { initializeApp } from 'firebase/app';
+import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
@@ -12,9 +13,11 @@ const firebaseConfig = {
   measurementId: "G-6CL2EGLEVH"
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+const app =!getApps().length ? initializeApp(firebaseConfig) : getApp();
+const auth = getAuth(app);
+const db = getFirestore(app);
 
+export { auth, db };
 // Configure provider with Gmail scope
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/gmail.send'); // ✅ Critical

@@ -1,39 +1,29 @@
-// src/components/PreviewPane.js
-export default function PreviewPane({ subject, body, previewData, sender }) {
-  // Replace placeholders with actual data
-  const renderSubject = () => {
-    let result = subject;
-    if (previewData) {
-      Object.keys(previewData).forEach(key => {
-        result = result.replace(new RegExp(`{{${key}}}`, 'g'), previewData[key] || `{{${key}}}`);
-      });
-    }
-    result = result.replace(/{{sender_name}}/g, sender.split('@')[0]);
+// components/PreviewPane.js
+export default function PreviewPane({ subject, body, previewData, sender, fieldMappings = {} }) {
+  // Replace template variables using fieldMappings
+  const replaceVars = (text) => {
+    let result = text;
+    Object.entries(fieldMappings).forEach(([varName, csvCol]) => {
+      if (varName === 'sender_name') {
+        result = result.replace(new RegExp(`{{\\s*${varName}\\s*}}`, 'g'), sender);
+      } else if (csvCol && previewData[csvCol] !== undefined) {
+        result = result.replace(new RegExp(`{{\\s*${varName}\\s*}}`, 'g'), previewData[csvCol]);
+      } else {
+        result = result.replace(new RegExp(`{{\\s*${varName}\\s*}}`, 'g'), `[MISSING: ${varName}]`);
+      }
+    });
     return result;
   };
-  
-  const renderBody = () => {
-    let result = body;
-    if (previewData) {
-      Object.keys(previewData).forEach(key => {
-        result = result.replace(new RegExp(`{{${key}}}`, 'g'), previewData[key] || `{{${key}}}`);
-      });
-    }
-    result = result.replace(/{{sender_name}}/g, sender.split('@')[0]);
-    return result.split('\n').map((line, i) => <p key={i} className="mb-2">{line}</p>);
-  };
-  
+
+  const finalSubject = replaceVars(subject);
+  const finalBody = replaceVars(body);
+
   return (
-    <div className="border rounded-lg overflow-hidden">
-      <div className="bg-gray-100 px-4 py-2 border-b">
-        <p className="text-sm text-gray-600">To: {previewData?.email || 'recipient@example.com'}</p>
-        <p className="font-medium truncate">Subject: {renderSubject() || 'No subject'}</p>
-      </div>
-      <div className="p-4 bg-white min-h-[200px]">
-        {renderBody()}
-      </div>
-      <div className="bg-gray-100 px-4 py-2 border-t text-sm text-gray-600">
-        Sent from: {sender}
+    <div className="bg-gray-50 p-4 rounded border">
+      <div className="text-sm text-gray-500">To: {previewData.email || 'recipient@example.com'}</div>
+      <div className="font-medium mt-1">Subject: {finalSubject || <span className="text-gray-400">No subject</span>}</div>
+      <div className="mt-3 whitespace-pre-wrap text-sm">
+        {finalBody || <span className="text-gray-400">No body</span>}
       </div>
     </div>
   );
