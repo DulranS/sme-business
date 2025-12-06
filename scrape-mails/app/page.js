@@ -9,8 +9,11 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
+    // Firebase automatically restores session on reload
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) router.push('/dashboard');
+      if (user) {
+        router.push('/dashboard');
+      }
     });
     return () => unsubscribe();
   }, [router]);
@@ -19,7 +22,7 @@ export default function Home() {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      console.error('Firebase login error:', error);
+      console.error('Login error:', error);
       alert('Login failed. Please try again.');
     }
   };
