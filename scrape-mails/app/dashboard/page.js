@@ -7,6 +7,24 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
+// Default templates (always present)
+const DEFAULT_EMAIL_TEMPLATE = {
+  subject: 'Special Offer for {{business_name}}',
+  body: 'Hello {{business_name}},\n\nWe noticed your business at {{address}} could benefit from our solution. As a special offer, use code WELCOME20 for 20% off your first purchase.\n\nBest regards,\n{{sender_name}}'
+};
+
+const DEFAULT_WHATSAPP_TEMPLATE = 
+  'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. We noticed your business at {{address}} and thought you’d benefit from our services.\n\nUse code WELCOME20 for 20% off!\n\nReply STOP to opt out.';
+
+const DEFAULT_FIELD_MAPPINGS = {
+  business_name: 'business_name',
+  address: 'address',
+  sender_name: 'sender_name',
+  email: 'email',
+  whatsapp_number: 'whatsapp_number',
+  phone_raw: 'phone_raw'
+};
+
 // Validate Sri Lankan mobile: must start with 07
 const isValidSriLankanMobile = (raw) => {
   if (!raw) return false;
@@ -67,20 +85,10 @@ export default function Dashboard() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [csvContent, setCsvContent] = useState('');
   const [senderName, setSenderName] = useState('');
-  const [emailTemplate, setEmailTemplate] = useState({
-    subject: '',
-    body: ''
-  });
-  const [whatsappTemplate, setWhatsappTemplate] = useState('');
-  const [fieldMappings, setFieldMappings] = useState({
-    business_name: 'business_name',
-    address: 'address',
-    sender_name: 'sender_name',
-    email: 'email',
-    whatsapp_number: 'whatsapp_number',
-    phone_raw: 'phone_raw'
-  });
-  const [previewRecipient, setPreviewRecipient] = stdioeState(null);
+  const [emailTemplate, setEmailTemplate] = useState(DEFAULT_EMAIL_TEMPLATE);
+  const [whatsappTemplate, setWhatsappTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
+  const [fieldMappings, setFieldMappings] = useState(DEFAULT_FIELD_MAPPINGS);
+  const [previewRecipient, setPreviewRecipient] = useState(null); // ✅ FIXED TYPO
   const [validEmails, setValidEmails] = useState(0);
   const [validWhatsApp, setValidWhatsApp] = useState(0);
   const [whatsappLinks, setWhatsappLinks] = useState([]);
@@ -101,44 +109,42 @@ export default function Dashboard() {
     return () => document.head.removeChild(script);
   }, []);
 
-  // 💾 LOAD SAVED SETTINGS FROM FIRESTORE (CORRECTED)
+  // 💾 LOAD SETTINGS FROM FIRESTORE
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data();
-        // ✅ ONLY apply what exists in Firestore — no local defaults!
         if (data.senderName !== undefined) setSenderName(data.senderName);
         if (data.emailTemplate !== undefined) setEmailTemplate(data.emailTemplate);
         if (data.whatsappTemplate !== undefined) setWhatsappTemplate(data.whatsappTemplate);
         if (data.fieldMappings !== undefined) setFieldMappings(data.fieldMappings);
       } else {
-        // First time: set default sender name only
+        // First time: set sender name, keep default templates
         const initialSender = auth.currentUser?.displayName?.split(' ')[0] || 'Team';
         setSenderName(initialSender);
-        // Leave templates empty so user starts fresh
       }
     } catch (error) {
       console.warn('Failed to load settings:', error);
     }
   };
 
-  // Auth + load settings (CORRECTED)
+  // Auth + load settings
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUser(user);
-        loadSettings(user.uid); // ✅ Load AFTER user is confirmed
+        loadSettings(user.uid);
       } else {
         setUser(null);
       }
       setLoadingAuth(false);
     });
     return () => unsubscribe();
-  }, []); // ✅ No dependency array — onAuthStateChanged handles user changes
+  }, []);
 
-  // 💾 AUTO-SAVE SETTINGS TO FIRESTORE (debounced, with user guard)
+  // 💾 AUTO-SAVE SETTINGS
   const saveSettings = useCallback(async () => {
     if (!user?.uid) return;
     try {
@@ -154,7 +160,6 @@ export default function Dashboard() {
     }
   }, [user?.uid, senderName, emailTemplate, whatsappTemplate, fieldMappings]);
 
-  // Auto-save when settings change
   useEffect(() => {
     if (!user?.uid) return;
     const handler = setTimeout(() => saveSettings(), 1500);
@@ -204,7 +209,7 @@ export default function Dashboard() {
     'sender_name'
   ])];
 
-  const handleMappingChange = (varName, col) => setFieldMappings(p => ({ ...p, [varName]: col }));
+  const handleMappingChange = (variable, col) => setFieldMappings(p => ({ ...p, [variable]: col }));
 
   // Gmail token
   const requestGmailToken = () => {
@@ -233,7 +238,7 @@ export default function Dashboard() {
     try {
       const accessToken = await requestGmailToken();
       setStatus('Sending emails...');
-      const res = await fetch('/api/send', {
+      const res = await fetch('/api/send-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
