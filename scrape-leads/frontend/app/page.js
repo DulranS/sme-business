@@ -177,7 +177,7 @@ const handleComposeEmail = () => {
               </span>
             )}
             {urgency.label && (
-              <span className={`px-2.5 py-1 text-xs font-medium rounded-full bg-${urgency.color.replace('-', '-100 text-')} bg-opacity-20`}>
+              <span className={`px-2.5 py-1 text-xs font-medium rounded-full bg-${urgency.color.replace('-', '-100 text-')} bg-opacity-20`} style={{color:'black'}}>
                 {urgency.label}
               </span>
             )}
