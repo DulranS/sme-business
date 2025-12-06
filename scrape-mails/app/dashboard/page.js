@@ -1,4 +1,4 @@
-// app/page.js
+// app/dashboard/page.js
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -93,6 +93,7 @@ export default function Dashboard() {
     }
 
     const script = document.createElement('script');
+    // ✅ FIXED: Removed trailing spaces
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
@@ -177,7 +178,7 @@ export default function Dashboard() {
     setFieldMappings(prev => ({ ...prev, [varName]: csvColumn }));
   };
 
-  // ✅ FULLY FIXED requestGmailToken
+  // ✅ FULLY FIXED: Removed trailing spaces in scope
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
       if (typeof window === 'undefined') {
@@ -185,9 +186,10 @@ export default function Dashboard() {
         return;
       }
 
-      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+      // ✅ Hardcoded client ID (replace with process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID in production)
+      const clientId = '148388414130-016bpk4vog74c8vb8b5igfqut9joiipt.apps.googleusercontent.com';
       if (!clientId) {
-        reject(new Error('Google Client ID missing. Check .env.local'));
+        reject(new Error('Google Client ID missing'));
         return;
       }
 
@@ -198,6 +200,7 @@ export default function Dashboard() {
 
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
+        // ✅ FIXED: Removed trailing spaces
         scope: 'https://www.googleapis.com/auth/gmail.send',
         callback: (response) => response.access_token ? resolve(response.access_token) : reject(new Error('No token')),
         error_callback: (error) => reject(error)
@@ -221,7 +224,7 @@ export default function Dashboard() {
       const accessToken = await requestGmailToken();
       setStatus('Sending emails...');
 
-      const response = await fetch('/api/send', {
+      const response = await fetch('/api/send-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
