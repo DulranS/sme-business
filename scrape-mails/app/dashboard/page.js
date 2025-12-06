@@ -2,8 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { auth, db } from '../lib/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth } from '../lib/firebase';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
@@ -14,7 +13,7 @@ const isValidEmail = (email) => {
   return trimmed.length > 0 && trimmed.includes('@') && trimmed.includes('.');
 };
 
-// Helper: Extract template variables (handles {{ var }} with spaces)
+// Helper: Extract template variables
 const extractTemplateVariables = (text) => {
   if (!text) return [];
   const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || [];
@@ -38,7 +37,7 @@ const renderPreviewText = (text, recipient, fieldMappings, senderName) => {
   return result;
 };
 
-// Helper: Parse a single CSV row (handles commas inside quotes)
+// Helper: Parse CSV row (handles quotes)
 function parseCsvRow(str) {
   const result = [];
   let current = '';
@@ -50,7 +49,7 @@ function parseCsvRow(str) {
       inQuotes = true;
     } else if (char === '"' && inQuotes && str[i + 1] === '"') {
       current += '"';
-      i++; // skip escaped quote
+      i++;
     } else if (char === '"' && inQuotes) {
       inQuotes = false;
     } else if (char === ',' && !inQuotes) {
@@ -76,14 +75,14 @@ export default function Dashboard() {
     business_name: 'business_name',
     address: 'address',
     sender_name: 'sender_name',
-    email: 'email' // ✅ Matches your CSV column name
+    email: 'email'
   });
   const [previewRecipient, setPreviewRecipient] = useState(null);
   const [validRecipientCount, setValidRecipientCount] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
 
-  // 🔑 Google Identity Services Loader
+  // Google Identity Services loader
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   const [googleLoadError, setGoogleLoadError] = useState(null);
 
@@ -104,60 +103,18 @@ export default function Dashboard() {
     return () => document.head.removeChild(script);
   }, []);
 
-  // Auth & settings load
+  // Auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       if (user) {
-        const loadSettings = async () => {
-          try {
-            const settingsRef = doc(db, 'users', user.uid, 'emailSettings', 'default');
-            const snap = await getDoc(settingsRef);
-            if (snap.exists()) {
-              const data = snap.data();
-              setSenderName(data.senderName || (user.displayName?.split(' ')[0] || 'Team'));
-              setTemplate({
-                subject: data.subject || template.subject,
-                body: data.body || template.body
-              });
-              setFieldMappings(data.fieldMappings || fieldMappings);
-            } else {
-              setSenderName(user.displayName?.split(' ')[0] || 'Team');
-            }
-          } catch (error) {
-            console.warn('Failed to load settings:', error.message);
-          }
-        };
-        loadSettings();
+        setSenderName(user.displayName?.split(' ')[0] || 'Team');
       }
     });
     return () => unsubscribe();
   }, []);
 
-  // Save settings
-  const saveSettings = useCallback(async () => {
-    if (!user) return;
-    try {
-      const settingsRef = doc(db, 'users', user.uid, 'emailSettings', 'default');
-      await setDoc(settingsRef, {
-        senderName,
-        subject: template.subject,
-        body: template.body,
-        fieldMappings
-      }, { merge: true });
-    } catch (error) {
-      console.warn('Failed to save settings:', error.message);
-    }
-  }, [user, senderName, template, fieldMappings]);
-
-  useEffect(() => {
-    if (user) {
-      const handler = setTimeout(() => saveSettings(), 1000);
-      return () => clearTimeout(handler);
-    }
-  }, [saveSettings, user]);
-
-  // ✅ FIXED CSV UPLOAD HANDLER
+  // CSV upload
   const handleCsvUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -169,7 +126,7 @@ export default function Dashboard() {
 
       const lines = content.split('\n').filter(line => line.trim() !== '');
       if (lines.length < 2) {
-        alert('CSV must contain headers and at least one data row.');
+        alert('CSV must have headers and data rows.');
         setValidRecipientCount(0);
         return;
       }
@@ -179,7 +136,7 @@ export default function Dashboard() {
       const emailIndex = headers.indexOf(emailCol);
 
       if (emailIndex === -1) {
-        alert(`Email column "${emailCol}" not found. Your CSV must have an "email" column.`);
+        alert(`Email column "${emailCol}" not found in CSV.`);
         setValidRecipientCount(0);
         return;
       }
@@ -220,29 +177,42 @@ export default function Dashboard() {
     setFieldMappings(prev => ({ ...prev, [varName]: csvColumn }));
   };
 
+  // ✅ FULLY FIXED requestGmailToken
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
-      if (typeof window === 'undefined') return reject('No window');
-      if (!isGoogleLoaded) return reject('Google Identity Services not loaded');
+      if (typeof window === 'undefined') {
+        reject(new Error('Only works in browser'));
+        return;
+      }
 
-      const client = window.google?.accounts?.oauth2?.initTokenClient({
-        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        reject(new Error('Google Client ID missing. Check .env.local'));
+        return;
+      }
+
+      if (!window.google?.accounts?.oauth2) {
+        reject(new Error('Google Identity Services not loaded'));
+        return;
+      }
+
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
         scope: 'https://www.googleapis.com/auth/gmail.send',
         callback: (response) => response.access_token ? resolve(response.access_token) : reject(new Error('No token')),
-        error_callback: reject
+        error_callback: (error) => reject(error)
       });
 
-      if (!client) return reject(new Error('Google Identity Services failed to initialize'));
       client.requestAccessToken();
     });
   };
 
   const handleSend = async () => {
-    if (!csvContent) return alert('Please upload a CSV file');
-    if (!template.subject.trim()) return alert('Please enter a subject');
-    if (!senderName.trim()) return alert('Please enter your sender name');
-    if (validRecipientCount === 0) return alert('No valid emails found in CSV');
-    if (!isGoogleLoaded) return alert('Google services are loading. Please wait...');
+    if (!csvContent) return alert('Upload a CSV file');
+    if (!template.subject.trim()) return alert('Enter a subject');
+    if (!senderName.trim()) return alert('Enter your sender name');
+    if (validRecipientCount === 0) return alert('No valid emails found');
+    if (!isGoogleLoaded) return alert('Google services loading...');
 
     setIsSending(true);
     setStatus('Getting Gmail access...');
@@ -266,7 +236,7 @@ export default function Dashboard() {
 
       const data = await response.json();
       setStatus(response.ok 
-        ? `✅ Success! Sent to ${data.sent}/${data.total} emails.`
+        ? `✅ Sent to ${data.sent}/${data.total} emails!`
         : `❌ ${data.error || 'Unknown error'}`
       );
     } catch (error) {
@@ -282,7 +252,6 @@ export default function Dashboard() {
     try {
       await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error('Login error:', error);
       alert('Login failed. Please try again.');
     }
   };
@@ -294,7 +263,7 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold mb-6">B2B Email Campaigns</h1>
           <button
             onClick={handleLogin}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition"
+            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
           >
             Sign in with Google
           </button>
@@ -324,7 +293,7 @@ export default function Dashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* LEFT */}
+          {/* LEFT: CSV & Mappings */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">1. Upload Recipients (CSV)</h2>
@@ -339,7 +308,7 @@ export default function Dashboard() {
               </p>
               {validRecipientCount > 0 && (
                 <p className="text-sm text-green-600 mt-2">
-                  ✅ {validRecipientCount} valid email(s) found
+                  ✅ {validRecipientCount} valid emails
                 </p>
               )}
             </div>
@@ -372,7 +341,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* MIDDLE */}
+          {/* MIDDLE: Email Editor */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">3. Customize Email</h2>
@@ -444,7 +413,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* RIGHT */}
+          {/* RIGHT: Preview */}
           <div className="lg:col-span-1">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">4. Preview</h2>
@@ -459,11 +428,6 @@ export default function Dashboard() {
                   {renderPreviewText(template.body, previewRecipient, fieldMappings, senderName) || 'No body'}
                 </div>
               </div>
-              {previewRecipient && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Preview from first valid row
-                </p>
-              )}
             </div>
           </div>
         </div>
