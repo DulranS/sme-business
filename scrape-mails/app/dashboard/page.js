@@ -2,7 +2,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { auth } from '../lib/firebase';
+import { auth,db } from '../lib/firebase';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
@@ -20,14 +21,14 @@ const isValidEmail = (email) => {
   return t.length > 0 && t.includes('@') && t.includes('.');
 };
 
-// Extract template vars (e.g., {{business_name}})
+// Extract template vars
 const extractTemplateVariables = (text) => {
   if (!text) return [];
   const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || [];
   return [...new Set(matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, '').trim()))];
 };
 
-// Render preview with mappings
+// Render preview
 const renderPreviewText = (text, recipient, fieldMappings, senderName) => {
   if (!text) return '';
   let result = text;
@@ -44,7 +45,7 @@ const renderPreviewText = (text, recipient, fieldMappings, senderName) => {
   return result;
 };
 
-// Parse CSV row (handles quotes)
+// Parse CSV row
 function parseCsvRow(str) {
   const result = [];
   let current = '';
@@ -63,16 +64,14 @@ function parseCsvRow(str) {
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true); // ✅ For smooth UI
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const [csvContent, setCsvContent] = useState('');
-  const [senderName, setSenderName] = useState(''); // ✅ Editable sender name
+  const [senderName, setSenderName] = useState('');
   const [emailTemplate, setEmailTemplate] = useState({
-    subject: 'Special Offer for {{business_name}}',
-    body: 'Hello {{business_name}},\n\nWe noticed your business at {{address}}. Use code WELCOME20 for 20% off.\n\nBest,\n{{sender_name}}'
+    subject: '',
+    body: ''
   });
-  const [whatsappTemplate, setWhatsappTemplate] = useState(
-    'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nUse WELCOME20 for 20% off!\n\nReply STOP to opt out.'
-  );
+  const [whatsappTemplate, setWhatsappTemplate] = useState('');
   const [fieldMappings, setFieldMappings] = useState({
     business_name: 'business_name',
     address: 'address',
@@ -81,14 +80,13 @@ export default function Dashboard() {
     whatsapp_number: 'whatsapp_number',
     phone_raw: 'phone_raw'
   });
-  const [previewRecipient, setPreviewRecipient] = useState(null);
+  const [previewRecipient, setPreviewRecipient] = stdioeState(null);
   const [validEmails, setValidEmails] = useState(0);
   const [validWhatsApp, setValidWhatsApp] = useState(0);
   const [whatsappLinks, setWhatsappLinks] = useState([]);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
 
-  // Google Identity Services
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   useEffect(() => {
     if (window.google?.accounts?.oauth2?.initTokenClient) {
@@ -103,17 +101,65 @@ export default function Dashboard() {
     return () => document.head.removeChild(script);
   }, []);
 
-  // Auth persistence
+  // 💾 LOAD SAVED SETTINGS FROM FIRESTORE (CORRECTED)
+  const loadSettings = async (userId) => {
+    try {
+      const docRef = doc(db, 'users', userId, 'settings', 'templates');
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        // ✅ ONLY apply what exists in Firestore — no local defaults!
+        if (data.senderName !== undefined) setSenderName(data.senderName);
+        if (data.emailTemplate !== undefined) setEmailTemplate(data.emailTemplate);
+        if (data.whatsappTemplate !== undefined) setWhatsappTemplate(data.whatsappTemplate);
+        if (data.fieldMappings !== undefined) setFieldMappings(data.fieldMappings);
+      } else {
+        // First time: set default sender name only
+        const initialSender = auth.currentUser?.displayName?.split(' ')[0] || 'Team';
+        setSenderName(initialSender);
+        // Leave templates empty so user starts fresh
+      }
+    } catch (error) {
+      console.warn('Failed to load settings:', error);
+    }
+  };
+
+  // Auth + load settings (CORRECTED)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
       if (user) {
-        setSenderName(user.displayName?.split(' ')[0] || 'Team');
+        setUser(user);
+        loadSettings(user.uid); // ✅ Load AFTER user is confirmed
+      } else {
+        setUser(null);
       }
-      setLoadingAuth(false); // ✅ Auth check done
+      setLoadingAuth(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, []); // ✅ No dependency array — onAuthStateChanged handles user changes
+
+  // 💾 AUTO-SAVE SETTINGS TO FIRESTORE (debounced, with user guard)
+  const saveSettings = useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const docRef = doc(db, 'users', user.uid, 'settings', 'templates');
+      await setDoc(docRef, {
+        senderName,
+        emailTemplate,
+        whatsappTemplate,
+        fieldMappings
+      }, { merge: true });
+    } catch (error) {
+      console.warn('Failed to save settings:', error);
+    }
+  }, [user?.uid, senderName, emailTemplate, whatsappTemplate, fieldMappings]);
+
+  // Auto-save when settings change
+  useEffect(() => {
+    if (!user?.uid) return;
+    const handler = setTimeout(() => saveSettings(), 1500);
+    return () => clearTimeout(handler);
+  }, [user?.uid, senderName, emailTemplate, whatsappTemplate, fieldMappings]);
 
   // Handle CSV upload
   const handleCsvUpload = (e) => {
@@ -187,7 +233,7 @@ export default function Dashboard() {
     try {
       const accessToken = await requestGmailToken();
       setStatus('Sending emails...');
-      const res = await fetch('/api/send-emails', {
+      const res = await fetch('/api/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -240,7 +286,6 @@ export default function Dashboard() {
     }
   };
 
-  // Handle auth loading state
   if (loadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -250,7 +295,6 @@ export default function Dashboard() {
   }
 
   if (!user) {
-    // This should rarely happen due to Firebase persistence
     return (
       <div className="min-h-screen flex items-center justify-center">
         <button
