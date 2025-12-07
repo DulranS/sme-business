@@ -8,9 +8,13 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
+  authDomain: "email-marketing-c775d.firebaseapp.com",
+  projectId: "email-marketing-c775d",
+  storageBucket: "email-marketing-c775d.firebasestorage.app",
+  messagingSenderId: "178196903576",
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
+  measurementId: "G-6CL2EGLEVH"
 };
 if (!getApps().length) initializeApp(firebaseConfig);
 const db = getFirestore();
