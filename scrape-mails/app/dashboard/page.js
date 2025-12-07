@@ -7,7 +7,6 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
-// Default templates
 const DEFAULT_TEMPLATE_A = {
   subject: 'Special Offer for {{business_name}}',
   body: 'Hello {{business_name}},\n\nWe noticed your business at {{address}} could benefit from our solution. As a special offer, use code WELCOME20 for 20% off your first purchase.\n\nBest regards,\n{{sender_name}}'
@@ -21,19 +20,14 @@ const DEFAULT_TEMPLATE_B = {
 const DEFAULT_WHATSAPP_TEMPLATE = 
   'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nUse WELCOME20 for 20% off!\n\nReply STOP to opt out.';
 
-// ✅ GLOBAL WhatsApp formatter (supports any country)
 function formatForWhatsApp(raw) {
   if (!raw || raw === 'N/A' || raw === '') return null;
   let cleaned = raw.toString().replace(/\D/g, '');
-  // Sri Lanka mobile: 07... → 947...
   if (cleaned.startsWith('07') && cleaned.length === 10) {
     cleaned = '94' + cleaned.slice(1);
-  }
-  // Sri Lanka landline: 0... → 94...
-  else if (cleaned.startsWith('0') && cleaned.length >= 9) {
+  } else if (cleaned.startsWith('0') && cleaned.length >= 9) {
     cleaned = '94' + cleaned.slice(1);
   }
-  // Validate E.164: 10–15 digits, no leading zero
   return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;
 }
 
@@ -49,7 +43,6 @@ const extractTemplateVariables = (text) => {
   return [...new Set(matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, '').trim()))];
 };
 
-// ✅ FIXED: No missing fields
 const renderPreviewText = (text, recipient, mappings, sender) => {
   if (!text) return '';
   let result = text;
@@ -98,6 +91,7 @@ export default function Dashboard() {
   const [validWhatsApp, setValidWhatsApp] = useState(0);
   const [leadQualityFilter, setLeadQualityFilter] = useState('all');
   const [whatsappLinks, setWhatsappLinks] = useState([]);
+  const [emailImages, setEmailImages] = useState([]); // ✅ NEW: Image state
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -159,7 +153,6 @@ export default function Dashboard() {
     return () => clearTimeout(handler);
   }, [saveSettings, user?.uid]);
 
-  // ✅ CSV Upload with auto-mapping
   const handleCsvUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -178,7 +171,6 @@ export default function Dashboard() {
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       setCsvHeaders(headers);
 
-      // ✅ Auto-map fields from CSV headers
       const allVars = [...new Set([
         ...extractTemplateVariables(templateA.subject),
         ...extractTemplateVariables(templateA.body),
@@ -197,11 +189,10 @@ export default function Dashboard() {
       if (headers.includes('email')) {
         initialMappings.email = 'email';
       }
-      initialMappings.sender_name = 'sender_name'; // Your name, not CSV
+      initialMappings.sender_name = 'sender_name';
 
       setFieldMappings(initialMappings);
 
-      // Count valid emails & WhatsApp numbers
       let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
       for (let i = 1; i < lines.length; i++) {
         const values = parseCsvRow(lines[i]);
@@ -233,13 +224,25 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
+  // ✅ NEW: Handle image upload
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files).slice(0, 3);
+    const newImages = files.map((file, index) => {
+      const preview = URL.createObjectURL(file);
+      const cid = `img${index + 1}@massmailer`;
+      return { file, preview, cid, placeholder: `{{image${index + 1}}}` };
+    });
+    setEmailImages(newImages);
+  };
+
   const allVars = [...new Set([
     ...extractTemplateVariables(templateA.subject),
     ...extractTemplateVariables(templateA.body),
     ...extractTemplateVariables(templateB.subject),
     ...extractTemplateVariables(templateB.body),
     ...extractTemplateVariables(whatsappTemplate),
-    'sender_name'
+    'sender_name',
+    ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')) // Add image placeholders
   ])];
 
   const handleMappingChange = (varName, csvColumn) => {
@@ -275,7 +278,6 @@ export default function Dashboard() {
     });
   };
 
-  // ✅ Send to /api/send-email
   const handleSendEmails = async () => {
     if (!csvContent || !senderName.trim() || validEmails === 0) {
       alert('Check CSV, sender name, and valid emails.');
@@ -295,9 +297,27 @@ export default function Dashboard() {
 
     try {
       const accessToken = await requestGmailToken();
+
+      // ✅ Encode images to base64
+      const imagesWithBase64 = await Promise.all(
+        emailImages.map(async (img) => {
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(img.file);
+          });
+          return {
+            cid: img.cid,
+            mimeType: img.file.type,
+            base64,
+            placeholder: img.placeholder
+          };
+        })
+      );
+
       setStatus(`Sending ${abTestMode ? 'A/B Test' : 'Emails'}...`);
 
-      const res = await fetch('/api/send-email', { // ✅ NEW PATH
+      const res = await fetch('/api/send-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -308,7 +328,8 @@ export default function Dashboard() {
           abTestMode,
           templateA,
           templateB,
-          leadQualityFilter
+          leadQualityFilter,
+          emailImages: imagesWithBase64 // ✅ Send base64 images
         })
       });
 
@@ -530,8 +551,38 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* ✅ NEW: Image Upload Section */}
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">5. WhatsApp Template</h2>
+              <h2 className="text-xl font-bold mb-3">5. Email Images (Optional)</h2>
+              <p className="text-xs text-gray-600 mb-2">
+                Upload up to 3 images (JPG/PNG). Use <code>{'{image1}'}</code>, <code>{'{image2}'}</code> in your template.
+              </p>
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                multiple
+                onChange={handleImageUpload}
+                className="w-full p-2 border rounded"
+              />
+              {emailImages.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs text-gray-500">Preview:</p>
+                  <div className="flex gap-2 mt-1">
+                    {emailImages.map((img, i) => (
+                      <div key={i} className="w-16 h-16">
+                        <img src={img.preview} alt={`Preview ${i+1}`} className="w-full h-full object-cover rounded" />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use in template: {emailImages.map(img => img.placeholder).join(', ')}
+                  </ p>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow">
+              <h2 className="text-xl font-bold mb-3">6. WhatsApp Template</h2>
               <textarea
                 value={whatsappTemplate}
                 onChange={(e) => setWhatsappTemplate(e.target.value)}
@@ -578,7 +629,7 @@ export default function Dashboard() {
           {/* RIGHT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">6. Email Preview</h2>
+              <h2 className="text-xl font-bold mb-3">7. Email Preview</h2>
               <div className="bg-gray-50 p-4 rounded border">
                 <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
                 <div className="mt-1 font-medium">
@@ -602,7 +653,7 @@ export default function Dashboard() {
 
             {abTestMode && (
               <div className="bg-white p-6 rounded-xl shadow">
-                <h2 className="text-xl font-bold mb-3">7. Template B Preview</h2>
+                <h2 className="text-xl font-bold mb-3">8. Template B Preview</h2>
                 <div className="bg-gray-50 p-4 rounded border">
                   <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
                   <div className="mt-1 font-medium">
@@ -616,7 +667,7 @@ export default function Dashboard() {
             )}
 
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">8. WhatsApp Preview</h2>
+              <h2 className="text-xl font-bold mb-3">9. WhatsApp Preview</h2>
               <div className="bg-gray-50 p-4 rounded border">
                 <div className="text-sm text-gray-500">
                   To: {previewRecipient?.whatsapp_number || previewRecipient?.phone_raw || '9477...'}
@@ -630,7 +681,7 @@ export default function Dashboard() {
             {whatsappLinks.length > 0 && (
               <div className="bg-white p-6 rounded-xl shadow">
                 <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-xl font-bold">9. WhatsApp Links ({whatsappLinks.length})</h2>
+                  <h2 className="text-xl font-bold">10. WhatsApp Links ({whatsappLinks.length})</h2>
                   <button onClick={() => setWhatsappLinks([])} className="text-sm text-red-600">Clear</button>
                 </div>
                 <div className="max-h-60 overflow-y-auto space-y-2">
