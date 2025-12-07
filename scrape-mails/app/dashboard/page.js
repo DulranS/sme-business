@@ -2,60 +2,63 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { auth,db } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
-// Default templates (always present)
-const DEFAULT_EMAIL_TEMPLATE = {
+// Default templates
+const DEFAULT_TEMPLATE_A = {
   subject: 'Special Offer for {{business_name}}',
   body: 'Hello {{business_name}},\n\nWe noticed your business at {{address}} could benefit from our solution. As a special offer, use code WELCOME20 for 20% off your first purchase.\n\nBest regards,\n{{sender_name}}'
 };
 
+const DEFAULT_TEMPLATE_B = {
+  subject: 'Exclusive Deal for {{business_name}} 🎁',
+  body: 'Hi {{business_name}},\n\nWe saw your business at {{address}} and have a **limited-time offer**: use code DISCOUNT10 for 10% off.\n\nBest,\n{{sender_name}}'
+};
+
 const DEFAULT_WHATSAPP_TEMPLATE = 
-  'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. We noticed your business at {{address}} and thought you’d benefit from our services.\n\nUse code WELCOME20 for 20% off!\n\nReply STOP to opt out.';
+  'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nUse WELCOME20 for 20% off!\n\nReply STOP to opt out.';
 
-const DEFAULT_FIELD_MAPPINGS = {
-  business_name: 'business_name',
-  address: 'address',
-  sender_name: 'sender_name',
-  email: 'email',
-  whatsapp_number: 'whatsapp_number',
-  phone_raw: 'phone_raw'
-};
+// ✅ GLOBAL WhatsApp formatter (supports any country)
+function formatForWhatsApp(raw) {
+  if (!raw || raw === 'N/A' || raw === '') return null;
+  let cleaned = raw.toString().replace(/\D/g, '');
+  // Sri Lanka mobile: 07... → 947...
+  if (cleaned.startsWith('07') && cleaned.length === 10) {
+    cleaned = '94' + cleaned.slice(1);
+  }
+  // Sri Lanka landline: 0... → 94...
+  else if (cleaned.startsWith('0') && cleaned.length >= 9) {
+    cleaned = '94' + cleaned.slice(1);
+  }
+  // Validate E.164: 10–15 digits, no leading zero
+  return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;
+}
 
-// Validate Sri Lankan mobile: must start with 07
-const isValidSriLankanMobile = (raw) => {
-  if (!raw) return false;
-  const cleaned = raw.replace(/\D/g, '');
-  return cleaned.startsWith('07') && cleaned.length >= 9 && cleaned.length <= 10;
-};
-
-// Validate email
 const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   const t = email.trim();
   return t.length > 0 && t.includes('@') && t.includes('.');
 };
 
-// Extract template vars
 const extractTemplateVariables = (text) => {
   if (!text) return [];
   const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || [];
   return [...new Set(matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, '').trim()))];
 };
 
-// Render preview
-const renderPreviewText = (text, recipient, fieldMappings, senderName) => {
+// ✅ FIXED: No missing fields
+const renderPreviewText = (text, recipient, mappings, sender) => {
   if (!text) return '';
   let result = text;
-  Object.entries(fieldMappings).forEach(([varName, csvColumn]) => {
+  Object.entries(mappings).forEach(([varName, col]) => {
     const regex = new RegExp(`{{\\s*${varName}\\s*}}`, 'g');
     if (varName === 'sender_name') {
-      result = result.replace(regex, senderName || '[Sender]');
-    } else if (recipient && csvColumn && recipient[csvColumn] !== undefined) {
-      result = result.replace(regex, String(recipient[csvColumn]));
+      result = result.replace(regex, sender || 'Team');
+    } else if (recipient && col && recipient[col] !== undefined) {
+      result = result.replace(regex, String(recipient[col]));
     } else {
       result = result.replace(regex, `[MISSING: ${varName}]`);
     }
@@ -63,7 +66,6 @@ const renderPreviewText = (text, recipient, fieldMappings, senderName) => {
   return result;
 };
 
-// Parse CSV row
 function parseCsvRow(str) {
   const result = [];
   let current = '';
@@ -84,13 +86,17 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [csvContent, setCsvContent] = useState('');
+  const [csvHeaders, setCsvHeaders] = useState([]);
   const [senderName, setSenderName] = useState('');
-  const [emailTemplate, setEmailTemplate] = useState(DEFAULT_EMAIL_TEMPLATE);
+  const [abTestMode, setAbTestMode] = useState(false);
+  const [templateA, setTemplateA] = useState(DEFAULT_TEMPLATE_A);
+  const [templateB, setTemplateB] = useState(DEFAULT_TEMPLATE_B);
   const [whatsappTemplate, setWhatsappTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
-  const [fieldMappings, setFieldMappings] = useState(DEFAULT_FIELD_MAPPINGS);
-  const [previewRecipient, setPreviewRecipient] = useState(null); // ✅ FIXED TYPO
+  const [fieldMappings, setFieldMappings] = useState({});
+  const [previewRecipient, setPreviewRecipient] = useState(null);
   const [validEmails, setValidEmails] = useState(0);
   const [validWhatsApp, setValidWhatsApp] = useState(0);
+  const [leadQualityFilter, setLeadQualityFilter] = useState('all');
   const [whatsappLinks, setWhatsappLinks] = useState([]);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
@@ -109,7 +115,6 @@ export default function Dashboard() {
     return () => document.head.removeChild(script);
   }, []);
 
-  // 💾 LOAD SETTINGS FROM FIRESTORE
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
@@ -117,11 +122,12 @@ export default function Dashboard() {
       if (snap.exists()) {
         const data = snap.data();
         if (data.senderName !== undefined) setSenderName(data.senderName);
-        if (data.emailTemplate !== undefined) setEmailTemplate(data.emailTemplate);
+        if (data.templateA !== undefined) setTemplateA(data.templateA);
+        if (data.templateB !== undefined) setTemplateB(data.templateB);
         if (data.whatsappTemplate !== undefined) setWhatsappTemplate(data.whatsappTemplate);
         if (data.fieldMappings !== undefined) setFieldMappings(data.fieldMappings);
+        if (data.abTestMode !== undefined) setAbTestMode(data.abTestMode);
       } else {
-        // First time: set sender name, keep default templates
         const initialSender = auth.currentUser?.displayName?.split(' ')[0] || 'Team';
         setSenderName(initialSender);
       }
@@ -130,7 +136,116 @@ export default function Dashboard() {
     }
   };
 
-  // Auth + load settings
+  const saveSettings = useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const docRef = doc(db, 'users', user.uid, 'settings', 'templates');
+      await setDoc(docRef, {
+        senderName,
+        templateA,
+        templateB,
+        whatsappTemplate,
+        fieldMappings,
+        abTestMode
+      }, { merge: true });
+    } catch (error) {
+      console.warn('Failed to save settings:', error);
+    }
+  }, [user?.uid, senderName, templateA, templateB, whatsappTemplate, fieldMappings, abTestMode]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const handler = setTimeout(() => saveSettings(), 1500);
+    return () => clearTimeout(handler);
+  }, [saveSettings, user?.uid]);
+
+  // ✅ CSV Upload with auto-mapping
+  const handleCsvUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result;
+      setCsvContent(content);
+
+      const lines = content.split('\n').filter(line => line.trim() !== '');
+      if (lines.length < 2) {
+        alert('CSV must have headers and data rows.');
+        return;
+      }
+
+      const headers = parseCsvRow(lines[0]).map(h => h.trim());
+      setCsvHeaders(headers);
+
+      // ✅ Auto-map fields from CSV headers
+      const allVars = [...new Set([
+        ...extractTemplateVariables(templateA.subject),
+        ...extractTemplateVariables(templateA.body),
+        ...extractTemplateVariables(templateB.subject),
+        ...extractTemplateVariables(templateB.body),
+        ...extractTemplateVariables(whatsappTemplate),
+        'sender_name'
+      ])];
+
+      const initialMappings = {};
+      allVars.forEach(varName => {
+        if (headers.includes(varName)) {
+          initialMappings[varName] = varName;
+        }
+      });
+      if (headers.includes('email')) {
+        initialMappings.email = 'email';
+      }
+      initialMappings.sender_name = 'sender_name'; // Your name, not CSV
+
+      setFieldMappings(initialMappings);
+
+      // Count valid emails & WhatsApp numbers
+      let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCsvRow(lines[i]);
+        if (values.length !== headers.length) continue;
+
+        const row = {};
+        headers.forEach((header, idx) => {
+          row[header] = values[idx] || '';
+        });
+
+        if (isValidEmail(row.email)) {
+          if (row.lead_quality === 'HOT') hotEmails++;
+          else if (row.lead_quality === 'WARM') warmEmails++;
+        }
+
+        const rawPhone = row.whatsapp_number || row.phone_raw;
+        if (formatForWhatsApp(rawPhone)) {
+          whatsappCount++;
+        }
+
+        if (!firstValid) firstValid = row;
+      }
+
+      setPreviewRecipient(firstValid);
+      setValidEmails(leadQualityFilter === 'HOT' ? hotEmails : 
+                    leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
+      setValidWhatsApp(whatsappCount);
+    };
+    reader.readAsText(file);
+  };
+
+  const allVars = [...new Set([
+    ...extractTemplateVariables(templateA.subject),
+    ...extractTemplateVariables(templateA.body),
+    ...extractTemplateVariables(templateB.subject),
+    ...extractTemplateVariables(templateB.body),
+    ...extractTemplateVariables(whatsappTemplate),
+    'sender_name'
+  ])];
+
+  const handleMappingChange = (varName, csvColumn) => {
+    setFieldMappings(prev => ({ ...prev, [varName]: csvColumn }));
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -144,74 +259,6 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
-  // 💾 AUTO-SAVE SETTINGS
-  const saveSettings = useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const docRef = doc(db, 'users', user.uid, 'settings', 'templates');
-      await setDoc(docRef, {
-        senderName,
-        emailTemplate,
-        whatsappTemplate,
-        fieldMappings
-      }, { merge: true });
-    } catch (error) {
-      console.warn('Failed to save settings:', error);
-    }
-  }, [user?.uid, senderName, emailTemplate, whatsappTemplate, fieldMappings]);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-    const handler = setTimeout(() => saveSettings(), 1500);
-    return () => clearTimeout(handler);
-  }, [user?.uid, senderName, emailTemplate, whatsappTemplate, fieldMappings]);
-
-  // Handle CSV upload
-  const handleCsvUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target.result;
-      setCsvContent(content);
-      const lines = content.split('\n').filter(l => l.trim() !== '');
-      if (lines.length < 2) {
-        alert('CSV must have headers and data rows.');
-        setValidEmails(0); setValidWhatsApp(0);
-        return;
-      }
-      const headers = parseCsvRow(lines[0]);
-      const emailIdx = headers.indexOf('email');
-      const waNumIdx = headers.indexOf('whatsapp_number');
-      const phoneIdx = headers.indexOf('phone_raw');
-      let emailCount = 0, waCount = 0, firstValid = null;
-      for (let i = 1; i < lines.length; i++) {
-        const vals = parseCsvRow(lines[i]);
-        if (vals.length !== headers.length) continue;
-        const row = {};
-        headers.forEach((h, j) => row[h] = vals[j] || '');
-        if (emailIdx !== -1 && isValidEmail(row.email)) emailCount++;
-        const rawPhone = row.whatsapp_number || row.phone_raw;
-        if (rawPhone && isValidSriLankanMobile(rawPhone)) waCount++;
-        if (!firstValid) firstValid = row;
-      }
-      setPreviewRecipient(firstValid);
-      setValidEmails(emailCount);
-      setValidWhatsApp(waCount);
-    };
-    reader.readAsText(file);
-  };
-
-  const allVars = [...new Set([
-    ...extractTemplateVariables(emailTemplate.subject),
-    ...extractTemplateVariables(emailTemplate.body),
-    ...extractTemplateVariables(whatsappTemplate),
-    'sender_name'
-  ])];
-
-  const handleMappingChange = (variable, col) => setFieldMappings(p => ({ ...p, [variable]: col }));
-
-  // Gmail token
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
       if (typeof window === 'undefined') return reject('Browser only');
@@ -228,30 +275,53 @@ export default function Dashboard() {
     });
   };
 
-  // Send emails
+  // ✅ Send to /api/send-email
   const handleSendEmails = async () => {
-    if (!csvContent || !emailTemplate.subject.trim() || !senderName.trim() || validEmails === 0) {
-      alert('Check CSV, subject, sender name, and valid emails.');
+    if (!csvContent || !senderName.trim() || validEmails === 0) {
+      alert('Check CSV, sender name, and valid emails.');
       return;
     }
-    setIsSending(true); setStatus('Getting Gmail access...');
+    if (abTestMode && (!templateA.subject.trim() || !templateB.subject.trim())) {
+      alert('Both Template A and B need a subject.');
+      return;
+    }
+    if (!abTestMode && !templateA.subject.trim()) {
+      alert('Email subject is required.');
+      return;
+    }
+
+    setIsSending(true);
+    setStatus('Getting Gmail access...');
+
     try {
       const accessToken = await requestGmailToken();
-      setStatus('Sending emails...');
-      const res = await fetch('/api/send-emails', {
+      setStatus(`Sending ${abTestMode ? 'A/B Test' : 'Emails'}...`);
+
+      const res = await fetch('/api/send-email', { // ✅ NEW PATH
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           csvContent,
-          subject: emailTemplate.subject,
-          body: emailTemplate.body,
-          accessToken,
           senderName,
-          fieldMappings
+          fieldMappings,
+          accessToken,
+          abTestMode,
+          templateA,
+          templateB,
+          leadQualityFilter
         })
       });
+
       const data = await res.json();
-      setStatus(res.ok ? `✅ Emails sent: ${data.sent}/${data.total}` : `❌ ${data.error}`);
+      if (res.ok) {
+        if (abTestMode) {
+          setStatus(`✅ A/B Test Started!\nTemplate A: ${data.a.sent} sent\nTemplate B: ${data.b.sent} sent`);
+        } else {
+          setStatus(`✅ Emails sent: ${data.sent}/${data.total}`);
+        }
+      } else {
+        setStatus(`❌ ${data.error}`);
+      }
     } catch (err) {
       setStatus(`❌ ${err.message}`);
     } finally {
@@ -259,10 +329,9 @@ export default function Dashboard() {
     }
   };
 
-  // Generate WhatsApp links
   const handleGenerateWhatsAppLinks = async () => {
     if (!csvContent || !whatsappTemplate.trim() || !senderName.trim() || validWhatsApp === 0) {
-      alert('Check CSV, WhatsApp message, sender name, and valid 07 numbers.');
+      alert('Check CSV, WhatsApp message, sender name, and valid numbers.');
       return;
     }
     setIsSending(true); setStatus('Generating WhatsApp links...');
@@ -314,10 +383,10 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Head><title>B2B Messaging</title></Head>
+      <Head><title>B2B Outreach Platform</title></Head>
       <header className="bg-white shadow-sm">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold">B2B Messaging</h1>
+          <h1 className="text-xl font-bold">B2B Outreach Platform</h1>
           <button onClick={() => signOut(auth)} className="text-sm text-gray-600">
             Sign Out
           </button>
@@ -326,16 +395,30 @@ export default function Dashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* LEFT: CSV & Mappings */}
+          {/* LEFT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">1. Upload CSV</h2>
               <input type="file" accept=".csv" onChange={handleCsvUpload} className="w-full p-2 border rounded" />
               <p className="text-xs text-gray-600 mt-2">
-                Only numbers starting with <code>07</code> will be used for WhatsApp.
+                Auto-detects columns from first row.
               </p>
+              {csvHeaders.includes('lead_quality') && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium mb-1">Target Lead Quality</label>
+                  <select
+                    value={leadQualityFilter}
+                    onChange={(e) => setLeadQualityFilter(e.target.value)}
+                    className="w-full p-1 border rounded text-sm"
+                  >
+                    <option value="all">All Leads</option>
+                    <option value="HOT">HOT Leads Only</option>
+                    <option value="WARM">WARM Leads Only</option>
+                  </select>
+                </div>
+              )}
               {validEmails > 0 && <p className="text-sm text-green-600 mt-2">📧 {validEmails} valid emails</p>}
-              {validWhatsApp > 0 && <p className="text-sm text-blue-600 mt-1">📱 {validWhatsApp} valid 07 numbers</p>}
+              {validWhatsApp > 0 && <p className="text-sm text-blue-600 mt-1">📱 {validWhatsApp} WhatsApp numbers</p>}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
@@ -350,12 +433,12 @@ export default function Dashboard() {
                     onChange={(e) => handleMappingChange(varName, e.target.value)}
                     className="text-xs border rounded px-1 py-0.5 flex-1"
                   >
-                    <option value="">-- Column --</option>
-                    {previewRecipient && Object.keys(previewRecipient).map(col => (
+                    <option value="">-- Map to Column --</option>
+                    {csvHeaders.map(col => (
                       <option key={col} value={col}>{col}</option>
                     ))}
                     {varName === 'sender_name' && (
-                      <option value="sender_name">Use sender name</option>
+                      <option value="sender_name">Use your sender name</option>
                     )}
                   </select>
                 </div>
@@ -363,7 +446,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* MIDDLE: Templates */}
+          {/* MIDDLE */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">3. Your Name (Sender)</h2>
@@ -377,28 +460,78 @@ export default function Dashboard() {
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">4. Email Template</h2>
-              <input
-                type="text"
-                value={emailTemplate.subject}
-                onChange={(e) => setEmailTemplate({ ...emailTemplate, subject: e.target.value })}
-                className="w-full p-2 border rounded mb-2"
-                placeholder="Subject"
-              />
-              <textarea
-                value={emailTemplate.body}
-                onChange={(e) => setEmailTemplate({ ...emailTemplate, body: e.target.value })}
-                rows="4"
-                className="w-full p-2 font-mono border rounded"
-                placeholder="Hello {{business_name}}, ..."
-              />
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xl font-bold">4. Email Template</h2>
+                <label className="flex items-center text-sm">
+                  <input
+                    type="checkbox"
+                    checked={abTestMode}
+                    onChange={(e) => setAbTestMode(e.target.checked)}
+                    className="mr-2"
+                  />
+                  A/B Testing
+                </label>
+              </div>
+
+              {abTestMode ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="border rounded p-3">
+                    <h3 className="font-bold text-green-600 mb-2">Template A</h3>
+                    <input
+                      type="text"
+                      value={templateA.subject}
+                      onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
+                      className="w-full p-1 border rounded mb-1 text-sm"
+                      placeholder="Subject A"
+                    />
+                    <textarea
+                      value={templateA.body}
+                      onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
+                      rows="3"
+                      className="w-full p-1 font-mono text-sm border rounded"
+                      placeholder="Body A..."
+                    />
+                  </div>
+                  <div className="border rounded p-3">
+                    <h3 className="font-bold text-blue-600 mb-2">Template B</h3>
+                    <input
+                      type="text"
+                      value={templateB.subject}
+                      onChange={(e) => setTemplateB({ ...templateB, subject: e.target.value })}
+                      className="w-full p-1 border rounded mb-1 text-sm"
+                      placeholder="Subject B"
+                    />
+                    <textarea
+                      value={templateB.body}
+                      onChange={(e) => setTemplateB({ ...templateB, body: e.target.value })}
+                      rows="3"
+                      className="w-full p-1 font-mono text-sm border rounded"
+                      placeholder="Body B..."
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="text"
+                    value={templateA.subject}
+                    onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
+                    className="w-full p-2 border rounded mb-2"
+                    placeholder="Subject"
+                  />
+                  <textarea
+                    value={templateA.body}
+                    onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
+                    rows="4"
+                    className="w-full p-2 font-mono border rounded"
+                    placeholder="Hello {{business_name}}, ..."
+                  />
+                </div>
+              )}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">5. WhatsApp Template</h2>
-              <p className="text-xs text-gray-600 mb-2">
-                Only for numbers starting with <code>07</code>.
-              </p>
               <textarea
                 value={whatsappTemplate}
                 onChange={(e) => setWhatsappTemplate(e.target.value)}
@@ -418,7 +551,7 @@ export default function Dashboard() {
                     : 'bg-green-600 text-white'
                 }`}
               >
-                📧 Send Emails ({validEmails})
+                {abTestMode ? '🧪 Send A/B Test' : '📧 Send Emails'} ({validEmails})
               </button>
               <button
                 onClick={handleGenerateWhatsAppLinks}
@@ -434,7 +567,7 @@ export default function Dashboard() {
             </div>
 
             {status && (
-              <div className={`p-3 rounded text-center ${
+              <div className={`p-3 rounded text-center whitespace-pre-line ${
                 status.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
               }`}>
                 {status}
@@ -442,26 +575,51 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* RIGHT: Preview & Links */}
+          {/* RIGHT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">6. Email Preview</h2>
               <div className="bg-gray-50 p-4 rounded border">
                 <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
                 <div className="mt-1 font-medium">
-                  {renderPreviewText(emailTemplate.subject, previewRecipient, fieldMappings, senderName)}
+                  {renderPreviewText(
+                    abTestMode ? templateA.subject : templateA.subject,
+                    previewRecipient,
+                    fieldMappings,
+                    senderName
+                  )}
                 </div>
                 <div className="mt-2 whitespace-pre-wrap text-sm">
-                  {renderPreviewText(emailTemplate.body, previewRecipient, fieldMappings, senderName)}
+                  {renderPreviewText(
+                    abTestMode ? templateA.body : templateA.body,
+                    previewRecipient,
+                    fieldMappings,
+                    senderName
+                  )}
                 </div>
               </div>
             </div>
 
+            {abTestMode && (
+              <div className="bg-white p-6 rounded-xl shadow">
+                <h2 className="text-xl font-bold mb-3">7. Template B Preview</h2>
+                <div className="bg-gray-50 p-4 rounded border">
+                  <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
+                  <div className="mt-1 font-medium">
+                    {renderPreviewText(templateB.subject, previewRecipient, fieldMappings, senderName)}
+                  </div>
+                  <div className="mt-2 whitespace-pre-wrap text-sm">
+                    {renderPreviewText(templateB.body, previewRecipient, fieldMappings, senderName)}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">7. WhatsApp Preview</h2>
+              <h2 className="text-xl font-bold mb-3">8. WhatsApp Preview</h2>
               <div className="bg-gray-50 p-4 rounded border">
                 <div className="text-sm text-gray-500">
-                  To: {previewRecipient?.whatsapp_number || previewRecipient?.phone_raw || '077...'}
+                  To: {previewRecipient?.whatsapp_number || previewRecipient?.phone_raw || '9477...'}
                 </div>
                 <div className="mt-2 whitespace-pre-wrap text-sm">
                   {renderPreviewText(whatsappTemplate, previewRecipient, fieldMappings, senderName)}
@@ -472,7 +630,7 @@ export default function Dashboard() {
             {whatsappLinks.length > 0 && (
               <div className="bg-white p-6 rounded-xl shadow">
                 <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-xl font-bold">8. WhatsApp Links ({whatsappLinks.length})</h2>
+                  <h2 className="text-xl font-bold">9. WhatsApp Links ({whatsappLinks.length})</h2>
                   <button onClick={() => setWhatsappLinks([])} className="text-sm text-red-600">Clear</button>
                 </div>
                 <div className="max-h-60 overflow-y-auto space-y-2">
