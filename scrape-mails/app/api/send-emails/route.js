@@ -1,3 +1,4 @@
+// app/api/send-email/route.js
 import { NextResponse } from 'next/server';
 import { google } from '@googleapis/gmail';
 import { parse as csvParse } from 'csv-parse/sync';
@@ -7,13 +8,9 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
-  authDomain: "email-marketing-c775d.firebaseapp.com",
-  projectId: "email-marketing-c775d",
-  storageBucket: "email-marketing-c775d.firebasestorage.app",
-  messagingSenderId: "178196903576",
-  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
-  measurementId: "G-6CL2EGLEVH"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
 };
 if (!getApps().length) initializeApp(firebaseConfig);
 const db = getFirestore();
@@ -61,7 +58,8 @@ export async function POST(request) {
       abTestMode,
       templateA,
       templateB,
-      leadQualityFilter = 'all'
+      leadQualityFilter = 'all',
+      emailImages = []
     } = await request.json();
 
     if (!csvContent || !senderName || !fieldMappings || !accessToken) {
@@ -98,14 +96,48 @@ export async function POST(request) {
         let finalBody = replaceTemplateVars(templateA.body, row, fieldMappings, senderName);
         finalBody = addTracking(finalBody, testId, 'a', row.email);
 
-        const rawMessage = [
+        // ✅ Construct HTML email with inline images
+        let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
+        emailImages.forEach(img => {
+          const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
+          htmlBody = htmlBody.replace(new RegExp(`{{image\\d}}`, 'g'), imgTag);
+        });
+        htmlBody += '</body></html>';
+
+        // ✅ Build multipart MIME message
+        let rawMessageLines = [
           `To: ${row.email}`,
           `Subject: ${finalSubject}`,
+          'MIME-Version: 1.0',
+          'Content-Type: multipart/related; boundary="boundary"',
+          '',
+          '--boundary',
           'Content-Type: text/html; charset=utf-8',
           '',
-          finalBody
-        ].join('\r\n');
+          htmlBody
+        ];
 
+        emailImages.forEach(img => {
+          rawMessageLines = [
+            ...rawMessageLines,
+            '',
+            '--boundary',
+            `Content-Type: ${img.mimeType}`,
+            'Content-Transfer-Encoding: base64',
+            `Content-ID: <${img.cid}>`,
+            'Content-Disposition: inline',
+            '',
+            img.base64
+          ];
+        });
+
+        rawMessageLines = [
+          ...rawMessageLines,
+          '',
+          '--boundary--'
+        ];
+
+        const rawMessage = rawMessageLines.join('\r\n');
         const encoded = Buffer.from(rawMessage)
           .toString('base64')
           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -125,14 +157,46 @@ export async function POST(request) {
         let finalBody = replaceTemplateVars(templateB.body, row, fieldMappings, senderName);
         finalBody = addTracking(finalBody, testId, 'b', row.email);
 
-        const rawMessage = [
+        let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
+        emailImages.forEach(img => {
+          const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
+          htmlBody = htmlBody.replace(new RegExp(`{{image\\d}}`, 'g'), imgTag);
+        });
+        htmlBody += '</body></html>';
+
+        let rawMessageLines = [
           `To: ${row.email}`,
           `Subject: ${finalSubject}`,
+          'MIME-Version: 1.0',
+          'Content-Type: multipart/related; boundary="boundary"',
+          '',
+          '--boundary',
           'Content-Type: text/html; charset=utf-8',
           '',
-          finalBody
-        ].join('\r\n');
+          htmlBody
+        ];
 
+        emailImages.forEach(img => {
+          rawMessageLines = [
+            ...rawMessageLines,
+            '',
+            '--boundary',
+            `Content-Type: ${img.mimeType}`,
+            'Content-Transfer-Encoding: base64',
+            `Content-ID: <${img.cid}>`,
+            'Content-Disposition: inline',
+            '',
+            img.base64
+          ];
+        });
+
+        rawMessageLines = [
+          ...rawMessageLines,
+          '',
+          '--boundary--'
+        ];
+
+        const rawMessage = rawMessageLines.join('\r\n');
         const encoded = Buffer.from(rawMessage)
           .toString('base64')
           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -163,14 +227,46 @@ export async function POST(request) {
         const finalSubject = replaceTemplateVars(templateA.subject, row, fieldMappings, senderName);
         const finalBody = replaceTemplateVars(templateA.body, row, fieldMappings, senderName);
 
-        const rawMessage = [
+        let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
+        emailImages.forEach(img => {
+          const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
+          htmlBody = htmlBody.replace(new RegExp(`{{image\\d}}`, 'g'), imgTag);
+        });
+        htmlBody += '</body></html>';
+
+        let rawMessageLines = [
           `To: ${row.email}`,
           `Subject: ${finalSubject}`,
-          'Content-Type: text/plain; charset=utf-8',
+          'MIME-Version: 1.0',
+          'Content-Type: multipart/related; boundary="boundary"',
           '',
-          finalBody
-        ].join('\r\n');
+          '--boundary',
+          'Content-Type: text/html; charset=utf-8',
+          '',
+          htmlBody
+        ];
 
+        emailImages.forEach(img => {
+          rawMessageLines = [
+            ...rawMessageLines,
+            '',
+            '--boundary',
+            `Content-Type: ${img.mimeType}`,
+            'Content-Transfer-Encoding: base64',
+            `Content-ID: <${img.cid}>`,
+            'Content-Disposition: inline',
+            '',
+            img.base64
+          ];
+        });
+
+        rawMessageLines = [
+          ...rawMessageLines,
+          '',
+          '--boundary--'
+        ];
+
+        const rawMessage = rawMessageLines.join('\r\n');
         const encoded = Buffer.from(rawMessage)
           .toString('base64')
           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
