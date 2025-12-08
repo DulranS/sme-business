@@ -3,11 +3,9 @@ import { NextResponse } from 'next/server';
 import { parse as csvParse } from 'csv-parse/sync';
 
 function formatPhoneForWhatsApp(raw) {
-  if (!raw || raw === 'N/A' || raw === '') return null;
+  if (!raw || raw === 'N/A') return null;
   let cleaned = raw.toString().replace(/\D/g, '');
-  if (cleaned.startsWith('07') && cleaned.length === 10) {
-    cleaned = '94' + cleaned.slice(1);
-  } else if (cleaned.startsWith('0') && cleaned.length >= 9) {
+  if (cleaned.startsWith('0') && cleaned.length >= 9) {
     cleaned = '94' + cleaned.slice(1);
   }
   return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;

@@ -7,6 +7,7 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
+// ============= DEFAULT TEMPLATES (FULLY RESTORED) =============
 const DEFAULT_TEMPLATE_A = {
   subject: 'Special Offer for {{business_name}}',
   body: 'Hello {{business_name}},\n\nWe noticed your business at {{address}} could benefit from our solution. As a special offer, use code WELCOME20 for 20% off your first purchase.\n\nBest regards,\n{{sender_name}}'
@@ -20,18 +21,30 @@ const DEFAULT_TEMPLATE_B = {
 const DEFAULT_WHATSAPP_TEMPLATE = 
   'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nUse WELCOME20 for 20% off!\n\nReply STOP to opt out.';
 
-// ✅ WhatsApp formatter (global support)
-function formatForWhatsApp(raw) {
-  if (!raw || raw === 'N/A' || raw === '') return null;
+// ============= PHONE HANDLING =============
+function formatForDialing(raw) {
+  if (!raw || raw === 'N/A') return null;
   let cleaned = raw.toString().replace(/\D/g, '');
-  if (cleaned.startsWith('07') && cleaned.length === 10) {
-    cleaned = '94' + cleaned.slice(1);
-  } else if (cleaned.startsWith('0') && cleaned.length >= 9) {
+  if (cleaned.startsWith('0') && cleaned.length >= 9) {
     cleaned = '94' + cleaned.slice(1);
   }
   return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;
 }
 
+const handleCall = (phone) => {
+  if (!phone) return;
+  const dialNumber = formatForDialing(phone) || phone.toString().replace(/\D/g, '');
+  if (typeof window !== 'undefined') {
+    const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      window.location.href = `tel:${dialNumber}`;
+    } else {
+      window.open(`https://wa.me/${dialNumber}`, '_blank');
+    }
+  }
+};
+
+// ============= CORE HELPER FUNCTIONS =============
 const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   const t = email.trim();
@@ -42,6 +55,22 @@ const extractTemplateVariables = (text) => {
   if (!text) return [];
   const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || [];
   return [...new Set(matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, '').trim()))];
+};
+
+const parseCsvRow = (str) => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (char === '"' && !inQuotes) inQuotes = true;
+    else if (char === '"' && inQuotes && str[i + 1] === '"') { current += '"'; i++; }
+    else if (char === '"' && inQuotes) inQuotes = false;
+    else if (char === ',' && !inQuotes) { result.push(current); current = ''; }
+    else current += char;
+  }
+  result.push(current);
+  return result.map(f => f.trim().replace(/^"(.*)"$/, '$1'));
 };
 
 const renderPreviewText = (text, recipient, mappings, sender) => {
@@ -60,22 +89,7 @@ const renderPreviewText = (text, recipient, mappings, sender) => {
   return result;
 };
 
-function parseCsvRow(str) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-    if (char === '"' && !inQuotes) inQuotes = true;
-    else if (char === '"' && inQuotes && str[i + 1] === '"') { current += '"'; i++; }
-    else if (char === '"' && inQuotes) inQuotes = false;
-    else if (char === ',' && !inQuotes) { result.push(current); current = ''; }
-    else current += char;
-  }
-  result.push(current);
-  return result.map(f => f.trim().replace(/^"(.*)"$/, '$1'));
-}
-
+// ============= MAIN COMPONENT =============
 export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
@@ -110,6 +124,7 @@ export default function Dashboard() {
     return () => document.head.removeChild(script);
   }, []);
 
+  // ============= AUTH & SETTINGS =============
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
@@ -154,6 +169,7 @@ export default function Dashboard() {
     return () => clearTimeout(handler);
   }, [saveSettings, user?.uid]);
 
+  // ============= CSV UPLOAD =============
   const handleCsvUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -210,7 +226,7 @@ export default function Dashboard() {
         }
 
         const rawPhone = row.whatsapp_number || row.phone_raw;
-        if (formatForWhatsApp(rawPhone)) {
+        if (formatForDialing(rawPhone)) {
           whatsappCount++;
         }
 
@@ -225,6 +241,7 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
+  // ============= IMAGE UPLOAD =============
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files).slice(0, 3);
     const newImages = files.map((file, index) => {
@@ -249,6 +266,7 @@ export default function Dashboard() {
     setFieldMappings(prev => ({ ...prev, [varName]: csvColumn }));
   };
 
+  // ============= AUTH STATE =============
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -262,6 +280,7 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
+  // ============= GMAIL AUTH =============
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
       if (typeof window === 'undefined') return reject('Browser only');
@@ -278,6 +297,7 @@ export default function Dashboard() {
     });
   };
 
+  // ============= SEND EMAILS =============
   const handleSendEmails = async () => {
     if (!csvContent || !senderName.trim() || validEmails === 0) {
       alert('Check CSV, sender name, and valid emails.');
@@ -316,7 +336,6 @@ export default function Dashboard() {
 
       setStatus(`Sending ${abTestMode ? 'A/B Test' : 'Emails'}...`);
 
-      // ✅ CORRECT ROUTE NAME
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -350,6 +369,7 @@ export default function Dashboard() {
     }
   };
 
+  // ============= WHATSAPP LINKS =============
   const handleGenerateWhatsAppLinks = async () => {
     if (!csvContent || !whatsappTemplate.trim() || !senderName.trim() || validWhatsApp === 0) {
       alert('Check CSV, WhatsApp message, sender name, and valid numbers.');
@@ -402,6 +422,7 @@ export default function Dashboard() {
     );
   }
 
+  // ============= MAIN UI =============
   return (
     <div className="min-h-screen bg-gray-50">
       <Head><title>B2B Outreach Platform</title></Head>
@@ -416,7 +437,7 @@ export default function Dashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* LEFT */}
+          {/* LEFT: CSV & MAPPINGS */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">1. Upload CSV</h2>
@@ -459,7 +480,7 @@ export default function Dashboard() {
                       <option key={col} value={col}>{col}</option>
                     ))}
                     {varName === 'sender_name' && (
-                      <option value="sender_name">Use your sender name</option>
+                      <option value="sender_name">Use sender name</option>
                     )}
                   </select>
                 </div>
@@ -467,7 +488,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* MIDDLE */}
+          {/* MIDDLE: TEMPLATES */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">3. Your Name (Sender)</h2>
@@ -625,7 +646,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* RIGHT */}
+          {/* RIGHT: PREVIEW & WHATSAPP LINKS */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">7. Email Preview</h2>
@@ -677,6 +698,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* ✅ FULL WHATSAPP LINKS WITH CALL BUTTONS (RESTORED) */}
             {whatsappLinks.length > 0 && (
               <div className="bg-white p-6 rounded-xl shadow">
                 <div className="flex justify-between items-center mb-3">
@@ -686,10 +708,26 @@ export default function Dashboard() {
                 <div className="max-h-60 overflow-y-auto space-y-2">
                   {whatsappLinks.map((link, i) => (
                     <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
-                      <span className="text-gray-700 truncate max-w-[120px]">{link.business}</span>
-                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600">
-                        Open
-                      </a>
+                      <span className="text-gray-700 truncate max-w-[100px]">{link.business}</span>
+                      <div className="flex gap-2">
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 text-xs"
+                        >
+                          Open
+                        </a>
+                        <button
+                          onClick={() => handleCall(link.phone)}
+                          className="text-green-600 text-xs flex items-center"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.74 21 3 14.26 3 6V5z" />
+                          </svg>
+                          Call
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
