@@ -101,7 +101,6 @@ export default function BookkeepingApp() {
   const [groupBy, setGroupBy] = useState("none");
   const csvInputRef = useRef(null);
 
-  // --- Optimized Data Loaders ---
   const loadRecords = useCallback(async () => {
     try {
       setLoading(true);
@@ -161,29 +160,24 @@ export default function BookkeepingApp() {
     }
   }, [loadRecords, loadBudgets, loadRecurringCosts]);
 
-const filteredRecords = useMemo(() => {
-  let result = records;
-
-  // Date filter
-  if (dateFilter.start || dateFilter.end) {
-    const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
-    const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
-    result = result.filter(r => {
-      const recordDate = new Date(r.date);
-      if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
-      if (startDate) return recordDate >= startDate;
-      if (endDate) return recordDate <= endDate;
-      return true;
-    });
-  }
-
-  // Category filter
-  if (categoryFilter.length > 0) {
-    result = result.filter(r => categoryFilter.includes(r.category));
-  }
-
-  return result;
-}, [records, dateFilter, categoryFilter]);
+  const filteredRecords = useMemo(() => {
+    let result = records;
+    if (dateFilter.start || dateFilter.end) {
+      const startDate = dateFilter.start ? new Date(dateFilter.start) : null;
+      const endDate = dateFilter.end ? new Date(dateFilter.end) : null;
+      result = result.filter(r => {
+        const recordDate = new Date(r.date);
+        if (startDate && endDate) return recordDate >= startDate && recordDate <= endDate;
+        if (startDate) return recordDate >= startDate;
+        if (endDate) return recordDate <= endDate;
+        return true;
+      });
+    }
+    if (categoryFilter.length > 0) {
+      result = result.filter(r => categoryFilter.includes(r.category));
+    }
+    return result;
+  }, [records, dateFilter, categoryFilter]);
 
   const inventoryCostMap = useMemo(() => {
     const map = new Map();
@@ -213,15 +207,18 @@ const filteredRecords = useMemo(() => {
     let inflow = 0, inflowCost = 0, inflowProfit = 0, outflow = 0, 
         reinvestment = 0, overhead = 0, loanPayment = 0, loanReceived = 0,
         logistics = 0, refund = 0, onHoldCash = 0;
+
     for (const r of filteredRecords) {
       if (r.category === "Cash Flow Gap") continue;
       const amount = parseFloat(r.amount) || 0;
       const quantity = parseFloat(r.quantity) || 1;
       const totalAmount = amount * quantity;
+
       if (r.category === "On Hold Cash") {
         onHoldCash += totalAmount;
         continue;
       }
+
       if (r.category === "Inflow") {
         let costPerUnit = parseFloat(r.cost_per_unit) || 0;
         if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
@@ -243,9 +240,159 @@ const filteredRecords = useMemo(() => {
         }
       }
     }
+
     return { inflow, inflowCost, inflowProfit, outflow, reinvestment, 
              overhead, loanPayment, loanReceived, logistics, refund, onHoldCash };
   }, [filteredRecords, inventoryCostMap]);
+
+  const customerRevenueMap = useMemo(() => {
+    const map = new Map();
+    for (const r of filteredRecords) {
+      if (r.category === "Inflow" && r.customer) {
+        const rev = (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
+        map.set(r.customer, (map.get(r.customer) || 0) + rev);
+      }
+    }
+    return map;
+  }, [filteredRecords]);
+
+  const topCustomerShare = useMemo(() => {
+    const totalRevenue = Array.from(customerRevenueMap.values()).reduce((a, b) => a + b, 0);
+    if (totalRevenue === 0) return 0;
+    return Math.max(...customerRevenueMap.values()) / totalRevenue;
+  }, [customerRevenueMap]);
+
+  const workingCapital = useMemo(() => {
+    return (totals.inflow - totals.onHoldCash) - (totals.outflow + totals.overhead);
+  }, [totals]);
+
+  const quickRatio = useMemo(() => {
+    const currentAssets = totals.inflow - totals.onHoldCash;
+    const currentLiabilities = totals.outflow + totals.overhead;
+    return currentLiabilities > 0 ? currentAssets / currentLiabilities : 0;
+  }, [totals]);
+
+  const estimatedTax = useMemo(() => {
+    const netProfitBeforeTax = totals.inflowProfit - totals.overhead - totals.reinvestment;
+    return netProfitBeforeTax > 0 ? netProfitBeforeTax * 0.14 : 0;
+  }, [totals]);
+
+  const netProfitAfterTax = useMemo(() => {
+    const operatingProfit = totals.inflowProfit - totals.overhead - totals.reinvestment;
+    const netLoanImpact = totals.loanReceived - totals.loanPayment;
+    return operatingProfit + netLoanImpact - estimatedTax;
+  }, [totals, estimatedTax]);
+
+  const recordsWithStrategicScore = useMemo(() => {
+    const scoredRecords = filteredRecords.map(r => {
+      const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
+      let marginImpact = 0, loanImpact = 0, recencyBonus = 0, 
+          customerPenalty = 0, cashFlowImpact = 0;
+
+      const daysOld = Math.floor((new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24));
+      recencyBonus = Math.max(0, 5 - daysOld / 30);
+
+      if (r.category === "Cash Flow Gap") {
+        recencyBonus = -2;
+        customerPenalty = -3;
+      } else if (r.category === "Refund") {
+        customerPenalty = -4;
+        recencyBonus = -3;
+      } else if (r.category === "Logistics") {
+        const avgLogistics = totals.logistics / Math.max(
+          filteredRecords.filter(rec => rec.category === "Logistics").length,
+          1
+        );
+        const actualCost = parseFloat(r.amount) || 0;
+        marginImpact = actualCost < avgLogistics ? 1 : -1;
+      } else if (r.category === "Inflow") {
+        const qty = parseFloat(r.quantity) || 1;
+        const price = parseFloat(r.amount) || 0;
+        let cost = parseFloat(r.cost_per_unit) || 0;
+        if (!cost && r.description && inventoryCostMap[r.description]) {
+          cost = inventoryCostMap[r.description];
+        }
+        const profit = (price - cost) * qty;
+        marginImpact = profit > 0 ? profit / 1000 : 0;
+
+        if (daysOld <= 30) {
+          loanImpact = (price * qty) / 10000;
+          cashFlowImpact = 2;
+        }
+
+        if (profit > 0) {
+          const margin = (profit / (price * qty)) * 100;
+          marginImpact += (margin / 20);
+        }
+
+        if (r.customer && topCustomerShare > 0.5) {
+          customerPenalty = -2;
+        }
+      } else if (r.category === "On Hold Cash") {
+        recencyBonus = -3;
+        customerPenalty = -2;
+      }
+
+      return { 
+        ...r, 
+        strategicScore: baseWeight + marginImpact + loanImpact + 
+                       recencyBonus + customerPenalty + cashFlowImpact 
+      };
+    });
+
+    return scoredRecords.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      if (dateB.getTime() !== dateA.getTime()) {
+        return dateB.getTime() - dateA.getTime();
+      }
+      return b.strategicScore - a.strategicScore;
+    });
+  }, [filteredRecords, inventoryCostMap, topCustomerShare, totals.logistics]);
+
+  const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
+  const totalRecurring = useMemo(() => 
+    recurringCosts.reduce((sum, cost) => sum + (parseFloat(cost.amount) || 0), 0),
+    [recurringCosts]
+  );
+  const overheadWithRecurring = totals.overhead + totalRecurring;
+  const monthlyBurn = overheadWithRecurring + totals.outflow + totals.reinvestment;
+  const cashRunwayMonths = totals.inflow > totals.onHoldCash ? (totals.inflow - totals.onHoldCash) / monthlyBurn : 0;
+  const liquidityRatio = monthlyBurn > 0 ? (totals.inflow - totals.onHoldCash) / monthlyBurn : 0;
+  const onHoldRatio = totals.inflow > 0 ? (totals.onHoldCash / totals.inflow) * 100 : 0;
+  const recurringRatio = totals.inflow > 0 ? (overheadWithRecurring / totals.inflow) * 100 : 0;
+
+  const businessHealthIndex = useMemo(() => {
+    const dataCompleteness = (
+      (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length /
+        Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1)) * 100
+    );
+    const maturityScore = Object.keys(budgets).length > 0 ? 80 : 20;
+    const customerDiversification = (1 - topCustomerShare) * 100;
+
+    const health =
+      (trueGrossMargin / 50) * 20 +
+      (liquidityRatio >= 1 ? 25 : liquidityRatio * 25) +
+      (workingCapital > 0 ? 15 : 0) +
+      (quickRatio >= 1 ? 15 : quickRatio * 15) +
+      (dataCompleteness / 5) +
+      (maturityScore / 5) +
+      (customerDiversification / 5);
+
+    return Math.min(100, Math.round(health));
+  }, [trueGrossMargin, liquidityRatio, workingCapital, quickRatio, filteredRecords, budgets, topCustomerShare]);
+
+  const nextBestMove = useMemo(() => {
+    if (trueGrossMargin < 30) return "Raise prices or reduce COGS—your margins are unsustainable.";
+    if (topCustomerShare > 0.5) return "You’re over-dependent on one customer. Diversify immediately.";
+    if (cashRunwayMonths < 3) return "Cash runway under 3 months. Cut non-essential costs NOW.";
+    if (workingCapital < 0) return "Negative working capital—optimize receivables/payables cycle.";
+    if (recurringRatio > 30) return "Recurring costs exceed 30% of revenue—audit subscriptions.";
+    if (onHoldRatio > 20) return "Too much cash is on hold—release trapped liquidity.";
+    if (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length / Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1) < 0.7) 
+      return "Add cost data to 30% more sales to unlock full margin analytics.";
+    return "You’re in great shape—focus on scaling and reinvesting profits.";
+  }, [trueGrossMargin, topCustomerShare, cashRunwayMonths, workingCapital, recurringRatio, onHoldRatio, filteredRecords]);
 
   const pricingRecommendations = useMemo(() => {
     const candidates = filteredRecords.filter(r =>
@@ -254,15 +401,15 @@ const filteredRecords = useMemo(() => {
       r.market_price != null &&
       parseFloat(r.amount) > 0
     );
-    const recommendations = candidates
+    return candidates
       .map(r => {
         const sellingPrice = parseFloat(r.amount);
         const marketPrice = parseFloat(r.market_price);
         const cost = parseFloat(r.cost_per_unit);
         const qty = parseFloat(r.quantity) || 1;
         const currentMargin = sellingPrice > 0 ? ((sellingPrice - cost) / sellingPrice) * 100 : 0;
-        const underpriced = sellingPrice < marketPrice && currentMargin < 50;
-        if (!underpriced) return null;
+        const underpriced = sellingPrice < marketPrice;
+        if (!underpriced || currentMargin >= 50) return null;
         const potentialIncrease = (marketPrice - sellingPrice) * qty;
         const newMargin = marketPrice > 0 ? ((marketPrice - cost) / marketPrice) * 100 : 0;
         return {
@@ -277,20 +424,7 @@ const filteredRecords = useMemo(() => {
       })
       .filter(Boolean)
       .sort((a, b) => b.potentialRevenue - a.potentialRevenue);
-    return recommendations;
   }, [filteredRecords]);
-
-  const totalRecurring = useMemo(() => 
-    recurringCosts.reduce((sum, cost) => sum + (parseFloat(cost.amount) || 0), 0),
-    [recurringCosts]
-  );
-
-  const overheadWithRecurring = totals.overhead + totalRecurring;
-  const grossProfit = totals.inflow - totals.outflow;
-  const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-  const operatingProfit = grossProfit - overheadWithRecurring - totals.reinvestment;
-  const netLoanImpact = totals.loanReceived - totals.loanPayment;
-  const netProfit = operatingProfit + netLoanImpact;
 
   const { rollingInflow, loanCoveragePercent, loanStatus } = useMemo(() => {
     const today = new Date();
@@ -316,170 +450,6 @@ const filteredRecords = useMemo(() => {
     };
   }, [records, monthlyLoanTarget]);
 
-  const customerRevenueMap = useMemo(() => {
-    const map = new Map();
-    for (const r of filteredRecords) {
-      if (r.category === "Inflow" && r.customer) {
-        const rev = (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
-        map.set(r.customer, (map.get(r.customer) || 0) + rev);
-      }
-    }
-    return map;
-  }, [filteredRecords]);
-
-  const topCustomerShare = useMemo(() => {
-    const totalRevenue = Array.from(customerRevenueMap.values()).reduce((a, b) => a + b, 0);
-    if (totalRevenue === 0) return 0;
-    return Math.max(...customerRevenueMap.values()) / totalRevenue;
-  }, [customerRevenueMap]);
-
-  const recordsWithStrategicScore = useMemo(() => {
-    const scoredRecords = filteredRecords.map(r => {
-      const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
-      let marginImpact = 0, loanImpact = 0, recencyBonus = 0, 
-          customerPenalty = 0, cashFlowImpact = 0;
-      const daysOld = Math.floor((new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24));
-      recencyBonus = Math.max(0, 5 - daysOld / 30);
-      if (r.category === "Cash Flow Gap") {
-        recencyBonus = -2;
-        customerPenalty = -3;
-      } else if (r.category === "Refund") {
-        customerPenalty = -4;
-        recencyBonus = -3;
-      } else if (r.category === "Logistics") {
-        const avgLogistics = totals.logistics / Math.max(
-          filteredRecords.filter(rec => rec.category === "Logistics").length,
-          1
-        );
-        const actualCost = parseFloat(r.amount) || 0;
-        marginImpact = actualCost < avgLogistics ? 1 : -1;
-      } else if (r.category === "Inflow") {
-        const qty = parseFloat(r.quantity) || 1;
-        const price = parseFloat(r.amount) || 0;
-        let cost = parseFloat(r.cost_per_unit) || 0;
-        if (!cost && r.description && inventoryCostMap[r.description]) {
-          cost = inventoryCostMap[r.description];
-        }
-        const profit = (price - cost) * qty;
-        marginImpact = profit > 0 ? profit / 1000 : 0;
-        if (daysOld <= 30) {
-          loanImpact = (price * qty) / 10000;
-          cashFlowImpact = 2;
-        }
-        if (r.customer && topCustomerShare > 0.5) {
-          customerPenalty = -2;
-        }
-      } else if (r.category === "On Hold Cash") {
-        recencyBonus = -3;
-        customerPenalty = -2;
-      }
-      return { 
-        ...r, 
-        strategicScore: baseWeight + marginImpact + loanImpact + 
-                       recencyBonus + customerPenalty + cashFlowImpact 
-      };
-    });
-    return scoredRecords.sort((a, b) => {
-      const dateA = new Date(a.date);
-      const dateB = new Date(b.date);
-      if (dateB.getTime() !== dateA.getTime()) {
-        return dateB.getTime() - dateA.getTime();
-      }
-      return b.strategicScore - a.strategicScore;
-    });
-  }, [filteredRecords, inventoryCostMap, topCustomerShare, totals.logistics]);
-
-  const { 
-    monthlyBurn, 
-    cashRunwayMonths, 
-    liquidityRatio, 
-    recurringRatio, 
-    onHoldRatio, 
-    businessHealthIndex 
-  } = useMemo(() => {
-    const burn = overheadWithRecurring + totals.outflow + totals.reinvestment;
-    const runway = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / burn : 0;
-    const liquidity = totals.inflow > 0 ? (totals.inflow - totals.onHoldCash) / burn : 0;
-    const recurring = totals.inflow > 0 ? (totalRecurring / totals.inflow) * 100 : 0;
-    const onHold = totals.inflow > 0 ? (totals.onHoldCash / totals.inflow) * 100 : 0;
-    const maturityData = [
-      { stage: "Record Keeping", score: records.length > 0 ? 40 : 0 },
-      {
-        stage: "Cost Tracking",
-        score: (
-          (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length /
-            Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1)) * 100
-        ).toFixed(0),
-      },
-      {
-        stage: "Customer Tracking",
-        score: (
-          (filteredRecords.filter(r => r.customer).length / Math.max(filteredRecords.length, 1)) * 100
-        ).toFixed(0),
-      },
-      { stage: "Budgeting", score: Object.keys(budgets).length > 0 ? 80 : 20 },
-    ];
-    const dataCompletenessScore = (
-      (maturityData.reduce((sum, m) => sum + parseFloat(m.score), 0) / 400) * 100
-    ).toFixed(0);
-    const healthIndex = Math.min(
-      100,
-      Math.round(
-        (trueGrossMargin / 50) * 25 +
-        (loanCoveragePercent / 100) * 25 +
-        (liquidity > 1 ? 25 : liquidity * 25) +
-        parseFloat(dataCompletenessScore) * 0.25 +
-        (recurring < 30 ? 12.5 : 0) +
-        (onHold < 20 ? 12.5 : 0)
-      )
-    );
-    return { 
-      monthlyBurn: burn, 
-      cashRunwayMonths: runway, 
-      liquidityRatio: liquidity, 
-      recurringRatio: recurring, 
-      onHoldRatio: onHold, 
-      businessHealthIndex: healthIndex 
-    };
-  }, [totals, overheadWithRecurring, totalRecurring, records.length, 
-      filteredRecords, budgets, trueGrossMargin, loanCoveragePercent]);
-
-  const onHoldAlert = useMemo(() => 
-    onHoldRatio > 20 && totals.inflow > 0 ? { percent: onHoldRatio.toFixed(1) } : null,
-    [onHoldRatio, totals.inflow]
-  );
-
-  const recurringAlert = useMemo(() => 
-    recurringRatio > 30 && totals.inflow > 0 ? { percent: recurringRatio.toFixed(1) } : null,
-    [recurringRatio, totals.inflow]
-  );
-
-  const budgetAlerts = useMemo(() => {
-    const alerts = [];
-    for (const [category, budgetAmount] of Object.entries(budgets)) {
-      const spent = filteredRecords
-        .filter(r => r.category === category)
-        .reduce((sum, r) => {
-          if (r.category === "Inflow") {
-            return sum + (parseFloat(r.amount) || 0) * (parseFloat(r.quantity) || 1);
-          }
-          return sum + (parseFloat(r.amount) || 0);
-        }, 0);
-      const percentUsed = (spent / budgetAmount) * 100;
-      if (percentUsed >= 90) {
-        alerts.push({
-          category,
-          spent,
-          budget: budgetAmount,
-          percentUsed,
-          severity: percentUsed >= 100 ? "critical" : "warning",
-        });
-      }
-    }
-    return alerts;
-  }, [filteredRecords, budgets]);
-
-  // --- NEW: Missing Analysis Hooks ---
   const customerAnalysis = useMemo(() => {
     const map = new Map();
     for (const r of filteredRecords) {
@@ -809,7 +779,6 @@ const filteredRecords = useMemo(() => {
     }
   ];
 
-  // --- Grouped Records for Records Tab ---
   const groupedRecords = useMemo(() => {
     if (groupBy === "none") return [];
     const map = new Map();
@@ -824,7 +793,6 @@ const filteredRecords = useMemo(() => {
     return Array.from(map.entries()).map(([group, items]) => ({ group, items }));
   }, [recordsWithStrategicScore, groupBy]);
 
-  // --- Form Handlers ---
   const handleSubmit = useCallback(async () => {
     if (!formData.description || !formData.amount) return;
     if (!formData.date) {
@@ -1102,7 +1070,6 @@ const filteredRecords = useMemo(() => {
     });
   };
 
-  // --- Recurring Cost Handlers ---
   const resetRecurringForm = () => {
     setRecurringForm({ description: "", amount: "", notes: "" });
     setIsEditingRecurring(null);
@@ -1273,7 +1240,6 @@ const filteredRecords = useMemo(() => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 text-white">
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
@@ -1371,7 +1337,6 @@ const filteredRecords = useMemo(() => {
           </div>
         </div>
 
-        {/* Loan Health Alert */}
         <div className="mb-4 sm:mb-6">
           <div
             className={`p-3 sm:p-4 rounded-lg flex items-center gap-2 sm:gap-3 ${
@@ -1393,94 +1358,18 @@ const filteredRecords = useMemo(() => {
               </h3>
               <p className="text-xs sm:text-sm">
                 Rolling 30-day inflow: LKR {formatLKR(rollingInflow)} / LKR{" "}
-                {formatLKR(monthlyLoanTarget)} ({loanCoveragePercent.toFixed(1)}
-                %)
+                {formatLKR(monthlyLoanTarget)} ({loanCoveragePercent.toFixed(1)}%)
               </p>
             </div>
           </div>
         </div>
 
-        {/* Strategic Alerts */}
         <div className="grid grid-cols-1 gap-4 mb-4 sm:mb-6">
-          {budgetAlerts.length > 0 && (
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 sm:p-4 rounded-r-lg">
-              <div className="flex items-start gap-2 sm:gap-3">
-                <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-900 text-sm sm:text-base mb-1 sm:mb-2">
-                    Budget Alerts
-                  </h3>
-                  <div className="space-y-1 sm:space-y-2">
-                    {budgetAlerts.slice(0, 2).map((alert, idx) => (
-                      <div key={idx} className="text-xs sm:text-sm text-yellow-800">
-                        <strong>
-                          {categoryLabels[alert.category] || alert.category}:
-                        </strong>{" "}
-                        {alert.percentUsed.toFixed(0)}% used
-                        {alert.severity === "critical" && " - OVER BUDGET!"}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          {pricingRecommendations.length > 0 && (
-            <div className="bg-orange-50 border-l-4 border-orange-400 p-3 sm:p-4 rounded-r-lg">
-              <div className="flex items-start gap-2 sm:gap-3">
-                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-orange-900 text-sm sm:text-base mb-1 sm:mb-2">
-                    Pricing Opportunities
-                  </h3>
-                  <div className="space-y-1 sm:space-y-2">
-                    {pricingRecommendations.slice(0, 2).map((rec, idx) => (
-                      <div key={idx} className="text-xs sm:text-sm text-orange-800">
-                        <strong>{rec.product}:</strong> +
-                        {rec.percentIncrease.toFixed(0)}% price = +LKR{" "}
-                        {formatLKR(rec.potentialRevenue)} revenue
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          {recurringAlert && (
-            <div className="bg-purple-50 border-l-4 border-purple-400 p-3 sm:p-4 rounded-r-lg">
-              <div className="flex items-start gap-2 sm:gap-3">
-                <Repeat className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-purple-900 text-sm sm:text-base mb-1 sm:mb-2">
-                    Recurring Cost Alert
-                  </h3>
-                  <p className="text-xs sm:text-sm text-purple-800">
-                    Recurring costs are {recurringAlert.percent}% of revenue.
-                    Consider optimization if above 30%.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-          {onHoldAlert && (
-            <div className="bg-amber-50 border-l-4 border-amber-400 p-3 sm:p-4 rounded-r-lg">
-              <div className="flex items-start gap-2 sm:gap-3">
-                <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-amber-900 text-sm sm:text-base mb-1 sm:mb-2">
-                    On Hold Cash Alert
-                  </h3>
-                  <p className="text-xs sm:text-sm text-amber-800">
-                    {onHoldAlert.percent}% of revenue is committed but not spent.
-                    Review pending commitments if above 20%.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Budget Alerts */}
+          {/* Pricing Alerts */}
+          {/* Recurring & On Hold Alerts */}
         </div>
 
-        {/* Navigation Tabs */}
         <div className="bg-white rounded-lg shadow-md mb-4 sm:mb-6 overflow-hidden">
           <div className="flex overflow-x-auto">
             {[
@@ -1493,11 +1382,7 @@ const filteredRecords = useMemo(() => {
               { id: "suppliers", label: "Suppliers", icon: Factory },
               { id: "pricing", label: "Pricing Intel", icon: Sparkles },
               { id: "recurring", label: "Recurring Costs", icon: Repeat },
-              {
-                id: "analytics",
-                label: "Strategic Analytics",
-                icon: TrendingUp,
-              },
+              { id: "analytics", label: "Strategic Analytics", icon: TrendingUp },
               { id: "records", label: "All Records", icon: FileText },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -1519,7 +1404,6 @@ const filteredRecords = useMemo(() => {
           </div>
         </div>
 
-        {/* Date Filter */}
         <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
@@ -1574,141 +1458,510 @@ const filteredRecords = useMemo(() => {
             </div>
           </div>
         </div>
-              {/* Category Filter */}
-<div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
-  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
-    <div className="flex flex-wrap gap-1 sm:gap-2">
-      {userSelectableCategories.map((cat) => (
-        <button
-          key={cat}
-          onClick={() => {
-            setCategoryFilter(prev =>
-              prev.includes(cat)
-                ? prev.filter(c => c !== cat)
-                : [...prev, cat]
-            );
-          }}
-          className={`px-2 py-1 text-xs sm:text-sm rounded-full border ${
-            categoryFilter.includes(cat)
-              ? "bg-blue-100 border-blue-500 text-blue-700 font-medium"
-              : "bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          {categoryLabels[cat] || cat}
-        </button>
-      ))}
-    </div>
-    {(categoryFilter.length > 0) && (
-      <button
-        onClick={() => setCategoryFilter([])}
-        className="ml-auto px-3 py-1 text-xs sm:text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-      >
-        Clear Filters
-      </button>
-    )}
-  </div>
-</div>
-        {/* All Tabs Rendered Below - No Changes Needed */}
-        {activeTab === "recurring" && (
-          <div className="space-y-4 sm:space-y-6">
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
-              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
-                <Repeat className="w-6 h-6 sm:w-7 sm:h-7" />
-                Recurring Monthly Costs
-              </h2>
-              <p className="text-purple-100 text-sm sm:text-base">
-                Manage fixed monthly expenses like rent, software, and salaries
-              </p>
-            </div>
-            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-                <h3 className="text-lg font-semibold mb-2 sm:mb-0">Your Recurring Costs</h3>
+
+        <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+            <div className="flex flex-wrap gap-1 sm:gap-2">
+              {userSelectableCategories.map((cat) => (
                 <button
+                  key={cat}
                   onClick={() => {
-                    resetRecurringForm();
-                    setShowRecurringModal(true);
+                    setCategoryFilter(prev =>
+                      prev.includes(cat)
+                        ? prev.filter(c => c !== cat)
+                        : [...prev, cat]
+                    );
                   }}
-                  className="bg-purple-600 text-white px-3 sm:px-4 py-2 rounded-md flex items-center gap-1 sm:gap-2 text-sm hover:bg-purple-700"
+                  className={`px-2 py-1 text-xs sm:text-sm rounded-full border ${
+                    categoryFilter.includes(cat)
+                      ? "bg-blue-100 border-blue-500 text-blue-700 font-medium"
+                      : "bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200"
+                  }`}
                 >
-                  <Plus className="w-3 h-3 sm:w-4 sm:h-4" /> Add Cost
+                  {categoryLabels[cat] || cat}
                 </button>
-              </div>
-              {recurringCosts.length === 0 ? (
-                <div className="text-center py-8 sm:py-12 text-gray-500">
-                  <Repeat className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
-                  <p>No recurring costs added yet</p>
+              ))}
+            </div>
+            {(categoryFilter.length > 0) && (
+              <button
+                onClick={() => setCategoryFilter([])}
+                className="ml-auto px-3 py-1 text-xs sm:text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </div>
+
+        {activeTab === "overview" && (
+          <div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
+              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    Revenue
+                  </span>
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
-                          Description
-                        </th>
-                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                          Monthly Amount
-                        </th>
-                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
-                          Notes
-                        </th>
-                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {recurringCosts.map((cost) => (
-                        <tr key={cost.id} className="hover:bg-gray-50">
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-900 font-medium text-xs sm:text-sm">
-                            {cost.description}
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                  LKR {formatLKR(totals.inflow)}
+                </h3>
+                <p className="text-xs sm:text-sm opacity-90">Total Inflow</p>
+              </div>
+              <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <ShoppingCart className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    COGS
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                  LKR {formatLKR(totals.inflowCost)}
+                </h3>
+                <p className="text-xs sm:text-sm opacity-90">Cost of Goods Sold</p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <Award className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    {trueGrossMargin.toFixed(1)}%
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                  LKR {formatLKR(totals.inflowProfit)}
+                </h3>
+                <p className="text-xs sm:text-sm opacity-90">Gross Profit (True)</p>
+              </div>
+              <div
+                className={`bg-gradient-to-br ${
+                  netProfitAfterTax >= 0
+                    ? "from-purple-500 to-purple-600"
+                    : "from-orange-500 to-orange-600"
+                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
+              >
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    Net
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                  LKR {formatLKR(netProfitAfterTax)}
+                </h3>
+                <p className="text-xs sm:text-sm opacity-90">Net Profit (After Tax)</p>
+              </div>
+              <div
+                className={`bg-gradient-to-br ${
+                  loanStatus === "On Track"
+                    ? "from-green-500 to-teal-600"
+                    : "from-red-500 to-orange-600"
+                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
+              >
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    {loanCoveragePercent.toFixed(0)}%
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">Loan Health</h3>
+                <p className="text-xs sm:text-sm opacity-90">{loanStatus}</p>
+              </div>
+              <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <Lock className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    {onHoldRatio.toFixed(0)}%
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                  LKR {formatLKR(totals.onHoldCash)}
+                </h3>
+                <p className="text-xs sm:text-sm opacity-90">On Hold Cash</p>
+              </div>
+
+              <div className="bg-gradient-to-br from-cyan-500 to-cyan-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    WC
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                  LKR {formatLKR(workingCapital)}
+                </h3>
+                <p className="text-xs sm:text-sm opacity-90">Working Capital</p>
+              </div>
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
+                <div className="flex justify-between items-start mb-1 sm:mb-2">
+                  <Shield className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
+                    {quickRatio.toFixed(1)}x
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                  Quick Ratio
+                </h3>
+                <p className="text-xs sm:text-sm opacity-90">Liquidity Health</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+              <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
+                <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                {isEditing !== null ? "Edit Record" : "Add New Record"}
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-3 sm:mb-4">
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, date: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="date"
+                  placeholder="Payment Date (optional)"
+                  value={formData.paymentDate}
+                  onChange={(e) =>
+                    setFormData({ ...formData, paymentDate: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Description *"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <select
+                  value={formData.category}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {userSelectableCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="Quantity (default: 1)"
+                  value={formData.quantity}
+                  onChange={(e) =>
+                    setFormData({ ...formData, quantity: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Supplied By (optional)"
+                  value={formData.suppliedBy}
+                  onChange={(e) =>
+                    setFormData({ ...formData, suppliedBy: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    Selling Price per Unit (LKR) *
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="e.g., 100"
+                    value={formData.amount}
+                    onChange={(e) =>
+                      setFormData({ ...formData, amount: e.target.value })
+                    }
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    Market/Competitor Price (LKR) - for competitive analysis
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="e.g., 120"
+                    value={formData.marketPrice}
+                    onChange={(e) =>
+                      setFormData({ ...formData, marketPrice: e.target.value })
+                    }
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    Cost per Unit (LKR){" "}
+                    {formData.category === "Inflow" && "- for margin tracking"}
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="e.g., 60"
+                    value={formData.costPerUnit}
+                    onChange={(e) =>
+                      setFormData({ ...formData, costPerUnit: e.target.value })
+                    }
+                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              {formData.quantity &&
+                formData.amount &&
+                formData.costPerUnit &&
+                formData.category === "Inflow" && (
+                  <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-xs sm:text-sm">
+                      <div>
+                        <p className="text-gray-600 font-medium">
+                          Total Revenue
+                        </p>
+                        <p className="text-base sm:text-lg font-bold text-green-600">
+                          LKR{" "}
+                          {formatLKR(
+                            parseFloat(formData.quantity) *
+                              parseFloat(formData.amount)
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-medium">Total Cost</p>
+                        <p className="text-base sm:text-lg font-bold text-red-600">
+                          LKR{" "}
+                          {formatLKR(
+                            parseFloat(formData.quantity) *
+                              parseFloat(formData.costPerUnit)
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-medium">
+                          Gross Profit
+                        </p>
+                        <p className="text-base sm:text-lg font-bold text-blue-600">
+                          LKR{" "}
+                          {formatLKR(
+                            parseFloat(formData.quantity) *
+                              (parseFloat(formData.amount) -
+                                parseFloat(formData.costPerUnit))
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-medium">Margin</p>
+                        <p className="text-base sm:text-lg font-bold text-purple-600">
+                          {(
+                            ((parseFloat(formData.amount) -
+                              parseFloat(formData.costPerUnit)) /
+                              parseFloat(formData.amount)) *
+                            100
+                          ).toFixed(1)}
+                          %
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
+                <input
+                  type="text"
+                  placeholder="Customer (optional)"
+                  value={formData.customer}
+                  onChange={(e) =>
+                    setFormData({ ...formData, customer: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Project (optional)"
+                  value={formData.project}
+                  onChange={(e) =>
+                    setFormData({ ...formData, project: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Tags (comma-separated)"
+                  value={formData.tags}
+                  onChange={(e) =>
+                    setFormData({ ...formData, tags: e.target.value })
+                  }
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <textarea
+                placeholder="Notes (optional)"
+                value={formData.notes}
+                onChange={(e) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
+                className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 sm:mb-4"
+                rows="2"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleSubmit}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors font-semibold text-sm"
+                >
+                  {isEditing !== null ? "Update" : "Add Record"}
+                </button>
+                {isEditing !== null && (
+                  <button
+                    onClick={handleCancel}
+                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">Recent Transactions</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
+                        Date
+                      </th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
+                        Description
+                      </th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
+                        Category
+                      </th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
+                        Qty
+                      </th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
+                        Unit Price
+                      </th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
+                        Total
+                      </th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
+                        Margin
+                      </th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredRecords.slice(0, 10).map((record, index) => {
+                      const qty = record.quantity || 1;
+                      const price = record.amount;
+                      const cost = record.cost_per_unit || 0;
+                      const total = price * qty;
+                      const revenue = price * qty;
+                      const totalCost = cost * qty;
+                      const profit = revenue - totalCost;
+                      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+                      return (
+                        <tr key={record.id} className="hover:bg-gray-50">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">
+                            {record.date}
                           </td>
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-red-600 text-xs sm:text-sm">
-                            LKR {formatLKR(cost.amount)}
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-900">
+                            {record.description}
                           </td>
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-600 text-xs sm:text-sm">
-                            {cost.notes || "—"}
+                          <td className="px-3 sm:px-4 py-2 sm:py-3">
+                            <span
+                              className={`px-2 py-1 text-black rounded-full text-xs ${
+                                record.category === "Inflow"
+                                  ? "bg-green-100 text-green-800"
+                                  : record.category === "Outflow"
+                                  ? "bg-red-100 text-red-800"
+                                  : record.category === "On Hold Cash"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}
+                            >
+                              {record.category}
+                            </span>
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
+                            {qty}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
+                            LKR {formatLKR(price)}
+                          </td>
+                          <td
+                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
+                              record.category === "Inflow" ||
+                              record.category === "Loan Received"
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {record.category === "Inflow" ||
+                            record.category === "Loan Received"
+                              ? "+"
+                              : "−"}{" "}
+                            LKR {formatLKR(total)}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
+                            {margin !== null ? (
+                              <span
+                                className={`font-semibold ${
+                                  margin >= 50
+                                    ? "text-green-600"
+                                    : margin >= 30
+                                    ? "text-blue-600"
+                                    : "text-orange-600"
+                                }`}
+                              >
+                                {margin.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                             <button
-                              onClick={() => handleEditRecurring(cost)}
+                              onClick={() =>
+                                handleEdit(
+                                  recordsWithStrategicScore.findIndex(
+                                    (r) => r.id === record.id
+                                  )
+                                )
+                              }
                               className="text-blue-600 hover:text-blue-800 mx-0.5 sm:mx-1"
                             >
                               <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                             <button
-                              onClick={() => handleDeleteRecurring(cost.id)}
+                              onClick={() =>
+                                handleDelete(
+                                  recordsWithStrategicScore.findIndex(
+                                    (r) => r.id === record.id
+                                  )
+                                )
+                              }
                               className="text-red-600 hover:text-red-800 mx-0.5 sm:mx-1"
                             >
                               <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-purple-50 rounded-lg">
-                <h4 className="font-semibold text-purple-900 mb-1 sm:mb-2 text-sm sm:text-base">
-                  Summary
-                </h4>
-                <p className="text-purple-800 text-xs sm:text-sm">
-                  Total Recurring Costs:{" "}
-                  <span className="font-bold text-purple-600">
-                    LKR {formatLKR(totalRecurring)}
-                  </span>
-                  {totals.inflow > 0 && (
-                    <>
-                      {" "}({recurringRatio.toFixed(1)}% of revenue)
-                    </>
-                  )}
-                </p>
-                <p className="text-xs sm:text-sm text-purple-700 mt-1 sm:mt-2">
-                  These costs are automatically added to your "Overhead" each
-                  month on the 1st.
-                </p>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -1725,6 +1978,7 @@ const filteredRecords = useMemo(() => {
                 Monitor your financial stability and operational resilience
               </p>
             </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
                 <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Health Index</h3>
@@ -1743,11 +1997,7 @@ const filteredRecords = useMemo(() => {
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
                 <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Cash Runway</h3>
                 <p className="text-lg sm:text-2xl font-bold text-blue-600">
-                  {cashRunwayMonths > 0 ? cashRunwayMonths.toFixed(1) : "∞"}{" "}
-                  months
-                </p>
-                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
-                  At current burn rate (excl. on-hold cash)
+                  {cashRunwayMonths > 0 ? cashRunwayMonths.toFixed(1) : "∞"} months
                 </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
@@ -1755,17 +2005,11 @@ const filteredRecords = useMemo(() => {
                 <p className="text-lg sm:text-2xl font-bold text-red-600">
                   LKR {formatLKR(monthlyBurn)}
                 </p>
-                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
-                  Monthly expenses (incl. recurring)
-                </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
                 <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Liquidity Ratio</h3>
                 <p className="text-lg sm:text-2xl font-bold text-green-600">
                   {liquidityRatio > 0 ? liquidityRatio.toFixed(2) : "0"}x
-                </p>
-                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
-                  Available cash vs monthly burn
                 </p>
               </div>
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
@@ -1773,97 +2017,31 @@ const filteredRecords = useMemo(() => {
                 <p className="text-lg sm:text-2xl font-bold text-amber-600">
                   {onHoldRatio > 0 ? onHoldRatio.toFixed(1) : "0"}%
                 </p>
-                <p className="text-black text-gray-500 mt-1 text-xs sm:text-sm">
-                  Committed but not spent
+              </div>
+
+              <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Working Capital</h3>
+                <p className={`text-lg sm:text-2xl font-bold ${workingCapital >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  LKR {formatLKR(workingCapital)}
+                </p>
+              </div>
+              <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
+                <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Quick Ratio</h3>
+                <p className="text-lg sm:text-2xl font-bold text-emerald-600">
+                  {quickRatio.toFixed(2)}x
                 </p>
               </div>
             </div>
-            {/* AI Insights Summary */}
+
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-5 border border-blue-200">
               <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 text-blue-900">
-                🧠 AI-Powered Business Summary
+                🧠 Your Next Best Move
               </h3>
               <p className="text-blue-800 text-xs sm:text-sm">
-                {businessHealthIndex >= 80
-                  ? "Your business is in excellent health! Focus on scaling and reinvestment."
-                  : businessHealthIndex >= 60
-                  ? "Good foundation—optimize margins and diversify customers."
-                  : "⚠️ Action needed: improve cash flow, reduce dependency, and enhance data tracking."}
+                {nextBestMove}
               </p>
             </div>
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-5 border border-blue-200">
-              <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 text-blue-900">
-                Strategic Recommendations
-              </h3>
-              <ul className="space-y-2 text-blue-800 text-xs sm:text-sm">
-                {cashRunwayMonths < 3 && (
-                  <li className="flex items-start gap-1 sm:gap-2">
-                    <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>Urgent:</strong> Cash runway under 3 months. Focus
-                      on accelerating collections and reducing non-essential
-                      spend.
-                    </span>
-                  </li>
-                )}
-                {trueGrossMargin < 30 && (
-                  <li className="flex items-start gap-1 sm:gap-2">
-                    <Percent className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>Margin Alert:</strong> Gross margin below 30%.
-                      Review pricing and cost structure immediately.
-                    </span>
-                  </li>
-                )}
-                {topCustomerShare > 0.5 && (
-                  <li className="flex items-start gap-1 sm:gap-2">
-                    <Users className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>Risk:</strong> Over{" "}
-                      {Math.round(topCustomerShare * 100)}% revenue from one
-                      customer. Diversify your client base.
-                    </span>
-                  </li>
-                )}
-                {parseFloat(maturityData[1].score) < 70 && (
-                  <li className="flex items-start gap-1 sm:gap-2">
-                    <Database className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>Improve Data:</strong> Add cost, customer, and
-                      supplier details to unlock deeper insights.
-                    </span>
-                  </li>
-                )}
-                {recurringRatio > 30 && (
-                  <li className="flex items-start gap-1 sm:gap-2">
-                    <Repeat className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>Recurring Cost Review:</strong> Fixed costs exceed
-                      30% of revenue. Negotiate or eliminate non-essential
-                      subscriptions.
-                    </span>
-                  </li>
-                )}
-                {onHoldRatio > 20 && (
-                  <li className="flex items-start gap-1 sm:gap-2">
-                    <Lock className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>On Hold Cash Review:</strong> Over 20% of revenue
-                      is committed but not spent. Release trapped cash by
-                      finalizing or canceling pending commitments.
-                    </span>
-                  </li>
-                )}
-                {hasSufficientHistory && customerAnalysis.some(c => c.clv !== null) && (
-                  <li className="flex items-start gap-1 sm:gap-2">
-                    <Users className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>High-CLV customers identified.</strong> Focus retention efforts on top 20%.
-                    </span>
-                  </li>
-                )}
-              </ul>
-            </div>
+
             {cashFlowGaps.length > 0 &&
               cashFlowGaps.filter((g) => g.status === "Delayed").length > 0 && (
                 <div className="bg-red-50 border-l-4 border-red-400 p-3 sm:p-4 rounded-r-lg mb-4 sm:mb-6">
@@ -2083,453 +2261,108 @@ const filteredRecords = useMemo(() => {
           </div>
         )}
 
-        {activeTab === "overview" && (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
-              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
-                <div className="flex justify-between items-start mb-1 sm:mb-2">
-                  <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
-                    Revenue
-                  </span>
-                </div>
-                <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                  LKR {formatLKR(totals.inflow)}
-                </h3>
-                <p className="text-xs sm:text-sm opacity-90">Total Inflow</p>
-              </div>
-              <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
-                <div className="flex justify-between items-start mb-1 sm:mb-2">
-                  <ShoppingCart className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
-                    COGS
-                  </span>
-                </div>
-                <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                  LKR {formatLKR(totals.inflowCost)}
-                </h3>
-                <p className="text-xs sm:text-sm opacity-90">Cost of Goods Sold</p>
-              </div>
-              <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
-                <div className="flex justify-between items-start mb-1 sm:mb-2">
-                  <Award className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
-                    {trueGrossMargin.toFixed(1)}%
-                  </span>
-                </div>
-                <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                  LKR {formatLKR(totals.inflowProfit)}
-                </h3>
-                <p className="text-xs sm:text-sm opacity-90">Gross Profit (True)</p>
-              </div>
-              <div
-                className={`bg-gradient-to-br ${
-                  netProfit >= 0
-                    ? "from-purple-500 to-purple-600"
-                    : "from-orange-500 to-orange-600"
-                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
-              >
-                <div className="flex justify-between items-start mb-1 sm:mb-2">
-                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
-                    Net
-                  </span>
-                </div>
-                <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                  LKR {formatLKR(netProfit)}
-                </h3>
-                <p className="text-xs sm:text-sm opacity-90">Net Profit</p>
-              </div>
-              <div
-                className={`bg-gradient-to-br ${
-                  loanStatus === "On Track"
-                    ? "from-green-500 to-teal-600"
-                    : "from-red-500 to-orange-600"
-                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
-              >
-                <div className="flex justify-between items-start mb-1 sm:mb-2">
-                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
-                    {loanCoveragePercent.toFixed(0)}%
-                  </span>
-                </div>
-                <h3 className="text-lg sm:text-2xl font-bold mb-1">Loan Health</h3>
-                <p className="text-xs sm:text-sm opacity-90">{loanStatus}</p>
-              </div>
-              <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
-                <div className="flex justify-between items-start mb-1 sm:mb-2">
-                  <Lock className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                  <span className="text-black bg-white bg-opacity-20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-black text-xs sm:text-sm">
-                    {onHoldRatio.toFixed(0)}%
-                  </span>
-                </div>
-                <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                  LKR {formatLKR(totals.onHoldCash)}
-                </h3>
-                <p className="text-xs sm:text-sm opacity-90">On Hold Cash</p>
-              </div>
-            </div>
-            {/* Entry Form */}
-            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
-              <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
-                <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-                {isEditing !== null ? "Edit Record" : "Add New Record"}
+        {activeTab === "recurring" && (
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Repeat className="w-6 h-6 sm:w-7 sm:h-7" />
+                Recurring Monthly Costs
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-3 sm:mb-4">
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, date: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="date"
-                  placeholder="Payment Date (optional)"
-                  value={formData.paymentDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, paymentDate: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Description *"
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <select
-                  value={formData.category}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {userSelectableCategories.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="Quantity (default: 1)"
-                  value={formData.quantity}
-                  onChange={(e) =>
-                    setFormData({ ...formData, quantity: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Supplied By (optional)"
-                  value={formData.suppliedBy}
-                  onChange={(e) =>
-                    setFormData({ ...formData, suppliedBy: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                    Selling Price per Unit (LKR) *
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="e.g., 100"
-                    value={formData.amount}
-                    onChange={(e) =>
-                      setFormData({ ...formData, amount: e.target.value })
-                    }
-                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                    Market/Competitor Price (LKR) - for competitive analysis
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="e.g., 120"
-                    value={formData.marketPrice}
-                    onChange={(e) =>
-                      setFormData({ ...formData, marketPrice: e.target.value })
-                    }
-                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                    Cost per Unit (LKR){" "}
-                    {formData.category === "Inflow" && "- for margin tracking"}
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="e.g., 60"
-                    value={formData.costPerUnit}
-                    onChange={(e) =>
-                      setFormData({ ...formData, costPerUnit: e.target.value })
-                    }
-                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              {/* Profit Preview */}
-              {formData.quantity &&
-                formData.amount &&
-                formData.costPerUnit &&
-                formData.category === "Inflow" && (
-                  <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-xs sm:text-sm">
-                      <div>
-                        <p className="text-gray-600 font-medium">
-                          Total Revenue
-                        </p>
-                        <p className="text-base sm:text-lg font-bold text-green-600">
-                          LKR{" "}
-                          {formatLKR(
-                            parseFloat(formData.quantity) *
-                              parseFloat(formData.amount)
-                          )}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600 font-medium">Total Cost</p>
-                        <p className="text-base sm:text-lg font-bold text-red-600">
-                          LKR{" "}
-                          {formatLKR(
-                            parseFloat(formData.quantity) *
-                              parseFloat(formData.costPerUnit)
-                          )}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600 font-medium">
-                          Gross Profit
-                        </p>
-                        <p className="text-base sm:text-lg font-bold text-blue-600">
-                          LKR{" "}
-                          {formatLKR(
-                            parseFloat(formData.quantity) *
-                              (parseFloat(formData.amount) -
-                                parseFloat(formData.costPerUnit))
-                          )}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600 font-medium">Margin</p>
-                        <p className="text-base sm:text-lg font-bold text-purple-600">
-                          {(
-                            ((parseFloat(formData.amount) -
-                              parseFloat(formData.costPerUnit)) /
-                              parseFloat(formData.amount)) *
-                            100
-                          ).toFixed(1)}
-                          %
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
-                <input
-                  type="text"
-                  placeholder="Customer (optional)"
-                  value={formData.customer}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customer: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Project (optional)"
-                  value={formData.project}
-                  onChange={(e) =>
-                    setFormData({ ...formData, project: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Tags (comma-separated)"
-                  value={formData.tags}
-                  onChange={(e) =>
-                    setFormData({ ...formData, tags: e.target.value })
-                  }
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <textarea
-                placeholder="Notes (optional)"
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 sm:mb-4"
-                rows="2"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={handleSubmit}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors font-semibold text-sm"
-                >
-                  {isEditing !== null ? "Update" : "Add Record"}
-                </button>
-                {isEditing !== null && (
-                  <button
-                    onClick={handleCancel}
-                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
+              <p className="text-purple-100 text-sm sm:text-base">
+                Manage fixed monthly expenses like rent, software, and salaries
+              </p>
             </div>
-            {/* Recent Records Preview */}
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-              <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">Recent Transactions</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
-                        Date
-                      </th>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
-                        Description
-                      </th>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
-                        Category
-                      </th>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                        Qty
-                      </th>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                        Unit Price
-                      </th>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                        Total
-                      </th>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                        Margin
-                      </th>
-                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredRecords.slice(0, 10).map((record, index) => {
-                      const qty = record.quantity || 1;
-                      const price = record.amount;
-                      const cost = record.cost_per_unit || 0;
-                      const total = price * qty;
-                      const revenue = price * qty;
-                      const totalCost = cost * qty;
-                      const profit = revenue - totalCost;
-                      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-                      return (
-                        <tr key={record.id} className="hover:bg-gray-50">
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600">
-                            {record.date}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                <h3 className="text-lg font-semibold mb-2 sm:mb-0">Your Recurring Costs</h3>
+                <button
+                  onClick={() => {
+                    resetRecurringForm();
+                    setShowRecurringModal(true);
+                  }}
+                  className="bg-purple-600 text-white px-3 sm:px-4 py-2 rounded-md flex items-center gap-1 sm:gap-2 text-sm hover:bg-purple-700"
+                >
+                  <Plus className="w-3 h-3 sm:w-4 sm:h-4" /> Add Cost
+                </button>
+              </div>
+              {recurringCosts.length === 0 ? (
+                <div className="text-center py-8 sm:py-12 text-gray-500">
+                  <Repeat className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
+                  <p>No recurring costs added yet</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
+                          Description
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
+                          Monthly Amount
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
+                          Notes
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-3 text-center text-xs sm:text-sm font-semibold text-gray-600">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {recurringCosts.map((cost) => (
+                        <tr key={cost.id} className="hover:bg-gray-50">
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-900 font-medium text-xs sm:text-sm">
+                            {cost.description}
                           </td>
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-900">
-                            {record.description}
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-red-600 text-xs sm:text-sm">
+                            LKR {formatLKR(cost.amount)}
                           </td>
-                          <td className="px-3 sm:px-4 py-2 sm:py-3">
-                            <span
-                              className={`px-2 py-1 text-black rounded-full text-xs ${
-                                record.category === "Inflow"
-                                  ? "bg-green-100 text-green-800"
-                                  : record.category === "Outflow"
-                                  ? "bg-red-100 text-red-800"
-                                  : record.category === "On Hold Cash"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-blue-100 text-blue-800"
-                              }`}
-                            >
-                              {record.category}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
-                            {qty}
-                          </td>
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
-                            LKR {formatLKR(price)}
-                          </td>
-                          <td
-                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
-                              record.category === "Inflow" ||
-                              record.category === "Loan Received"
-                                ? "text-green-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {record.category === "Inflow" ||
-                            record.category === "Loan Received"
-                              ? "+"
-                              : "−"}{" "}
-                            LKR {formatLKR(total)}
-                          </td>
-                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
-                            {margin !== null ? (
-                              <span
-                                className={`font-semibold ${
-                                  margin >= 50
-                                    ? "text-green-600"
-                                    : margin >= 30
-                                    ? "text-blue-600"
-                                    : "text-orange-600"
-                                }`}
-                              >
-                                {margin.toFixed(1)}%
-                              </span>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
+                          <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-600 text-xs sm:text-sm">
+                            {cost.notes || "—"}
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                             <button
-                              onClick={() =>
-                                handleEdit(
-                                  recordsWithStrategicScore.findIndex(
-                                    (r) => r.id === record.id
-                                  )
-                                )
-                              }
+                              onClick={() => handleEditRecurring(cost)}
                               className="text-blue-600 hover:text-blue-800 mx-0.5 sm:mx-1"
                             >
                               <Pencil className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                             <button
-                              onClick={() =>
-                                handleDelete(
-                                  recordsWithStrategicScore.findIndex(
-                                    (r) => r.id === record.id
-                                  )
-                                )
-                              }
+                              onClick={() => handleDeleteRecurring(cost.id)}
                               className="text-red-600 hover:text-red-800 mx-0.5 sm:mx-1"
                             >
                               <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                             </button>
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-purple-50 rounded-lg">
+                <h4 className="font-semibold text-purple-900 mb-1 sm:mb-2 text-sm sm:text-base">
+                  Summary
+                </h4>
+                <p className="text-purple-800 text-xs sm:text-sm">
+                  Total Recurring Costs:{" "}
+                  <span className="font-bold text-purple-600">
+                    LKR {formatLKR(totalRecurring)}
+                  </span>
+                  {totals.inflow > 0 && (
+                    <>
+                      {" "}({recurringRatio.toFixed(1)}% of revenue)
+                    </>
+                  )}
+                </p>
+                <p className="text-xs sm:text-sm text-purple-700 mt-1 sm:mt-2">
+                  These costs are automatically added to your "Overhead" each
+                  month on the 1st.
+                </p>
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {activeTab === "suppliers" && (
@@ -4032,7 +3865,6 @@ const filteredRecords = useMemo(() => {
           </div>
         )}
 
-        {/* Modals */}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4064,6 +3896,7 @@ const filteredRecords = useMemo(() => {
             </div>
           </div>
         )}
+
         {showLoanModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4101,6 +3934,7 @@ const filteredRecords = useMemo(() => {
             </div>
           </div>
         )}
+
         {showBudgetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4146,6 +3980,7 @@ const filteredRecords = useMemo(() => {
             </div>
           </div>
         )}
+
         {showRecurringModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4203,6 +4038,7 @@ const filteredRecords = useMemo(() => {
             </div>
           </div>
         )}
+
         {showStrategyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-4xl sm:max-w-6xl w-full my-4 sm:my-8 mx-auto">
