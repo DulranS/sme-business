@@ -1,10 +1,10 @@
 // app/api/send-email/route.js
 import { NextResponse } from 'next/server';
-import { google } from 'googleapis';
+import { google } from '@googleapis/gmail';
 import { parse as csvParse } from 'csv-parse/sync';
 import { v4 as uuidv4 } from 'uuid';
 
-import { initializeApp, getApps } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -81,11 +81,14 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No valid emails for selected lead quality' }, { status: 400 });
     }
 
-    // ✅ FIX: Create auth client without client credentials (only needs access token)
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
-    
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    // ✅ FIX: Properly initialize OAuth2 client
+    const auth = new google.auth.OAuth2(
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_SECRET,
+      'http://localhost:3000/api/auth/callback'
+    );
+    auth.setCredentials({ access_token: accessToken });
+    const gmail = google.gmail({ version: 'v1', auth });
 
     let results = { a: { sent: 0 }, b: { sent: 0 } };
     let testId = null;
@@ -102,6 +105,7 @@ export async function POST(request) {
         let finalBody = replaceTemplateVars(templateA.body, row, fieldMappings, senderName);
         finalBody = addTracking(finalBody, testId, 'a', row.email);
 
+        // ✅ Construct HTML email with inline images
         let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
         emailImages.forEach(img => {
           const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
@@ -109,6 +113,7 @@ export async function POST(request) {
         });
         htmlBody += '</body></html>';
 
+        // ✅ Build multipart MIME message
         let rawMessageLines = [
           `To: ${row.email}`,
           `Subject: ${finalSubject}`,
