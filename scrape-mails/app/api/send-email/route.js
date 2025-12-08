@@ -81,7 +81,12 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No valid emails for selected lead quality' }, { status: 400 });
     }
 
-    const auth = new google.auth.OAuth2();
+    // ✅ FIX: Properly initialize OAuth2 client
+    const auth = new google.auth.OAuth2(
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_SECRET,
+      'http://localhost:3000/api/auth/callback'
+    );
     auth.setCredentials({ access_token: accessToken });
     const gmail = google.gmail({ version: 'v1', auth });
 

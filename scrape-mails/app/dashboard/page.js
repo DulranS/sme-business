@@ -20,6 +20,7 @@ const DEFAULT_TEMPLATE_B = {
 const DEFAULT_WHATSAPP_TEMPLATE = 
   'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nUse WELCOME20 for 20% off!\n\nReply STOP to opt out.';
 
+// ✅ WhatsApp formatter (global support)
 function formatForWhatsApp(raw) {
   if (!raw || raw === 'N/A' || raw === '') return null;
   let cleaned = raw.toString().replace(/\D/g, '');
@@ -91,7 +92,7 @@ export default function Dashboard() {
   const [validWhatsApp, setValidWhatsApp] = useState(0);
   const [leadQualityFilter, setLeadQualityFilter] = useState('all');
   const [whatsappLinks, setWhatsappLinks] = useState([]);
-  const [emailImages, setEmailImages] = useState([]); // ✅ NEW: Image state
+  const [emailImages, setEmailImages] = useState([]);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -224,7 +225,6 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
-  // ✅ NEW: Handle image upload
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files).slice(0, 3);
     const newImages = files.map((file, index) => {
@@ -242,7 +242,7 @@ export default function Dashboard() {
     ...extractTemplateVariables(templateB.body),
     ...extractTemplateVariables(whatsappTemplate),
     'sender_name',
-    ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')) // Add image placeholders
+    ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
   ])];
 
   const handleMappingChange = (varName, csvColumn) => {
@@ -298,7 +298,6 @@ export default function Dashboard() {
     try {
       const accessToken = await requestGmailToken();
 
-      // ✅ Encode images to base64
       const imagesWithBase64 = await Promise.all(
         emailImages.map(async (img) => {
           const base64 = await new Promise((resolve) => {
@@ -317,7 +316,8 @@ export default function Dashboard() {
 
       setStatus(`Sending ${abTestMode ? 'A/B Test' : 'Emails'}...`);
 
-      const res = await fetch('/api/send-emails', {
+      // ✅ CORRECT ROUTE NAME
+      const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -329,7 +329,7 @@ export default function Dashboard() {
           templateA,
           templateB,
           leadQualityFilter,
-          emailImages: imagesWithBase64 // ✅ Send base64 images
+          emailImages: imagesWithBase64
         })
       });
 
@@ -551,7 +551,6 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* ✅ NEW: Image Upload Section */}
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">5. Email Images (Optional)</h2>
               <p className="text-xs text-gray-600 mb-2">
@@ -576,7 +575,7 @@ export default function Dashboard() {
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
                     Use in template: {emailImages.map(img => img.placeholder).join(', ')}
-                  </ p>
+                  </p>
                 </div>
               )}
             </div>
