@@ -229,6 +229,18 @@ B2B_KEYWORDS = [
 ]
 
 # ==============================
+# 🛠️ GOOGLE MAPS CLIENT FACTORY (COMPATIBLE WITH ALL VERSIONS)
+# ==============================
+
+def create_gmaps_client(api_key, timeout=10):
+    """Create a Google Maps client with timeout and retry settings (fully compatible)."""
+    return googlemaps.Client(
+        key=api_key,
+        timeout=timeout,
+        retry_timeout=timeout + 5
+    )
+
+# ==============================
 # 🧠 SMART CACHING & STATE
 # ==============================
 
@@ -238,7 +250,8 @@ def load_cache():
         try:
             with open(CACHE_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to load cache: {e}")
             return {}
     return {}
 
@@ -253,7 +266,8 @@ def load_state():
         try:
             with open(STATE_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to load state: {e}")
             return {}
     return {}
 
@@ -267,14 +281,14 @@ def get_weekly_search_terms():
     state = load_state()
     last_week = state.get("last_week_number", 0)
     current_week = (last_week % 4) + 1
-    
+
     state["last_week_number"] = current_week
     state["last_run_date"] = datetime.now().isoformat()
     save_state(state)
-    
+
     week_key = f"week_{current_week}"
     logger.info(f"📅 Using search pool: {week_key}")
-    
+
     return SEARCH_TERM_POOLS[week_key]
 
 # ==============================
@@ -286,20 +300,20 @@ def is_professional_email(email):
     if not email:
         return False
     email = email.lower()
-    
+
     # Reject non-business patterns
     if any(bad in email for bad in ["noreply", "example", "test", "admin", "support@"]):
         return False
-    
+
     domain = email.split("@")[-1]
-    
+
     # Common disposable/personal email domains
     personal_domains = {
         "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
         "mailinator.com", "10minutemail.com", "guerrillamail.com",
         "yopmail.com", "tempmail.com", "throwaway.email"
     }
-    
+
     return domain not in personal_domains
 
 def extract_email_from_website(base_url, max_attempts=3):
@@ -317,7 +331,7 @@ def extract_email_from_website(base_url, max_attempts=3):
 
     # Prioritized paths (most likely to have emails)
     paths = ["/contact", "/contact-us", "/about", "/team", "/contacto", "/kontakt"]
-    
+
     for path in paths[:max_attempts]:
         try:
             url = urljoin(base_url, path)
@@ -329,14 +343,14 @@ def extract_email_from_website(base_url, max_attempts=3):
                 r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
                 response.text
             )
-            
+
             for email in emails:
                 email = email.lower().strip()
                 if is_professional_email(email):
                     return email
-        except:
+        except Exception:
             continue
-    
+
     return None
 
 def categorize_business(name, types):
@@ -353,16 +367,24 @@ def score_lead(rating, reviews, has_phone, has_email, has_website, category):
     tags = []
 
     # Rating (max 35)
-    if rating >= 4.7: score += 35
-    elif rating >= 4.5: score += 30
-    elif rating >= 4.3: score += 25
-    elif rating >= 4.0: score += 15
+    if rating >= 4.7:
+        score += 35
+    elif rating >= 4.5:
+        score += 30
+    elif rating >= 4.3:
+        score += 25
+    elif rating >= 4.0:
+        score += 15
 
     # Reviews (max 25)
-    if reviews >= 150: score += 25
-    elif reviews >= 75: score += 20
-    elif reviews >= 30: score += 15
-    elif reviews >= 10: score += 10
+    if reviews >= 150:
+        score += 25
+    elif reviews >= 75:
+        score += 20
+    elif reviews >= 30:
+        score += 15
+    elif reviews >= 10:
+        score += 10
 
     # Contact info (max 35)
     if has_email:
@@ -416,7 +438,7 @@ class RateLimiter:
 
 def discover_businesses(location, search_terms, cache):
     """Discover new businesses with caching."""
-    gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
+    gmaps = create_gmaps_client(GOOGLE_API_KEY, timeout=10)
     rate_limiter = RateLimiter()
     api_calls = 0
     new_discoveries = []
@@ -427,16 +449,19 @@ def discover_businesses(location, search_terms, cache):
     logger.info(f"🔎 Using {len(search_terms)} search queries")
 
     for i, query in enumerate(search_terms, 1):
+        if len(new_discoveries) >= MAX_NEW_LEADS_PER_RUN:
+            logger.info(f"✅ Reached target of {MAX_NEW_LEADS_PER_RUN} new leads")
+            break
+
         rate_limiter.wait_if_needed()
-        
+
         try:
             logger.info(f"[{i}/{len(search_terms)}] Query: '{query}'")
             results = gmaps.places(
                 query=query,
                 location=location,
                 radius=SEARCH_RADIUS,
-                language=CONFIG["language"],
-                timeout=10
+                language=CONFIG["language"]
             ).get("results", [])
             api_calls += 1
 
@@ -463,10 +488,6 @@ def discover_businesses(location, search_terms, cache):
 
             logger.info(f"   → Found {len(results)} | New: {len(new_discoveries)} | Cached: {cached_count}")
 
-            if len(new_discoveries) >= MAX_NEW_LEADS_PER_RUN:
-                logger.info(f"✅ Reached target of {MAX_NEW_LEADS_PER_RUN} new leads")
-                break
-
         except Exception as e:
             logger.error(f"   ❌ Search error: {e}")
 
@@ -475,7 +496,7 @@ def discover_businesses(location, search_terms, cache):
 
 def enrich_leads_smartly(places, cache):
     """Smart enrichment (website-first, then selective details API)."""
-    gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
+    gmaps = create_gmaps_client(GOOGLE_API_KEY, timeout=8)
     rate_limiter = RateLimiter()
     leads = []
     api_calls = 0
@@ -485,24 +506,23 @@ def enrich_leads_smartly(places, cache):
 
     for i, place in enumerate(places, 1):
         pid = place["place_id"]
-        
+
         website = place.get("website", "").strip()
         email = None
-        
+
         if website:
             email = extract_email_from_website(website)
-        
+
         phone = None
         address = place.get("vicinity", "")
-        
+
         if details_calls_used < MAX_DETAILS_CALLS and (not email or not phone):
             rate_limiter.wait_if_needed()
             try:
                 details = gmaps.place(
                     place_id=pid,
                     fields=["formatted_phone_number", "website", "formatted_address"],
-                    language=CONFIG["language"],
-                    timeout=8
+                    language=CONFIG["language"]
                 ).get("result", {})
                 api_calls += 1
                 details_calls_used += 1
@@ -558,7 +578,7 @@ def enrich_leads_smartly(places, cache):
             logger.info(f"   Progress: {i}/{len(places)} | Details calls: {details_calls_used}/{MAX_DETAILS_CALLS}")
 
     logger.info(f"✅ Enrichment done: {len(leads)} leads | Details calls: {details_calls_used}")
-    
+
     leads.sort(key=lambda x: x["score"], reverse=True)
     return leads, api_calls, cache
 
@@ -621,38 +641,38 @@ def main():
     logger.info(f"🗣️  Language: {CONFIG['language'].upper()}")
     logger.info(f"📞 Phone Format: {CONFIG['phone_country_code']}XXXXXXXXX")
     logger.info("=" * 70)
-    
+
     start_time = time.time()
-    
+
     cache = load_cache()
     logger.info(f"📦 Loaded cache: {len(cache)} known businesses")
-    
+
     search_terms = get_weekly_search_terms()
-    
+
     try:
         # Phase 1: Discover
         places, search_calls, cache = discover_businesses(LOCATION, search_terms, cache)
-        
+
         if not places:
             logger.warning("🔍 No new businesses discovered")
             return
-        
+
         # Phase 2: Enrich
         leads, details_calls, cache = enrich_leads_smartly(places, cache)
-        
+
         if not leads:
             logger.warning("📭 No qualified leads after enrichment")
             return
-        
+
         # Save
         save_leads(leads)
         save_cache(cache)
-        
+
         # Report
         total_calls = search_calls + details_calls
         cost = estimate_cost(search_calls, details_calls)
         duration = (time.time() - start_time) / 60
-        
+
         logger.info("=" * 70)
         logger.info("✅ RUN COMPLETE")
         logger.info(f"⏱️  Duration: {duration:.1f} minutes")
@@ -660,12 +680,12 @@ def main():
         logger.info(f"💰 Cost: ${cost:.2f} | Monthly (4x): ~${cost * 4:.2f}")
         logger.info(f"🎯 Leads: {len(leads)} | Cost/Lead: ${cost/len(leads):.3f}")
         logger.info(f"💾 Output: {LEADS_FILE}")
-        
+
         if cost * 4 > 8:
             logger.warning("⚠️  Monthly projection > $8")
         else:
             logger.info("✅ Within budget!")
-        
+
     except Exception as e:
         logger.exception(f"💥 CRITICAL ERROR: {e}")
         raise
