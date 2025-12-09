@@ -14,3 +14,75 @@
 2025-10-17 19:58:38,869 | INFO     | 🚀 STRATEGIC B2B LEAD ENGINE — STARTED
 2025-10-17 19:58:38,870 | INFO     | ============================================================
 2025-10-17 19:58:38,870 | INFO     | API queries_quota: 60
+2025-12-09 17:26:18,640 | INFO     | 🚀 GLOBAL B2B LEAD ENGINE — STARTED
+2025-12-09 17:26:18,640 | INFO     | ======================================================================
+2025-12-09 17:26:18,640 | INFO     | 🌍 Target Location: Colombo, Sri Lanka
+2025-12-09 17:26:18,640 | INFO     | 🗣️  Language: EN
+2025-12-09 17:26:18,640 | INFO     | 📞 Phone Format: +94XXXXXXXXX
+2025-12-09 17:26:18,640 | INFO     | ======================================================================
+2025-12-09 17:26:18,640 | INFO     | 📦 Loaded cache: 0 known businesses
+2025-12-09 17:26:18,640 | INFO     | 📅 Using search pool: week_2
+2025-12-09 17:26:18,640 | INFO     | API queries_quota: 60
+2025-12-09 17:26:18,640 | INFO     | 🔍 Starting discovery in Colombo, Sri Lanka...
+2025-12-09 17:26:18,640 | INFO     | 📍 Coordinates: 6.8603, 79.9130
+2025-12-09 17:26:18,640 | INFO     | 🔎 Using 5 search queries
+2025-12-09 17:26:18,640 | INFO     | [1/5] Query: 'business consulting Colombo'
+2025-12-09 17:26:18,640 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:18,655 | INFO     | [2/5] Query: 'law firm Colombo'
+2025-12-09 17:26:18,655 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:18,656 | INFO     | [3/5] Query: 'accounting firm Colombo'
+2025-12-09 17:26:18,656 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:18,656 | INFO     | [4/5] Query: 'architecture firm Colombo'
+2025-12-09 17:26:18,656 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:18,656 | INFO     | [5/5] Query: 'engineering consulting Colombo'
+2025-12-09 17:26:18,656 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:18,656 | INFO     | 📊 Discovery complete: 0 new | API calls: 0
+2025-12-09 17:26:18,658 | WARNING  | 🔍 No new businesses discovered
+2025-12-09 17:26:43,337 | INFO     | 🚀 GLOBAL B2B LEAD ENGINE — STARTED
+2025-12-09 17:26:43,337 | INFO     | ======================================================================
+2025-12-09 17:26:43,337 | INFO     | 🌍 Target Location: Colombo, Sri Lanka
+2025-12-09 17:26:43,337 | INFO     | 🗣️  Language: EN
+2025-12-09 17:26:43,337 | INFO     | 📞 Phone Format: +94XXXXXXXXX
+2025-12-09 17:26:43,337 | INFO     | ======================================================================
+2025-12-09 17:26:43,337 | INFO     | 📦 Loaded cache: 0 known businesses
+2025-12-09 17:26:43,352 | INFO     | 📅 Using search pool: week_3
+2025-12-09 17:26:43,352 | INFO     | API queries_quota: 60
+2025-12-09 17:26:43,352 | INFO     | 🔍 Starting discovery in Colombo, Sri Lanka...
+2025-12-09 17:26:43,352 | INFO     | 📍 Coordinates: 6.8603, 79.9130
+2025-12-09 17:26:43,352 | INFO     | 🔎 Using 5 search queries
+2025-12-09 17:26:43,352 | INFO     | [1/5] Query: 'advertising agency Colombo'
+2025-12-09 17:26:43,352 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:43,363 | INFO     | [2/5] Query: 'design agency Colombo'
+2025-12-09 17:26:43,363 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:43,363 | INFO     | [3/5] Query: 'marketing agency near Colombo'
+2025-12-09 17:26:43,363 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:43,363 | INFO     | [4/5] Query: 'best marketing agency Colombo'
+2025-12-09 17:26:43,363 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:43,363 | INFO     | [5/5] Query: 'top digital marketing Colombo'
+2025-12-09 17:26:43,363 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:43,363 | INFO     | 📊 Discovery complete: 0 new | API calls: 0
+2025-12-09 17:26:43,363 | WARNING  | 🔍 No new businesses discovered
+2025-12-09 17:27:07,589 | INFO     | 🚀 GLOBAL B2B LEAD ENGINE — STARTED
+2025-12-09 17:27:07,592 | INFO     | ======================================================================
+2025-12-09 17:27:07,592 | INFO     | 🌍 Target Location: Colombo, Sri Lanka
+2025-12-09 17:27:07,592 | INFO     | 🗣️  Language: EN
+2025-12-09 17:27:07,592 | INFO     | 📞 Phone Format: +94XXXXXXXXX
+2025-12-09 17:27:07,592 | INFO     | ======================================================================
+2025-12-09 17:27:07,592 | INFO     | 📦 Loaded cache: 0 known businesses
+2025-12-09 17:27:07,602 | INFO     | 📅 Using search pool: week_1
+2025-12-09 17:27:07,602 | INFO     | API queries_quota: 60
+2025-12-09 17:27:07,602 | INFO     | 🔍 Starting discovery in Colombo, Sri Lanka...
+2025-12-09 17:27:07,602 | INFO     | 📍 Coordinates: 6.8603, 79.9130
+2025-12-09 17:27:07,602 | INFO     | 🔎 Using 5 search queries
+2025-12-09 17:27:07,602 | INFO     | [1/5] Query: 'marketing agency Colombo'
+2025-12-09 17:27:07,605 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:27:07,605 | INFO     | [2/5] Query: 'digital marketing Colombo'
+2025-12-09 17:27:07,605 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:27:07,605 | INFO     | [3/5] Query: 'software company Colombo'
+2025-12-09 17:27:07,605 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:27:07,605 | INFO     | [4/5] Query: 'IT consulting Colombo'
+2025-12-09 17:27:07,605 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:27:07,605 | INFO     | [5/5] Query: 'web development Colombo'
+2025-12-09 17:27:07,605 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:27:07,605 | INFO     | 📊 Discovery complete: 0 new | API calls: 0
+2025-12-09 17:27:07,605 | WARNING  | 🔍 No new businesses discovered
