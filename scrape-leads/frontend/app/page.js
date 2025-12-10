@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import Head from 'next/head';
+import Papa from 'papaparse';
 
 // ==============================
 // 📞 PHONE NORMALIZATION (Sri Lanka)
@@ -129,23 +130,20 @@ const LeadCard = memo(({ lead, myBusinessName, linkedInUrl, message1Template, me
       .catch(() => showToast('❌ Failed to copy'));
   };
 
-const handleComposeEmail = () => {
-  const emailBody = generateEmailMessage(lead, myBusinessName, linkedInUrl, emailTemplate);
-  const subject = `Quick question for ${lead.business_name || 'your business'}`;
-  // Encode email to prevent issues with special characters
-  const mailtoLink = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+  const handleComposeEmail = () => {
+    const emailBody = generateEmailMessage(lead, myBusinessName, linkedInUrl, emailTemplate);
+    const subject = `Quick question for ${lead.business_name || 'your business'}`;
+    const mailtoLink = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
 
-  // Attempt to open the default email client
-  const emailWindow = window.open(mailtoLink, '_self');
+    const emailWindow = window.open(mailtoLink, '_self');
 
-  // If the browser blocks the mailto (common on iOS/Safari or secure environments), copy to clipboard as fallback
-  if (!emailWindow || emailWindow.closed || emailWindow.closed === undefined) {
-    const fallbackMessage = `To: ${lead.email}\nSubject: ${subject}\n\n${emailBody}`;
-    navigator.clipboard.writeText(fallbackMessage)
-      .then(() => showToast('📧 Email client unavailable — full message copied to clipboard!'))
-      .catch(() => showToast('❌ Unable to open email or copy message. Please check browser permissions.'));
-  }
-};
+    if (!emailWindow || emailWindow.closed || emailWindow.closed === undefined) {
+      const fallbackMessage = `To: ${lead.email}\nSubject: ${subject}\n\n${emailBody}`;
+      navigator.clipboard.writeText(fallbackMessage)
+        .then(() => showToast('📧 Email client unavailable — full message copied to clipboard!'))
+        .catch(() => showToast('❌ Unable to open email or copy message. Please check browser permissions.'));
+    }
+  };
 
   const isHighValue = lead._score >= 75;
   const urgency = getLeadUrgency(lead);
@@ -177,7 +175,7 @@ const handleComposeEmail = () => {
               </span>
             )}
             {urgency.label && (
-              <span className={`px-2.5 py-1 text-xs font-medium rounded-full bg-${urgency.color.replace('-', '-100 text-')} bg-opacity-20`} style={{color:'black'}}>
+              <span className={`px-2.5 py-1 text-xs font-medium rounded-full bg-${urgency.color.replace('-', '-100 text-')} bg-opacity-20`} style={{ color: 'black' }}>
                 {urgency.label}
               </span>
             )}
@@ -292,6 +290,7 @@ export default function LeadDashboard() {
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [isUsingCustomCSV, setIsUsingCustomCSV] = useState(false);
 
   // Templates & Identity
   const [myBusinessName, setMyBusinessName] = useState(() => 
@@ -328,7 +327,7 @@ export default function LeadDashboard() {
     typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('lastContacted') || '{}') : {}
   );
 
-  // Persist
+  // Persist settings
   useEffect(() => { localStorage.setItem('myBusinessName', myBusinessName); }, [myBusinessName]);
   useEffect(() => { localStorage.setItem('linkedInUrl', linkedInUrl); }, [linkedInUrl]);
   useEffect(() => { localStorage.setItem('message1Template', message1Template); }, [message1Template]);
@@ -337,7 +336,7 @@ export default function LeadDashboard() {
   useEffect(() => { localStorage.setItem('leadNotes', JSON.stringify(leadNotes)); }, [leadNotes]);
   useEffect(() => { localStorage.setItem('lastContacted', JSON.stringify(lastContacted)); }, [lastContacted]);
 
-  // Scroll to top button
+  // Scroll to top
   useEffect(() => {
     const handleScroll = () => setShowScrollTop(window.scrollY > 400);
     window.addEventListener('scroll', handleScroll);
@@ -350,8 +349,10 @@ export default function LeadDashboard() {
     setTimeout(() => setToast({ show: false, message: '' }), 3500);
   }, []);
 
-  // Fetch leads
+  // Fetch leads from API (only if not using CSV)
   useEffect(() => {
+    if (isUsingCustomCSV) return;
+
     let isCurrent = true;
     const fetchLeads = async () => {
       try {
@@ -375,7 +376,7 @@ export default function LeadDashboard() {
     fetchLeads();
     const interval = setInterval(fetchLeads, 30000);
     return () => { isCurrent = false; clearInterval(interval); };
-  }, [lastContacted]);
+  }, [lastContacted, isUsingCustomCSV]);
 
   const uniqueCategories = [...new Set(leads.map(l => l.category).filter(Boolean))].sort();
 
@@ -428,7 +429,7 @@ export default function LeadDashboard() {
   const contactedToday = Object.values(lastContacted).filter(date => date === new Date().toISOString().split('T')[0]).length;
   const avgScore = sortedLeads.length ? Math.round(sortedLeads.reduce((sum, l) => sum + l._score, 0) / sortedLeads.length) : 0;
 
-  // Export functions
+  // Export functions (same as before)
   const exportOutreachReport = () => {
     const today = new Date().toISOString().split('T')[0];
     const contacted = sortedLeads.filter(l => lastContacted[l.id] === today);
@@ -490,7 +491,7 @@ export default function LeadDashboard() {
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Loading
+  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -502,7 +503,7 @@ export default function LeadDashboard() {
     );
   }
 
-  // Empty
+  // Empty state
   if (sortedLeads.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
@@ -512,7 +513,7 @@ export default function LeadDashboard() {
           <p className="text-gray-600 mb-4">
             {leads.length === 0 ? "Pipeline hasn't run yet." : "No leads match your filters."}
           </p>
-          {leads.length === 0 && (
+          {leads.length === 0 && !isUsingCustomCSV && (
             <button
               onClick={async () => {
                 try {
@@ -538,7 +539,7 @@ export default function LeadDashboard() {
     );
   }
 
-  // Render
+  // Render dashboard
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <Head>
@@ -650,6 +651,65 @@ export default function LeadDashboard() {
                 rows="3"
                 placeholder="📧 Email Template"
               />
+
+              {/* CSV IMPORT */}
+              <div className="pt-2">
+                <label className="block text-xs text-gray-600 mb-1">📁 Import CSV Leads</label>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    Papa.parse(file, {
+                      header: true,
+                      skipEmptyLines: true,
+                      complete: (results) => {
+                        if (!Array.isArray(results.data) || results.data.length === 0) {
+                          showToast('❌ Invalid or empty CSV');
+                          return;
+                        }
+
+                        const leadsWithId = results.data.map((row, idx) => ({
+                          ...row,
+                          id: row.id || `csv-${Date.now()}-${idx}`,
+                          rating: row.rating ? parseFloat(row.rating) : null,
+                          review_count: row.review_count ? parseInt(row.review_count, 10) : null,
+                          days_since_scraped: row.days_since_scraped ? parseInt(row.days_since_scraped, 10) : null,
+                        }));
+
+                        const enriched = leadsWithId.map(lead => ({
+                          ...lead,
+                          _score: calculateLeadScore(lead),
+                          last_contacted: lastContacted[lead.id] || null,
+                        }));
+
+                        setLeads(enriched);
+                        setIsUsingCustomCSV(true);
+                        setLoading(false);
+                        showToast(`✅ Loaded ${enriched.length} leads from CSV`);
+                      },
+                      error: (err) => {
+                        console.error('CSV Parse Error:', err);
+                        showToast('❌ Failed to parse CSV');
+                      },
+                    });
+                  }}
+                  className="text-sm text-gray-700 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                {isUsingCustomCSV && (
+                  <button
+                    onClick={() => {
+                      setIsUsingCustomCSV(false);
+                      setLeads([]);
+                      setLoading(true);
+                    }}
+                    className="mt-2 text-xs text-red-600 hover:underline"
+                  >
+                    Revert to API leads
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
