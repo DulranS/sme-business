@@ -1,7 +1,7 @@
 // app/page.js
 'use client';
 import { useState, useEffect } from 'react';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth,googleProvider } from './lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
