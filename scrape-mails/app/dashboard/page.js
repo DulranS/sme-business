@@ -2,24 +2,45 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { auth, db } from '../lib/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
-// ============= DEFAULT TEMPLATES (FULLY RESTORED) =============
-const DEFAULT_TEMPLATE_A = {
-  subject: 'Special Offer for {{business_name}}',
-  body: 'Hello {{business_name}},\n\nWe noticed your business at {{address}} could benefit from our solution. As a special offer, use code WELCOME20 for 20% off your first purchase.\n\nBest regards,\n{{sender_name}}'
+// ✅ YOUR FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
+  authDomain: "email-marketing-c775d.firebaseapp.com",
+  projectId: "email-marketing-c775d",
+  storageBucket: "email-marketing-c775d.firebasestorage.app",
+  messagingSenderId: "178196903576",
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
+  measurementId: "G-6CL2EGLEVH"
 };
 
-const DEFAULT_TEMPLATE_B = {
-  subject: 'Exclusive Deal for {{business_name}} 🎁',
-  body: 'Hi {{business_name}},\n\nWe saw your business at {{address}} and have a **limited-time offer**: use code DISCOUNT10 for 10% off.\n\nBest,\n{{sender_name}}'
+// Initialize Firebase
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// ============= DEFAULT TEMPLATES =============
+const DEFAULT_TEMPLATE_A = {
+  subject: '🚀 Special Offer for {{business_name}}',
+  body: 'Hi {{business_name}},\n\nWe noticed your business at {{address}} and believe our [service] could help you grow faster. As a limited-time offer, use code **WELCOME20** for 20% off your first purchase.\n\nBest regards,\n{{sender_name}}\nGrowthCo'
+};
+
+const FOLLOW_UP_1 = {
+  subject: 'Quick follow-up: Your WELCOME20 offer',
+  body: 'Hi {{business_name}},\n\nJust circling back — your **20% off** offer is still available! 3 businesses signed up this week.\n\nUse code: WELCOME20\n\nBest,\n{{sender_name}}'
+};
+
+const BREAKUP_EMAIL = {
+  subject: 'Should I close your file?',
+  body: 'Hi {{business_name}},\n\nI’ve tried reaching out a few times but haven’t heard back. If you’re not interested, just reply “STOP” and I’ll close your file.\n\nOtherwise, your offer expires Friday!\n\nBest,\n{{sender_name}}'
 };
 
 const DEFAULT_WHATSAPP_TEMPLATE = 
-  'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nUse WELCOME20 for 20% off!\n\nReply STOP to opt out.';
+  'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nWould you be open to a quick chat about how we can help grow your business?\n\nReply YES to connect!';
 
 // ============= PHONE HANDLING =============
 function formatForDialing(raw) {
@@ -35,8 +56,7 @@ const handleCall = (phone) => {
   if (!phone) return;
   const dialNumber = formatForDialing(phone) || phone.toString().replace(/\D/g, '');
   if (typeof window !== 'undefined') {
-    const isMobile = /iPhone|Android/i.test(navigator.userAgent);
-    if (isMobile) {
+    if (/iPhone|Android/i.test(navigator.userAgent)) {
       window.location.href = `tel:${dialNumber}`;
     } else {
       window.open(`https://wa.me/${dialNumber}`, '_blank');
@@ -45,17 +65,7 @@ const handleCall = (phone) => {
 };
 
 // ============= CORE HELPER FUNCTIONS =============
-const isValidEmail = (email) => {
-  if (!email || typeof email !== 'string') return false;
-  const t = email.trim();
-  return t.length > 0 && t.includes('@') && t.includes('.');
-};
-
-const extractTemplateVariables = (text) => {
-  if (!text) return [];
-  const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || [];
-  return [...new Set(matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, '').trim()))];
-};
+const isValidEmail = (email) => email?.includes('@') && email?.includes('.');
 
 const parseCsvRow = (str) => {
   const result = [];
@@ -73,22 +83,6 @@ const parseCsvRow = (str) => {
   return result.map(f => f.trim().replace(/^"(.*)"$/, '$1'));
 };
 
-const renderPreviewText = (text, recipient, mappings, sender) => {
-  if (!text) return '';
-  let result = text;
-  Object.entries(mappings).forEach(([varName, col]) => {
-    const regex = new RegExp(`{{\\s*${varName}\\s*}}`, 'g');
-    if (varName === 'sender_name') {
-      result = result.replace(regex, sender || 'Team');
-    } else if (recipient && col && recipient[col] !== undefined) {
-      result = result.replace(regex, String(recipient[col]));
-    } else {
-      result = result.replace(regex, `[MISSING: ${varName}]`);
-    }
-  });
-  return result;
-};
-
 // ============= MAIN COMPONENT =============
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -96,17 +90,17 @@ export default function Dashboard() {
   const [csvContent, setCsvContent] = useState('');
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [senderName, setSenderName] = useState('');
-  const [abTestMode, setAbTestMode] = useState(false);
   const [templateA, setTemplateA] = useState(DEFAULT_TEMPLATE_A);
-  const [templateB, setTemplateB] = useState(DEFAULT_TEMPLATE_B);
   const [whatsappTemplate, setWhatsappTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
   const [fieldMappings, setFieldMappings] = useState({});
   const [previewRecipient, setPreviewRecipient] = useState(null);
   const [validEmails, setValidEmails] = useState(0);
   const [validWhatsApp, setValidWhatsApp] = useState(0);
-  const [leadQualityFilter, setLeadQualityFilter] = useState('all');
+  const [leadQualityFilter, setLeadQualityFilter] = useState('HOT');
   const [whatsappLinks, setWhatsappLinks] = useState([]);
-  const [emailImages, setEmailImages] = useState([]);
+  const [leadScores, setLeadScores] = useState({});
+  const [lastSent, setLastSent] = useState({});
+  const [clickStats, setClickStats] = useState({});
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -124,6 +118,21 @@ export default function Dashboard() {
     return () => document.head.removeChild(script);
   }, []);
 
+  // ============= LOAD CLICK STATS =============
+  const loadClickStats = async () => {
+    try {
+      const q = query(collection(db, 'clicks'), where('userId', '==', user.uid));
+      const snapshot = await getDocs(q);
+      const stats = {};
+      snapshot.forEach(doc => {
+        stats[doc.id] = doc.data();
+      });
+      setClickStats(stats);
+    } catch (e) {
+      console.warn('Click stats load failed:', e);
+    }
+  };
+
   // ============= AUTH & SETTINGS =============
   const loadSettings = async (userId) => {
     try {
@@ -131,46 +140,20 @@ export default function Dashboard() {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data();
-        if (data.senderName !== undefined) setSenderName(data.senderName);
-        if (data.templateA !== undefined) setTemplateA(data.templateA);
-        if (data.templateB !== undefined) setTemplateB(data.templateB);
-        if (data.whatsappTemplate !== undefined) setWhatsappTemplate(data.whatsappTemplate);
-        if (data.fieldMappings !== undefined) setFieldMappings(data.fieldMappings);
-        if (data.abTestMode !== undefined) setAbTestMode(data.abTestMode);
+        setSenderName(data.senderName || 'Team');
+        setTemplateA(data.templateA || DEFAULT_TEMPLATE_A);
+        setWhatsappTemplate(data.whatsappTemplate || DEFAULT_WHATSAPP_TEMPLATE);
+        setFieldMappings(data.fieldMappings || {});
       } else {
-        const initialSender = auth.currentUser?.displayName?.split(' ')[0] || 'Team';
-        setSenderName(initialSender);
+        setSenderName(auth.currentUser?.displayName?.split(' ')[0] || 'Team');
       }
     } catch (error) {
       console.warn('Failed to load settings:', error);
     }
   };
 
-  const saveSettings = useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const docRef = doc(db, 'users', user.uid, 'settings', 'templates');
-      await setDoc(docRef, {
-        senderName,
-        templateA,
-        templateB,
-        whatsappTemplate,
-        fieldMappings,
-        abTestMode
-      }, { merge: true });
-    } catch (error) {
-      console.warn('Failed to save settings:', error);
-    }
-  }, [user?.uid, senderName, templateA, templateB, whatsappTemplate, fieldMappings, abTestMode]);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-    const handler = setTimeout(() => saveSettings(), 1500);
-    return () => clearTimeout(handler);
-  }, [saveSettings, user?.uid]);
-
-  // ============= CSV UPLOAD =============
-// ============= CSV UPLOAD (with auto WhatsApp links) =============
+  // ============= CSV UPLOAD WITH LEAD SCORING & SORTING =============
+// ============= CSV UPLOAD WITH LEAD SCORING, SORTING & AUTO WHATSAPP =============
 const handleCsvUpload = (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
@@ -189,31 +172,21 @@ const handleCsvUpload = (e) => {
     const headers = parseCsvRow(lines[0]).map(h => h.trim());
     setCsvHeaders(headers);
 
-    const allVars = [...new Set([
-      ...extractTemplateVariables(templateA.subject),
-      ...extractTemplateVariables(templateA.body),
-      ...extractTemplateVariables(templateB.subject),
-      ...extractTemplateVariables(templateB.body),
-      ...extractTemplateVariables(whatsappTemplate),
-      'sender_name'
-    ])];
-
+    // Auto-map fields
     const initialMappings = {};
-    allVars.forEach(varName => {
-      if (headers.includes(varName)) {
-        initialMappings[varName] = varName;
-      }
+    ['business_name', 'address', 'sender_name', 'email'].forEach(varName => {
+      if (headers.includes(varName)) initialMappings[varName] = varName;
     });
-    if (headers.includes('email')) {
-      initialMappings.email = 'email';
-    }
+    if (headers.includes('email')) initialMappings.email = 'email';
     initialMappings.sender_name = 'sender_name';
-
     setFieldMappings(initialMappings);
 
     let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
     const validContacts = [];
+    const newLeadScores = {};
+    const newLastSent = {};
 
+    // Process all rows
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
       if (values.length !== headers.length) continue;
@@ -223,20 +196,34 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
+      // ✅ LEAD SCORING ALGORITHM (PRODUCTION-GRADE)
+      let score = 50; // Base
+      if (row.lead_quality === 'HOT') score += 30; // Manual qualification
+      if (parseFloat(row.rating) >= 4.8) score += 20; // High satisfaction
+      if (parseInt(row.review_count) > 100) score += 10; // Established business
+      score = Math.min(100, Math.max(0, score)); // Clamp to 0-100
+      newLeadScores[row.email] = score;
+
+      // Count valid emails
       if (isValidEmail(row.email)) {
         if (row.lead_quality === 'HOT') hotEmails++;
         else if (row.lead_quality === 'WARM') warmEmails++;
       }
 
+      // ✅ WHATSAPP CONTACT GENERATION
       const rawPhone = row.whatsapp_number || row.phone_raw;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
         whatsappCount++;
-        // ✅ Build WhatsApp contacts immediately
-        const message = renderPreviewText(whatsappTemplate, row, fieldMappings, senderName);
+        // Generate WhatsApp message with template
+        const message = whatsappTemplate
+          .replace(/{{business_name}}/g, row.business_name || '')
+          .replace(/{{address}}/g, row.address || '')
+          .replace(/{{sender_name}}/g, senderName || 'Team');
         validContacts.push({
           business: row.business_name || 'Business',
           phone: formattedPhone,
+          email: row.email,
           url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`
         });
       }
@@ -244,39 +231,24 @@ const handleCsvUpload = (e) => {
       if (!firstValid) firstValid = row;
     }
 
+    // ✅ SORT CONTACTS BY LEAD SCORE (HIGHEST FIRST)
+    validContacts.sort((a, b) => {
+      const scoreA = newLeadScores[a.email] || 0;
+      const scoreB = newLeadScores[b.email] || 0;
+      return scoreB - scoreA; // Descending order
+    });
+
+    // Update state
     setPreviewRecipient(firstValid);
     setValidEmails(leadQualityFilter === 'HOT' ? hotEmails : 
                   leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
     setValidWhatsApp(whatsappCount);
-    setWhatsappLinks(validContacts); // ✅ Auto-set WhatsApp links
+    setWhatsappLinks(validContacts);
+    setLeadScores(newLeadScores);
+    setLastSent(newLastSent);
   };
   reader.readAsText(file);
 };
-
-  // ============= IMAGE UPLOAD =============
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files).slice(0, 3);
-    const newImages = files.map((file, index) => {
-      const preview = URL.createObjectURL(file);
-      const cid = `img${index + 1}@massmailer`;
-      return { file, preview, cid, placeholder: `{{image${index + 1}}}` };
-    });
-    setEmailImages(newImages);
-  };
-
-  const allVars = [...new Set([
-    ...extractTemplateVariables(templateA.subject),
-    ...extractTemplateVariables(templateA.body),
-    ...extractTemplateVariables(templateB.subject),
-    ...extractTemplateVariables(templateB.body),
-    ...extractTemplateVariables(whatsappTemplate),
-    'sender_name',
-    ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
-  ])];
-
-  const handleMappingChange = (varName, csvColumn) => {
-    setFieldMappings(prev => ({ ...prev, [varName]: csvColumn }));
-  };
 
   // ============= AUTH STATE =============
   useEffect(() => {
@@ -284,6 +256,7 @@ const handleCsvUpload = (e) => {
       if (user) {
         setUser(user);
         loadSettings(user.uid);
+        loadClickStats();
       } else {
         setUser(null);
       }
@@ -309,44 +282,19 @@ const handleCsvUpload = (e) => {
     });
   };
 
-  // ============= SEND EMAILS =============
-  const handleSendEmails = async () => {
+  // ============= SEND DRIP CAMPAIGN =============
+  const handleSendDrip = async () => {
     if (!csvContent || !senderName.trim() || validEmails === 0) {
       alert('Check CSV, sender name, and valid emails.');
       return;
     }
-    if (abTestMode && (!templateA.subject.trim() || !templateB.subject.trim())) {
-      alert('Both Template A and B need a subject.');
-      return;
-    }
-    if (!abTestMode && !templateA.subject.trim()) {
-      alert('Email subject is required.');
-      return;
-    }
 
     setIsSending(true);
-    setStatus('Getting Gmail access...');
+    setStatus('Starting drip campaign...');
 
     try {
       const accessToken = await requestGmailToken();
-
-      const imagesWithBase64 = await Promise.all(
-        emailImages.map(async (img) => {
-          const base64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(img.file);
-          });
-          return {
-            cid: img.cid,
-            mimeType: img.file.type,
-            base64,
-            placeholder: img.placeholder
-          };
-        })
-      );
-
-      setStatus(`Sending ${abTestMode ? 'A/B Test' : 'Emails'}...`);
+      setStatus('Sending Day 0 emails...');
 
       const res = await fetch('/api/send-email', {
         method: 'POST',
@@ -356,21 +304,22 @@ const handleCsvUpload = (e) => {
           senderName,
           fieldMappings,
           accessToken,
-          abTestMode,
-          templateA,
-          templateB,
+          template: templateA,
           leadQualityFilter,
-          emailImages: imagesWithBase64
+          isDrip: true,
+          dripStep: 0
         })
       });
 
       const data = await res.json();
       if (res.ok) {
-        if (abTestMode) {
-          setStatus(`✅ A/B Test Started!\nTemplate A: ${data.a.sent} sent\nTemplate B: ${data.b.sent} sent`);
-        } else {
-          setStatus(`✅ Emails sent: ${data.sent}/${data.total}`);
-        }
+        setStatus(`✅ Day 0: ${data.sent} emails sent!\n\nDay 2 & Day 5 will be sent automatically.`);
+        
+        const newLastSent = { ...lastSent };
+        whatsappLinks.forEach(link => {
+          newLastSent[link.email] = new Date().toISOString();
+        });
+        setLastSent(newLastSent);
       } else {
         setStatus(`❌ ${data.error}`);
       }
@@ -381,12 +330,10 @@ const handleCsvUpload = (e) => {
     }
   };
 
-
-
   if (loadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg">Loading your session...</div>
+        <div className="text-lg">Loading your strategic outreach dashboard...</div>
       </div>
     );
   }
@@ -407,10 +354,10 @@ const handleCsvUpload = (e) => {
   // ============= MAIN UI =============
   return (
     <div className="min-h-screen bg-gray-50">
-      <Head><title>B2B Outreach Platform</title></Head>
+      <Head><title>B2B Growth Engine | Strategic Outreach</title></Head>
       <header className="bg-white shadow-sm">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold">B2B Outreach Platform</h1>
+          <h1 className="text-xl font-bold">B2B Growth Engine</h1>
           <button onClick={() => signOut(auth)} className="text-sm text-gray-600">
             Sign Out
           </button>
@@ -419,58 +366,53 @@ const handleCsvUpload = (e) => {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* LEFT: CSV & MAPPINGS */}
+          {/* LEFT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-4">1. Upload CSV</h2>
+              <h2 className="text-xl font-bold mb-4">1. Upload Leads CSV</h2>
               <input type="file" accept=".csv" onChange={handleCsvUpload} className="w-full p-2 border rounded" />
               <p className="text-xs text-gray-600 mt-2">
-                Auto-detects columns from first row.
+                Auto-scores leads using rating + reviews.
               </p>
-              {csvHeaders.includes('lead_quality') && (
-                <div className="mt-3">
-                  <label className="block text-sm font-medium mb-1">Target Lead Quality</label>
-                  <select
-                    value={leadQualityFilter}
-                    onChange={(e) => setLeadQualityFilter(e.target.value)}
-                    className="w-full p-1 border rounded text-sm"
-                  >
-                    <option value="all">All Leads</option>
-                    <option value="HOT">HOT Leads Only</option>
-                    <option value="WARM">WARM Leads Only</option>
-                  </select>
-                </div>
-              )}
-              {validEmails > 0 && <p className="text-sm text-green-600 mt-2">📧 {validEmails} valid emails</p>}
-              {validWhatsApp > 0 && <p className="text-sm text-blue-600 mt-1">📱 {validWhatsApp} WhatsApp numbers</p>}
+              <div className="mt-3">
+                <label className="block text-sm font-medium mb-1">Target Lead Quality</label>
+                <select
+                  value={leadQualityFilter}
+                  onChange={(e) => setLeadQualityFilter(e.target.value)}
+                  className="w-full p-1 border rounded text-sm"
+                >
+                  <option value="HOT">🔥 HOT Leads Only</option>
+                  <option value="WARM">📈 WARM Leads Only</option>
+                  <option value="all">👥 All Leads</option>
+                </select>
+                <p className="text-xs text-green-600 mt-1">
+                  {validEmails} {leadQualityFilter} leads ready
+                </p>
+              </div>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-4">2. Field Mappings</h2>
-              {allVars.map(varName => (
-                <div key={varName} className="flex items-center mb-2">
-                  <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
-                    {`{{${varName}}}`}
-                  </span>
-                  <select
-                    value={fieldMappings[varName] || ''}
-                    onChange={(e) => handleMappingChange(varName, e.target.value)}
-                    className="text-xs border rounded px-1 py-0.5 flex-1"
-                  >
-                    <option value="">-- Map to Column --</option>
-                    {csvHeaders.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                    {varName === 'sender_name' && (
-                      <option value="sender_name">Use sender name</option>
-                    )}
-                  </select>
+              <h2 className="text-xl font-bold mb-4">2. Strategic Actions</h2>
+              {validEmails > 0 && (
+                <button
+                  onClick={handleSendDrip}
+                  disabled={isSending}
+                  className={`w-full py-2.5 rounded font-bold mb-2 ${
+                    isSending ? 'bg-gray-400' : 'bg-green-600 text-white'
+                  }`}
+                >
+                  📧 Start 3-Step Drip Campaign
+                </button>
+              )}
+              {Object.values(clickStats).some(s => s.count > 0) && (
+                <div className="text-sm bg-blue-50 p-2 rounded">
+                  ✅ {Object.values(clickStats).reduce((a, b) => a + (b.count || 0), 0)} leads clicked your offer!
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
-          {/* MIDDLE: TEMPLATES */}
+          {/* MIDDLE */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">3. Your Name (Sender)</h2>
@@ -484,107 +426,28 @@ const handleCsvUpload = (e) => {
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-xl font-bold">4. Email Template</h2>
-                <label className="flex items-center text-sm">
-                  <input
-                    type="checkbox"
-                    checked={abTestMode}
-                    onChange={(e) => setAbTestMode(e.target.checked)}
-                    className="mr-2"
-                  />
-                  A/B Testing
-                </label>
-              </div>
-
-              {abTestMode ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border rounded p-3">
-                    <h3 className="font-bold text-green-600 mb-2">Template A</h3>
-                    <input
-                      type="text"
-                      value={templateA.subject}
-                      onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
-                      className="w-full p-1 border rounded mb-1 text-sm"
-                      placeholder="Subject A"
-                    />
-                    <textarea
-                      value={templateA.body}
-                      onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
-                      rows="3"
-                      className="w-full p-1 font-mono text-sm border rounded"
-                      placeholder="Body A..."
-                    />
-                  </div>
-                  <div className="border rounded p-3">
-                    <h3 className="font-bold text-blue-600 mb-2">Template B</h3>
-                    <input
-                      type="text"
-                      value={templateB.subject}
-                      onChange={(e) => setTemplateB({ ...templateB, subject: e.target.value })}
-                      className="w-full p-1 border rounded mb-1 text-sm"
-                      placeholder="Subject B"
-                    />
-                    <textarea
-                      value={templateB.body}
-                      onChange={(e) => setTemplateB({ ...templateB, body: e.target.value })}
-                      rows="3"
-                      className="w-full p-1 font-mono text-sm border rounded"
-                      placeholder="Body B..."
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <input
-                    type="text"
-                    value={templateA.subject}
-                    onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
-                    className="w-full p-2 border rounded mb-2"
-                    placeholder="Subject"
-                  />
-                  <textarea
-                    value={templateA.body}
-                    onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
-                    rows="4"
-                    className="w-full p-2 font-mono border rounded"
-                    placeholder="Hello {{business_name}}, ..."
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">5. Email Images (Optional)</h2>
-              <p className="text-xs text-gray-600 mb-2">
-                Upload up to 3 images (JPG/PNG). Use <code>{'{image1}'}</code>, <code>{'{image2}'}</code> in your template.
-              </p>
+              <h2 className="text-xl font-bold mb-3">4. Initial Email Template</h2>
               <input
-                type="file"
-                accept="image/jpeg,image/png"
-                multiple
-                onChange={handleImageUpload}
-                className="w-full p-2 border rounded"
+                type="text"
+                value={templateA.subject}
+                onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
+                className="w-full p-2 border rounded mb-2"
+                placeholder="Subject"
               />
-              {emailImages.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-gray-500">Preview:</p>
-                  <div className="flex gap-2 mt-1">
-                    {emailImages.map((img, i) => (
-                      <div key={i} className="w-16 h-16">
-                        <img src={img.preview} alt={`Preview ${i+1}`} className="w-full h-full object-cover rounded" />
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use in template: {emailImages.map(img => img.placeholder).join(', ')}
-                  </p>
-                </div>
-              )}
+              <textarea
+                value={templateA.body}
+                onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
+                rows="4"
+                className="w-full p-2 font-mono border rounded"
+                placeholder="Hello {{business_name}}, ..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Drip sequence: Day 0 (this) → Day 2 (follow-up) → Day 5 (breakup)
+              </p>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">6. WhatsApp Template</h2>
+              <h2 className="text-xl font-bold mb-3">5. WhatsApp Template</h2>
               <textarea
                 value={whatsappTemplate}
                 onChange={(e) => setWhatsappTemplate(e.target.value)}
@@ -592,20 +455,6 @@ const handleCsvUpload = (e) => {
                 className="w-full p-2 font-mono border rounded"
                 placeholder="Hi {{business_name}}! ..."
               />
-            </div>
-
-            <div className="space-y-2">
-              <button
-                onClick={handleSendEmails}
-                disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-                className={`w-full py-2.5 rounded font-bold ${
-                  isSending || !csvContent || !senderName.trim() || validEmails === 0
-                    ? 'bg-gray-400'
-                    : 'bg-green-600 text-white'
-                }`}
-              >
-                {abTestMode ? '🧪 Send A/B Test' : '📧 Send Emails'} ({validEmails})
-              </button>
             </div>
 
             {status && (
@@ -617,112 +466,69 @@ const handleCsvUpload = (e) => {
             )}
           </div>
 
-          {/* RIGHT: PREVIEW & WHATSAPP LINKS */}
+          {/* RIGHT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">7. Email Preview</h2>
-              <div className="bg-gray-50 p-4 rounded border">
-                <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
-                <div className="mt-1 font-medium">
-                  {renderPreviewText(
-                    abTestMode ? templateA.subject : templateA.subject,
-                    previewRecipient,
-                    fieldMappings,
-                    senderName
-                  )}
+              <h2 className="text-xl font-bold mb-3">6. Lead Preview</h2>
+              {previewRecipient ? (
+                <div className="bg-gray-50 p-4 rounded border">
+                  <div className="text-sm text-gray-500">Business: {previewRecipient.business_name}</div>
+                  <div className="text-sm text-gray-500">Score: {leadScores[previewRecipient.email] || 'N/A'}/100</div>
+                  <div className="text-sm text-gray-500">Email: {previewRecipient.email}</div>
+                  <div className="text-sm text-gray-500">Phone: {previewRecipient.phone_raw}</div>
                 </div>
-                <div className="mt-2 whitespace-pre-wrap text-sm">
-                  {renderPreviewText(
-                    abTestMode ? templateA.body : templateA.body,
-                    previewRecipient,
-                    fieldMappings,
-                    senderName
-                  )}
-                </div>
-              </div>
+              ) : (
+                <div className="text-sm text-gray-500">Upload CSV to preview lead</div>
+              )}
             </div>
 
-            {abTestMode && (
-              <div className="bg-white p-6 rounded-xl shadow">
-                <h2 className="text-xl font-bold mb-3">8. Template B Preview</h2>
-                <div className="bg-gray-50 p-4 rounded border">
-                  <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
-                  <div className="mt-1 font-medium">
-                    {renderPreviewText(templateB.subject, previewRecipient, fieldMappings, senderName)}
-                  </div>
-                  <div className="mt-2 whitespace-pre-wrap text-sm">
-                    {renderPreviewText(templateB.body, previewRecipient, fieldMappings, senderName)}
-                  </div>
+            {/* ✅ STRATEGIC WHATSAPP CONTACTS — SORTED BY SCORE */}
+            {whatsappLinks.length > 0 && (
+              <div className="bg-white p-4 rounded-xl shadow">
+                <h2 className="text-lg font-bold text-gray-800 mb-3">7. WhatsApp Contacts ({whatsappLinks.length})</h2>
+                <div className="max-h-96 overflow-y-auto space-y-3">
+                  {whatsappLinks.map((link, i) => {
+                    const last = lastSent[link.email];
+                    const score = leadScores[link.email] || 0;
+                    return (
+                      <div key={i} className="p-3 bg-gray-50 rounded-lg border">
+                        <div className="flex justify-between">
+                          <div>
+                            <div className="font-medium">{link.business}</div>
+                            <div className="text-sm text-gray-600">+{link.phone}</div>
+                            <div className="text-xs text-blue-600">Score: {score}/100</div>
+                            {last && (
+                              <div className="text-xs text-green-600 mt-1">📅 Last: {new Date(last).toLocaleDateString()}</div>
+                            )}
+                          </div>
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={() => navigator.clipboard.writeText(`+${link.phone}`)}
+                              className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded"
+                            >
+                              Copy
+                            </button>
+                            <a
+                              href={link.url}
+                              target="_blank"
+                              className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
+                            >
+                              WhatsApp
+                            </a>
+                            <button
+                              onClick={() => handleCall(link.phone)}
+                              className="text-xs bg-green-600 text-white px-2 py-1 rounded"
+                            >
+                              Call
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
-
-            <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">9. WhatsApp Preview</h2>
-              <div className="bg-gray-50 p-4 rounded border">
-                <div className="text-sm text-gray-500">
-                  To: {previewRecipient?.whatsapp_number || previewRecipient?.phone_raw || '9477...'}
-                </div>
-                <div className="mt-2 whitespace-pre-wrap text-sm">
-                  {renderPreviewText(whatsappTemplate, previewRecipient, fieldMappings, senderName)}
-                </div>
-              </div>
-            </div>
-
-{whatsappLinks.length > 0 && (
-  <div className="bg-white p-4 rounded-xl shadow">
-    <div className="flex justify-between items-center mb-3">
-      <h2 className="text-lg font-bold text-gray-800">WhatsApp Contacts ({whatsappLinks.length})</h2>
-      <button
-        onClick={() => setWhatsappLinks([])}
-        className="text-xs text-red-600 font-medium px-2 py-1 rounded hover:bg-red-50"
-      >
-        Clear All
-      </button>
-    </div>
-    <div className="max-h-96 overflow-y-auto space-y-3">
-      {whatsappLinks.map((link, i) => (
-        <div
-          key={i}
-          className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-50 rounded-lg border border-gray-200"
-        >
-          <div className="mb-2 sm:mb-0 w-full sm:w-auto">
-            <div className="flex items-center">
-              <span className="text-gray-800 font-medium">
-                {link.business || 'Business'}
-              </span>
-            </div>
-            <div className="flex items-center mt-1 text-xs text-gray-600">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.74 21 3 14.26 3 6V5z" />
-              </svg>
-              +{link.phone}
-            </div>
-          </div>
-          <div className="flex space-x-2 w-full sm:w-auto">
-            <a
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 sm:flex-none text-center text-white bg-blue-600 hover:bg-blue-700 text-sm font-medium py-2 px-3 rounded-lg transition"
-            >
-              WhatsApp
-            </a>
-            <button
-              onClick={() => handleCall(link.phone)}
-              className="flex-1 sm:flex-none text-center text-white bg-green-600 hover:bg-green-700 text-sm font-medium py-2 px-3 rounded-lg transition flex items-center justify-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.74 21 3 14.26 3 6V5z" />
-              </svg>
-              Call
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
           </div>
         </div>
       </main>
