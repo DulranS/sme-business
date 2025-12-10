@@ -33,7 +33,7 @@ const DEFAULT_TEMPLATE_B = {
   body: 'Hello {{business_name}},\n\nWe’ve helped businesses like yours increase revenue by 30%+ in 90 days.\n\nLet’s schedule a quick 15-min call to explore if we’re a fit?\n\nBest,\n{{sender_name}}\nGrowthCo'
 };
 
-const DEFAULT_WHATSAPP_TEMPLATE = 
+const DEFAULT_WHATSAPP_TEMPLATE =
   'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nWould you be open to a quick chat about how we can help grow your business?\n\nReply YES to connect!';
 
 // ============= PHONE HANDLING =============
@@ -254,8 +254,8 @@ export default function Dashboard() {
       validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
 
       setPreviewRecipient(firstValid);
-      setValidEmails(leadQualityFilter === 'HOT' ? hotEmails : 
-                    leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
+      setValidEmails(leadQualityFilter === 'HOT' ? hotEmails :
+        leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
       setValidWhatsApp(whatsappCount);
       setWhatsappLinks(validContacts);
       setLeadScores(newLeadScores);
@@ -310,70 +310,129 @@ export default function Dashboard() {
   };
 
   // ============= SEND EMAILS (WITH A/B TESTING) =============
-  const handleSendEmails = async () => {
-    if (!csvContent || !senderName.trim() || validEmails === 0) {
-      alert('Check CSV, sender name, and valid emails.');
+// ✅ UPDATED: Accept 'A', 'B', or undefined (for non-A/B mode)
+// ✅ SEND EMAILS TO HALF LEADS BASED ON TEMPLATE
+const handleSendEmails = async (templateToSend = null) => {
+  if (!csvContent || !senderName.trim() || validEmails === 0) {
+    alert('Check CSV, sender name, and valid emails.');
+    return;
+  }
+
+  if (abTestMode && !templateToSend) {
+    alert('Please select Template A or B.');
+    return;
+  }
+
+  if (abTestMode) {
+    if (templateToSend === 'A' && !templateA.subject.trim()) {
+      alert('Template A subject is required.');
       return;
     }
-    if (abTestMode && (!templateA.subject.trim() || !templateB.subject.trim())) {
-      alert('Both Template A and B need a subject.');
+    if (templateToSend === 'B' && !templateB.subject.trim()) {
+      alert('Template B subject is required.');
       return;
     }
+  } else {
+    if (!templateA.subject.trim()) {
+      alert('Email subject is required.');
+      return;
+    }
+  }
 
-    setIsSending(true);
-    setStatus('Getting Gmail access...');
+  setIsSending(true);
+  setStatus('Getting Gmail access...');
 
-    try {
-      const accessToken = await requestGmailToken();
+  try {
+    const accessToken = await requestGmailToken();
 
-      const imagesWithBase64 = await Promise.all(
-        emailImages.map(async (img) => {
-          const base64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(img.file);
-          });
-          return {
-            cid: img.cid,
-            mimeType: img.file.type,
-            base64,
-            placeholder: img.placeholder
-          };
-        })
-      );
+    const imagesWithBase64 = await Promise.all(
+      emailImages.map(async (img) => {
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(img.file);
+        });
+        return {
+          cid: img.cid,
+          mimeType: img.file.type,
+          base64,
+          placeholder: img.placeholder
+        };
+      })
+    );
 
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csvContent,
-          senderName,
-          fieldMappings,
-          accessToken,
-          abTestMode,
-          templateA,
-          templateB,
-          leadQualityFilter,
-          emailImages: imagesWithBase64
-        })
+    // ✅ Extract recipients and split
+    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    let validRecipients = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
       });
-
-      const data = await res.json();
-      if (res.ok) {
-        if (abTestMode) {
-          setStatus(`✅ A/B Test Complete!\nTemplate A: ${data.a.sent} sent\nTemplate B: ${data.b.sent} sent`);
-        } else {
-          setStatus(`✅ ${data.sent}/${data.total} ${leadQualityFilter} leads emailed!`);
+      if (isValidEmail(row.email)) {
+        if (leadQualityFilter === 'all' || row.lead_quality === leadQualityFilter) {
+          validRecipients.push(row);
         }
-      } else {
-        setStatus(`❌ ${data.error}`);
       }
-    } catch (err) {
-      setStatus(`❌ ${err.message}`);
-    } finally {
-      setIsSending(false);
     }
-  };
+
+    // ✅ SPLIT LEADS
+    let recipientsToSend = [];
+    if (abTestMode && templateToSend) {
+      const half = Math.ceil(validRecipients.length / 2);
+      if (templateToSend === 'A') {
+        recipientsToSend = validRecipients.slice(0, half);
+      } else {
+        recipientsToSend = validRecipients.slice(half);
+      }
+    } else {
+      recipientsToSend = validRecipients;
+    }
+
+    if (recipientsToSend.length === 0) {
+      setStatus('❌ No valid leads for selected criteria.');
+      setIsSending(false);
+      return;
+    }
+
+    const templateToSendData = abTestMode 
+      ? (templateToSend === 'A' ? templateA : templateB)
+      : templateA;
+
+    setStatus(`Sending Template ${abTestMode ? templateToSend : ''} to ${recipientsToSend.length} leads...`);
+
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        csvContent: [headers.join(','), ...recipientsToSend.map(r => 
+          headers.map(h => `"${r[h] || ''}"`).join(',')
+        ).join('\n')].join('\n'),
+        senderName,
+        fieldMappings,
+        accessToken,
+        abTestMode: false,
+        template: templateToSendData,
+        leadQualityFilter,
+        emailImages: imagesWithBase64
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
+    } else {
+      setStatus(`❌ ${data.error}`);
+    }
+  } catch (err) {
+    setStatus(`❌ ${err.message}`);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   if (loadingAuth) {
     return (
@@ -483,76 +542,119 @@ export default function Dashboard() {
               />
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow">
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-xl font-bold">4. Email Template</h2>
-                <label className="flex items-center text-sm">
-                  <input
-                    type="checkbox"
-                    checked={abTestMode}
-                    onChange={(e) => setAbTestMode(e.target.checked)}
-                    className="mr-2"
-                  />
-                  A/B Testing
-                </label>
-              </div>
+<div className="bg-white p-6 rounded-xl shadow">
+  <div className="flex justify-between items-center mb-3">
+    <h2 className="text-xl font-bold">4. Email Template</h2>
+    <label className="flex items-center text-sm">
+      <input
+        type="checkbox"
+        checked={abTestMode}
+        onChange={(e) => setAbTestMode(e.target.checked)}
+        className="mr-2"
+      />
+      A/B Testing
+    </label>
+  </div>
 
-              {abTestMode ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border rounded p-3">
-                    <h3 className="font-bold text-green-600 mb-2">Template A (Offer)</h3>
-                    <input
-                      type="text"
-                      value={templateA.subject}
-                      onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
-                      className="w-full p-1 border rounded mb-1 text-sm"
-                      placeholder="Subject A"
-                    />
-                    <textarea
-                      value={templateA.body}
-                      onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
-                      rows="3"
-                      className="w-full p-1 font-mono text-sm border rounded"
-                      placeholder="Body A..."
-                    />
-                  </div>
-                  <div className="border rounded p-3">
-                    <h3 className="font-bold text-blue-600 mb-2">Template B (Call)</h3>
-                    <input
-                      type="text"
-                      value={templateB.subject}
-                      onChange={(e) => setTemplateB({ ...templateB, subject: e.target.value })}
-                      className="w-full p-1 border rounded mb-1 text-sm"
-                      placeholder="Subject B"
-                    />
-                    <textarea
-                      value={templateB.body}
-                      onChange={(e) => setTemplateB({ ...templateB, body: e.target.value })}
-                      rows="3"
-                      className="w-full p-1 font-mono text-sm border rounded"
-                      placeholder="Body B..."
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <input
-                    type="text"
-                    value={templateA.subject}
-                    onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
-                    className="w-full p-2 border rounded mb-2"
-                    placeholder="Subject"
-                  />
-                  <textarea
-                    value={templateA.body}
-                    onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
-                    rows="4"
-                    className="w-full p-2 font-mono border rounded"
-                    placeholder="Hello {{business_name}}, ..."
-                  />
-                </div>
-              )}
-            </div>
+  {abTestMode ? (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Template A */}
+      <div className="border rounded p-3">
+        <h3 className="font-bold text-green-600 mb-2">Template A (Offer)</h3>
+        <input
+          type="text"
+          value={templateA.subject}
+          onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
+          className="w-full p-1 border rounded mb-1 text-sm"
+          placeholder="Subject A"
+        />
+        <textarea
+          value={templateA.body}
+          onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
+          rows="3"
+          className="w-full p-1 font-mono text-sm border rounded"
+          placeholder="Body A..."
+        />
+      </div>
+      
+      {/* Template B */}
+      <div className="border rounded p-3">
+        <h3 className="font-bold text-blue-600 mb-2">Template B (Call)</h3>
+        <input
+          type="text"
+          value={templateB.subject}
+          onChange={(e) => setTemplateB({ ...templateB, subject: e.target.value })}
+          className="w-full p-1 border rounded mb-1 text-sm"
+          placeholder="Subject B"
+        />
+        <textarea
+          value={templateB.body}
+          onChange={(e) => setTemplateB({ ...templateB, body: e.target.value })}
+          rows="3"
+          className="w-full p-1 font-mono text-sm border rounded"
+          placeholder="Body B..."
+        />
+      </div>
+    </div>
+  ) : (
+    <div>
+      <input
+        type="text"
+        value={templateA.subject}
+        onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
+        className="w-full p-2 border rounded mb-2"
+        placeholder="Subject"
+      />
+      <textarea
+        value={templateA.body}
+        onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
+        rows="4"
+        className="w-full p-2 font-mono border rounded"
+        placeholder="Hello {{business_name}}, ..."
+      />
+    </div>
+  )}
+
+  {/* ✅ A/B TESTING: SEPARATE SEND BUTTONS FOR HALF LEADS */}
+  {abTestMode ? (
+    <div className="space-y-2 mt-4">
+      <button
+        onClick={() => handleSendEmails('A')}
+        disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
+        className={`w-full py-2.5 rounded font-bold ${
+          isSending || !csvContent || !senderName.trim() || validEmails === 0
+            ? 'bg-gray-400'
+            : 'bg-green-600 text-white'
+        }`}
+      >
+        📧 Send Template A (First {Math.ceil(validEmails / 2)} leads)
+      </button>
+      <button
+        onClick={() => handleSendEmails('B')}
+        disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
+        className={`w-full py-2.5 rounded font-bold ${
+          isSending || !csvContent || !senderName.trim() || validEmails === 0
+            ? 'bg-gray-400'
+            : 'bg-blue-600 text-white'
+        }`}
+      >
+        📧 Send Template B (Last {Math.floor(validEmails / 2)} leads)
+      </button>
+    </div>
+  ) : (
+    <button
+      onClick={() => handleSendEmails()}
+      disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
+      className={`w-full py-2.5 rounded font-bold mt-4 ${
+        isSending || !csvContent || !senderName.trim() || validEmails === 0
+          ? 'bg-gray-400'
+          : 'bg-green-600 text-white'
+      }`}
+    >
+      📧 Send Emails ({validEmails})
+    </button>
+  )}
+</div>
 
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">5. Email Images (Optional)</h2>
@@ -585,20 +687,18 @@ export default function Dashboard() {
               <button
                 onClick={handleSendEmails}
                 disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-                className={`w-full py-2.5 rounded font-bold ${
-                  isSending || !csvContent || !senderName.trim() || validEmails === 0
+                className={`w-full py-2.5 rounded font-bold ${isSending || !csvContent || !senderName.trim() || validEmails === 0
                     ? 'bg-gray-400'
                     : 'bg-green-600 text-white'
-                }`}
+                  }`}
               >
                 {abTestMode ? '🧪 Send A/B Test' : '📧 Send Emails'} ({validEmails})
               </button>
             </div>
 
             {status && (
-              <div className={`p-3 rounded text-center whitespace-pre-line ${
-                status.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-              }`}>
+              <div className={`p-3 rounded text-center whitespace-pre-line ${status.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
                 {status}
               </div>
             )}

@@ -26,16 +26,6 @@ function isValidEmail(email) {
   return t.length > 0 && t.includes('@') && t.includes('.');
 }
 
-const FOLLOW_UP_1 = {
-  subject: 'Quick follow-up: Your WELCOME20 offer',
-  body: 'Hi {{business_name}},\n\nJust circling back — your **20% off** offer is still available! 3 businesses signed up this week.\n\nUse code: WELCOME20\n\nBest,\n{{sender_name}}'
-};
-
-const BREAKUP_EMAIL = {
-  subject: 'Should I close your file?',
-  body: 'Hi {{business_name}},\n\nI’ve tried reaching out a few times but haven’t heard back. If you’re not interested, just reply “STOP” and I’ll close your file.\n\nOtherwise, your offer expires Friday!\n\nBest,\n{{sender_name}}'
-};
-
 function replaceTemplateVars(text, data, fieldMappings, senderName) {
   if (!text) return '';
   let result = text;
@@ -60,9 +50,8 @@ export async function POST(request) {
       senderName, 
       fieldMappings, 
       accessToken,
-      abTestMode,
-      templateA,
-      templateB,
+      abTestMode, // ❌ Not used — template is passed directly
+      template,   // ✅ Single template object (A or B)
       leadQualityFilter = 'HOT',
       emailImages = []
     } = await request.json();
@@ -83,169 +72,86 @@ export async function POST(request) {
       return NextResponse.json({ error: `No ${leadQualityFilter} leads found` }, { status: 400 });
     }
 
-    // ✅ NOW SAFE TO USE google
+    // ✅ Initialize Gmail
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const gmail = google.gmail({ version: 'v1', auth });
 
-    if (abTestMode) {
-      const half = Math.ceil(validRecipients.length / 2);
-      const groupA = validRecipients.slice(0, half);
-      const groupB = validRecipients.slice(half);
+    const sent = [];
+    for (const row of validRecipients) {
+      try {
+        // ✅ Use the single template passed from frontend
+        const finalSubject = replaceTemplateVars(template.subject, row, fieldMappings, senderName);
+        let finalBody = replaceTemplateVars(template.body, row, fieldMappings, senderName);
 
-      const sendBatch = async (group, template) => {
-        const sent = [];
-        for (const row of group) {
-          try {
-            const finalSubject = replaceTemplateVars(template.subject, row, fieldMappings, senderName);
-            let finalBody = replaceTemplateVars(template.body, row, fieldMappings, senderName);
+        // ✅ CLICK TRACKING + EMAIL
+        const clickId = `click_${uuidv4()}`;
+        finalBody = finalBody.replace(
+          /(https?:\/\/[^\s]+)/g,
+          (url) => `${url}?clid=${clickId}&email=${encodeURIComponent(row.email)}`
+        );
 
-            // Click tracking
-            const clickId = `click_${uuidv4()}`;
-            finalBody = finalBody.replace(
-              /(https?:\/\/[^\s]+)/g,
-              (url) => `${url}?clid=${clickId}`
-            );
+        // Save click ID
+        await setDoc(doc(db, 'clicks', clickId), {
+          email: row.email,
+          userId: 'anon',
+          count: 0,
+          createdAt: new Date().toISOString()
+        });
 
-            await setDoc(doc(db, 'clicks', clickId), {
-              email: row.email,
-              userId: 'anon',
-              count: 0,
-              createdAt: new Date().toISOString()
-            });
+        // ✅ IMAGE EMBEDDING
+        let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
+        emailImages.forEach(img => {
+          const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
+          htmlBody = htmlBody.replace(new RegExp(`{{image\\d}}`, 'g'), imgTag);
+        });
+        htmlBody += '</body></html>';
 
-            // Image embedding
-            let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
-            emailImages.forEach(img => {
-              const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
-              htmlBody = htmlBody.replace(new RegExp(`{{image\\d}}`, 'g'), imgTag);
-            });
-            htmlBody += '</body></html>';
+        let rawMessageLines = [
+          `To: ${row.email}`,
+          `Subject: ${finalSubject}`,
+          'MIME-Version: 1.0',
+          'Content-Type: multipart/related; boundary="boundary"',
+          '',
+          '--boundary',
+          'Content-Type: text/html; charset=utf-8',
+          '',
+          htmlBody
+        ];
 
-            let rawMessageLines = [
-              `To: ${row.email}`,
-              `Subject: ${finalSubject}`,
-              'MIME-Version: 1.0',
-              'Content-Type: multipart/related; boundary="boundary"',
-              '',
-              '--boundary',
-              'Content-Type: text/html; charset=utf-8',
-              '',
-              htmlBody
-            ];
-
-            emailImages.forEach(img => {
-              rawMessageLines = [
-                ...rawMessageLines,
-                '',
-                '--boundary',
-                `Content-Type: ${img.mimeType}`,
-                'Content-Transfer-Encoding: base64',
-                `Content-ID: <${img.cid}>`,
-                'Content-Disposition: inline',
-                '',
-                img.base64
-              ];
-            });
-
-            rawMessageLines = [
-              ...rawMessageLines,
-              '',
-              '--boundary--'
-            ];
-
-            const rawMessage = rawMessageLines.join('\r\n');
-            const encoded = Buffer.from(rawMessage)
-              .toString('base64')
-              .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-            await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
-            sent.push(row.email);
-          } catch (err) {
-            console.error('Send error:', err.message);
-          }
-          await new Promise(r => setTimeout(r, 1100));
-        }
-        return sent.length;
-      };
-
-      const sentA = await sendBatch(groupA, templateA);
-      const sentB = await sendBatch(groupB, templateB);
-
-      return NextResponse.json({ success: true, a: { sent: sentA }, b: { sent: sentB } });
-    } else {
-      const sent = [];
-      for (const row of validRecipients) {
-        try {
-          const finalSubject = replaceTemplateVars(templateA.subject, row, fieldMappings, senderName);
-          let finalBody = replaceTemplateVars(templateA.body, row, fieldMappings, senderName);
-
-          const clickId = `click_${uuidv4()}`;
-          finalBody = finalBody.replace(
-            /(https?:\/\/[^\s]+)/g,
-            (url) => `${url}?clid=${clickId}`
-          );
-
-          await setDoc(doc(db, 'clicks', clickId), {
-            email: row.email,
-            userId: 'anon',
-            count: 0,
-            createdAt: new Date().toISOString()
-          });
-
-          let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
-          emailImages.forEach(img => {
-            const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
-            htmlBody = htmlBody.replace(new RegExp(`{{image\\d}}`, 'g'), imgTag);
-          });
-          htmlBody += '</body></html>';
-
-          let rawMessageLines = [
-            `To: ${row.email}`,
-            `Subject: ${finalSubject}`,
-            'MIME-Version: 1.0',
-            'Content-Type: multipart/related; boundary="boundary"',
-            '',
-            '--boundary',
-            'Content-Type: text/html; charset=utf-8',
-            '',
-            htmlBody
-          ];
-
-          emailImages.forEach(img => {
-            rawMessageLines = [
-              ...rawMessageLines,
-              '',
-              '--boundary',
-              `Content-Type: ${img.mimeType}`,
-              'Content-Transfer-Encoding: base64',
-              `Content-ID: <${img.cid}>`,
-              'Content-Disposition: inline',
-              '',
-              img.base64
-            ];
-          });
-
+        emailImages.forEach(img => {
           rawMessageLines = [
             ...rawMessageLines,
             '',
-            '--boundary--'
+            '--boundary',
+            `Content-Type: ${img.mimeType}`,
+            'Content-Transfer-Encoding: base64',
+            `Content-ID: <${img.cid}>`,
+            'Content-Disposition: inline',
+            '',
+            img.base64
           ];
+        });
 
-          const rawMessage = rawMessageLines.join('\r\n');
-          const encoded = Buffer.from(rawMessage)
-            .toString('base64')
-            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        rawMessageLines = [
+          ...rawMessageLines,
+          '',
+          '--boundary--'
+        ];
 
-          await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
-          sent.push(row.email);
-        } catch (err) {
-          console.error('Send error:', err.message);
-        }
-        await new Promise(r => setTimeout(r, 1100));
+        const rawMessage = rawMessageLines.join('\r\n');
+        const encoded = Buffer.from(rawMessage)
+          .toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+        await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
+        sent.push(row.email);
+      } catch (err) {
+        console.error('Send error:', err.message);
       }
-      return NextResponse.json({ success: true, sent: sent.length, total: validRecipients.length });
+      await new Promise(r => setTimeout(r, 1100));
     }
+    return NextResponse.json({ success: true, sent: sent.length, total: validRecipients.length });
   } catch (error) {
     console.error('Send API error:', error);
     return NextResponse.json({ error: 'Failed to send' }, { status: 500 });
