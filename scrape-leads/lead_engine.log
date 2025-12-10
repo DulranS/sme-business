@@ -13,3 +13,95 @@
 2025-10-19 02:47:28,186 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
 2025-10-19 02:47:28,187 | INFO     | ✅ Scraping done. Total places: 0 | API calls: 0
 2025-10-19 02:47:28,187 | WARNING  | 🔍 No qualifying businesses found.
+2025-12-09 17:25:56,373 | INFO     | 🚀 GLOBAL B2B LEAD ENGINE — STARTED
+2025-12-09 17:25:56,373 | INFO     | ======================================================================
+2025-12-09 17:25:56,373 | INFO     | 🌍 Target Location: Colombo, Sri Lanka
+2025-12-09 17:25:56,373 | INFO     | 🗣️  Language: EN
+2025-12-09 17:25:56,376 | INFO     | 📞 Phone Format: +94XXXXXXXXX
+2025-12-09 17:25:56,376 | INFO     | ======================================================================
+2025-12-09 17:25:56,376 | INFO     | 📦 Loaded cache: 0 known businesses
+2025-12-09 17:25:56,377 | INFO     | 📅 Using search pool: week_1
+2025-12-09 17:25:56,377 | INFO     | API queries_quota: 60
+2025-12-09 17:25:56,377 | INFO     | 🔍 Starting discovery in Colombo, Sri Lanka...
+2025-12-09 17:25:56,377 | INFO     | 📍 Coordinates: 6.8603, 79.9130
+2025-12-09 17:25:56,377 | INFO     | 🔎 Using 5 search queries
+2025-12-09 17:25:56,377 | INFO     | [1/5] Query: 'marketing agency Colombo'
+2025-12-09 17:25:56,377 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:25:56,377 | INFO     | [2/5] Query: 'digital marketing Colombo'
+2025-12-09 17:25:56,377 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:25:56,377 | INFO     | [3/5] Query: 'software company Colombo'
+2025-12-09 17:25:56,377 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:25:56,377 | INFO     | [4/5] Query: 'IT consulting Colombo'
+2025-12-09 17:25:56,377 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:25:56,377 | INFO     | [5/5] Query: 'web development Colombo'
+2025-12-09 17:25:56,377 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:25:56,377 | INFO     | 📊 Discovery complete: 0 new | API calls: 0
+2025-12-09 17:25:56,380 | WARNING  | 🔍 No new businesses discovered
+2025-12-09 17:26:51,128 | INFO     | 🚀 GLOBAL B2B LEAD ENGINE — STARTED
+2025-12-09 17:26:51,128 | INFO     | ======================================================================
+2025-12-09 17:26:51,128 | INFO     | 🌍 Target Location: Colombo, Sri Lanka
+2025-12-09 17:26:51,128 | INFO     | 🗣️  Language: EN
+2025-12-09 17:26:51,128 | INFO     | 📞 Phone Format: +94XXXXXXXXX
+2025-12-09 17:26:51,128 | INFO     | ======================================================================
+2025-12-09 17:26:51,128 | INFO     | 📦 Loaded cache: 0 known businesses
+2025-12-09 17:26:51,139 | INFO     | 📅 Using search pool: week_4
+2025-12-09 17:26:51,139 | INFO     | API queries_quota: 60
+2025-12-09 17:26:51,139 | INFO     | 🔍 Starting discovery in Colombo, Sri Lanka...
+2025-12-09 17:26:51,139 | INFO     | 📍 Coordinates: 6.8603, 79.9130
+2025-12-09 17:26:51,139 | INFO     | 🔎 Using 5 search queries
+2025-12-09 17:26:51,139 | INFO     | [1/5] Query: 'IT consulting Colombo'
+2025-12-09 17:26:51,139 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:51,139 | INFO     | [2/5] Query: 'web development Colombo'
+2025-12-09 17:26:51,139 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:51,139 | INFO     | [3/5] Query: 'business consulting Colombo'
+2025-12-09 17:26:51,142 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:51,142 | INFO     | [4/5] Query: 'law firm Colombo'
+2025-12-09 17:26:51,142 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:51,142 | INFO     | [5/5] Query: 'accounting firm Colombo'
+2025-12-09 17:26:51,142 | ERROR    |    ❌ Search error: places() got an unexpected keyword argument 'timeout'
+2025-12-09 17:26:51,142 | INFO     | 📊 Discovery complete: 0 new | API calls: 0
+2025-12-09 17:26:51,142 | WARNING  | 🔍 No new businesses discovered
+2025-12-09 17:31:58,890 | INFO     | 🚀 GLOBAL B2B LEAD ENGINE — STARTED
+2025-12-09 17:31:58,890 | INFO     | ======================================================================
+2025-12-09 17:31:58,890 | INFO     | 🌍 Target Location: Colombo, Sri Lanka
+2025-12-09 17:31:58,890 | INFO     | 🗣️  Language: EN
+2025-12-09 17:31:58,890 | INFO     | 📞 Phone Format: +94XXXXXXXXX
+2025-12-09 17:31:58,890 | INFO     | ======================================================================
+2025-12-09 17:31:58,890 | INFO     | 📦 Loaded cache: 0 known businesses
+2025-12-09 17:31:58,900 | INFO     | 📅 Using search pool: week_2
+2025-12-09 17:31:58,900 | ERROR    | 💥 CRITICAL ERROR: Client.__init__() got an unexpected keyword argument 'client_session'
+Traceback (most recent call last):
+  File "C:\Users\dulra\Downloads\frontendTeki\sme-business\scrape-leads\lean_business_scraper.py", line 667, in main
+    places, search_calls, cache = discover_businesses(LOCATION, search_terms, cache)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dulra\Downloads\frontendTeki\sme-business\scrape-leads\lean_business_scraper.py", line 454, in discover_businesses
+    gmaps = create_gmaps_client(GOOGLE_API_KEY, timeout=10)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dulra\Downloads\frontendTeki\sme-business\scrape-leads\lean_business_scraper.py", line 249, in create_gmaps_client
+    return googlemaps.Client(
+           ^^^^^^^^^^^^^^^^^^
+TypeError: Client.__init__() got an unexpected keyword argument 'client_session'
+2025-12-09 17:35:27,642 | INFO     | 🚀 GLOBAL B2B LEAD ENGINE — STARTED
+2025-12-09 17:35:27,642 | INFO     | ======================================================================
+2025-12-09 17:35:27,642 | INFO     | 🌍 Target Location: Colombo, Sri Lanka
+2025-12-09 17:35:27,642 | INFO     | 🗣️  Language: EN
+2025-12-09 17:35:27,642 | INFO     | 📞 Phone Format: +94XXXXXXXXX
+2025-12-09 17:35:27,642 | INFO     | ======================================================================
+2025-12-09 17:35:27,642 | INFO     | 📦 Loaded cache: 0 known businesses
+2025-12-09 17:35:27,652 | INFO     | 📅 Using search pool: week_3
+2025-12-09 17:35:27,655 | INFO     | API queries_quota: 60
+2025-12-09 17:35:27,655 | INFO     | 🔍 Starting discovery in Colombo, Sri Lanka...
+2025-12-09 17:35:27,655 | INFO     | 📍 Coordinates: 6.8603, 79.9130
+2025-12-09 17:35:27,656 | INFO     | 🔎 Using 5 search queries
+2025-12-09 17:35:27,656 | INFO     | [1/5] Query: 'advertising agency Colombo'
+2025-12-09 17:35:28,162 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-12-09 17:35:28,162 | INFO     | [2/5] Query: 'design agency Colombo'
+2025-12-09 17:35:28,232 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-12-09 17:35:28,232 | INFO     | [3/5] Query: 'marketing agency near Colombo'
+2025-12-09 17:35:28,332 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-12-09 17:35:28,332 | INFO     | [4/5] Query: 'best marketing agency Colombo'
+2025-12-09 17:35:28,415 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-12-09 17:35:28,415 | INFO     | [5/5] Query: 'top digital marketing Colombo'
+2025-12-09 17:35:28,480 | ERROR    |    ❌ Search error: REQUEST_DENIED (You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable Learn more at https://developers.google.com/maps/gmp-get-started)
+2025-12-09 17:35:28,480 | INFO     | 📊 Discovery complete: 0 new | API calls: 0
+2025-12-09 17:35:28,480 | WARNING  | 🔍 No new businesses discovered
