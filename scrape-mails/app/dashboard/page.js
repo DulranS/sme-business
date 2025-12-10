@@ -170,76 +170,88 @@ export default function Dashboard() {
   }, [saveSettings, user?.uid]);
 
   // ============= CSV UPLOAD =============
-  const handleCsvUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+// ============= CSV UPLOAD (with auto WhatsApp links) =============
+const handleCsvUpload = (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target.result;
-      setCsvContent(content);
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const content = e.target.result;
+    setCsvContent(content);
 
-      const lines = content.split('\n').filter(line => line.trim() !== '');
-      if (lines.length < 2) {
-        alert('CSV must have headers and data rows.');
-        return;
+    const lines = content.split('\n').filter(line => line.trim() !== '');
+    if (lines.length < 2) {
+      alert('CSV must have headers and data rows.');
+      return;
+    }
+
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    setCsvHeaders(headers);
+
+    const allVars = [...new Set([
+      ...extractTemplateVariables(templateA.subject),
+      ...extractTemplateVariables(templateA.body),
+      ...extractTemplateVariables(templateB.subject),
+      ...extractTemplateVariables(templateB.body),
+      ...extractTemplateVariables(whatsappTemplate),
+      'sender_name'
+    ])];
+
+    const initialMappings = {};
+    allVars.forEach(varName => {
+      if (headers.includes(varName)) {
+        initialMappings[varName] = varName;
       }
+    });
+    if (headers.includes('email')) {
+      initialMappings.email = 'email';
+    }
+    initialMappings.sender_name = 'sender_name';
 
-      const headers = parseCsvRow(lines[0]).map(h => h.trim());
-      setCsvHeaders(headers);
+    setFieldMappings(initialMappings);
 
-      const allVars = [...new Set([
-        ...extractTemplateVariables(templateA.subject),
-        ...extractTemplateVariables(templateA.body),
-        ...extractTemplateVariables(templateB.subject),
-        ...extractTemplateVariables(templateB.body),
-        ...extractTemplateVariables(whatsappTemplate),
-        'sender_name'
-      ])];
+    let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
+    const validContacts = [];
 
-      const initialMappings = {};
-      allVars.forEach(varName => {
-        if (headers.includes(varName)) {
-          initialMappings[varName] = varName;
-        }
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
+
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
       });
-      if (headers.includes('email')) {
-        initialMappings.email = 'email';
+
+      if (isValidEmail(row.email)) {
+        if (row.lead_quality === 'HOT') hotEmails++;
+        else if (row.lead_quality === 'WARM') warmEmails++;
       }
-      initialMappings.sender_name = 'sender_name';
 
-      setFieldMappings(initialMappings);
-
-      let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCsvRow(lines[i]);
-        if (values.length !== headers.length) continue;
-
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
+      const rawPhone = row.whatsapp_number || row.phone_raw;
+      const formattedPhone = formatForDialing(rawPhone);
+      if (formattedPhone) {
+        whatsappCount++;
+        // ✅ Build WhatsApp contacts immediately
+        const message = renderPreviewText(whatsappTemplate, row, fieldMappings, senderName);
+        validContacts.push({
+          business: row.business_name || 'Business',
+          phone: formattedPhone,
+          url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`
         });
-
-        if (isValidEmail(row.email)) {
-          if (row.lead_quality === 'HOT') hotEmails++;
-          else if (row.lead_quality === 'WARM') warmEmails++;
-        }
-
-        const rawPhone = row.whatsapp_number || row.phone_raw;
-        if (formatForDialing(rawPhone)) {
-          whatsappCount++;
-        }
-
-        if (!firstValid) firstValid = row;
       }
 
-      setPreviewRecipient(firstValid);
-      setValidEmails(leadQualityFilter === 'HOT' ? hotEmails : 
-                    leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
-      setValidWhatsApp(whatsappCount);
-    };
-    reader.readAsText(file);
+      if (!firstValid) firstValid = row;
+    }
+
+    setPreviewRecipient(firstValid);
+    setValidEmails(leadQualityFilter === 'HOT' ? hotEmails : 
+                  leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
+    setValidWhatsApp(whatsappCount);
+    setWhatsappLinks(validContacts); // ✅ Auto-set WhatsApp links
   };
+  reader.readAsText(file);
+};
 
   // ============= IMAGE UPLOAD =============
   const handleImageUpload = (e) => {
@@ -369,37 +381,7 @@ export default function Dashboard() {
     }
   };
 
-  // ============= WHATSAPP LINKS =============
-  const handleGenerateWhatsAppLinks = async () => {
-    if (!csvContent || !whatsappTemplate.trim() || !senderName.trim() || validWhatsApp === 0) {
-      alert('Check CSV, WhatsApp message, sender name, and valid numbers.');
-      return;
-    }
-    setIsSending(true); setStatus('Generating WhatsApp links...');
-    try {
-      const res = await fetch('/api/whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csvContent,
-          whatsappTemplate,
-          senderName,
-          fieldMappings
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setWhatsappLinks(data.contacts);
-        setStatus(`✅ Generated ${data.total} WhatsApp links`);
-      } else {
-        setStatus(`❌ ${data.error}`);
-      }
-    } catch (err) {
-      setStatus(`❌ ${err.message}`);
-    } finally {
-      setIsSending(false);
-    }
-  };
+
 
   if (loadingAuth) {
     return (
@@ -623,17 +605,6 @@ export default function Dashboard() {
                 }`}
               >
                 {abTestMode ? '🧪 Send A/B Test' : '📧 Send Emails'} ({validEmails})
-              </button>
-              <button
-                onClick={handleGenerateWhatsAppLinks}
-                disabled={isSending || !csvContent || !senderName.trim() || validWhatsApp === 0}
-                className={`w-full py-2.5 rounded font-bold ${
-                  isSending || !csvContent || !senderName.trim() || validWhatsApp === 0
-                    ? 'bg-gray-400'
-                    : 'bg-blue-600 text-white'
-                }`}
-              >
-                📱 Generate WhatsApp Links ({validWhatsApp})
               </button>
             </div>
 
