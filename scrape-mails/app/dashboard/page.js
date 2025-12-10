@@ -698,8 +698,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ✅ FULL WHATSAPP LINKS WITH CALL BUTTONS (RESTORED) */}
-{/* ✅ MOBILE-OPTIMIZED WHATSAPP LINKS */}
 {whatsappLinks.length > 0 && (
   <div className="bg-white p-4 rounded-xl shadow">
     <div className="flex justify-between items-center mb-3">
@@ -717,13 +715,18 @@ export default function Dashboard() {
           key={i}
           className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-50 rounded-lg border border-gray-200"
         >
-          <div className="mb-2 sm:mb-0">
-            <span className="text-gray-800 font-medium block sm:inline">
-              {link.business || 'Business'}
-            </span>
-            <span className="text-xs text-gray-500 block sm:hidden mt-1">
-              {link.phone}
-            </span>
+          <div className="mb-2 sm:mb-0 w-full sm:w-auto">
+            <div className="flex items-center">
+              <span className="text-gray-800 font-medium">
+                {link.business || 'Business'}
+              </span>
+            </div>
+            <div className="flex items-center mt-1 text-xs text-gray-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.74 21 3 14.26 3 6V5z" />
+              </svg>
+              +{link.phone}
+            </div>
           </div>
           <div className="flex space-x-2 w-full sm:w-auto">
             <a
