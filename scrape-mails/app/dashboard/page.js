@@ -699,40 +699,56 @@ export default function Dashboard() {
             </div>
 
             {/* ✅ FULL WHATSAPP LINKS WITH CALL BUTTONS (RESTORED) */}
-            {whatsappLinks.length > 0 && (
-              <div className="bg-white p-6 rounded-xl shadow">
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-xl font-bold">10. WhatsApp Links ({whatsappLinks.length})</h2>
-                  <button onClick={() => setWhatsappLinks([])} className="text-sm text-red-600">Clear</button>
-                </div>
-                <div className="max-h-60 overflow-y-auto space-y-2">
-                  {whatsappLinks.map((link, i) => (
-                    <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
-                      <span className="text-gray-700 truncate max-w-[100px]">{link.business}</span>
-                      <div className="flex gap-2">
-                        <a
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 text-xs"
-                        >
-                          Open
-                        </a>
-                        <button
-                          onClick={() => handleCall(link.phone)}
-                          className="text-green-600 text-xs flex items-center"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.74 21 3 14.26 3 6V5z" />
-                          </svg>
-                          Call
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+{/* ✅ MOBILE-OPTIMIZED WHATSAPP LINKS */}
+{whatsappLinks.length > 0 && (
+  <div className="bg-white p-4 rounded-xl shadow">
+    <div className="flex justify-between items-center mb-3">
+      <h2 className="text-lg font-bold text-gray-800">WhatsApp Contacts ({whatsappLinks.length})</h2>
+      <button
+        onClick={() => setWhatsappLinks([])}
+        className="text-xs text-red-600 font-medium px-2 py-1 rounded hover:bg-red-50"
+      >
+        Clear All
+      </button>
+    </div>
+    <div className="max-h-96 overflow-y-auto space-y-3">
+      {whatsappLinks.map((link, i) => (
+        <div
+          key={i}
+          className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-50 rounded-lg border border-gray-200"
+        >
+          <div className="mb-2 sm:mb-0">
+            <span className="text-gray-800 font-medium block sm:inline">
+              {link.business || 'Business'}
+            </span>
+            <span className="text-xs text-gray-500 block sm:hidden mt-1">
+              {link.phone}
+            </span>
+          </div>
+          <div className="flex space-x-2 w-full sm:w-auto">
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 sm:flex-none text-center text-white bg-blue-600 hover:bg-blue-700 text-sm font-medium py-2 px-3 rounded-lg transition"
+            >
+              WhatsApp
+            </a>
+            <button
+              onClick={() => handleCall(link.phone)}
+              className="flex-1 sm:flex-none text-center text-white bg-green-600 hover:bg-green-700 text-sm font-medium py-2 px-3 rounded-lg transition flex items-center justify-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.74 21 3 14.26 3 6V5z" />
+              </svg>
+              Call
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
           </div>
         </div>
       </main>
