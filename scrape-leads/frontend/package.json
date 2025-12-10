@@ -14,8 +14,8 @@
     "google-libphonenumber": "^3.2.43",
     "libphonenumber-js": "^1.12.24",
     "next": "16.0.7",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
