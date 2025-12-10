@@ -18,7 +18,7 @@ const db = getFirestore();
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const clid = searchParams.get('clid');
-  const url = searchParams.get('url');
+  const url = searchParams.get('url') || '/';
 
   if (clid) {
     try {
@@ -26,13 +26,10 @@ export async function GET(request) {
         count: increment(1),
         lastClick: new Date().toISOString()
       });
-      
-      // Redirect to original URL
-      return NextResponse.redirect(url, 302);
     } catch (e) {
       console.error('Click log error:', e);
     }
   }
 
-  return NextResponse.redirect(url || 'https://yourdomain.com', 302);
+  return NextResponse.redirect(url, 302);
 }
