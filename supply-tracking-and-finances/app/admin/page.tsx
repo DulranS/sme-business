@@ -71,7 +71,7 @@ interface Order {
   description: string;
   moq: string;
   urgency: "low" | "medium" | "high";
-  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship";
+  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship" | "shipped"; // 👈 ADD "shipped"
   images: string;
   created_at: string;
   supplier_name?: string;
@@ -79,11 +79,7 @@ interface Order {
   supplier_description?: string;
   customer_price?: string;
   last_contacted?: string;
-  inventory_status?:
-    | "in-stock"
-    | "low-stock"
-    | "out-of-stock"
-    | "reorder-needed";
+  inventory_status?: "in-stock" | "low-stock" | "out-of-stock" | "reorder-needed";
   shipping_carrier?: string;
   tracking_number?: string;
   estimated_delivery?: string;
@@ -95,7 +91,6 @@ interface Order {
   route_optimized?: boolean;
   category?: string;
   bids?: string;
-  // === NEW: Recurring Order Fields ===
   is_recurring?: boolean;
   recurring_interval?: "weekly" | "monthly" | "quarterly";
   next_occurrence?: string;
@@ -439,7 +434,8 @@ const getStatusColor = (status: Order["status"]) => {
     "in-progress": "bg-blue-100 text-blue-800 border-blue-300",
     completed: "bg-green-100 text-green-800 border-green-300",
     cancelled: "bg-red-100 text-red-800 border-red-300",
-    ship: "bg-purple-100 text-purple-800 border-purple-300",
+    ship: "bg-blue-100 text-blue-800 border-blue-300",
+    shipped: "bg-purple-100 text-purple-800 border-purple-300", // 👈 ADD
   };
   return colors[status] || "bg-gray-100 text-gray-800 border-gray-300";
 };
@@ -450,6 +446,7 @@ const getStatusIcon = (status: Order["status"]) => {
     completed: <CheckCircle className="w-4 h-4" />,
     cancelled: <XCircle className="w-4 h-4" />,
     ship: <Package className="w-4 h-4" />,
+    shipped: <Truck className="w-4 h-4" />,
   };
   return icons[status] || <AlertCircle className="w-4 h-4" />;
 };
@@ -552,12 +549,12 @@ const calculateFinancials = (orders: Order[]): FinancialSummary => {
       if (order.refund_status && order.refund_status !== "none") {
         refunds++;
       }
-    } else if (order.status === "ship") {
-      totalCost += supplierPrice + logisticsCost;
-      cashOutflow += supplierPrice + logisticsCost;
-      totalLogisticsCost += logisticsCost;
-      shippedValue += customerPrice;
-    } else if (order.status === "pending") {
+    } else if (order.status === "ship" || order.status === "shipped") {
+  totalCost += supplierPrice + logisticsCost;
+  cashOutflow += supplierPrice + logisticsCost;
+  totalLogisticsCost += logisticsCost;
+  shippedValue += customerPrice;
+} else if (order.status === "pending") {
       pendingValue += customerPrice;
     } else if (order.status === "in-progress") {
       inProgressValue += customerPrice;
@@ -676,6 +673,7 @@ const StatusUpdater: React.FC<{
     "pending",
     "in-progress",
     "ship",
+    "shipped",      // 👈 ADD
     "completed",
     "cancelled",
   ];
@@ -2496,11 +2494,11 @@ const handleCSVImport = (event: React.ChangeEvent<HTMLInputElement>) => {
           ? (row.urgency?.toLowerCase() as Order["urgency"])
           : "medium";
 
-        const status = [
-          "pending", "in-progress", "completed", "cancelled", "ship"
-        ].includes(row.status?.toLowerCase() || "")
-          ? (row.status?.toLowerCase() as Order["status"])
-          : "pending";
+const status = [
+  "pending", "in-progress", "completed", "cancelled", "ship", "shipped"
+].includes(row.status?.toLowerCase() || "")
+  ? (row.status?.toLowerCase() as Order["status"])
+  : "pending";
 
         newOrders.push({
           customer_name: row.customer_name,

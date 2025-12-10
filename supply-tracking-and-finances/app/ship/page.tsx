@@ -28,7 +28,7 @@ interface Order {
   description: string;
   moq: string;
   urgency: "low" | "medium" | "high";
-  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship" | "dispatched";
+  status: "pending" | "in-progress" | "completed" | "cancelled" | "ship" | "dispatched" | "shipped";
   images: string;
   created_at: string;
   supplier_price?: string;
@@ -257,7 +257,7 @@ const ShipOrdersPage: React.FC = () => {
         const shipOrders: Order[] = await supabase
           .from("orders")
           .select("*")
-          .eq("status", "ship")
+          .eq("status", "shipped")
           .execute();
 
         setOrders(shipOrders);
@@ -370,7 +370,7 @@ const markAsDispatched = async (order: Order) => {
   // ✅ CRITICAL: Only "dispatched" if FULLY shipped
   const effectiveMOQ = totalMOQ > 0 ? totalMOQ : 1;
   const isFullyDispatched = newShipped >= effectiveMOQ;
-  const newStatus = isFullyDispatched ? "dispatched" : "ship";
+  const newStatus = isFullyDispatched ? "dispatched" : "shipped";
 
   try {
     await sendDiscordWebhookOnDispatch(order, toShip, carrier, tracking);
