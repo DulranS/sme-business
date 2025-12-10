@@ -22,7 +22,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// ============= DEFAULT TEMPLATES (WITH A/B TESTING) =============
+// ============= DEFAULT TEMPLATES =============
 const DEFAULT_TEMPLATE_A = {
   subject: '🚀 Special Offer for {{business_name}}',
   body: 'Hi {{business_name}},\n\nWe noticed your business at {{address}} and believe our [service] could help you grow faster. As a limited-time offer, use code **WELCOME20** for 20% off your first purchase.\n\nBest regards,\n{{sender_name}}\nGrowthCo'
@@ -106,9 +106,9 @@ export default function Dashboard() {
   const [csvContent, setCsvContent] = useState('');
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [senderName, setSenderName] = useState('');
-  const [abTestMode, setAbTestMode] = useState(false); // ✅ A/B TESTING
+  const [abTestMode, setAbTestMode] = useState(false);
   const [templateA, setTemplateA] = useState(DEFAULT_TEMPLATE_A);
-  const [templateB, setTemplateB] = useState(DEFAULT_TEMPLATE_B); // ✅ A/B TESTING
+  const [templateB, setTemplateB] = useState(DEFAULT_TEMPLATE_B);
   const [whatsappTemplate, setWhatsappTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
   const [fieldMappings, setFieldMappings] = useState({});
   const [previewRecipient, setPreviewRecipient] = useState(null);
@@ -159,10 +159,10 @@ export default function Dashboard() {
         const data = snap.data();
         setSenderName(data.senderName || 'Team');
         setTemplateA(data.templateA || DEFAULT_TEMPLATE_A);
-        setTemplateB(data.templateB || DEFAULT_TEMPLATE_B); // ✅ A/B
+        setTemplateB(data.templateB || DEFAULT_TEMPLATE_B);
         setWhatsappTemplate(data.whatsappTemplate || DEFAULT_WHATSAPP_TEMPLATE);
         setFieldMappings(data.fieldMappings || {});
-        setAbTestMode(data.abTestMode || false); // ✅ A/B
+        setAbTestMode(data.abTestMode || false);
       } else {
         setSenderName(auth.currentUser?.displayName?.split(' ')[0] || 'Team');
       }
@@ -190,12 +190,11 @@ export default function Dashboard() {
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       setCsvHeaders(headers);
 
-      // ✅ AUTO-FIELD MAPPING (CUSTOM BINDING)
       const allVars = [...new Set([
         ...extractTemplateVariables(templateA.subject),
         ...extractTemplateVariables(templateA.body),
-        ...extractTemplateVariables(templateB.subject), // ✅ A/B
-        ...extractTemplateVariables(templateB.body),     // ✅ A/B
+        ...extractTemplateVariables(templateB.subject),
+        ...extractTemplateVariables(templateB.body),
         ...extractTemplateVariables(whatsappTemplate),
         'sender_name'
       ])];
@@ -224,7 +223,6 @@ export default function Dashboard() {
           row[header] = values[idx] || '';
         });
 
-        // ✅ LEAD SCORING
         let score = 50;
         if (row.lead_quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
@@ -241,7 +239,6 @@ export default function Dashboard() {
         const formattedPhone = formatForDialing(rawPhone);
         if (formattedPhone) {
           whatsappCount++;
-          // ✅ CUSTOM BINDING IN WHATSAPP
           const message = renderPreviewText(whatsappTemplate, row, fieldMappings, senderName);
           validContacts.push({
             business: row.business_name || 'Business',
@@ -254,7 +251,6 @@ export default function Dashboard() {
         if (!firstValid) firstValid = row;
       }
 
-      // ✅ SORT BY SCORE (HIGHEST FIRST)
       validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
 
       setPreviewRecipient(firstValid);
@@ -279,7 +275,6 @@ export default function Dashboard() {
     setEmailImages(newImages);
   };
 
-  // ============= FIELD MAPPING HANDLER =============
   const handleMappingChange = (varName, csvColumn) => {
     setFieldMappings(prev => ({ ...prev, [varName]: csvColumn }));
   };
@@ -355,9 +350,9 @@ export default function Dashboard() {
           senderName,
           fieldMappings,
           accessToken,
-          abTestMode, // ✅ A/B TESTING
+          abTestMode,
           templateA,
-          templateB, // ✅ A/B TESTING
+          templateB,
           leadQualityFilter,
           emailImages: imagesWithBase64
         })
@@ -401,7 +396,6 @@ export default function Dashboard() {
     );
   }
 
-  // ============= ALL VARS FOR FIELD MAPPING =============
   const allVars = [...new Set([
     ...extractTemplateVariables(templateA.subject),
     ...extractTemplateVariables(templateA.body),
@@ -412,7 +406,6 @@ export default function Dashboard() {
     ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
   ])];
 
-  // ============= MAIN UI =============
   return (
     <div className="min-h-screen bg-gray-50">
       <Head><title>B2B Growth Engine | Strategic Outreach</title></Head>
@@ -427,7 +420,7 @@ export default function Dashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* LEFT: CSV & MAPPINGS */}
+          {/* LEFT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">1. Upload Leads CSV</h2>
@@ -477,7 +470,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* MIDDLE: TEMPLATES */}
+          {/* MIDDLE */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">3. Your Name (Sender)</h2>
@@ -611,7 +604,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* RIGHT: PREVIEW & CONTACTS */}
+          {/* RIGHT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">7. Email Preview</h2>
