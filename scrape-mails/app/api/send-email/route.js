@@ -1,9 +1,10 @@
 // app/api/send-email/route.js
 import { NextResponse } from 'next/server';
-import { google } from '@googleapis/gmail';
+import { google } from '@googleapis/gmail'; // ✅ MUST be this exact line
 import { parse as csvParse } from 'csv-parse/sync';
 import { v4 as uuidv4 } from 'uuid';
 
+// Firebase (client-safe — no admin)
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 
