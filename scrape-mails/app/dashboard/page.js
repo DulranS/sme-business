@@ -993,12 +993,12 @@ export default function Dashboard() {
                           </div>
                           <div className="flex flex-col items-end space-y-1">
                             <div className="flex space-x-1">
-                              <button
+                              {/* <button
                                 onClick={() => navigator.clipboard.writeText(`+${link.phone}`)}
                                 className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded"
                               >
                                 Copy
-                              </button>
+                              </button> */}
                               <button
                                 onClick={() => handleCall(link.phone)}
                                 className="text-xs bg-green-600 text-white px-2 py-1 rounded"
@@ -1012,7 +1012,7 @@ export default function Dashboard() {
                               >
                                 WhatsApp
                               </a>
-                              {link.place_id && (
+                              {/* {link.place_id && (
                                 <a
                                   href={`https://search.google.com/local/writereview?placeid=${link.place_id}`}
                                   target="_blank"
@@ -1020,14 +1020,14 @@ export default function Dashboard() {
                                 >
                                   Google
                                 </a>
-                              )}
-                              <a
+                              )} */}
+                              {/* <a
                                 href={`https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(link.business)}`}
                                 target="_blank"
                                 className="text-xs bg-blue-800 text-white px-2 py-1 rounded"
                               >
                                 LinkedIn
-                              </a>
+                              </a> */}
                             </div>
                             
                             {smsConsent && (
