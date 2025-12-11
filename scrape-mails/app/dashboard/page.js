@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 
@@ -33,8 +33,11 @@ const DEFAULT_TEMPLATE_B = {
   body: 'Hello {{business_name}},\n\nWe’ve helped businesses like yours increase revenue by 30%+ in 90 days.\n\nLet’s schedule a quick 15-min call to explore if we’re a fit?\n\nBest,\n{{sender_name}}\nGrowthCo'
 };
 
-const DEFAULT_WHATSAPP_TEMPLATE =
+const DEFAULT_WHATSAPP_TEMPLATE = 
   'Hi {{business_name}}! 👋\n\nWe’re {{sender_name}} from GrowthCo. Saw your business at {{address}}.\n\nWould you be open to a quick chat about how we can help grow your business?\n\nReply YES to connect!';
+
+const DEFAULT_SMS_TEMPLATE = 
+  'Hi {{business_name}}! 🚀 GrowthCo here. Saw your business at {{address}}. Use WELCOME20 for 20% off! Reply STOP to opt out.';
 
 // ============= PHONE HANDLING =============
 function formatForDialing(raw) {
@@ -45,6 +48,49 @@ function formatForDialing(raw) {
   }
   return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;
 }
+
+const handleSendSMS = async (contact) => {
+  if (!smsConsent) {
+    alert('Please enable SMS consent before sending messages.');
+    return;
+  }
+
+  const confirmed = confirm(`Send SMS to ${contact.business} at +${contact.phone}?`);
+  if (!confirmed) return;
+
+  try {
+    const message = renderPreviewText(
+      smsTemplate,
+      { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
+      fieldMappings,
+      senderName
+    );
+
+    const response = await fetch('/api/send-sms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: contact.phone,
+        message,
+        userId: user.uid
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      alert(`✅ SMS sent to ${contact.business}!`);
+      setLastSent(prev => ({ ...prev, [contact.email]: new Date().toISOString() }));
+      if (dealStage[contact.email] === 'new') {
+        updateDealStage(contact.email, 'contacted');
+      }
+    } else {
+      alert(`❌ SMS failed: ${data.error}`);
+    }
+  } catch (error) {
+    console.error('SMS send error:', error);
+    alert(`❌ Failed to send SMS: ${error.message}`);
+  }
+};
 
 const handleCall = (phone) => {
   if (!phone) return;
@@ -110,6 +156,7 @@ export default function Dashboard() {
   const [templateA, setTemplateA] = useState(DEFAULT_TEMPLATE_A);
   const [templateB, setTemplateB] = useState(DEFAULT_TEMPLATE_B);
   const [whatsappTemplate, setWhatsappTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
+  const [smsTemplate, setSmsTemplate] = useState(DEFAULT_SMS_TEMPLATE); // ✅ SMS TEMPLATE
   const [fieldMappings, setFieldMappings] = useState({});
   const [previewRecipient, setPreviewRecipient] = useState(null);
   const [validEmails, setValidEmails] = useState(0);
@@ -120,8 +167,12 @@ export default function Dashboard() {
   const [lastSent, setLastSent] = useState({});
   const [clickStats, setClickStats] = useState({});
   const [emailImages, setEmailImages] = useState([]);
+  const [dealStage, setDealStage] = useState({});
+  const [pipelineValue, setPipelineValue] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
+  const [smsConsent, setSmsConsent] = useState(false);
+  const [abResults, setAbResults] = useState({ a: { opens: 0, clicks: 0 }, b: { opens: 0, clicks: 0 } });
 
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   useEffect(() => {
@@ -137,6 +188,19 @@ export default function Dashboard() {
     return () => document.head.removeChild(script);
   }, []);
 
+  // ============= API CALLS =============
+  const loadAbResults = async () => {
+    try {
+      const q = query(collection(db, 'ab_results'), where('userId', '==', user.uid));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        setAbResults(snapshot.docs[0].data());
+      }
+    } catch (e) {
+      console.warn('AB results load failed:', e);
+    }
+  };
+
   const loadClickStats = async () => {
     try {
       const q = query(collection(db, 'clicks'), where('userId', '==', user.uid));
@@ -151,6 +215,24 @@ export default function Dashboard() {
     }
   };
 
+  const loadDeals = async () => {
+    try {
+      const q = query(collection(db, 'deals'), where('userId', '==', user.uid));
+      const snapshot = await getDocs(q);
+      const stages = {};
+      let totalValue = 0;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        stages[data.email] = data.stage || 'new';
+        if (data.stage !== 'won') totalValue += 5000;
+      });
+      setDealStage(stages);
+      setPipelineValue(totalValue);
+    } catch (e) {
+      console.warn('Deals load failed:', e);
+    }
+  };
+
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
@@ -161,8 +243,10 @@ export default function Dashboard() {
         setTemplateA(data.templateA || DEFAULT_TEMPLATE_A);
         setTemplateB(data.templateB || DEFAULT_TEMPLATE_B);
         setWhatsappTemplate(data.whatsappTemplate || DEFAULT_WHATSAPP_TEMPLATE);
+        setSmsTemplate(data.smsTemplate || DEFAULT_SMS_TEMPLATE); // ✅ LOAD SMS TEMPLATE
         setFieldMappings(data.fieldMappings || {});
         setAbTestMode(data.abTestMode || false);
+        setSmsConsent(data.smsConsent || false);
       } else {
         setSenderName(auth.currentUser?.displayName?.split(' ')[0] || 'Team');
       }
@@ -171,7 +255,33 @@ export default function Dashboard() {
     }
   };
 
-  // ============= CSV UPLOAD WITH CUSTOM BINDING + LEAD SCORING =============
+  // ============= SAVE SETTINGS =============
+  const saveSettings = useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const docRef = doc(db, 'users', user.uid, 'settings', 'templates');
+      await setDoc(docRef, {
+        senderName,
+        templateA,
+        templateB,
+        whatsappTemplate,
+        smsTemplate, // ✅ SAVE SMS TEMPLATE
+        fieldMappings,
+        abTestMode,
+        smsConsent
+      }, { merge: true });
+    } catch (error) {
+      console.warn('Failed to save settings:', error);
+    }
+  }, [user?.uid, senderName, templateA, templateB, whatsappTemplate, smsTemplate, fieldMappings, abTestMode, smsConsent]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const handler = setTimeout(() => saveSettings(), 1500);
+    return () => clearTimeout(handler);
+  }, [saveSettings, user?.uid]);
+
+  // ============= CSV UPLOAD =============
   const handleCsvUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -189,6 +299,7 @@ export default function Dashboard() {
 
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       setCsvHeaders(headers);
+      setPreviewRecipient(null);
 
       const allVars = [...new Set([
         ...extractTemplateVariables(templateA.subject),
@@ -196,6 +307,7 @@ export default function Dashboard() {
         ...extractTemplateVariables(templateB.subject),
         ...extractTemplateVariables(templateB.body),
         ...extractTemplateVariables(whatsappTemplate),
+        ...extractTemplateVariables(smsTemplate), // ✅ SMS VARIABLE EXTRACTION
         'sender_name'
       ])];
 
@@ -227,6 +339,8 @@ export default function Dashboard() {
         if (row.lead_quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
         if (parseInt(row.review_count) > 100) score += 10;
+        if (clickStats[row.email]?.count > 0) score += 20;
+        if (dealStage[row.email] === 'contacted') score += 10;
         score = Math.min(100, Math.max(0, score));
         newLeadScores[row.email] = score;
 
@@ -239,12 +353,15 @@ export default function Dashboard() {
         const formattedPhone = formatForDialing(rawPhone);
         if (formattedPhone) {
           whatsappCount++;
-          const message = renderPreviewText(whatsappTemplate, row, fieldMappings, senderName);
           validContacts.push({
             business: row.business_name || 'Business',
+            address: row.address || '',
             phone: formattedPhone,
             email: row.email,
-            url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`
+            place_id: row.place_id || '',
+            url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
+              renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
+            )}`
           });
         }
 
@@ -254,8 +371,8 @@ export default function Dashboard() {
       validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
 
       setPreviewRecipient(firstValid);
-      setValidEmails(leadQualityFilter === 'HOT' ? hotEmails :
-        leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
+      setValidEmails(leadQualityFilter === 'HOT' ? hotEmails : 
+                    leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
       setValidWhatsApp(whatsappCount);
       setWhatsappLinks(validContacts);
       setLeadScores(newLeadScores);
@@ -279,12 +396,60 @@ export default function Dashboard() {
     setFieldMappings(prev => ({ ...prev, [varName]: csvColumn }));
   };
 
+  // ============= DEAL STAGE AUTOMATION =============
+  useEffect(() => {
+    const updateDealsFromClicks = async () => {
+      const updates = [];
+      Object.entries(clickStats).forEach(([clid, data]) => {
+        if (data.count > 0 && data.email) {
+          updates.push(updateDoc(doc(db, 'deals', data.email), {
+            stage: 'contacted',
+            lastUpdate: new Date().toISOString()
+          }));
+        }
+      });
+      if (updates.length > 0) {
+        await Promise.all(updates);
+        loadDeals();
+      }
+    };
+    if (Object.keys(clickStats).length > 0) {
+      updateDealsFromClicks();
+    }
+  }, [clickStats]);
+
+  const updateDealStage = async (email, stage) => {
+    try {
+      const dealRef = doc(db, 'deals', email);
+      await setDoc(dealRef, {
+        userId: user.uid,
+        email,
+        stage,
+        lastUpdate: new Date().toISOString(),
+        value: 5000
+      }, { merge: true });
+      
+      setDealStage(prev => ({ ...prev, [email]: stage }));
+      
+      if (stage === 'won') {
+        setPipelineValue(prev => prev - 5000);
+      } else if (dealStage[email] === 'won') {
+        setPipelineValue(prev => prev + 5000);
+      }
+    } catch (e) {
+      console.error('Update deal error:', e);
+    }
+  };
+
+  // ============= AUTH STATE =============
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUser(user);
         loadSettings(user.uid);
         loadClickStats();
+        loadDeals();
+        loadAbResults();
       } else {
         setUser(null);
       }
@@ -293,6 +458,7 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
+  // ============= GMAIL AUTH =============
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
       if (typeof window === 'undefined') return reject('Browser only');
@@ -309,130 +475,139 @@ export default function Dashboard() {
     });
   };
 
-  // ============= SEND EMAILS (WITH A/B TESTING) =============
-// ✅ UPDATED: Accept 'A', 'B', or undefined (for non-A/B mode)
-// ✅ SEND EMAILS TO HALF LEADS BASED ON TEMPLATE
-const handleSendEmails = async (templateToSend = null) => {
-  if (!csvContent || !senderName.trim() || validEmails === 0) {
-    alert('Check CSV, sender name, and valid emails.');
-    return;
-  }
-
-  if (abTestMode && !templateToSend) {
-    alert('Please select Template A or B.');
-    return;
-  }
-
-  if (abTestMode) {
-    if (templateToSend === 'A' && !templateA.subject.trim()) {
-      alert('Template A subject is required.');
+  // ============= SEND EMAILS =============
+  const handleSendEmails = async (templateToSend = null) => {
+    if (!csvContent || !senderName.trim() || validEmails === 0) {
+      alert('Check CSV, sender name, and valid emails.');
       return;
     }
-    if (templateToSend === 'B' && !templateB.subject.trim()) {
-      alert('Template B subject is required.');
+    
+    if (abTestMode && !templateToSend) {
+      alert('Please select Template A or B.');
       return;
     }
-  } else {
-    if (!templateA.subject.trim()) {
-      alert('Email subject is required.');
-      return;
+
+    if (abTestMode) {
+      if (templateToSend === 'A' && !templateA.subject.trim()) {
+        alert('Template A subject is required.');
+        return;
+      }
+      if (templateToSend === 'B' && !templateB.subject.trim()) {
+        alert('Template B subject is required.');
+        return;
+      }
+    } else {
+      if (!templateA.subject.trim()) {
+        alert('Email subject is required.');
+        return;
+      }
     }
-  }
 
-  setIsSending(true);
-  setStatus('Getting Gmail access...');
+    setIsSending(true);
+    setStatus('Getting Gmail access...');
 
-  try {
-    const accessToken = await requestGmailToken();
+    try {
+      const accessToken = await requestGmailToken();
 
-    const imagesWithBase64 = await Promise.all(
-      emailImages.map(async (img) => {
-        const base64 = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(',')[1]);
-          reader.readAsDataURL(img.file);
+      const imagesWithBase64 = await Promise.all(
+        emailImages.map(async (img) => {
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(img.file);
+          });
+          return {
+            cid: img.cid,
+            mimeType: img.file.type,
+            base64,
+            placeholder: img.placeholder
+          };
+        })
+      );
+
+      const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+      const headers = parseCsvRow(lines[0]).map(h => h.trim());
+      let validRecipients = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCsvRow(lines[i]);
+        if (values.length !== headers.length) continue;
+        const row = {};
+        headers.forEach((header, idx) => {
+          row[header] = values[idx] || '';
         });
-        return {
-          cid: img.cid,
-          mimeType: img.file.type,
-          base64,
-          placeholder: img.placeholder
-        };
-      })
-    );
-
-    // ✅ Extract recipients and split
-    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-    const headers = parseCsvRow(lines[0]).map(h => h.trim());
-    let validRecipients = [];
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseCsvRow(lines[i]);
-      if (values.length !== headers.length) continue;
-      const row = {};
-      headers.forEach((header, idx) => {
-        row[header] = values[idx] || '';
-      });
-      if (isValidEmail(row.email)) {
-        if (leadQualityFilter === 'all' || row.lead_quality === leadQualityFilter) {
-          validRecipients.push(row);
+        if (isValidEmail(row.email)) {
+          if (leadQualityFilter === 'all' || row.lead_quality === leadQualityFilter) {
+            validRecipients.push(row);
+          }
         }
       }
-    }
 
-    // ✅ SPLIT LEADS
-    let recipientsToSend = [];
-    if (abTestMode && templateToSend) {
-      const half = Math.ceil(validRecipients.length / 2);
-      if (templateToSend === 'A') {
-        recipientsToSend = validRecipients.slice(0, half);
+      let recipientsToSend = [];
+      if (abTestMode && templateToSend) {
+        const half = Math.ceil(validRecipients.length / 2);
+        if (templateToSend === 'A') {
+          recipientsToSend = validRecipients.slice(0, half);
+        } else {
+          recipientsToSend = validRecipients.slice(half);
+        }
       } else {
-        recipientsToSend = validRecipients.slice(half);
+        recipientsToSend = validRecipients;
       }
-    } else {
-      recipientsToSend = validRecipients;
-    }
 
-    if (recipientsToSend.length === 0) {
-      setStatus('❌ No valid leads for selected criteria.');
+      if (recipientsToSend.length === 0) {
+        setStatus('❌ No valid leads for selected criteria.');
+        setIsSending(false);
+        return;
+      }
+
+      const templateToSendData = abTestMode 
+        ? (templateToSend === 'A' ? templateA : templateB)
+        : templateA;
+
+      setStatus(`Sending Template ${abTestMode ? templateToSend : ''} to ${recipientsToSend.length} leads...`);
+
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csvContent: [headers.join(','), ...recipientsToSend.map(r => 
+            headers.map(h => `"${r[h] || ''}"`).join(',')
+          ).join('\n')].join('\n'),
+          senderName,
+          fieldMappings,
+          accessToken,
+          abTestMode,
+          templateA,
+          templateB,
+          templateToSend,
+          leadQualityFilter,
+          emailImages: imagesWithBase64,
+          userId: user.uid
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
+        if (abTestMode) {
+          const newResults = { ...abResults };
+          if (templateToSend === 'A') {
+            newResults.a.sent = data.sent;
+          } else {
+            newResults.b.sent = data.sent;
+          }
+          setAbResults(newResults);
+          await setDoc(doc(db, 'ab_results', user.uid), newResults);
+        }
+      } else {
+        setStatus(`❌ ${data.error}`);
+      }
+    } catch (err) {
+      setStatus(`❌ ${err.message}`);
+    } finally {
       setIsSending(false);
-      return;
     }
-
-    const templateToSendData = abTestMode 
-      ? (templateToSend === 'A' ? templateA : templateB)
-      : templateA;
-
-    setStatus(`Sending Template ${abTestMode ? templateToSend : ''} to ${recipientsToSend.length} leads...`);
-
-    const res = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        csvContent: [headers.join(','), ...recipientsToSend.map(r => 
-          headers.map(h => `"${r[h] || ''}"`).join(',')
-        ).join('\n')].join('\n'),
-        senderName,
-        fieldMappings,
-        accessToken,
-        abTestMode: false,
-        template: templateToSendData,
-        leadQualityFilter,
-        emailImages: imagesWithBase64
-      })
-    });
-
-    const data = await res.json();
-    if (res.ok) {
-      setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
-    } else {
-      setStatus(`❌ ${data.error}`);
-    }
-  } catch (err) {
-    setStatus(`❌ ${err.message}`);
-  } finally {
-    setIsSending(false);
-  }
-};
+  };
 
   if (loadingAuth) {
     return (
@@ -461,9 +636,23 @@ const handleSendEmails = async (templateToSend = null) => {
     ...extractTemplateVariables(templateB.subject),
     ...extractTemplateVariables(templateB.body),
     ...extractTemplateVariables(whatsappTemplate),
+    ...extractTemplateVariables(smsTemplate), // ✅ SMS VARIABLES
     'sender_name',
     ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
   ])];
+
+  const abSummary = abTestMode ? (
+    <div className="bg-blue-50 p-3 rounded-lg mt-4">
+      <h3 className="text-sm font-bold text-blue-800">📊 A/B Test Results</h3>
+      <div className="flex justify-between text-xs mt-1">
+        <span>Template A: {abResults.a.sent || 0} sent</span>
+        <span>Template B: {abResults.b.sent || 0} sent</span>
+      </div>
+      <div className="text-xs text-blue-700 mt-1">
+        Check back in 48h for open/click rates
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -502,6 +691,18 @@ const handleSendEmails = async (templateToSend = null) => {
                   {validEmails} {leadQualityFilter} leads ready
                 </p>
               </div>
+              
+              <div className="mt-3">
+                <label className="flex items-center text-sm">
+                  <input
+                    type="checkbox"
+                    checked={smsConsent}
+                    onChange={(e) => setSmsConsent(e.target.checked)}
+                    className="mr-2"
+                  />
+                  SMS Consent (for compliant outreach)
+                </label>
+              </div>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
@@ -527,6 +728,14 @@ const handleSendEmails = async (templateToSend = null) => {
                 </div>
               ))}
             </div>
+
+            {/* <div className="bg-green-50 p-3 rounded-lg">
+              <div className="text-sm font-bold text-green-800">💰 Revenue Pipeline</div>
+              <div className="text-lg font-bold text-green-600">${pipelineValue.toLocaleString()}</div>
+              <div className="text-xs text-green-700">Potential deals this month</div>
+            </div> */}
+
+            {abSummary}
           </div>
 
           {/* MIDDLE */}
@@ -542,122 +751,141 @@ const handleSendEmails = async (templateToSend = null) => {
               />
             </div>
 
-<div className="bg-white p-6 rounded-xl shadow">
-  <div className="flex justify-between items-center mb-3">
-    <h2 className="text-xl font-bold">4. Email Template</h2>
-    <label className="flex items-center text-sm">
-      <input
-        type="checkbox"
-        checked={abTestMode}
-        onChange={(e) => setAbTestMode(e.target.checked)}
-        className="mr-2"
-      />
-      A/B Testing
-    </label>
-  </div>
+            <div className="bg-white p-6 rounded-xl shadow">
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xl font-bold">4. Email Template</h2>
+                <label className="flex items-center text-sm">
+                  <input
+                    type="checkbox"
+                    checked={abTestMode}
+                    onChange={(e) => setAbTestMode(e.target.checked)}
+                    className="mr-2"
+                  />
+                  A/B Testing
+                </label>
+              </div>
 
-  {abTestMode ? (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {/* Template A */}
-      <div className="border rounded p-3">
-        <h3 className="font-bold text-green-600 mb-2">Template A (Offer)</h3>
-        <input
-          type="text"
-          value={templateA.subject}
-          onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
-          className="w-full p-1 border rounded mb-1 text-sm"
-          placeholder="Subject A"
-        />
-        <textarea
-          value={templateA.body}
-          onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
-          rows="3"
-          className="w-full p-1 font-mono text-sm border rounded"
-          placeholder="Body A..."
-        />
-      </div>
-      
-      {/* Template B */}
-      <div className="border rounded p-3">
-        <h3 className="font-bold text-blue-600 mb-2">Template B (Call)</h3>
-        <input
-          type="text"
-          value={templateB.subject}
-          onChange={(e) => setTemplateB({ ...templateB, subject: e.target.value })}
-          className="w-full p-1 border rounded mb-1 text-sm"
-          placeholder="Subject B"
-        />
-        <textarea
-          value={templateB.body}
-          onChange={(e) => setTemplateB({ ...templateB, body: e.target.value })}
-          rows="3"
-          className="w-full p-1 font-mono text-sm border rounded"
-          placeholder="Body B..."
-        />
-      </div>
-    </div>
-  ) : (
-    <div>
-      <input
-        type="text"
-        value={templateA.subject}
-        onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
-        className="w-full p-2 border rounded mb-2"
-        placeholder="Subject"
-      />
-      <textarea
-        value={templateA.body}
-        onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
-        rows="4"
-        className="w-full p-2 font-mono border rounded"
-        placeholder="Hello {{business_name}}, ..."
-      />
-    </div>
-  )}
+              {abTestMode ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="border rounded p-3">
+                    <h3 className="font-bold text-green-600 mb-2">Template A (Offer)</h3>
+                    <input
+                      type="text"
+                      value={templateA.subject}
+                      onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
+                      className="w-full p-1 border rounded mb-1 text-sm"
+                      placeholder="Subject A"
+                    />
+                    <textarea
+                      value={templateA.body}
+                      onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
+                      rows="3"
+                      className="w-full p-1 font-mono text-sm border rounded"
+                      placeholder="Body A..."
+                    />
+                  </div>
+                  
+                  <div className="border rounded p-3">
+                    <h3 className="font-bold text-blue-600 mb-2">Template B (Call)</h3>
+                    <input
+                      type="text"
+                      value={templateB.subject}
+                      onChange={(e) => setTemplateB({ ...templateB, subject: e.target.value })}
+                      className="w-full p-1 border rounded mb-1 text-sm"
+                      placeholder="Subject B"
+                    />
+                    <textarea
+                      value={templateB.body}
+                      onChange={(e) => setTemplateB({ ...templateB, body: e.target.value })}
+                      rows="3"
+                      className="w-full p-1 font-mono text-sm border rounded"
+                      placeholder="Body B..."
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="text"
+                    value={templateA.subject}
+                    onChange={(e) => setTemplateA({ ...templateA, subject: e.target.value })}
+                    className="w-full p-2 border rounded mb-2"
+                    placeholder="Subject"
+                  />
+                  <textarea
+                    value={templateA.body}
+                    onChange={(e) => setTemplateA({ ...templateA, body: e.target.value })}
+                    rows="4"
+                    className="w-full p-2 font-mono border rounded"
+                    placeholder="Hello {{business_name}}, ..."
+                  />
+                </div>
+              )}
 
-  {/* ✅ A/B TESTING: SEPARATE SEND BUTTONS FOR HALF LEADS */}
-  {abTestMode ? (
-    <div className="space-y-2 mt-4">
-      <button
-        onClick={() => handleSendEmails('A')}
-        disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-        className={`w-full py-2.5 rounded font-bold ${
-          isSending || !csvContent || !senderName.trim() || validEmails === 0
-            ? 'bg-gray-400'
-            : 'bg-green-600 text-white'
-        }`}
-      >
-        📧 Send Template A (First {Math.ceil(validEmails / 2)} leads)
-      </button>
-      <button
-        onClick={() => handleSendEmails('B')}
-        disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-        className={`w-full py-2.5 rounded font-bold ${
-          isSending || !csvContent || !senderName.trim() || validEmails === 0
-            ? 'bg-gray-400'
-            : 'bg-blue-600 text-white'
-        }`}
-      >
-        📧 Send Template B (Last {Math.floor(validEmails / 2)} leads)
-      </button>
-    </div>
-  ) : (
-    <button
-      onClick={() => handleSendEmails()}
-      disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-      className={`w-full py-2.5 rounded font-bold mt-4 ${
-        isSending || !csvContent || !senderName.trim() || validEmails === 0
-          ? 'bg-gray-400'
-          : 'bg-green-600 text-white'
-      }`}
-    >
-      📧 Send Emails ({validEmails})
-    </button>
-  )}
-</div>
+              {abTestMode ? (
+                <div className="space-y-2 mt-4">
+                  <button
+                    onClick={() => handleSendEmails('A')}
+                    disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
+                    className={`w-full py-2.5 rounded font-bold ${
+                      isSending || !csvContent || !senderName.trim() || validEmails === 0
+                        ? 'bg-gray-400'
+                        : 'bg-green-600 text-white'
+                    }`}
+                  >
+                    📧 Send Template A (First {Math.ceil(validEmails / 2)} leads)
+                  </button>
+                  <button
+                    onClick={() => handleSendEmails('B')}
+                    disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
+                    className={`w-full py-2.5 rounded font-bold ${
+                      isSending || !csvContent || !senderName.trim() || validEmails === 0
+                        ? 'bg-gray-400'
+                        : 'bg-blue-600 text-white'
+                    }`}
+                  >
+                    📧 Send Template B (Last {Math.floor(validEmails / 2)} leads)
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleSendEmails()}
+                  disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
+                  className={`w-full py-2.5 rounded font-bold mt-4 ${
+                    isSending || !csvContent || !senderName.trim() || validEmails === 0
+                      ? 'bg-gray-400'
+                      : 'bg-green-600 text-white'
+                  }`}
+                >
+                  📧 Send Emails ({validEmails})
+                </button>
+              )}
+            </div>
 
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">5. Email Images (Optional)</h2>
+              <h2 className="text-xl font-bold mb-3">5. WhatsApp Template</h2>
+              <textarea
+                value={whatsappTemplate}
+                onChange={(e) => setWhatsappTemplate(e.target.value)}
+                rows="3"
+                className="w-full p-2 font-mono border rounded"
+                placeholder="Hi {{business_name}}! ..."
+              />
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow">
+              <h2 className="text-xl font-bold mb-3">6. SMS Template</h2>
+              <textarea
+                value={smsTemplate}
+                onChange={(e) => setSmsTemplate(e.target.value)}
+                rows="3"
+                className="w-full p-2 font-mono border rounded"
+                placeholder="Hi {{business_name}}! ..."
+              />
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow">
+              <h2 className="text-xl font-bold mb-3">7. Email Images (Optional)</h2>
               <input
                 type="file"
                 accept="image/jpeg,image/png"
@@ -672,33 +900,10 @@ const handleSendEmails = async (templateToSend = null) => {
               )}
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">6. WhatsApp Template</h2>
-              <textarea
-                value={whatsappTemplate}
-                onChange={(e) => setWhatsappTemplate(e.target.value)}
-                rows="5"
-                className="w-full p-2 font-mono border rounded"
-                placeholder="Hi {{business_name}}! ..."
-              />
-            </div>
-
-            <div className="space-y-2">
-              <button
-                onClick={handleSendEmails}
-                disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-                className={`w-full py-2.5 rounded font-bold ${isSending || !csvContent || !senderName.trim() || validEmails === 0
-                    ? 'bg-gray-400'
-                    : 'bg-green-600 text-white'
-                  }`}
-              >
-                {abTestMode ? '🧪 Send A/B Test' : '📧 Send Emails'} ({validEmails})
-              </button>
-            </div>
-
             {status && (
-              <div className={`p-3 rounded text-center whitespace-pre-line ${status.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
+              <div className={`p-3 rounded text-center whitespace-pre-line ${
+                status.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
                 {status}
               </div>
             )}
@@ -707,7 +912,7 @@ const handleSendEmails = async (templateToSend = null) => {
           {/* RIGHT */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">7. Email Preview</h2>
+              <h2 className="text-xl font-bold mb-3">8. Email Preview</h2>
               <div className="bg-gray-50 p-4 rounded border">
                 <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
                 <div className="mt-1 font-medium">
@@ -731,7 +936,7 @@ const handleSendEmails = async (templateToSend = null) => {
 
             {abTestMode && (
               <div className="bg-white p-6 rounded-xl shadow">
-                <h2 className="text-xl font-bold mb-3">8. Template B Preview</h2>
+                <h2 className="text-xl font-bold mb-3">9. Template B Preview</h2>
                 <div className="bg-gray-50 p-4 rounded border">
                   <div className="text-sm text-gray-500">To: {previewRecipient?.email || 'email@example.com'}</div>
                   <div className="mt-1 font-medium">
@@ -745,7 +950,7 @@ const handleSendEmails = async (templateToSend = null) => {
             )}
 
             <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-xl font-bold mb-3">9. WhatsApp Preview</h2>
+              <h2 className="text-xl font-bold mb-3">10. WhatsApp Preview</h2>
               <div className="bg-gray-50 p-4 rounded border">
                 <div className="text-sm text-gray-500">
                   To: {previewRecipient?.whatsapp_number || previewRecipient?.phone_raw || '9477...'}
@@ -756,10 +961,21 @@ const handleSendEmails = async (templateToSend = null) => {
               </div>
             </div>
 
-            {/* ✅ WHATSAPP CONTACTS WITH ALL FEATURES */}
+            <div className="bg-white p-6 rounded-xl shadow">
+              <h2 className="text-xl font-bold mb-3">11. SMS Preview</h2>
+              <div className="bg-gray-50 p-4 rounded border">
+                <div className="text-sm text-gray-500">
+                  To: {previewRecipient?.phone_raw || '9477...'}
+                </div>
+                <div className="mt-2 whitespace-pre-wrap text-sm">
+                  {renderPreviewText(smsTemplate, previewRecipient, fieldMappings, senderName)}
+                </div>
+              </div>
+            </div>
+
             {whatsappLinks.length > 0 && (
               <div className="bg-white p-4 rounded-xl shadow">
-                <h2 className="text-lg font-bold text-gray-800 mb-3">10. WhatsApp Contacts ({whatsappLinks.length})</h2>
+                <h2 className="text-lg font-bold text-gray-800 mb-3">12. Multi-Channel Outreach ({whatsappLinks.length})</h2>
                 <div className="max-h-96 overflow-y-auto space-y-3">
                   {whatsappLinks.map((link, i) => {
                     const last = lastSent[link.email];
@@ -775,26 +991,65 @@ const handleSendEmails = async (templateToSend = null) => {
                               <div className="text-xs text-green-600 mt-1">📅 Last: {new Date(last).toLocaleDateString()}</div>
                             )}
                           </div>
-                          <div className="flex space-x-1">
-                            <button
-                              onClick={() => navigator.clipboard.writeText(`+${link.phone}`)}
-                              className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded"
+                          <div className="flex flex-col items-end space-y-1">
+                            <div className="flex space-x-1">
+                              <button
+                                onClick={() => navigator.clipboard.writeText(`+${link.phone}`)}
+                                className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded"
+                              >
+                                Copy
+                              </button>
+                              <button
+                                onClick={() => handleCall(link.phone)}
+                                className="text-xs bg-green-600 text-white px-2 py-1 rounded"
+                              >
+                                Call
+                              </button>
+                              <a
+                                href={link.url}
+                                target="_blank"
+                                className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
+                              >
+                                WhatsApp
+                              </a>
+                              {link.place_id && (
+                                <a
+                                  href={`https://search.google.com/local/writereview?placeid=${link.place_id}`}
+                                  target="_blank"
+                                  className="text-xs bg-purple-600 text-white px-2 py-1 rounded"
+                                >
+                                  Google
+                                </a>
+                              )}
+                              <a
+                                href={`https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(link.business)}`}
+                                target="_blank"
+                                className="text-xs bg-blue-800 text-white px-2 py-1 rounded"
+                              >
+                                LinkedIn
+                              </a>
+                            </div>
+                            
+                            {smsConsent && (
+                              <button
+                                onClick={() => handleSendSMS(link)}
+                                className="text-xs bg-orange-600 text-white px-2 py-1 rounded mt-1 w-full"
+                              >
+                                SMS
+                              </button>
+                            )}
+                            
+                            <select
+                              value={dealStage[link.email] || 'new'}
+                              onChange={(e) => updateDealStage(link.email, e.target.value)}
+                              className="text-xs border rounded px-1 py-0.5 mt-1 w-full"
                             >
-                              Copy
-                            </button>
-                            <a
-                              href={link.url}
-                              target="_blank"
-                              className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
-                            >
-                              WhatsApp
-                            </a>
-                            <button
-                              onClick={() => handleCall(link.phone)}
-                              className="text-xs bg-green-600 text-white px-2 py-1 rounded"
-                            >
-                              Call
-                            </button>
+                              <option value="new">New</option>
+                              <option value="contacted">Contacted</option>
+                              <option value="demo">Demo Scheduled</option>
+                              <option value="proposal">Proposal Sent</option>
+                              <option value="won">Closed Won</option>
+                            </select>
                           </div>
                         </div>
                       </div>

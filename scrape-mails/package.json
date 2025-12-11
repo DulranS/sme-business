@@ -17,6 +17,7 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-firebase-hooks": "^5.1.1",
+    "twilio": "^5.10.7",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
