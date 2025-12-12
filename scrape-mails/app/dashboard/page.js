@@ -127,24 +127,50 @@ const renderPreviewText = (text, recipient, mappings, sender) => {
   return result;
 };
 
-const isValidEmail = (email) => email?.includes('@') && email?.includes('.');
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  const trimmed = email.trim();
+  if (trimmed.length === 0) return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(trimmed);
+};
 
 const parseCsvRow = (str) => {
   const result = [];
   let current = '';
   let inQuotes = false;
+
   for (let i = 0; i < str.length; i++) {
     const char = str[i];
-    if (char === '"' && !inQuotes) inQuotes = true;
-    else if (char === '"' && inQuotes && str[i + 1] === '"') { current += '"'; i++; }
-    else if (char === '"' && inQuotes) inQuotes = false;
-    else if (char === ',' && !inQuotes) { result.push(current); current = ''; }
-    else current += char;
-  }
-  result.push(current);
-  return result.map(f => f.trim().replace(/^"(.*)"$/, '$1'));
-};
 
+    if (char === '"' && !inQuotes) {
+      inQuotes = true;
+    } else if (char === '"' && inQuotes) {
+      if (i + 1 < str.length && str[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = false;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  result.push(current);
+
+return result.map(field => {
+  // Remove any leftover \r or \n inside the field
+  let cleaned = field.replace(/[\r\n]/g, '').trim();
+  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+    cleaned = cleaned.slice(1, -1).replace(/""/g, '"');
+  }
+  return cleaned;
+});
+};
 // ============= MAIN COMPONENT =============
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -291,7 +317,8 @@ export default function Dashboard() {
       const content = e.target.result;
       setCsvContent(content);
 
-      const lines = content.split('\n').filter(line => line.trim() !== '');
+const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
       if (lines.length < 2) {
         alert('CSV must have headers and data rows.');
         return;
@@ -344,10 +371,11 @@ export default function Dashboard() {
         score = Math.min(100, Math.max(0, score));
         newLeadScores[row.email] = score;
 
-        if (isValidEmail(row.email)) {
-          if (row.lead_quality === 'HOT') hotEmails++;
-          else if (row.lead_quality === 'WARM') warmEmails++;
-        }
+if (isValidEmail(row.email)) {
+  const quality = (row.lead_quality || '').trim() || 'HOT'; // blank = HOT
+  if (quality === 'HOT') hotEmails++;
+  else if (quality === 'WARM') warmEmails++;
+}
 
         const rawPhone = row.whatsapp_number || row.phone_raw;
         const formattedPhone = formatForDialing(rawPhone);
