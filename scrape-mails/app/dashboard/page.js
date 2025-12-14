@@ -308,106 +308,109 @@ export default function Dashboard() {
   }, [saveSettings, user?.uid]);
 
   // ============= CSV UPLOAD =============
-  const handleCsvUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+const handleCsvUpload = (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target.result;
-      setCsvContent(content);
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const content = e.target.result;
+    // Normalize line endings
+    const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
+    if (lines.length < 2) {
+      alert('CSV must have headers and data rows.');
+      return;
+    }
 
-const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
-      if (lines.length < 2) {
-        alert('CSV must have headers and data rows.');
-        return;
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    setCsvHeaders(headers);
+    setPreviewRecipient(null);
+
+    const allVars = [...new Set([
+      ...extractTemplateVariables(templateA.subject),
+      ...extractTemplateVariables(templateA.body),
+      ...extractTemplateVariables(templateB.subject),
+      ...extractTemplateVariables(templateB.body),
+      ...extractTemplateVariables(whatsappTemplate),
+      ...extractTemplateVariables(smsTemplate),
+      'sender_name'
+    ])];
+
+    const initialMappings = {};
+    allVars.forEach(varName => {
+      if (headers.includes(varName)) {
+        initialMappings[varName] = varName;
       }
+    });
+    if (headers.includes('email')) initialMappings.email = 'email';
+    initialMappings.sender_name = 'sender_name';
+    setFieldMappings(initialMappings);
 
-      const headers = parseCsvRow(lines[0]).map(h => h.trim());
-      setCsvHeaders(headers);
-      setPreviewRecipient(null);
+    let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
+    const validContacts = [];
+    const newLeadScores = {};
+    const newLastSent = {};
 
-      const allVars = [...new Set([
-        ...extractTemplateVariables(templateA.subject),
-        ...extractTemplateVariables(templateA.body),
-        ...extractTemplateVariables(templateB.subject),
-        ...extractTemplateVariables(templateB.body),
-        ...extractTemplateVariables(whatsappTemplate),
-        ...extractTemplateVariables(smsTemplate), // ✅ SMS VARIABLE EXTRACTION
-        'sender_name'
-      ])];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
 
-      const initialMappings = {};
-      allVars.forEach(varName => {
-        if (headers.includes(varName)) {
-          initialMappings[varName] = varName;
-        }
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
       });
-      if (headers.includes('email')) initialMappings.email = 'email';
-      initialMappings.sender_name = 'sender_name';
-      setFieldMappings(initialMappings);
 
-      let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
-      const validContacts = [];
-      const newLeadScores = {};
-      const newLastSent = {};
+      // ✅ CRITICAL FIX: Treat blank lead_quality as 'HOT'
+      const quality = (row.lead_quality || '').trim() || 'HOT';
+      let score = 50;
+      if (quality === 'HOT') score += 30;
+      if (parseFloat(row.rating) >= 4.8) score += 20;
+      if (parseInt(row.review_count) > 100) score += 10;
+      if (clickStats[row.email]?.count > 0) score += 20;
+      if (dealStage[row.email] === 'contacted') score += 10;
+      score = Math.min(100, Math.max(0, score));
+      newLeadScores[row.email] = score;
 
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCsvRow(lines[i]);
-        if (values.length !== headers.length) continue;
-
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
-        });
-
-        let score = 50;
-        if (row.lead_quality === 'HOT') score += 30;
-        if (parseFloat(row.rating) >= 4.8) score += 20;
-        if (parseInt(row.review_count) > 100) score += 10;
-        if (clickStats[row.email]?.count > 0) score += 20;
-        if (dealStage[row.email] === 'contacted') score += 10;
-        score = Math.min(100, Math.max(0, score));
-        newLeadScores[row.email] = score;
-
-if (isValidEmail(row.email)) {
-  const quality = (row.lead_quality || '').trim() || 'HOT'; // blank = HOT
-  if (quality === 'HOT') hotEmails++;
-  else if (quality === 'WARM') warmEmails++;
-}
-
-        const rawPhone = row.whatsapp_number || row.phone_raw;
-        const formattedPhone = formatForDialing(rawPhone);
-        if (formattedPhone) {
-          whatsappCount++;
-          validContacts.push({
-            business: row.business_name || 'Business',
-            address: row.address || '',
-            phone: formattedPhone,
-            email: row.email,
-            place_id: row.place_id || '',
-            url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
-              renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
-            )}`
-          });
-        }
-
-        if (!firstValid) firstValid = row;
+      if (isValidEmail(row.email)) {
+        if (quality === 'HOT') hotEmails++;
+        else if (quality === 'WARM') warmEmails++;
       }
 
-      validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
+      const rawPhone = row.whatsapp_number || row.phone_raw;
+      const formattedPhone = formatForDialing(rawPhone);
+      if (formattedPhone) {
+        whatsappCount++;
+        validContacts.push({
+          business: row.business_name || 'Business',
+          address: row.address || '',
+          phone: formattedPhone,
+          email: row.email,
+          place_id: row.place_id || '',
+          url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
+            renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
+          )}`
+        });
+      }
 
-      setPreviewRecipient(firstValid);
-      setValidEmails(leadQualityFilter === 'HOT' ? hotEmails : 
-                    leadQualityFilter === 'WARM' ? warmEmails : hotEmails + warmEmails);
-      setValidWhatsApp(whatsappCount);
-      setWhatsappLinks(validContacts);
-      setLeadScores(newLeadScores);
-      setLastSent(newLastSent);
-    };
-    reader.readAsText(file);
+      if (!firstValid) firstValid = row;
+    }
+
+    validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
+
+    setPreviewRecipient(firstValid);
+    setValidEmails(
+      leadQualityFilter === 'HOT' ? hotEmails : 
+      leadQualityFilter === 'WARM' ? warmEmails : 
+      hotEmails + warmEmails
+    );
+    setValidWhatsApp(whatsappCount);
+    setWhatsappLinks(validContacts);
+    setLeadScores(newLeadScores);
+    setLastSent(newLastSent);
   };
+  reader.readAsText(file);
+};
 
   // ============= IMAGE UPLOAD =============
   const handleImageUpload = (e) => {
@@ -504,138 +507,144 @@ if (isValidEmail(row.email)) {
   };
 
   // ============= SEND EMAILS =============
-  const handleSendEmails = async (templateToSend = null) => {
-    if (!csvContent || !senderName.trim() || validEmails === 0) {
-      alert('Check CSV, sender name, and valid emails.');
+const handleSendEmails = async (templateToSend = null) => {
+  if (!csvContent || !senderName.trim() || validEmails === 0) {
+    alert('Check CSV, sender name, and valid emails.');
+    return;
+  }
+  
+  if (abTestMode && !templateToSend) {
+    alert('Please select Template A or B.');
+    return;
+  }
+
+  if (abTestMode) {
+    if (templateToSend === 'A' && !templateA.subject.trim()) {
+      alert('Template A subject is required.');
       return;
     }
-    
-    if (abTestMode && !templateToSend) {
-      alert('Please select Template A or B.');
+    if (templateToSend === 'B' && !templateB.subject.trim()) {
+      alert('Template B subject is required.');
       return;
     }
-
-    if (abTestMode) {
-      if (templateToSend === 'A' && !templateA.subject.trim()) {
-        alert('Template A subject is required.');
-        return;
-      }
-      if (templateToSend === 'B' && !templateB.subject.trim()) {
-        alert('Template B subject is required.');
-        return;
-      }
-    } else {
-      if (!templateA.subject.trim()) {
-        alert('Email subject is required.');
-        return;
-      }
+  } else {
+    if (!templateA.subject.trim()) {
+      alert('Email subject is required.');
+      return;
     }
+  }
 
-    setIsSending(true);
-    setStatus('Getting Gmail access...');
+  setIsSending(true);
+  setStatus('Getting Gmail access...');
 
-    try {
-      const accessToken = await requestGmailToken();
+  try {
+    const accessToken = await requestGmailToken();
 
-      const imagesWithBase64 = await Promise.all(
-        emailImages.map(async (img) => {
-          const base64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(img.file);
-          });
-          return {
-            cid: img.cid,
-            mimeType: img.file.type,
-            base64,
-            placeholder: img.placeholder
-          };
-        })
-      );
-
-      const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-      const headers = parseCsvRow(lines[0]).map(h => h.trim());
-      let validRecipients = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCsvRow(lines[i]);
-        if (values.length !== headers.length) continue;
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
+    const imagesWithBase64 = await Promise.all(
+      emailImages.map(async (img) => {
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(img.file);
         });
-        if (isValidEmail(row.email)) {
-          if (leadQualityFilter === 'all' || row.lead_quality === leadQualityFilter) {
-            validRecipients.push(row);
-          }
-        }
-      }
+        return {
+          cid: img.cid,
+          mimeType: img.file.type,
+          base64,
+          placeholder: img.placeholder
+        };
+      })
+    );
 
-      let recipientsToSend = [];
-      if (abTestMode && templateToSend) {
-        const half = Math.ceil(validRecipients.length / 2);
-        if (templateToSend === 'A') {
-          recipientsToSend = validRecipients.slice(0, half);
-        } else {
-          recipientsToSend = validRecipients.slice(half);
-        }
-      } else {
-        recipientsToSend = validRecipients;
-      }
+    // Re-parse CSV for sending
+    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    let validRecipients = [];
 
-      if (recipientsToSend.length === 0) {
-        setStatus('❌ No valid leads for selected criteria.');
-        setIsSending(false);
-        return;
-      }
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
 
-      const templateToSendData = abTestMode 
-        ? (templateToSend === 'A' ? templateA : templateB)
-        : templateA;
-
-      setStatus(`Sending Template ${abTestMode ? templateToSend : ''} to ${recipientsToSend.length} leads...`);
-
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csvContent: [headers.join(','), ...recipientsToSend.map(r => 
-            headers.map(h => `"${r[h] || ''}"`).join(',')
-          ).join('\n')].join('\n'),
-          senderName,
-          fieldMappings,
-          accessToken,
-          abTestMode,
-          templateA,
-          templateB,
-          templateToSend,
-          leadQualityFilter,
-          emailImages: imagesWithBase64,
-          userId: user.uid
-        })
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
-        if (abTestMode) {
-          const newResults = { ...abResults };
-          if (templateToSend === 'A') {
-            newResults.a.sent = data.sent;
-          } else {
-            newResults.b.sent = data.sent;
-          }
-          setAbResults(newResults);
-          await setDoc(doc(db, 'ab_results', user.uid), newResults);
+      // ✅ CRITICAL FIX: Treat blank lead_quality as 'HOT'
+      const quality = (row.lead_quality || '').trim() || 'HOT';
+      if (isValidEmail(row.email)) {
+        if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
+          validRecipients.push(row);
         }
-      } else {
-        setStatus(`❌ ${data.error}`);
       }
-    } catch (err) {
-      setStatus(`❌ ${err.message}`);
-    } finally {
-      setIsSending(false);
     }
-  };
+
+    let recipientsToSend = [];
+    if (abTestMode && templateToSend) {
+      const half = Math.ceil(validRecipients.length / 2);
+      if (templateToSend === 'A') {
+        recipientsToSend = validRecipients.slice(0, half);
+      } else {
+        recipientsToSend = validRecipients.slice(half);
+      }
+    } else {
+      recipientsToSend = validRecipients;
+    }
+
+    if (recipientsToSend.length === 0) {
+      setStatus('❌ No valid leads for selected criteria.');
+      setIsSending(false);
+      return;
+    }
+
+    const templateToSendData = abTestMode 
+      ? (templateToSend === 'A' ? templateA : templateB)
+      : templateA;
+
+    setStatus(`Sending Template ${abTestMode ? templateToSend : ''} to ${recipientsToSend.length} leads...`);
+
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        csvContent: [headers.join(','), ...recipientsToSend.map(r => 
+          headers.map(h => `"${r[h] || ''}"`).join(',')
+        ).join('\n')].join('\n'),
+        senderName,
+        fieldMappings,
+        accessToken,
+        abTestMode,
+        templateA,
+        templateB,
+        templateToSend,
+        leadQualityFilter,
+        emailImages: imagesWithBase64,
+        userId: user.uid
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
+      if (abTestMode) {
+        const newResults = { ...abResults };
+        if (templateToSend === 'A') {
+          newResults.a.sent = data.sent;
+        } else {
+          newResults.b.sent = data.sent;
+        }
+        setAbResults(newResults);
+        await setDoc(doc(db, 'ab_results', user.uid), newResults);
+      }
+    } else {
+      setStatus(`❌ ${data.error}`);
+    }
+  } catch (err) {
+    setStatus(`❌ ${err.message}`);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   if (loadingAuth) {
     return (
