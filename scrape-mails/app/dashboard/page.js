@@ -315,7 +315,6 @@ const handleCsvUpload = (e) => {
   const reader = new FileReader();
   reader.onload = (e) => {
     const content = e.target.result;
-    // Normalize line endings
     const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
     if (lines.length < 2) {
@@ -361,7 +360,12 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ CRITICAL FIX: Treat blank lead_quality as 'HOT'
+      // ✅ CRITICAL: Skip rows with invalid/empty emails
+      if (!isValidEmail(row.email)) {
+        continue;
+      }
+
+      // ✅ Handle blank lead_quality as 'HOT'
       const quality = (row.lead_quality || '').trim() || 'HOT';
       let score = 50;
       if (quality === 'HOT') score += 30;
@@ -372,10 +376,9 @@ const handleCsvUpload = (e) => {
       score = Math.min(100, Math.max(0, score));
       newLeadScores[row.email] = score;
 
-      if (isValidEmail(row.email)) {
-        if (quality === 'HOT') hotEmails++;
-        else if (quality === 'WARM') warmEmails++;
-      }
+      // ✅ Only count valid emails with quality
+      if (quality === 'HOT') hotEmails++;
+      else if (quality === 'WARM') warmEmails++;
 
       const rawPhone = row.whatsapp_number || row.phone_raw;
       const formattedPhone = formatForDialing(rawPhone);
@@ -556,7 +559,6 @@ const handleSendEmails = async (templateToSend = null) => {
       })
     );
 
-    // Re-parse CSV for sending
     const lines = csvContent.split('\n').filter(line => line.trim() !== '');
     const headers = parseCsvRow(lines[0]).map(h => h.trim());
     let validRecipients = [];
@@ -570,12 +572,15 @@ const handleSendEmails = async (templateToSend = null) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ CRITICAL FIX: Treat blank lead_quality as 'HOT'
+      // ✅ CRITICAL: Skip invalid/empty emails
+      if (!isValidEmail(row.email)) {
+        continue;
+      }
+
+      // ✅ Handle blank lead_quality as 'HOT'
       const quality = (row.lead_quality || '').trim() || 'HOT';
-      if (isValidEmail(row.email)) {
-        if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
-          validRecipients.push(row);
-        }
+      if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
+        validRecipients.push(row);
       }
     }
 
