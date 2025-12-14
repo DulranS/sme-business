@@ -1,78 +1,83 @@
-// pages/api/send-sms.js
-// This API route handles SMS sending via Twilio
+import { NextResponse } from 'next/server';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+const firebaseConfig = {
+  apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
+  authDomain: "email-marketing-c775d.firebaseapp.com",
+  projectId: "email-marketing-c775d",
+  storageBucket: "email-marketing-c775d.firebasestorage.app",
+  messagingSenderId: "178196903576",
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
+  measurementId: "G-6CL2EGLEVH"
+};
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
+
+// ✅ Helper: Format Sri Lankan numbers to E.164
+function formatSriLankanNumber(phone) {
+  if (!phone) return null;
+  let cleaned = phone.toString().replace(/\D/g, '');
+  
+  // If starts with 0 and is Sri Lankan length
+  if (cleaned.startsWith('0') && cleaned.length >= 9 && cleaned.length <= 10) {
+    cleaned = '94' + cleaned.slice(1);
   }
+  
+  // Ensure it starts with 94 and is 11-12 digits
+  if (cleaned.startsWith('94') && cleaned.length >= 11 && cleaned.length <= 12) {
+    return `+${cleaned}`;
+  }
+  
+  // If already E.164, keep it
+  if (cleaned.startsWith('94') && cleaned.length >= 11 && cleaned.length <= 12) {
+    return `+${cleaned}`;
+  }
+  
+  return null;
+}
 
+export async function POST(request) {
   try {
-    const { 
-      phone, 
-      message, 
-      businessName,
-      userId 
-    } = req.body;
+    const { phone, message, businessName, userId } = await request.json();
 
-    // Validation
+    // ✅ Validation
     if (!phone || !message) {
-      return res.status(400).json({ 
-        error: 'Phone number and message are required' 
-      });
+      return NextResponse.json({ error: 'Phone number and message are required' }, { status: 400 });
     }
 
-    // Validate phone format (should be E.164: +94771234567)
-    const phoneRegex = /^\+?[1-9]\d{10,14}$/;
-    const formattedPhone = phone.startsWith('+') ? phone : `+${phone}`;
-    
-    if (!phoneRegex.test(formattedPhone)) {
-      return res.status(400).json({ 
-        error: 'Invalid phone number format. Must be E.164 format (+94771234567)' 
-      });
+    // ✅ Format phone number (handles 077... and +9477...)
+    const formattedPhone = formatSriLankanNumber(phone);
+    if (!formattedPhone) {
+      return NextResponse.json({ 
+        error: 'Invalid phone number. Must be Sri Lankan mobile (e.g., 0771234567)' 
+      }, { status: 400 });
     }
 
-    // Get Twilio credentials from environment variables
+    // ✅ Get Twilio credentials
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
 
     if (!accountSid || !authToken || !twilioPhone) {
-      return res.status(500).json({ 
-        error: 'Twilio credentials not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in your environment variables.' 
-      });
+      return NextResponse.json({ 
+        error: 'Twilio credentials not configured' 
+      }, { status: 500 });
     }
 
-    // Create Twilio client
+    // ✅ Send SMS
     const twilio = require('twilio');
     const client = twilio(accountSid, authToken);
-
-    // Send SMS
     const smsResult = await client.messages.create({
       body: message,
       from: twilioPhone,
       to: formattedPhone
     });
 
-    // Log to Firebase (optional - for tracking)
+    // ✅ Log to Firestore (using client SDK - safe for App Router)
     if (userId) {
       try {
-        const admin = require('firebase-admin');
-        
-        // Initialize Firebase Admin if not already initialized
-        if (!admin.apps.length) {
-          admin.initializeApp({
-            credential: admin.credential.cert({
-              projectId: process.env.FIREBASE_PROJECT_ID,
-              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-              privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-            })
-          });
-        }
-
-        const db = admin.firestore();
-        
-        // Log SMS send to Firestore
-        await db.collection('sms_logs').add({
+        await addDoc(collection(db, 'sms_logs'), {
           userId,
           phone: formattedPhone,
           businessName: businessName || 'Unknown',
@@ -85,12 +90,11 @@ export default async function handler(req, res) {
         });
       } catch (logError) {
         console.warn('Failed to log SMS to Firestore:', logError);
-        // Continue anyway - don't fail the SMS send
+        // Don't fail the SMS send
       }
     }
 
-    // Return success
-    return res.status(200).json({
+    return NextResponse.json({
       success: true,
       sid: smsResult.sid,
       status: smsResult.status,
@@ -100,28 +104,20 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Twilio SMS Error:', error);
     
-    // Handle specific Twilio errors
+    // ✅ Handle Twilio-specific errors
     if (error.code === 21211) {
-      return res.status(400).json({ 
-        error: 'Invalid phone number. Please check the format.' 
-      });
+      return NextResponse.json({ error: 'Invalid phone number format' }, { status: 400 });
     }
-    
     if (error.code === 21608) {
-      return res.status(400).json({ 
-        error: 'This phone number is not reachable or has opted out.' 
-      });
+      return NextResponse.json({ error: 'Phone number has opted out or is unreachable' }, { status: 400 });
+    }
+    if (error.code === 21614) {
+      return NextResponse.json({ error: 'Invalid Twilio phone number' }, { status: 400 });
     }
     
-    if (error.code === 21614) {
-      return res.status(400).json({ 
-        error: 'Invalid Twilio phone number configured.' 
-      });
-    }
-
-    return res.status(500).json({ 
+    return NextResponse.json({ 
       error: error.message || 'Failed to send SMS',
       code: error.code
-    });
+    }, { status: 500 });
   }
 }
