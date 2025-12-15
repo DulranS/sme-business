@@ -9,7 +9,8 @@ const firebaseConfig = {
   projectId: "email-marketing-c775d",
   storageBucket: "email-marketing-c775d.firebasestorage.app",
   messagingSenderId: "178196903576",
-  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed"
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
+  measurementId: "G-6CL2EGLEVH"
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
