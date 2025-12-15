@@ -9,7 +9,8 @@ const firebaseConfig = {
   projectId: "email-marketing-c775d",
   storageBucket: "email-marketing-c775d.firebasestorage.app",
   messagingSenderId: "178196903576",
-  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed"
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
+  measurementId: "G-6CL2EGLEVH"
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -51,10 +52,19 @@ function parseCsvRow(str) {
   return result.map(field => field.replace(/[\r\n]/g, '').trim().replace(/^"(.*)"$/, '$1').replace(/""/g, '"'));
 }
 
+function isValidEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  const trimmed = email.trim();
+  if (trimmed.length === 0) return false;
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  return emailRegex.test(trimmed);
+}
+
 export async function POST(req) {
   try {
     const {
       csvContent,
+      emailsToSend,
       senderName,
       fieldMappings,
       accessToken,
@@ -64,6 +74,10 @@ export async function POST(req) {
       userId,
       emailImages = []
     } = await req.json();
+
+    if (!csvContent || !accessToken || !userId || !Array.isArray(emailsToSend)) {
+      return Response.json({ error: 'Missing required fields' }, { status: 400 });
+    }
 
     const lines = csvContent
       .replace(/\r\n/g, '\n')
@@ -76,14 +90,33 @@ export async function POST(req) {
     }
 
     const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    const emailSet = new Set(emailsToSend);
     const recipients = [];
+
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
       if (values.length !== headers.length) continue;
+
       const row = {};
       headers.forEach((h, idx) => row[h] = values[idx] || '');
-      if (!row.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) continue;
-      recipients.push(row);
+
+      // 🔥 HANDLE SEMICOLON EMAILS
+      const emailField = (row.email || '').toString();
+      const emailList = emailField
+        .split(';')
+        .map(e => e.trim())
+        .filter(e => isValidEmail(e));
+
+      // Only keep emails that were selected in frontend
+      for (const email of emailList) {
+        if (emailSet.has(email)) {
+          recipients.push({ ...row, email });
+        }
+      }
+    }
+
+    if (recipients.length === 0) {
+      return Response.json({ error: 'No valid email recipients found' }, { status: 400 });
     }
 
     const oauth2Client = new google.auth.OAuth2();
@@ -92,65 +125,76 @@ export async function POST(req) {
 
     const template = templateToSend === 'B' ? templateB : templateA;
     let sentCount = 0;
-    const sentRecords = [];
 
     for (const recipient of recipients) {
       try {
         const subject = renderText(template.subject, recipient, fieldMappings, senderName);
-        let htmlBody = renderText(template.body, recipient, fieldMappings, senderName);
+        let body = renderText(template.body, recipient, fieldMappings, senderName);
 
-        emailImages.forEach(img => {
-          const imgTag = `<img src="cid:${img.cid}" alt="Inline">`;
-          htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
-        });
+        // Handle images
+        let rawMessage;
+        if (emailImages.length > 0) {
+          const message = [
+            `To: ${recipient.email}`,
+            `Subject: ${subject}`,
+            'Content-Type: multipart/related; boundary="boundary"',
+            '',
+            '--boundary',
+            'Content-Type: text/html; charset=utf-8',
+            '',
+            body,
+            ''
+          ];
 
-        const message = [
-          `To: ${recipient.email}`,
-          `Subject: ${subject}`,
-          'Content-Type: multipart/related; boundary="boundary"',
-          '',
-          '--boundary',
-          'Content-Type: text/html; charset=utf-8',
-          '',
-          htmlBody,
-          ''
-        ];
-
-        emailImages.forEach(img => {
-          message.push('--boundary');
-          message.push(`Content-Type: ${img.mimeType}`);
-          message.push(`Content-Transfer-Encoding: base64`);
-          message.push(`Content-ID: <${img.cid}>`);
-          message.push('');
-          message.push(img.base64);
-          message.push('');
-        });
-        message.push('--boundary--');
-
-        const rawMessage = btoa(message.join('\n').replace(/\n/g, '\r\n'))
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=+$/, '');
+          emailImages.forEach(img => {
+            const imgTag = `<img src="cid:${img.cid}" alt="Inline">`;
+            body = body.replace(new RegExp(img.placeholder, 'g'), imgTag);
+            message[message.length - 2] = body;
+            message.push('--boundary');
+            message.push(`Content-Type: ${img.mimeType}`);
+            message.push(`Content-Transfer-Encoding: base64`);
+            message.push(`Content-ID: <${img.cid}>`);
+            message.push('');
+            message.push(img.base64);
+            message.push('');
+          });
+          message.push('--boundary--');
+          rawMessage = btoa(message.join('\n').replace(/\n/g, '\r\n'))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+        } else {
+          // Plain text
+          const emailLines = [
+            `To: ${recipient.email}`,
+            `Subject: ${subject}`,
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            body
+          ];
+          rawMessage = Buffer.from(emailLines.join('\r\n'))
+            .toString('base64')
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+        }
 
         const response = await gmail.users.messages.send({
           userId: 'me',
           requestBody: { raw: rawMessage }
         });
 
-        const messageId = response.data.payload?.headers?.find(h => h.name === 'Message-ID')?.value;
-        const threadId = response.data.threadId;
+        const { threadId } = response.data;
 
-        if (recipient.email && messageId && threadId) {
+        if (threadId) {
           await setDoc(doc(db, 'sent_emails', `${userId}_${recipient.email}`), {
             userId,
             to: recipient.email,
-            messageId,
             threadId,
             sentAt: new Date().toISOString(),
             replied: false,
             followUpAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
           });
-          sentRecords.push({ email: recipient.email, messageId, threadId });
         }
 
         sentCount++;
@@ -159,9 +203,9 @@ export async function POST(req) {
       }
     }
 
-    return Response.json({ sent: sentCount, total: recipients.length, messageIds: sentRecords });
+    return Response.json({ sent: sentCount, total: recipients.length });
   } catch (error) {
-    console.error('Send email error:', error);
-    return Response.json({ error: error.message || 'Internal error' }, { status: 500 });
+    console.error('📧 Send Email API Error:', error);
+    return Response.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
