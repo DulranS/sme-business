@@ -1,12 +1,7 @@
 // app/api/send-email/route.js
-import { NextResponse } from 'next/server';
-import { google } from '@googleapis/gmail'; // ✅ MUST be this exact line
-import { parse as csvParse } from 'csv-parse/sync';
-import { v4 as uuidv4 } from 'uuid';
-
-// Firebase (client-safe — no admin)
-import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { google } from 'googleapis';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
@@ -14,146 +9,159 @@ const firebaseConfig = {
   projectId: "email-marketing-c775d",
   storageBucket: "email-marketing-c775d.firebasestorage.app",
   messagingSenderId: "178196903576",
-  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
-  measurementId: "G-6CL2EGLEVH"
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed"
 };
-if (!getApps().length) initializeApp(firebaseConfig);
-const db = getFirestore();
 
-function isValidEmail(email) {
-  if (!email) return false;
-  const t = email.trim();
-  return t.length > 0 && t.includes('@') && t.includes('.');
-}
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
 
-function replaceTemplateVars(text, data, fieldMappings, senderName) {
+function renderText(text, recipient, mappings, sender) {
   if (!text) return '';
   let result = text;
-  for (const [varName, csvCol] of Object.entries(fieldMappings)) {
-    const re = new RegExp(`{{\\s*${varName}\\s*}}`, 'g');
-    if (!re.test(result)) continue;
+  Object.entries(mappings).forEach(([varName, col]) => {
+    const regex = new RegExp(`{{\\s*${varName}\\s*}}`, 'g');
     if (varName === 'sender_name') {
-      result = result.replace(re, senderName || '[Sender]');
-    } else if (csvCol && data[csvCol] !== undefined) {
-      result = result.replace(re, String(data[csvCol]));
+      result = result.replace(regex, sender || 'Team');
+    } else if (recipient && col && recipient[col] !== undefined) {
+      result = result.replace(regex, String(recipient[col]));
     } else {
-      result = result.replace(re, `[MISSING: ${varName}]`);
+      result = result.replace(regex, `[MISSING: ${varName}]`);
     }
-  }
+  });
   return result;
 }
 
-export async function POST(request) {
+function parseCsvRow(str) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (char === '"' && !inQuotes) inQuotes = true;
+    else if (char === '"' && inQuotes) {
+      if (i + 1 < str.length && str[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else inQuotes = false;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current); current = '';
+    } else current += char;
+  }
+  result.push(current);
+  return result.map(field => field.replace(/[\r\n]/g, '').trim().replace(/^"(.*)"$/, '$1').replace(/""/g, '"'));
+}
+
+export async function POST(req) {
   try {
-    const { 
-      csvContent, 
-      senderName, 
-      fieldMappings, 
+    const {
+      csvContent,
+      senderName,
+      fieldMappings,
       accessToken,
-      abTestMode, // ❌ Not used — template is passed directly
-      template,   // ✅ Single template object (A or B)
-      leadQualityFilter = 'HOT',
+      templateA,
+      templateB,
+      templateToSend,
+      userId,
       emailImages = []
-    } = await request.json();
+    } = await req.json();
 
-    // ✅ CRITICAL: Validate accessToken FIRST
-    if (!accessToken) {
-      return NextResponse.json({ error: 'Missing Gmail access token' }, { status: 400 });
+    const lines = csvContent
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .filter(line => line.trim() !== '');
+
+    if (lines.length < 2) {
+      return Response.json({ error: 'Invalid CSV' }, { status: 400 });
     }
 
-    const records = csvParse(csvContent, { skip_empty_lines: true, columns: true });
-    let validRecipients = records.filter(row => {
-      if (!isValidEmail(row.email)) return false;
-      if (leadQualityFilter === 'all') return true;
-      return row.lead_quality === leadQualityFilter;
-    });
-
-    if (validRecipients.length === 0) {
-      return NextResponse.json({ error: `No ${leadQualityFilter} leads found` }, { status: 400 });
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    const recipients = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
+      const row = {};
+      headers.forEach((h, idx) => row[h] = values[idx] || '');
+      if (!row.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) continue;
+      recipients.push(row);
     }
 
-    // ✅ Initialize Gmail
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    const gmail = google.gmail({ version: 'v1', auth });
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: accessToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const sent = [];
-    for (const row of validRecipients) {
+    const template = templateToSend === 'B' ? templateB : templateA;
+    let sentCount = 0;
+    const sentRecords = [];
+
+    for (const recipient of recipients) {
       try {
-        // ✅ Use the single template passed from frontend
-        const finalSubject = replaceTemplateVars(template.subject, row, fieldMappings, senderName);
-        let finalBody = replaceTemplateVars(template.body, row, fieldMappings, senderName);
+        const subject = renderText(template.subject, recipient, fieldMappings, senderName);
+        let htmlBody = renderText(template.body, recipient, fieldMappings, senderName);
 
-        // ✅ CLICK TRACKING + EMAIL
-        const clickId = `click_${uuidv4()}`;
-        finalBody = finalBody.replace(
-          /(https?:\/\/[^\s]+)/g,
-          (url) => `${url}?clid=${clickId}&email=${encodeURIComponent(row.email)}`
-        );
-
-        // Save click ID
-        await setDoc(doc(db, 'clicks', clickId), {
-          email: row.email,
-          userId: 'anon',
-          count: 0,
-          createdAt: new Date().toISOString()
-        });
-
-        // ✅ IMAGE EMBEDDING
-        let htmlBody = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${finalBody}</pre>`;
         emailImages.forEach(img => {
-          const imgTag = `<img src="cid:${img.cid}" alt="" style="max-width:100%;">`;
-          htmlBody = htmlBody.replace(new RegExp(`{{image\\d}}`, 'g'), imgTag);
+          const imgTag = `<img src="cid:${img.cid}" alt="Inline">`;
+          htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
         });
-        htmlBody += '</body></html>';
 
-        let rawMessageLines = [
-          `To: ${row.email}`,
-          `Subject: ${finalSubject}`,
-          'MIME-Version: 1.0',
+        const message = [
+          `To: ${recipient.email}`,
+          `Subject: ${subject}`,
           'Content-Type: multipart/related; boundary="boundary"',
           '',
           '--boundary',
           'Content-Type: text/html; charset=utf-8',
           '',
-          htmlBody
+          htmlBody,
+          ''
         ];
 
         emailImages.forEach(img => {
-          rawMessageLines = [
-            ...rawMessageLines,
-            '',
-            '--boundary',
-            `Content-Type: ${img.mimeType}`,
-            'Content-Transfer-Encoding: base64',
-            `Content-ID: <${img.cid}>`,
-            'Content-Disposition: inline',
-            '',
-            img.base64
-          ];
+          message.push('--boundary');
+          message.push(`Content-Type: ${img.mimeType}`);
+          message.push(`Content-Transfer-Encoding: base64`);
+          message.push(`Content-ID: <${img.cid}>`);
+          message.push('');
+          message.push(img.base64);
+          message.push('');
+        });
+        message.push('--boundary--');
+
+        const rawMessage = btoa(message.join('\n').replace(/\n/g, '\r\n'))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
+
+        const response = await gmail.users.messages.send({
+          userId: 'me',
+          requestBody: { raw: rawMessage }
         });
 
-        rawMessageLines = [
-          ...rawMessageLines,
-          '',
-          '--boundary--'
-        ];
+        const messageId = response.data.payload?.headers?.find(h => h.name === 'Message-ID')?.value;
+        const threadId = response.data.threadId;
 
-        const rawMessage = rawMessageLines.join('\r\n');
-        const encoded = Buffer.from(rawMessage)
-          .toString('base64')
-          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        if (recipient.email && messageId && threadId) {
+          await setDoc(doc(db, 'sent_emails', `${userId}_${recipient.email}`), {
+            userId,
+            to: recipient.email,
+            messageId,
+            threadId,
+            sentAt: new Date().toISOString(),
+            replied: false,
+            followUpAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+          });
+          sentRecords.push({ email: recipient.email, messageId, threadId });
+        }
 
-        await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
-        sent.push(row.email);
-      } catch (err) {
-        console.error('Send error:', err.message);
+        sentCount++;
+      } catch (e) {
+        console.warn(`Failed to send to ${recipient.email}:`, e.message);
       }
-      await new Promise(r => setTimeout(r, 1100));
     }
-    return NextResponse.json({ success: true, sent: sent.length, total: validRecipients.length });
+
+    return Response.json({ sent: sentCount, total: recipients.length, messageIds: sentRecords });
   } catch (error) {
-    console.error('Send API error:', error);
-    return NextResponse.json({ error: 'Failed to send' }, { status: 500 });
+    console.error('Send email error:', error);
+    return Response.json({ error: error.message || 'Internal error' }, { status: 500 });
   }
 }
