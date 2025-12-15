@@ -309,24 +309,25 @@
 
     // ============= CSV UPLOAD =============
 const handleCsvUpload = (e) => {
+  setValidEmails(0);
   const file = e.target.files?.[0];
   if (!file) return;
-
   const reader = new FileReader();
   reader.onload = (e) => {
     const content = e.target.result;
-    // ✅ CRITICAL: Normalize line endings properly
+
+    // ✅ CRITICAL FIX: Store raw CSV content so it can be used later
+    setCsvContent(content);
+
     const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
     if (lines.length < 2) {
       alert('CSV must have headers and data rows.');
       return;
     }
-
     const headers = parseCsvRow(lines[0]).map(h => h.trim());
     setCsvHeaders(headers);
     setPreviewRecipient(null);
-
     const allVars = [...new Set([
       ...extractTemplateVariables(templateA.subject),
       ...extractTemplateVariables(templateA.body),
@@ -336,7 +337,6 @@ const handleCsvUpload = (e) => {
       ...extractTemplateVariables(smsTemplate),
       'sender_name'
     ])];
-
     const initialMappings = {};
     allVars.forEach(varName => {
       if (headers.includes(varName)) {
@@ -346,27 +346,22 @@ const handleCsvUpload = (e) => {
     if (headers.includes('email')) initialMappings.email = 'email';
     initialMappings.sender_name = 'sender_name';
     setFieldMappings(initialMappings);
-
     let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
     const validContacts = [];
     const newLeadScores = {};
     const newLastSent = {};
-
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
       if (values.length !== headers.length) continue;
-
       const row = {};
       headers.forEach((header, idx) => {
         row[header] = values[idx] || '';
       });
-
-      // ✅ CRITICAL: Skip rows with invalid/empty emails
+      // ✅ SKIP INVALID/EMPTY EMAILS
       if (!isValidEmail(row.email)) {
         continue;
       }
-
-      // ✅ CRITICAL: Treat blank lead_quality as 'HOT' (matches your CSV)
+      // ✅ TREAT BLANK lead_quality AS 'HOT' (CRITICAL)
       const quality = (row.lead_quality || '').trim() || 'HOT';
       let score = 50;
       if (quality === 'HOT') score += 30;
@@ -376,11 +371,9 @@ const handleCsvUpload = (e) => {
       if (dealStage[row.email] === 'contacted') score += 10;
       score = Math.min(100, Math.max(0, score));
       newLeadScores[row.email] = score;
-
-      // ✅ Count based on RESOLVED quality
+      // ✅ COUNT BASED ON RESOLVED QUALITY
       if (quality === 'HOT') hotEmails++;
       else if (quality === 'WARM') warmEmails++;
-
       const rawPhone = row.whatsapp_number || row.phone_raw;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
@@ -396,19 +389,18 @@ const handleCsvUpload = (e) => {
           )}`
         });
       }
-
       if (!firstValid) firstValid = row;
     }
-
     validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
-
     setPreviewRecipient(firstValid);
-    // ✅ Set count based on CURRENT filter
-    setValidEmails(
-      leadQualityFilter === 'HOT' ? hotEmails : 
-      leadQualityFilter === 'WARM' ? warmEmails : 
-      hotEmails + warmEmails
-    );
+    // ✅ SET VALID EMAILS BASED ON CURRENT FILTER
+    if (leadQualityFilter === 'HOT') {
+      setValidEmails(hotEmails);
+    } else if (leadQualityFilter === 'WARM') {
+      setValidEmails(warmEmails);
+    } else {
+      setValidEmails(hotEmails + warmEmails);
+    }
     setValidWhatsApp(whatsappCount);
     setWhatsappLinks(validContacts);
     setLeadScores(newLeadScores);
@@ -416,7 +408,6 @@ const handleCsvUpload = (e) => {
   };
   reader.readAsText(file);
 };
-
     // ============= IMAGE UPLOAD =============
     const handleImageUpload = (e) => {
       const files = Array.from(e.target.files).slice(0, 3);
@@ -494,6 +485,42 @@ const handleCsvUpload = (e) => {
       return () => unsubscribe();
     }, []);
 
+    // ✅ Recalculate validEmails when leadQualityFilter changes
+useEffect(() => {
+  if (!csvContent) return;
+
+  const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+  if (lines.length < 2) return;
+
+  const headers = parseCsvRow(lines[0]).map(h => h.trim());
+  let hot = 0, warm = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCsvRow(lines[i]);
+    if (values.length !== headers.length) continue;
+
+    const row = {};
+    headers.forEach((header, idx) => {
+      row[header] = values[idx] || '';
+    });
+
+    if (!isValidEmail(row.email)) continue;
+
+    // ✅ Treat blank lead_quality as 'HOT'
+    const quality = (row.lead_quality || '').trim() || 'HOT';
+    if (quality === 'HOT') hot++;
+    else if (quality === 'WARM') warm++;
+  }
+
+  if (leadQualityFilter === 'HOT') {
+    setValidEmails(hot);
+  } else if (leadQualityFilter === 'WARM') {
+    setValidEmails(warm);
+  } else {
+    setValidEmails(hot + warm);
+  }
+}, [leadQualityFilter, csvContent]);
+
     // ============= GMAIL AUTH =============
     const requestGmailToken = () => {
       return new Promise((resolve, reject) => {
@@ -513,11 +540,17 @@ const handleCsvUpload = (e) => {
 
     // ============= SEND EMAILS =============
 const handleSendEmails = async (templateToSend = null) => {
-  if (!csvContent || !senderName.trim() || validEmails === 0) {
-    alert('Check CSV, sender name, and valid emails.');
+  // ✅ CRITICAL: Validate csvContent BEFORE splitting
+  if (!csvContent || typeof csvContent !== 'string' || csvContent.trim() === '') {
+    alert('Please upload a valid CSV file first.');
     return;
   }
-  
+
+  if (!senderName.trim() || validEmails === 0) {
+    alert('Check sender name and valid emails.');
+    return;
+  }
+
   if (abTestMode && !templateToSend) {
     alert('Please select Template A or B.');
     return;
@@ -561,7 +594,19 @@ const handleSendEmails = async (templateToSend = null) => {
       })
     );
 
-    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+    // ✅ SAFETY: Ensure csvContent is valid string
+    const lines = csvContent
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .filter(line => line.trim() !== '');
+
+    if (lines.length < 2) {
+      alert('CSV must have headers and data rows.');
+      setIsSending(false);
+      return;
+    }
+
     const headers = parseCsvRow(lines[0]).map(h => h.trim());
     let validRecipients = [];
 
@@ -574,12 +619,10 @@ const handleSendEmails = async (templateToSend = null) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ CRITICAL: Skip invalid/empty emails
-      if (!isValidEmail(row.email)) {
-        continue;
-      }
+      // ✅ Skip invalid/empty emails
+      if (!isValidEmail(row.email)) continue;
 
-      // ✅ CRITICAL: Treat blank lead_quality as 'HOT'
+      // ✅ Treat blank lead_quality as 'HOT'
       const quality = (row.lead_quality || '').trim() || 'HOT';
       if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
         validRecipients.push(row);
@@ -647,7 +690,8 @@ const handleSendEmails = async (templateToSend = null) => {
       setStatus(`❌ ${data.error}`);
     }
   } catch (err) {
-    setStatus(`❌ ${err.message}`);
+    console.error('Send error:', err);
+    setStatus(`❌ ${err.message || 'Failed to send'}`);
   } finally {
     setIsSending(false);
   }
