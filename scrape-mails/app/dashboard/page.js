@@ -315,6 +315,7 @@ const handleCsvUpload = (e) => {
   const reader = new FileReader();
   reader.onload = (e) => {
     const content = e.target.result;
+    // ✅ CRITICAL: Normalize line endings properly
     const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
     if (lines.length < 2) {
@@ -365,7 +366,7 @@ const handleCsvUpload = (e) => {
         continue;
       }
 
-      // ✅ Handle blank lead_quality as 'HOT'
+      // ✅ CRITICAL: Treat blank lead_quality as 'HOT' (matches your CSV)
       const quality = (row.lead_quality || '').trim() || 'HOT';
       let score = 50;
       if (quality === 'HOT') score += 30;
@@ -376,7 +377,7 @@ const handleCsvUpload = (e) => {
       score = Math.min(100, Math.max(0, score));
       newLeadScores[row.email] = score;
 
-      // ✅ Only count valid emails with resolved quality
+      // ✅ Count based on RESOLVED quality
       if (quality === 'HOT') hotEmails++;
       else if (quality === 'WARM') warmEmails++;
 
@@ -402,6 +403,7 @@ const handleCsvUpload = (e) => {
     validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
 
     setPreviewRecipient(firstValid);
+    // ✅ Set count based on CURRENT filter
     setValidEmails(
       leadQualityFilter === 'HOT' ? hotEmails : 
       leadQualityFilter === 'WARM' ? warmEmails : 
@@ -572,12 +574,12 @@ const handleSendEmails = async (templateToSend = null) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ CRITICAL: Skip rows with invalid/empty emails
+      // ✅ CRITICAL: Skip invalid/empty emails
       if (!isValidEmail(row.email)) {
         continue;
       }
 
-      // ✅ Handle blank lead_quality as 'HOT'
+      // ✅ CRITICAL: Treat blank lead_quality as 'HOT'
       const quality = (row.lead_quality || '').trim() || 'HOT';
       if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
         validRecipients.push(row);
@@ -892,7 +894,7 @@ const handleSendEmails = async (templateToSend = null) => {
                 ) : (
                   <button
                     onClick={() => handleSendEmails()}
-                    disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
+                    // disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
                     className={`w-full py-2.5 rounded font-bold mt-4 ${
                       isSending || !csvContent || !senderName.trim() || validEmails === 0
                         ? 'bg-gray-400'
