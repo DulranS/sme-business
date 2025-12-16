@@ -1,6 +1,7 @@
 import csv
 import re
 import time
+import random  # ✅ Ensure this is imported
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin, urldefrag
@@ -11,15 +12,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import deque
 
 # -----------------------------
-# CONFIGURATION
+# CONFIGURATION (OPTIMIZED FOR SPEED + SAFETY)
 # -----------------------------
-CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-16 (7).csv"
-BASE_OUTPUT_NAME = "business_leads_with_emails"  # Base name before numbering
-EMAIL_TIMEOUT = 8
-REQUEST_DELAY = 0.8
+CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-17 (1).csv"
+BASE_OUTPUT_NAME = "business_leads_with_emails"
+EMAIL_TIMEOUT = 10
 MAX_RETRIES = 2
-MAX_PAGES_PER_SITE = 10
-MAX_WORKERS = 8
+MAX_PAGES_PER_SITE = 8
+MAX_WORKERS = 14  # ⚡ Higher concurrency (safe for most networks)
+
+# Human-like randomized delay between requests
+REQUEST_DELAY_MIN = 0.6
+REQUEST_DELAY_MAX = 1.2
 
 PRIORITY_PATHS = [
     '/contact', '/contact-us', '/contactus', '/contacts',
@@ -79,7 +83,11 @@ def is_relevant_email(email, base_domain):
 
 def get_soup(url, timeout=EMAIL_TIMEOUT):
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': random.choice([
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        ])
     }
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -89,7 +97,7 @@ def get_soup(url, timeout=EMAIL_TIMEOUT):
                 return BeautifulSoup(response.text, 'html.parser')
         except:
             if attempt < MAX_RETRIES:
-                time.sleep(0.3)
+                time.sleep(random.uniform(0.5, 1.0))
                 continue
     return None
 
@@ -120,10 +128,9 @@ def scrape_site_deep(root_url):
     all_emails = set()
     visited = set()
 
-    # Start with priority paths
     priority_urls = [urljoin(root_url, path) for path in PRIORITY_PATHS]
     urls_to_check = deque(priority_urls)
-    urls_to_check.appendleft(root_url)  # home page first
+    urls_to_check.appendleft(root_url)
 
     while urls_to_check and len(visited) < MAX_PAGES_PER_SITE:
         url = urls_to_check.popleft()
@@ -135,7 +142,6 @@ def scrape_site_deep(root_url):
         if not soup:
             continue
 
-        # Remove noisy elements
         for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe', 'form']):
             tag.decompose()
 
@@ -147,16 +153,15 @@ def scrape_site_deep(root_url):
         }
         all_emails.update(valid_emails)
 
-        # Crawl internal links if under limit
         if len(visited) < MAX_PAGES_PER_SITE:
             internal_links = get_internal_links(soup, root_url, base_domain)
             for link in internal_links:
                 if link not in visited and len(urls_to_check) + len(visited) < MAX_PAGES_PER_SITE:
                     urls_to_check.append(link)
 
-        time.sleep(REQUEST_DELAY / 2)
+        # ✅ Human-like randomized delay
+        time.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
 
-    # Final validation
     clean_emails = set()
     for e in all_emails:
         e = e.strip().lower()
@@ -186,7 +191,7 @@ def process_row(row, url_col_name):
     return row
 
 def main():
-    logger.info("🔍 Deep email scraper (auto-numbered output mode)...")
+    logger.info("🚀 High-Speed Email Scraper (Auto-Numbered Output + Smart Threading)...")
 
     if not os.path.exists(CSV_INPUT_PATH):
         logger.error(f"❌ Input file not found: {CSV_INPUT_PATH}")
@@ -215,9 +220,8 @@ def main():
 
     url_col = headers[website_col_idx]
     logger.info(f"✅ Using column: '{url_col}'")
-    logger.info(f"🌐 Scraping {len(rows)} sites deeply...")
+    logger.info(f"🌐 Scraping {len(rows)} sites with {MAX_WORKERS} parallel workers...")
 
-    # Ensure 'email' is in output headers
     output_headers = list(headers)
     if 'email' not in output_headers:
         output_headers.append('email')
@@ -254,10 +258,8 @@ def main():
             row['email'] = ""
             ordered_results.append(row)
 
-    # ✅ AUTO-NUMBERED OUTPUT FILE
     CSV_OUTPUT_PATH = get_unique_output_path(BASE_OUTPUT_NAME)
 
-    # Write output ONLY — input untouched
     try:
         with open(CSV_OUTPUT_PATH, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=output_headers)
