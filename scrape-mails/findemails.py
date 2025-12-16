@@ -13,7 +13,7 @@ from collections import deque
 # -----------------------------
 # CONFIGURATION
 # -----------------------------
-CSV_INPUT_PATH = "c:\\Users\\dulra\\Downloads\\google-2025-12-16 (2).csv"
+CSV_INPUT_PATH = "c:\\Users\\dulra\\Downloads\\google-2025-12-16 (3).csv"
 CSV_OUTPUT_PATH = "business_leads_with_emails.csv"  # Output-only file
 EMAIL_TIMEOUT = 8
 REQUEST_DELAY = 0.8
