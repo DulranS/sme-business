@@ -14,7 +14,7 @@ from collections import deque
 # -----------------------------
 # CONFIGURATION (OPTIMIZED FOR SPEED + SAFETY)
 # -----------------------------
-CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-17 (1).csv"
+CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-17 (2).csv"
 BASE_OUTPUT_NAME = "business_leads_with_emails"
 EMAIL_TIMEOUT = 10
 MAX_RETRIES = 2
