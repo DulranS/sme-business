@@ -89,41 +89,6 @@ function formatForDialing(raw) {
   return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;
 }
 
-const handleSendSMS = async (contact, user, smsTemplate, fieldMappings, senderName, setLastSent, dealStage, updateDealStage) => {
-  if (!user?.uid) return;
-  const confirmed = confirm(`Send SMS to ${contact.business} at +${contact.phone}?`);
-  if (!confirmed) return;
-  try {
-    const message = renderPreviewText(
-      smsTemplate,
-      { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
-      fieldMappings,
-      senderName
-    );
-    const response = await fetch('/api/send-sms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phone: contact.phone,
-        message,
-        userId: user.uid
-      })
-    });
-    const data = await response.json();
-    if (response.ok) {
-      alert(`✅ SMS sent to ${contact.business}!`);
-      setLastSent(prev => ({ ...prev, [contact.email]: new Date().toISOString() }));
-      if (dealStage[contact.email] === 'new') {
-        updateDealStage(contact.email, 'contacted');
-      }
-    } else {
-      alert(`❌ SMS failed: ${data.error}`);
-    }
-  } catch (error) {
-    console.error('SMS send error:', error);
-    alert(`❌ Failed to send SMS: ${error.message}`);
-  }
-};
 
 const handleCall = (phone) => {
   if (!phone) return;
@@ -224,7 +189,7 @@ export default function Dashboard() {
   const [pipelineValue, setPipelineValue] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
-  const [smsConsent, setSmsConsent] = useState(false);
+  const [smsConsent, setSmsConsent] = useState(true);
   const [abResults, setAbResults] = useState({ a: { opens: 0, clicks: 0 }, b: { opens: 0, clicks: 0 } });
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   const [repliedLeads, setRepliedLeads] = useState({});
@@ -245,6 +210,103 @@ export default function Dashboard() {
     document.head.appendChild(script);
     return () => document.head.removeChild(script);
   }, []);
+
+  // ✅ ADD THIS INSIDE Dashboard()
+  const handleSendBulkSMS = async () => {
+    if (!user?.uid || whatsappLinks.length === 0) return;
+    const confirmed = confirm(`Send SMS to ${whatsappLinks.length} contacts? Unreachable numbers will be skipped.`);
+    if (!confirmed) return;
+
+    let successCount = 0;
+    let totalCount = 0;
+    setStatus('📤 Sending SMS batch...');
+
+    const sendPromises = whatsappLinks.map(async (contact) => {
+      totalCount++;
+      const phone = formatForDialing(contact.phone);
+      if (!phone) {
+        console.warn('Skipping invalid phone for', contact.business);
+        return;
+      }
+
+      try {
+        const message = renderPreviewText(
+          smsTemplate,
+          { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
+          fieldMappings,
+          senderName
+        );
+
+        const response = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone,
+            message,
+            businessName: contact.business,
+            userId: user.uid
+          })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+          successCount++;
+          setLastSent(prev => ({ ...prev, [contact.email]: new Date().toISOString() }));
+          if (dealStage[contact.email] === 'new') {
+            updateDealStage(contact.email, 'contacted');
+          }
+        } else {
+          console.warn(`SMS failed for ${contact.business}:`, data.error);
+        }
+      } catch (error) {
+        console.error(`SMS error for ${contact.business}:`, error);
+      }
+    });
+
+    await Promise.allSettled(sendPromises);
+    setStatus(`✅ SMS batch complete: ${successCount}/${totalCount} sent successfully.`);
+    alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed/Skipped: ${totalCount - successCount}`);
+  };
+
+    const handleSendSMS = async (contact) => {
+    if (!user?.uid) return;
+    const confirmed = confirm(`Send SMS to ${contact.business} at +${contact.phone}?`);
+    if (!confirmed) return;
+
+    try {
+      const message = renderPreviewText(
+        smsTemplate,
+        { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
+        fieldMappings,
+        senderName
+      );
+
+      const response = await fetch('/api/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: contact.phone,
+          message,
+          businessName: contact.business,
+          userId: user.uid
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        alert(`✅ SMS sent to ${contact.business}!`);
+        setLastSent(prev => ({ ...prev, [contact.email]: new Date().toISOString() }));
+        if (dealStage[contact.email] === 'new') {
+          updateDealStage(contact.email, 'contacted');
+        }
+      } else {
+        alert(`❌ SMS failed: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('SMS send error:', error);
+      alert(`❌ Failed to send SMS: ${error.message}`);
+    }
+  };
 
   const loadAbResults = async () => {
     try {
@@ -1139,85 +1201,118 @@ const handleSendEmails = async (templateToSend = null) => {
                 </div>
               </div>
             </div>
-            {whatsappLinks.length > 0 && (
-              <div className="bg-white p-4 rounded-xl shadow">
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-lg font-bold text-gray-800">12. Multi-Channel Outreach ({whatsappLinks.length})</h2>
-                  <button
-                    onClick={checkForReplies}
-                    className="text-xs bg-purple-600 text-white px-2 py-1 rounded"
-                  >
-                    🔄 Check for Replies
-                  </button>
-                </div>
-                <div className="max-h-96 overflow-y-auto space-y-3">
-                  {whatsappLinks.map((link, i) => {
-                    const last = lastSent[link.email];
-                    const score = leadScores[link.email] || 0;
-                    return (
-                      <div key={i} className="p-3 bg-gray-50 rounded-lg border">
-                        <div className="flex justify-between">
-                          <div>
-                            <div className="font-medium">{link.business}</div>
-                            <div className="text-sm text-gray-600">+{link.phone}</div>
-                            <div className="text-xs text-blue-600">Score: {score}/100</div>
-                            {last && (
-                              <div className="text-xs text-green-600 mt-1">📅 Last: {new Date(last).toLocaleDateString()}</div>
-                            )}
-                            {repliedLeads[link.email] && (
-                              <span className="inline-block bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded mt-1">
-                                Replied
-                              </span>
-                            )}
-                            {!repliedLeads[link.email] && followUpLeads[link.email] && (
-                              <span className="inline-block bg-yellow-100 text-yellow-800 text-xs px-1.5 py-0.5 rounded mt-1">
-                                Follow Up
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end space-y-1">
-                            <div className="flex space-x-1">
-                              <button
-                                onClick={() => handleCall(link.phone)}
-                                className="text-xs bg-green-600 text-white px-2 py-1 rounded"
-                              >
-                                Call
-                              </button>
-                              <a
-                                href={link.url}
-                                target="_blank"
-                                className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
-                              >
-                                WhatsApp
-                              </a>
-                            </div>
-                            {smsConsent && (
-                              <button
-                                onClick={() => handleSendSMS(link, user, smsTemplate, fieldMappings, senderName, setLastSent, dealStage, updateDealStage)}
-                                className="text-xs bg-orange-600 text-white px-2 py-1 rounded mt-1 w-full"
-                              >
-                                SMS
-                              </button>
-                            )}
-                            <select
-                              value={dealStage[link.email] || 'new'}
-                              onChange={(e) => updateDealStage(link.email, e.target.value)}
-                              className="text-xs border rounded px-1 py-0.5 mt-1 w-full"
-                            >
-                              <option value="new">New</option>
-                              <option value="contacted">Contacted</option>
-                              <option value="demo">Demo Scheduled</option>
-                              <option value="proposal">Proposal Sent</option>
-                              <option value="won">Closed Won</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+{whatsappLinks.length > 0 && (
+  <div className="bg-white p-4 rounded-xl shadow">
+    <div className="flex justify-between items-center mb-3">
+      <h2 className="text-lg font-bold text-gray-800">
+        12. Multi-Channel Outreach ({whatsappLinks.length})
+      </h2>
+      <button
+        onClick={checkForReplies}
+        className="text-xs bg-purple-600 text-white px-2 py-1 rounded"
+      >
+        🔄 Check for Replies
+      </button>
+    </div>
+    <div className="max-h-96 overflow-y-auto space-y-3">
+      {whatsappLinks.map((link, i) => {
+        const last = lastSent[link.email];
+        const score = leadScores[link.email] || 0;
+        return (
+          <div key={i} className="p-3 bg-gray-50 rounded-lg border">
+            <div className="flex justify-between">
+              <div>
+                <div className="font-medium">{link.business}</div>
+                <div className="text-sm text-gray-600">+{link.phone}</div>
+                <div className="text-xs text-blue-600">Score: {score}/100</div>
+                {last && (
+                  <div className="text-xs text-green-600 mt-1">
+                    📅 Last: {new Date(last).toLocaleDateString()}
+                  </div>
+                )}
+                {repliedLeads[link.email] && (
+                  <span className="inline-block bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded mt-1">
+                    Replied
+                  </span>
+                )}
+                {!repliedLeads[link.email] && followUpLeads[link.email] && (
+                  <span className="inline-block bg-yellow-100 text-yellow-800 text-xs px-1.5 py-0.5 rounded mt-1">
+                    Follow Up
+                  </span>
+                )}
               </div>
-            )}
+              <div className="flex flex-col items-end space-y-1">
+                <div className="flex space-x-1">
+                  <button
+                    onClick={() => handleCall(link.phone)}
+                    className="text-xs bg-green-600 text-white px-2 py-1 rounded"
+                  >
+                    Call
+                  </button>
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
+                  >
+                    WhatsApp
+                  </a>
+                </div>
+                {smsConsent && (
+                  <button
+                    onClick={() =>
+                      handleSendSMS(
+                        link,
+                        user,
+                        smsTemplate,
+                        fieldMappings,
+                        senderName,
+                        setLastSent,
+                        dealStage,
+                        updateDealStage
+                      )
+                    }
+                    className="text-xs bg-orange-600 text-white px-2 py-1 rounded mt-1 w-full"
+                  >
+                    SMS
+                  </button>
+                )}
+                <select
+                  value={dealStage[link.email] || 'new'}
+                  onChange={(e) => updateDealStage(link.email, e.target.value)}
+                  className="text-xs border rounded px-1 py-0.5 mt-1 w-full"
+                >
+                  <option value="new">New</option>
+                  <option value="contacted">Contacted</option>
+                  <option value="demo">Demo Scheduled</option>
+                  <option value="proposal">Proposal Sent</option>
+                  <option value="won">Closed Won</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* ✅ BULK SMS BUTTON — Placed ONCE, BELOW the list */}
+    <div className="mt-4">
+      <button
+        onClick={handleSendBulkSMS}
+        disabled={!smsConsent || isSending}
+        className={`w-full py-2 rounded font-bold text-white ${
+          !smsConsent ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'
+        }`}
+      >
+        📲 Send SMS to All ({whatsappLinks.length})
+      </button>
+      {!smsConsent && (
+        <p className="text-xs text-red-600 mt-1">
+          Enable SMS Consent above to send.
+        </p>
+      )}
+    </div>
+  </div>
+)}
           </div>
         </div>
       </main>
