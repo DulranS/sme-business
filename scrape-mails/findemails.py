@@ -13,8 +13,8 @@ from collections import deque
 # -----------------------------
 # CONFIGURATION
 # -----------------------------
-CSV_INPUT_PATH = "c:\\Users\\dulra\\Downloads\\google-2025-12-16 (4).csv"
-CSV_OUTPUT_PATH = "business_leads_with_emails.csv"  # Output-only file
+CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-16 (7).csv"
+BASE_OUTPUT_NAME = "business_leads_with_emails"  # Base name before numbering
 EMAIL_TIMEOUT = 8
 REQUEST_DELAY = 0.8
 MAX_RETRIES = 2
@@ -36,6 +36,17 @@ logger = logging.getLogger()
 # -----------------------------
 # UTILS
 # -----------------------------
+
+def get_unique_output_path(base_name="business_leads_with_emails", extension=".csv"):
+    """Generate a unique output filename: base (1).csv, base (2).csv, etc."""
+    if not os.path.exists(base_name + extension):
+        return base_name + extension
+    counter = 1
+    while True:
+        candidate = f"{base_name} ({counter}){extension}"
+        if not os.path.exists(candidate):
+            return candidate
+        counter += 1
 
 def normalize_url(url):
     if not url or not isinstance(url, str):
@@ -175,7 +186,7 @@ def process_row(row, url_col_name):
     return row
 
 def main():
-    logger.info("🔍 Deep email scraper (output-only mode)...")
+    logger.info("🔍 Deep email scraper (auto-numbered output mode)...")
 
     if not os.path.exists(CSV_INPUT_PATH):
         logger.error(f"❌ Input file not found: {CSV_INPUT_PATH}")
@@ -207,7 +218,7 @@ def main():
     logger.info(f"🌐 Scraping {len(rows)} sites deeply...")
 
     # Ensure 'email' is in output headers
-    output_headers = list(headers)  # preserve order
+    output_headers = list(headers)
     if 'email' not in output_headers:
         output_headers.append('email')
 
@@ -242,6 +253,9 @@ def main():
         else:
             row['email'] = ""
             ordered_results.append(row)
+
+    # ✅ AUTO-NUMBERED OUTPUT FILE
+    CSV_OUTPUT_PATH = get_unique_output_path(BASE_OUTPUT_NAME)
 
     # Write output ONLY — input untouched
     try:
