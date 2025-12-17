@@ -20,65 +20,113 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+// ✅ YOUR ACTUAL INITIAL PITCH
 const DEFAULT_TEMPLATE_A = {
   subject: 'Quick question for {{business_name}}',
-  body:
-    `Hi {{business_name}}, 😊👋🏻
+  body: `Hi {{business_name}}, 😊👋🏻
 
-Hope you’re doing well.
+I hope you’re doing well.
 
-I came across your business and wanted to reach out because I run a small digital mini-agency that helps businesses with websites, content, and automation — without long contracts or big agency costs.
+My name is Dulran Samarasinghe. I run Syndicate Solutions, a Sri Lanka–based mini agency supporting 
+small to mid-sized agencies and businesses with reliable execution across web, software, 
+AI automation, and ongoing digital operations.
 
-Before I send anything generic, can I ask:
-Are you currently working on anything digital that’s taking too much time or not giving the results you expected?
+We typically work as a white-label or outsourced partner when teams need:
+• extra delivery capacity
+• fast turnarounds without hiring
+• ongoing technical and digital support
 
-If yes, I’m happy to share a quick idea or suggestion — no obligation at all.
+I’m reaching out to ask — do you ever use external support when workload or deadlines increase?
 
-Best regards,
-{{sender_name}}
-Syndicate Solutions`
+If helpful, I’m open to starting with a small task or short contract to build trust before 
+discussing anything larger.
+
+You can review my work here:
+Portfolio: https://syndicatesolutions.vercel.app/      
+LinkedIn: https://www.linkedin.com/in/dulran-samarasinghe-13941b175/      
+
+If it makes sense, you can book a short 15-minute call:
+https://cal.com/syndicate-solutions/15min      
+
+You can contact me on Whatsapp - 0741143323
+You can email me at - syndicatesoftwaresolutions@gmail.com
+
+Otherwise, happy to continue the conversation over email.
+
+Best regards,  
+Dulran Samarasinghe  
+Founder — Syndicate Solutions`
 };
 
-const DEFAULT_TEMPLATE_B = {
-  subject: 'Following up – should I close the loop?',
-  body:
-    `Hi {{business_name}},
+// ✅ FOLLOW-UP TEMPLATES
+const FOLLOW_UP_1 = {
+  subject: 'Quick question for {{business_name}}',
+  body: `Hi {{business_name}},
 
-Just following up in case my previous message got buried.
+Just circling back—did my note about outsourced dev & ops support land at a bad time?
 
-Even a quick reply like:
-• “Yes, we’re working on something”
-• “Not right now”
-• “Maybe later”
+No pressure at all, but if you’re ever swamped with web, automation, or backend work and need a reliable extra hand (especially for white-label or fast-turnaround needs), we’re ready to help.
 
-…helps me know whether to reach out again or not.
+Even a 1-hour task is a great way to test the waters.
 
-If helpful, here’s our mini-agency portfolio:
-https://syndicatesolutions.vercel.app/
+Either way, wishing you a productive week!
 
-Best,
-{{sender_name}}
-Syndicate Solutions`
+Best,  
+Dulran  
+Founder — Syndicate Solutions  
+WhatsApp: 0741143323`
 };
 
-const DEFAULT_WHATSAPP_TEMPLATE =
-  `Hi {{business_name}} 👋😊
+const FOLLOW_UP_2 = {
+  subject: '{{business_name}}, a quick offer (no strings)',
+  body: `Hi again,
 
+I noticed you haven’t had a chance to reply—totally understand!
+
+To make this zero-risk: **I’ll audit one of your digital workflows (e.g., lead capture, client onboarding, internal tooling) for free** and send 2–3 actionable automation ideas you can implement immediately—even if you never work with us.
+
+Zero sales pitch. Just value.
+
+Interested? Hit “Yes” or reply with a workflow you’d like optimized.
+
+Cheers,  
+Dulran  
+Portfolio: https://syndicatesolutions.vercel.app/  
+Book a call: https://cal.com/syndicate-solutions/15min`
+};
+
+const FOLLOW_UP_3 = {
+  subject: 'Closing the loop',
+  body: `Hi {{business_name}},
+
+I’ll stop emailing after this one! 😅
+
+Just wanted to say: if outsourcing ever becomes a priority—whether for web dev, AI tools, or ongoing ops—we’re here. Many of our clients started with a tiny $100 task and now work with us monthly.
+
+If now’s not the time, no worries! I’ll circle back in a few months.
+
+Either way, keep crushing it!
+
+— Dulran  
+WhatsApp: 0741143323`
+};
+
+// Keep B as fallback (or repurpose)
+const DEFAULT_TEMPLATE_B = FOLLOW_UP_1;
+
+const DEFAULT_WHATSAPP_TEMPLATE = `Hi {{business_name}} 👋😊
 Hope you’re doing well.
-
 I’m {{sender_name}} from Sri Lanka — I run a small digital mini-agency supporting businesses with websites, content, and AI automation.
-
 Quick question:
 Are you currently working on anything digital that’s taking too much time or not delivering the results you want?
-
 If yes, I’d be happy to share a quick idea — no pressure at all.`;
 
-const DEFAULT_SMS_TEMPLATE =
-  `Hi {{business_name}} 👋
+const DEFAULT_SMS_TEMPLATE = `Hi {{business_name}} 👋
 This is {{sender_name}} from Syndicate Solutions.
 Quick question — are you currently working on any digital work that’s delayed or not giving results?
 Reply YES or NO.`;
 
+// --- [Rest of utility functions unchanged: formatForDialing, handleCall, extractTemplateVariables, renderPreviewText, isValidEmail, parseCsvRow] ---
 
 function formatForDialing(raw) {
   if (!raw || raw === 'N/A') return null;
@@ -88,7 +136,6 @@ function formatForDialing(raw) {
   }
   return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;
 }
-
 
 const handleCall = (phone) => {
   if (!phone) return;
@@ -138,21 +185,15 @@ const parseCsvRow = (str) => {
   let inQuotes = false;
   for (let i = 0; i < str.length; i++) {
     const char = str[i];
-    if (char === '"' && !inQuotes) {
-      inQuotes = true;
-    } else if (char === '"' && inQuotes) {
+    if (char === '"' && !inQuotes) inQuotes = true;
+    else if (char === '"' && inQuotes) {
       if (i + 1 < str.length && str[i + 1] === '"') {
         current += '"';
         i++;
-      } else {
-        inQuotes = false;
-      }
+      } else inQuotes = false;
     } else if (char === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
+      result.push(current); current = '';
+    } else current += char;
   }
   result.push(current);
   return result.map(field => {
@@ -163,6 +204,9 @@ const parseCsvRow = (str) => {
     return cleaned;
   });
 };
+
+// ✅ EXPORT TEMPLATES FOR API USE
+export { FOLLOW_UP_1, FOLLOW_UP_2, FOLLOW_UP_3 };
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
