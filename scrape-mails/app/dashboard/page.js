@@ -295,10 +295,11 @@ export default function Dashboard() {
         const data = await response.json();
         if (response.ok) {
           successCount++;
-          setLastSent(prev => ({ ...prev, [contact.email]: new Date().toISOString() }));
-          if (dealStage[contact.email] === 'new') {
-            updateDealStage(contact.email, 'contacted');
-          }
+const contactKey = contact.email || contact.phone;
+setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+if (dealStage[contactKey] === 'new') {
+  updateDealStage(contactKey, 'contacted');
+}
         } else {
           console.warn(`SMS failed for ${contact.business}:`, data.error);
         }
@@ -339,10 +340,11 @@ export default function Dashboard() {
       const data = await response.json();
       if (response.ok) {
         alert(`✅ SMS sent to ${contact.business}!`);
-        setLastSent(prev => ({ ...prev, [contact.email]: new Date().toISOString() }));
-        if (dealStage[contact.email] === 'new') {
-          updateDealStage(contact.email, 'contacted');
-        }
+const contactKey = contact.email || contact.phone;
+setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+if (dealStage[contactKey] === 'new') {
+  updateDealStage(contactKey, 'contacted');
+}
       } else {
         alert(`❌ SMS failed: ${data.error}`);
       }
@@ -464,54 +466,74 @@ export default function Dashboard() {
     return () => clearTimeout(handler);
   }, [saveSettings, user?.uid]);
 
-  const handleCsvUpload = (e) => {
-    setValidEmails(0);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target.result;
-      setCsvContent(content);
-      const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
-      if (lines.length < 2) {
-        alert('CSV must have headers and data rows.');
-        return;
+const handleCsvUpload = (e) => {
+  setValidEmails(0);
+  setValidWhatsApp(0);
+  setWhatsappLinks([]);
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const content = e.target.result;
+    setCsvContent(content);
+    const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
+
+    if (lines.length < 2) {
+      alert('CSV must have headers and data rows.');
+      return;
+    }
+
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    setCsvHeaders(headers);
+    setPreviewRecipient(null);
+
+    // Extract all merge variables from templates
+    const allVars = [...new Set([
+      ...extractTemplateVariables(templateA.subject),
+      ...extractTemplateVariables(templateA.body),
+      ...extractTemplateVariables(templateB.subject),
+      ...extractTemplateVariables(templateB.body),
+      ...extractTemplateVariables(whatsappTemplate),
+      ...extractTemplateVariables(smsTemplate),
+      'sender_name'
+    ])];
+
+    const initialMappings = {};
+    allVars.forEach(varName => {
+      if (headers.includes(varName)) {
+        initialMappings[varName] = varName;
       }
-      const headers = parseCsvRow(lines[0]).map(h => h.trim());
-      setCsvHeaders(headers);
-      setPreviewRecipient(null);
-      const allVars = [...new Set([
-        ...extractTemplateVariables(templateA.subject),
-        ...extractTemplateVariables(templateA.body),
-        ...extractTemplateVariables(templateB.subject),
-        ...extractTemplateVariables(templateB.body),
-        ...extractTemplateVariables(whatsappTemplate),
-        ...extractTemplateVariables(smsTemplate),
-        'sender_name'
-      ])];
-      const initialMappings = {};
-      allVars.forEach(varName => {
-        if (headers.includes(varName)) {
-          initialMappings[varName] = varName;
-        }
+    });
+    if (headers.includes('email')) initialMappings.email = 'email';
+    initialMappings.sender_name = 'sender_name';
+    setFieldMappings(initialMappings);
+
+    // Reset counters
+    let hotEmails = 0, warmEmails = 0;
+    const validEmailContacts = []; // For email sending
+    const validPhoneContacts = []; // For WhatsApp/SMS
+    const newLeadScores = {};
+    const newLastSent = {};
+
+    let firstValid = null;
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
+
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
       });
-      if (headers.includes('email')) initialMappings.email = 'email';
-      initialMappings.sender_name = 'sender_name';
-      setFieldMappings(initialMappings);
-      let hotEmails = 0, warmEmails = 0, whatsappCount = 0, firstValid = null;
-      const validContacts = [];
-      const newLeadScores = {};
-      const newLastSent = {};
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCsvRow(lines[i]);
-        if (values.length !== headers.length) continue;
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
-        });
-        if (!isValidEmail(row.email)) continue;
-        const quality = (row.lead_quality || '').trim() || 'HOT';
+
+      // Determine lead quality
+      const quality = (row.lead_quality || '').trim() || 'HOT';
+
+      // Process email lead if valid
+      const hasValidEmail = isValidEmail(row.email);
+      if (hasValidEmail) {
         let score = 50;
         if (quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
@@ -519,38 +541,53 @@ export default function Dashboard() {
         if (clickStats[row.email]?.count > 0) score += 20;
         if (dealStage[row.email] === 'contacted') score += 10;
         score = Math.min(100, Math.max(0, score));
+
         newLeadScores[row.email] = score;
+        validEmailContacts.push(row);
+
         if (quality === 'HOT') hotEmails++;
         else if (quality === 'WARM') warmEmails++;
-        const rawPhone = row.whatsapp_number || row.phone_raw;
-        const formattedPhone = formatForDialing(rawPhone);
-        if (formattedPhone) {
-          whatsappCount++;
-          validContacts.push({
-            business: row.business_name || 'Business',
-            address: row.address || '',
-            phone: formattedPhone,
-            email: row.email,
-            place_id: row.place_id || '',
-            url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
-              renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
-            )}`
-          });
-        }
+
+        // Set first preview recipient if not set
         if (!firstValid) firstValid = row;
       }
-      validContacts.sort((a, b) => (newLeadScores[b.email] || 0) - (newLeadScores[a.email] || 0));
-      setPreviewRecipient(firstValid);
-      if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
-      else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
-      else setValidEmails(hotEmails + warmEmails);
-      setValidWhatsApp(whatsappCount);
-      setWhatsappLinks(validContacts);
-      setLeadScores(newLeadScores);
-      setLastSent(newLastSent);
-    };
-    reader.readAsText(file);
+
+      // Process phone lead if valid (even without email)
+      const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
+      const formattedPhone = formatForDialing(rawPhone);
+      if (formattedPhone) {
+        validPhoneContacts.push({
+          business: row.business_name || 'Business',
+          address: row.address || '',
+          phone: formattedPhone,
+          email: row.email || null, // may be null
+          place_id: row.place_id || '',
+          url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
+            renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
+          )}`
+        });
+
+        // Also set preview if not already set (e.g., email-less lead)
+        if (!firstValid) firstValid = row;
+      }
+    }
+
+    // Update preview
+    setPreviewRecipient(firstValid);
+
+    // Update email count based on filter
+    if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
+    else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
+    else setValidEmails(hotEmails + warmEmails);
+
+    // Update WhatsApp/SMS count
+    setValidWhatsApp(validPhoneContacts.length);
+    setWhatsappLinks(validPhoneContacts);
+    setLeadScores(newLeadScores);
+    setLastSent(newLastSent);
   };
+  reader.readAsText(file);
+};
 
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files).slice(0, 3);
@@ -712,29 +749,83 @@ export default function Dashboard() {
     }
   };
 
-  const sendFollowUp = async (email) => {
-    if (!user?.uid) return;
+const sendFollowUpWithToken = async (email, accessToken) => {
+  if (!user?.uid || !email || !accessToken) {
+    alert('Missing required data to send follow-up.');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/send-followup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        accessToken,
+        userId: user.uid,
+        senderName
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert(`✅ Follow-up sent to ${email}`);
+      await loadSentLeads();
+      await loadDeals();
+    } else {
+      alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
+    }
+  } catch (err) {
+    console.error('Follow-up send error:', err);
+    alert(`❌ Error: ${err.message || 'Failed to send follow-up'}`);
+  }
+};
+
+  // ✅ HELPER: Check if a lead is ready for follow-up
+const isEligibleForFollowUp = (lead) => {
+  if (!lead || !lead.email || lead.replied) return false;
+  const now = new Date();
+  const followUpAt = new Date(lead.followUpAt);
+  return followUpAt <= now;
+};
+// ✅ MASS FOLLOW-UP FUNCTION
+const sendMassFollowUp = async (accessToken) => {
+  if (!user?.uid || !accessToken) return; // ✅ token now required
+
+  const confirmed = confirm(`Send follow-up to all eligible leads (${sentLeads.filter(isEligibleForFollowUp).length})?`);
+  if (!confirmed) return;
+
+  setIsSending(true);
+  setStatus('📤 Sending mass follow-ups...');
+
+  let successCount = 0;
+
+  for (const lead of sentLeads) {
+    if (!isEligibleForFollowUp(lead)) continue;
+
     try {
-      const accessToken = await requestGmailToken();
+      // ✅ Use passed-in token — no new popup!
       const res = await fetch('/api/send-followup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, accessToken, userId: user.uid, senderName })
+        body: JSON.stringify({
+          email: lead.email,
+          accessToken, // ✅
+          userId: user.uid,
+          senderName,
+        })
       });
-      const data = await res.json();
-      if (res.ok) {
-        alert(`✅ Follow-up sent to ${email}`);
-        loadSentLeads();
-        loadDeals();
-      } else {
-        alert(`❌ Failed: ${data.error}`);
-      }
-    } catch (err) {
-      console.error('Follow-up error:', err);
-      alert(`❌ ${err.message}`);
-    }
-  };
 
+      if (res.ok) successCount++;
+    } catch (err) {
+      console.error(`Error sending to ${lead.email}:`, err);
+    }
+  }
+
+  setIsSending(false);
+  alert(`✅ Sent follow-ups to ${successCount} leads.`);
+  await loadSentLeads();
+};
   const checkRepliesAndLoad = async () => {
     await checkForReplies();
     await loadSentLeads();
@@ -1260,26 +1351,35 @@ const handleSendEmails = async (templateToSend = null) => {
     </div>
     <div className="max-h-96 overflow-y-auto space-y-3">
       {whatsappLinks.map((link, i) => {
-        const last = lastSent[link.email];
-        const score = leadScores[link.email] || 0;
+        // ✅ Use stable key: email if present, otherwise phone
+        const contactKey = link.email || link.phone;
+        const last = lastSent[contactKey];
+        const score = leadScores[link.email] || 0; // lead score only exists for email leads
+        const isReplied = repliedLeads[link.email]; // replies only tracked via email
+        const isFollowUp = followUpLeads[link.email]; // follow-ups only tracked via email
+
         return (
-          <div key={i} className="p-3 bg-gray-50 rounded-lg border">
+          <div key={contactKey || i} className="p-3 bg-gray-50 rounded-lg border">
             <div className="flex justify-between">
               <div>
                 <div className="font-medium">{link.business}</div>
                 <div className="text-sm text-gray-600">+{link.phone}</div>
-                <div className="text-xs text-blue-600">Score: {score}/100</div>
+                {link.email ? (
+                  <div className="text-xs text-blue-600">Score: {score}/100</div>
+                ) : (
+                  <div className="text-xs text-gray-500 italic">No email (phone-only)</div>
+                )}
                 {last && (
                   <div className="text-xs text-green-600 mt-1">
                     📅 Last: {new Date(last).toLocaleDateString()}
                   </div>
                 )}
-                {repliedLeads[link.email] && (
+                {isReplied && (
                   <span className="inline-block bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded mt-1">
                     Replied
                   </span>
                 )}
-                {!repliedLeads[link.email] && followUpLeads[link.email] && (
+                {!isReplied && isFollowUp && (
                   <span className="inline-block bg-yellow-100 text-yellow-800 text-xs px-1.5 py-0.5 rounded mt-1">
                     Follow Up
                   </span>
@@ -1296,6 +1396,7 @@ const handleSendEmails = async (templateToSend = null) => {
                   <a
                     href={link.url}
                     target="_blank"
+                    rel="noopener noreferrer"
                     className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
                   >
                     WhatsApp
@@ -1303,42 +1404,35 @@ const handleSendEmails = async (templateToSend = null) => {
                 </div>
                 {smsConsent && (
                   <button
-                    onClick={() =>
-                      handleSendSMS(
-                        link,
-                        user,
-                        smsTemplate,
-                        fieldMappings,
-                        senderName,
-                        setLastSent,
-                        dealStage,
-                        updateDealStage
-                      )
-                    }
+                    onClick={() => handleSendSMS(link)}
                     className="text-xs bg-orange-600 text-white px-2 py-1 rounded mt-1 w-full"
                   >
                     SMS
                   </button>
                 )}
-                <select
-                  value={dealStage[link.email] || 'new'}
-                  onChange={(e) => updateDealStage(link.email, e.target.value)}
-                  className="text-xs border rounded px-1 py-0.5 mt-1 w-full"
-                >
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="demo">Demo Scheduled</option>
-                  <option value="proposal">Proposal Sent</option>
-                  <option value="won">Closed Won</option>
-                </select>
+                {/* ✅ Only show deal stage dropdown if email exists */}
+                {link.email ? (
+                  <select
+                    value={dealStage[link.email] || 'new'}
+                    onChange={(e) => updateDealStage(link.email, e.target.value)}
+                    className="text-xs border rounded px-1 py-0.5 mt-1 w-full"
+                  >
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="demo">Demo Scheduled</option>
+                    <option value="proposal">Proposal Sent</option>
+                    <option value="won">Closed Won</option>
+                  </select>
+                ) : (
+                  <div className="text-xs text-gray-400 mt-1 italic">No email → CRM not tracked</div>
+                )}
               </div>
             </div>
           </div>
         );
       })}
     </div>
-
-    {/* ✅ BULK SMS BUTTON — Placed ONCE, BELOW the list */}
+    {/* BULK SMS BUTTON */}
     <div className="mt-4">
       <button
         onClick={handleSendBulkSMS}
@@ -1374,17 +1468,32 @@ const handleSendEmails = async (templateToSend = null) => {
                 ✕
               </button>
             </div>
-            <div className="p-4 flex space-x-2">
-              <button
-                onClick={checkRepliesAndLoad}
-                className="text-xs bg-purple-600 text-white px-3 py-1.5 rounded"
-              >
-                🔄 Check for New Replies
-              </button>
-              <div className="text-xs text-gray-600 ml-2">
-                Auto-checks replies & updates follow-up status
-              </div>
-            </div>
+<div className="p-4 flex space-x-2">
+  <button
+    onClick={checkRepliesAndLoad}
+    className="text-xs bg-purple-600 text-white px-3 py-1.5 rounded"
+  >
+    🔄 Check for New Replies
+  </button>
+<button
+  onClick={async () => {
+    try {
+      const accessToken = await requestGmailToken(); // ✅ Direct user gesture
+      sendMassFollowUp(accessToken); // ✅ Pass token downstream
+    } catch (err) {
+      alert('Gmail access denied or blocked. Check popup blocker.');
+      console.error(err);
+    }
+  }}
+  className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded"
+  disabled={isSending}
+>
+  📨 Send Mass Follow-Up
+</button>
+  <div className="text-xs text-gray-600 ml-2">
+    Auto-checks replies & updates follow-up status
+  </div>
+</div>
             <div className="flex-1 overflow-y-auto p-4">
               {loadingSentLeads ? (
                 <div className="text-center py-6">Loading sent leads...</div>
@@ -1428,16 +1537,21 @@ const handleSendEmails = async (templateToSend = null) => {
                             )}
                           </div>
                           {!lead.replied && (
-                            <button
-                              onClick={() => sendFollowUp(lead.email)}
-                              disabled={!needsFollowUp}
-                              className={`text-xs px-3 py-1 rounded ${needsFollowUp
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-300 text-gray-500'
-                                }`}
-                            >
-                              {needsFollowUp ? 'Send Follow-Up' : 'Too Early'}
-                            </button>
+<button
+  onClick={async () => {
+    try {
+      const token = await requestGmailToken(); // ← triggered by real click
+      sendFollowUpWithToken(lead.email, token);
+    } catch (err) {
+      alert('Gmail auth failed. Check popup blocker or try again.');
+      console.error(err);
+    }
+  }}
+  disabled={!needsFollowUp}
+  className={`text-xs px-3 py-1 rounded ${needsFollowUp ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'}`}
+>
+  {needsFollowUp ? 'Send Follow-Up' : 'Too Early'}
+</button>
                           )}
                         </div>
                       </div>
