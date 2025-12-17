@@ -100,14 +100,12 @@ export async function POST(req) {
       const row = {};
       headers.forEach((h, idx) => row[h] = values[idx] || '');
 
-      // 🔥 HANDLE SEMICOLON EMAILS
-      const emailField = (row.email || '').toString();
-      const emailList = emailField
+      const emailList = (row.email || '')
+        .toString()
         .split(';')
         .map(e => e.trim())
         .filter(e => isValidEmail(e));
 
-      // Only keep emails that were selected in frontend
       for (const email of emailList) {
         if (emailSet.has(email)) {
           recipients.push({ ...row, email });
@@ -131,40 +129,56 @@ export async function POST(req) {
         const subject = renderText(template.subject, recipient, fieldMappings, senderName);
         let body = renderText(template.body, recipient, fieldMappings, senderName);
 
-        // Handle images
         let rawMessage;
         if (emailImages.length > 0) {
-          const message = [
+          let htmlBody = body;
+          const messageParts = [
             `To: ${recipient.email}`,
             `Subject: ${subject}`,
+            'MIME-Version: 1.0',
             'Content-Type: multipart/related; boundary="boundary"',
             '',
             '--boundary',
             'Content-Type: text/html; charset=utf-8',
             '',
-            body,
+            htmlBody,
             ''
           ];
 
           emailImages.forEach(img => {
             const imgTag = `<img src="cid:${img.cid}" alt="Inline">`;
-            body = body.replace(new RegExp(img.placeholder, 'g'), imgTag);
-            message[message.length - 2] = body;
-            message.push('--boundary');
-            message.push(`Content-Type: ${img.mimeType}`);
-            message.push(`Content-Transfer-Encoding: base64`);
-            message.push(`Content-ID: <${img.cid}>`);
-            message.push('');
-            message.push(img.base64);
-            message.push('');
+            htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
           });
-          message.push('--boundary--');
-          rawMessage = btoa(message.join('\n').replace(/\n/g, '\r\n'))
+
+          const finalMessage = [
+            `To: ${recipient.email}`,
+            `Subject: ${subject}`,
+            'MIME-Version: 1.0',
+            'Content-Type: multipart/related; boundary="boundary"',
+            '',
+            '--boundary',
+            'Content-Type: text/html; charset=utf-8',
+            '',
+            htmlBody,
+            ''
+          ];
+
+          emailImages.forEach(img => {
+            finalMessage.push('--boundary');
+            finalMessage.push(`Content-Type: ${img.mimeType}`);
+            finalMessage.push('Content-Transfer-Encoding: base64');
+            finalMessage.push(`Content-ID: <${img.cid}>`);
+            finalMessage.push('');
+            finalMessage.push(img.base64);
+          });
+          finalMessage.push('--boundary--');
+
+          rawMessage = Buffer.from(finalMessage.join('\r\n'))
+            .toString('base64')
             .replace(/\+/g, '-')
             .replace(/\//g, '_')
             .replace(/=+$/, '');
         } else {
-          // Plain text
           const emailLines = [
             `To: ${recipient.email}`,
             `Subject: ${subject}`,
@@ -187,17 +201,25 @@ export async function POST(req) {
         const { threadId } = response.data;
 
         if (threadId) {
-          await setDoc(doc(db, 'sent_emails', `${userId}_${recipient.email}`), {
+          const sentAt = new Date();
+          const followUpAt = new Date(sentAt.getTime() + 48 * 60 * 60 * 1000); // 48 hours
+
+          // ✅ CORRECT DOCUMENT ID
+          const docId = `${userId}_${recipient.email}`;
+
+          await setDoc(doc(db, 'sent_emails', docId), {
             userId,
             to: recipient.email,
             threadId,
-            sentAt: new Date().toISOString(),
+            sentAt: sentAt.toISOString(),
             replied: false,
-            followUpAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+            followUpAt: followUpAt.toISOString(),
+            followUpSentCount: 0,
+            lastFollowUpSentAt: null
           });
-        }
 
-        sentCount++;
+          sentCount++;
+        }
       } catch (e) {
         console.warn(`Failed to send to ${recipient.email}:`, e.message);
       }
