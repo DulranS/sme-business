@@ -12,14 +12,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import deque
 
 # -----------------------------
-# CONFIGURATION — MATCHES YOUR CSV EXACTLY
+# CONFIGURATION — TAILORED TO YOUR CSV
 # -----------------------------
-CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-18 (1).csv"
-
-# Auto-numbered output base name
+CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-18 (2).csv"
 OUTPUT_BASE_NAME = "business_leads_with_email"
 
-# Preserve original column order + add 'email' at the end
+# Expected columns (order preserved)
 ORIGINAL_COLUMNS = [
     'place_id',
     'business_name',
@@ -32,18 +30,19 @@ ORIGINAL_COLUMNS = [
 ]
 OUTPUT_COLUMNS = ORIGINAL_COLUMNS + ['email']
 
-# Scraper settings
-EMAIL_TIMEOUT = 10
+# Scraper tuning
+EMAIL_TIMEOUT = 12
 MAX_RETRIES = 2
-MAX_PAGES_PER_SITE = 5
-MAX_WORKERS = 10
-REQUEST_DELAY_MIN = 0.8
-REQUEST_DELAY_MAX = 1.4
+MAX_PAGES_PER_SITE = 4
+MAX_WORKERS = 12
+REQUEST_DELAY_MIN = 0.7
+REQUEST_DELAY_MAX = 1.3
 
 PRIORITY_PATHS = ['/contact', '/contact-us', '/about', '/team', '/info', '/support']
 EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 
 # -----------------------------
@@ -51,7 +50,6 @@ logger = logging.getLogger()
 # -----------------------------
 
 def get_unique_output_path(base_name, extension=".csv"):
-    """Generates business_leads_with_email.csv, (1).csv, (2).csv, etc."""
     if not os.path.exists(base_name + extension):
         return base_name + extension
     counter = 1
@@ -67,7 +65,8 @@ def normalize_url(url):
     url = url.strip()
     if not url or url.lower() in {'n/a', 'null', 'none', '-', '', '·'}:
         return None
-    if 'google.com/aclk' in url or 'google.com/maps' in url or 'gclid=' in url:
+    # Skip Google tracking URLs
+    if any(x in url for x in ['google.com/aclk', 'google.com/maps', 'gclid=']):
         return None
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
@@ -93,15 +92,21 @@ def is_relevant_email(email, base_domain):
         return False
 
 def get_soup(url, timeout=EMAIL_TIMEOUT):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+    ]
+    headers = {'User-Agent': random.choice(user_agents)}
     for attempt in range(MAX_RETRIES + 1):
         try:
             response = requests.get(url, timeout=timeout, headers=headers, allow_redirects=True)
             if response.status_code == 200:
+                response.encoding = response.apparent_encoding or 'utf-8'
                 return BeautifulSoup(response.text, 'html.parser')
-        except:
+        except Exception as e:
             if attempt < MAX_RETRIES:
-                time.sleep(0.8)
+                time.sleep(random.uniform(0.6, 1.0))
                 continue
     return None
 
@@ -115,6 +120,7 @@ def scrape_emails_from_site(root_url):
     all_emails = set()
     visited = set()
 
+    # Build priority queue: home + key pages
     priority_urls = [urljoin(root_url, path) for path in PRIORITY_PATHS]
     urls_to_check = deque(priority_urls)
     urls_to_check.appendleft(root_url)
@@ -129,7 +135,8 @@ def scrape_emails_from_site(root_url):
         if not soup:
             continue
 
-        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe', 'form', 'button', 'img']):
+        # Remove noisy elements
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe', 'form', 'button', 'img', 'comment']):
             tag.decompose()
 
         text = soup.get_text(separator=' ', strip=True)
@@ -142,33 +149,47 @@ def scrape_emails_from_site(root_url):
 
         time.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
 
-    clean = set()
+    # Final validation
+    clean_emails = set()
     for e in all_emails:
         e = e.strip()
         if 5 <= len(e) <= 254 and EMAIL_PATTERN.fullmatch(e):
-            clean.add(e)
-    return clean
+            clean_emails.add(e)
+    return clean_emails
 
 def process_row(row):
+    business_name = row.get('business_name', 'Unknown')
     website = row.get('website', "")
-    emails = scrape_emails_from_site(website)
-    row['email'] = '; '.join(sorted(emails)) if emails else ""
+    logger.info(f"Scraping: {business_name}")
+    try:
+        emails = scrape_emails_from_site(website)
+        row['email'] = '; '.join(sorted(emails)) if emails else ""
+    except Exception as e:
+        logger.warning(f"Error scraping {business_name}: {e}")
+        row['email'] = ""
     return row
 
 def main():
-    logger.info("🔍 Reading input CSV...")
+    logger.info("🚀 Starting email enrichment...")
 
-    with open(CSV_INPUT_PATH, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
+    # Read input
+    try:
+        with open(CSV_INPUT_PATH, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+    except Exception as e:
+        logger.error(f"❌ Failed to read CSV: {e}")
+        sys.exit(1)
 
-    for col in ORIGINAL_COLUMNS:
-        if col not in reader.fieldnames:
-            logger.error(f"❌ Missing expected column: {col}")
-            sys.exit(1)
+    # Validate columns
+    missing = [col for col in ORIGINAL_COLUMNS if col not in reader.fieldnames]
+    if missing:
+        logger.error(f"❌ Missing columns: {missing}")
+        sys.exit(1)
 
-    logger.info(f"✅ Found {len(rows)} leads. Scraping emails...")
+    logger.info(f"✅ Loaded {len(rows)} leads. Beginning email scrape...")
 
+    # Process in parallel
     results = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_row = {executor.submit(process_row, row.copy()): row for row in rows}
@@ -179,36 +200,39 @@ def main():
                 row = future_to_row[future]
                 row['email'] = ""
                 results.append(row)
-                logger.warning(f"Failed to scrape: {e}")
+                logger.error(f"Row processing failed: {e}")
 
-    key_to_result = {}
-    for r in results:
-        key = (r['business_name'], r['website'])
-        key_to_result[key] = r
-
+    # Restore original order
+    key_map = {(row['business_name'], row['website']): row for row in rows}
+    result_map = {(row['business_name'], row['website']): row for row in results}
     ordered_results = []
-    for row in rows:
-        key = (row['business_name'], row['website'])
-        ordered_results.append(key_to_result.get(key, {**row, 'email': ''}))
+    for key in [(r['business_name'], r['website']) for r in rows]:
+        ordered_results.append(result_map.get(key, {**key_map[key], 'email': ''}))
 
-    # ✅ AUTO-NUMBERED OUTPUT FILE
+    # Generate unique output path
     OUTPUT_FILE = get_unique_output_path(OUTPUT_BASE_NAME)
 
-    with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, extrasaction='ignore')
-        writer.writeheader()
-        writer.writerows(ordered_results)
+    # Write output
+    try:
+        with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, extrasaction='ignore')
+            writer.writeheader()
+            writer.writerows(ordered_results)
+    except PermissionError:
+        logger.error(f"❌ Cannot write to {OUTPUT_FILE} — close it in Excel!")
+        sys.exit(1)
 
+    # Final stats
     total = len(ordered_results)
     with_email = sum(1 for r in ordered_results if r.get('email', '').strip())
     pct = (with_email / total) * 100 if total > 0 else 0
 
-    logger.info("\n" + "="*50)
-    logger.info("✅ DONE!")
-    logger.info(f"Total leads: {total}")
-    logger.info(f"Leads with email: {with_email} ({pct:.1f}%)")
-    logger.info(f"📁 Output saved to: {OUTPUT_FILE}")
-    logger.info("="*50)
+    logger.info("\n" + "="*60)
+    logger.info("✅ ENRICHMENT COMPLETE!")
+    logger.info(f"Total leads processed       : {total}")
+    logger.info(f"Leads with valid email      : {with_email} ({pct:.1f}%)")
+    logger.info(f"Output file                 : {OUTPUT_FILE}")
+    logger.info("="*60)
 
 if __name__ == "__main__":
     main()
