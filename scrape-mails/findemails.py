@@ -14,10 +14,10 @@ from collections import deque
 # -----------------------------
 # CONFIGURATION — TAILORED TO YOUR CSV
 # -----------------------------
-CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-18 (2).csv"
+CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-20.csv"
 OUTPUT_BASE_NAME = "business_leads_with_email"
 
-# Expected columns (order preserved)
+# Expected column order (from your CSV)
 ORIGINAL_COLUMNS = [
     'place_id',
     'business_name',
@@ -30,19 +30,23 @@ ORIGINAL_COLUMNS = [
 ]
 OUTPUT_COLUMNS = ORIGINAL_COLUMNS + ['email']
 
-# Scraper tuning
+# Scraper settings — balanced for speed + safety
 EMAIL_TIMEOUT = 12
 MAX_RETRIES = 2
 MAX_PAGES_PER_SITE = 4
-MAX_WORKERS = 12
+MAX_WORKERS = 10
 REQUEST_DELAY_MIN = 0.7
 REQUEST_DELAY_MAX = 1.3
 
 PRIORITY_PATHS = ['/contact', '/contact-us', '/about', '/team', '/info', '/support']
 EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Logging setup
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%H:%M:%S'
+)
 logger = logging.getLogger()
 
 # -----------------------------
@@ -65,13 +69,12 @@ def normalize_url(url):
     url = url.strip()
     if not url or url.lower() in {'n/a', 'null', 'none', '-', '', '·'}:
         return None
-    # Skip Google tracking URLs
-    if any(x in url for x in ['google.com/aclk', 'google.com/maps', 'gclid=']):
+    if any(x in url for x in ['google.com/aclk', 'google.com/maps', 'gclid=', 'maps.app.goo.gl']):
         return None
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     parsed = urlparse(url)
-    if not parsed.netloc or 'google.com' in parsed.netloc:
+    if not parsed.netloc or 'google.com' in parsed.netloc or len(parsed.netloc) < 4:
         return None
     return url.rstrip('/')
 
@@ -104,7 +107,7 @@ def get_soup(url, timeout=EMAIL_TIMEOUT):
             if response.status_code == 200:
                 response.encoding = response.apparent_encoding or 'utf-8'
                 return BeautifulSoup(response.text, 'html.parser')
-        except Exception as e:
+        except:
             if attempt < MAX_RETRIES:
                 time.sleep(random.uniform(0.6, 1.0))
                 continue
@@ -120,7 +123,6 @@ def scrape_emails_from_site(root_url):
     all_emails = set()
     visited = set()
 
-    # Build priority queue: home + key pages
     priority_urls = [urljoin(root_url, path) for path in PRIORITY_PATHS]
     urls_to_check = deque(priority_urls)
     urls_to_check.appendleft(root_url)
@@ -135,7 +137,6 @@ def scrape_emails_from_site(root_url):
         if not soup:
             continue
 
-        # Remove noisy elements
         for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe', 'form', 'button', 'img', 'comment']):
             tag.decompose()
 
@@ -149,7 +150,6 @@ def scrape_emails_from_site(root_url):
 
         time.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
 
-    # Final validation
     clean_emails = set()
     for e in all_emails:
         e = e.strip()
@@ -160,79 +160,94 @@ def scrape_emails_from_site(root_url):
 def process_row(row):
     business_name = row.get('business_name', 'Unknown')
     website = row.get('website', "")
-    logger.info(f"Scraping: {business_name}")
     try:
         emails = scrape_emails_from_site(website)
         row['email'] = '; '.join(sorted(emails)) if emails else ""
     except Exception as e:
-        logger.warning(f"Error scraping {business_name}: {e}")
+        logger.warning(f"Failed to scrape {business_name}: {str(e)[:100]}")
         row['email'] = ""
     return row
 
 def main():
-    logger.info("🚀 Starting email enrichment...")
+    logger.info("🚀 Starting business email enrichment...")
 
-    # Read input
+    # Read input CSV
     try:
         with open(CSV_INPUT_PATH, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             rows = list(reader)
     except Exception as e:
-        logger.error(f"❌ Failed to read CSV: {e}")
+        logger.error(f"❌ Failed to read input file: {e}")
         sys.exit(1)
 
     # Validate columns
-    missing = [col for col in ORIGINAL_COLUMNS if col not in reader.fieldnames]
-    if missing:
-        logger.error(f"❌ Missing columns: {missing}")
+    missing_cols = [col for col in ORIGINAL_COLUMNS if col not in reader.fieldnames]
+    if missing_cols:
+        logger.error(f"❌ Missing required columns: {missing_cols}")
         sys.exit(1)
 
-    logger.info(f"✅ Loaded {len(rows)} leads. Beginning email scrape...")
+    total_leads = len(rows)
+    logger.info(f"✅ Loaded {total_leads} leads. Starting scrape...")
 
-    # Process in parallel
     results = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_row = {executor.submit(process_row, row.copy()): row for row in rows}
-        for future in as_completed(future_to_row):
-            try:
-                results.append(future.result())
-            except Exception as e:
-                row = future_to_row[future]
-                row['email'] = ""
-                results.append(row)
-                logger.error(f"Row processing failed: {e}")
+    completed = 0
+
+    try:
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            future_to_row = {executor.submit(process_row, row.copy()): row for row in rows}
+            for future in as_completed(future_to_row):
+                try:
+                    result = future.result()
+                    results.append(result)
+                    completed += 1
+                    if completed % 5 == 0 or completed == total_leads:
+                        logger.info(f"✔ Progress: {completed}/{total_leads} leads done")
+                except Exception as e:
+                    row = future_to_row[future]
+                    row['email'] = ""
+                    results.append(row)
+                    logger.error(f"Row failed: {e}")
+
+    except KeyboardInterrupt:
+        logger.warning("⚠️ Script interrupted by user. Saving partial results...")
+        # Still save what we have
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        sys.exit(1)
 
     # Restore original order
-    key_map = {(row['business_name'], row['website']): row for row in rows}
-    result_map = {(row['business_name'], row['website']): row for row in results}
+    key_to_original = {(r['business_name'], r['website']): r for r in rows}
+    key_to_result = {(r['business_name'], r['website']): r for r in results}
     ordered_results = []
     for key in [(r['business_name'], r['website']) for r in rows]:
-        ordered_results.append(result_map.get(key, {**key_map[key], 'email': ''}))
+        ordered_results.append(key_to_result.get(key, {**key_to_original[key], 'email': ''}))
 
-    # Generate unique output path
+    # Save output
     OUTPUT_FILE = get_unique_output_path(OUTPUT_BASE_NAME)
-
-    # Write output
     try:
         with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, extrasaction='ignore')
             writer.writeheader()
             writer.writerows(ordered_results)
+        logger.info(f"💾 Output saved: {OUTPUT_FILE}")
     except PermissionError:
         logger.error(f"❌ Cannot write to {OUTPUT_FILE} — close it in Excel!")
         sys.exit(1)
 
     # Final stats
-    total = len(ordered_results)
     with_email = sum(1 for r in ordered_results if r.get('email', '').strip())
-    pct = (with_email / total) * 100 if total > 0 else 0
+    pct = (with_email / total_leads) * 100 if total_leads > 0 else 0
 
     logger.info("\n" + "="*60)
     logger.info("✅ ENRICHMENT COMPLETE!")
-    logger.info(f"Total leads processed       : {total}")
-    logger.info(f"Leads with valid email      : {with_email} ({pct:.1f}%)")
-    logger.info(f"Output file                 : {OUTPUT_FILE}")
+    logger.info(f"Total leads          : {total_leads}")
+    logger.info(f"Leads with email     : {with_email} ({pct:.1f}%)")
+    logger.info(f"Output file          : {OUTPUT_FILE}")
     logger.info("="*60)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.warning("\n🛑 Process stopped by user. Partial results may have been saved.")
+        sys.exit(0)

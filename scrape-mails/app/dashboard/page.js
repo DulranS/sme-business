@@ -476,10 +476,8 @@ const handleCsvUpload = (e) => {
   const reader = new FileReader();
   reader.onload = (e) => {
     const content = e.target.result;
-    setCsvContent(content);
     const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
-
     if (lines.length < 2) {
       alert('CSV must have headers and data rows.');
       return;
@@ -489,7 +487,6 @@ const handleCsvUpload = (e) => {
     setCsvHeaders(headers);
     setPreviewRecipient(null);
 
-    // Extract all merge variables from templates
     const allVars = [...new Set([
       ...extractTemplateVariables(templateA.subject),
       ...extractTemplateVariables(templateA.body),
@@ -510,13 +507,10 @@ const handleCsvUpload = (e) => {
     initialMappings.sender_name = 'sender_name';
     setFieldMappings(initialMappings);
 
-    // Reset counters
     let hotEmails = 0, warmEmails = 0;
-    const validEmailContacts = []; // For email sending
-    const validPhoneContacts = []; // For WhatsApp/SMS
+    const validPhoneContacts = [];
     const newLeadScores = {};
     const newLastSent = {};
-
     let firstValid = null;
 
     for (let i = 1; i < lines.length; i++) {
@@ -528,11 +522,9 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
-      // Determine lead quality
       const quality = (row.lead_quality || '').trim() || 'HOT';
-
-      // Process email lead if valid
       const hasValidEmail = isValidEmail(row.email);
+
       if (hasValidEmail) {
         let score = 50;
         if (quality === 'HOT') score += 30;
@@ -541,46 +533,38 @@ const handleCsvUpload = (e) => {
         if (clickStats[row.email]?.count > 0) score += 20;
         if (dealStage[row.email] === 'contacted') score += 10;
         score = Math.min(100, Math.max(0, score));
-
         newLeadScores[row.email] = score;
-        validEmailContacts.push(row);
-
         if (quality === 'HOT') hotEmails++;
         else if (quality === 'WARM') warmEmails++;
-
-        // Set first preview recipient if not set
         if (!firstValid) firstValid = row;
       }
 
-      // Process phone lead if valid (even without email)
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
+        // ✅ CRITICAL: Generate unique key using email + phone + index
+        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${i}`;
+        
         validPhoneContacts.push({
+          id: contactId, // ✅ UNIQUE ID
           business: row.business_name || 'Business',
           address: row.address || '',
           phone: formattedPhone,
-          email: row.email || null, // may be null
+          email: row.email || null,
           place_id: row.place_id || '',
           url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
             renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
           )}`
         });
-
-        // Also set preview if not already set (e.g., email-less lead)
         if (!firstValid) firstValid = row;
       }
     }
 
-    // Update preview
     setPreviewRecipient(firstValid);
-
-    // Update email count based on filter
     if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
     else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
     else setValidEmails(hotEmails + warmEmails);
-
-    // Update WhatsApp/SMS count
+    
     setValidWhatsApp(validPhoneContacts.length);
     setWhatsappLinks(validPhoneContacts);
     setLeadScores(newLeadScores);
@@ -1338,28 +1322,19 @@ const handleSendEmails = async (templateToSend = null) => {
             </div>
 {whatsappLinks.length > 0 && (
   <div className="bg-white p-4 rounded-xl shadow">
-    <div className="flex justify-between items-center mb-3">
-      <h2 className="text-lg font-bold text-gray-800">
-        12. Multi-Channel Outreach ({whatsappLinks.length})
-      </h2>
-      <button
-        onClick={checkForReplies}
-        className="text-xs bg-purple-600 text-white px-2 py-1 rounded"
-      >
-        🔄 Check for Replies
-      </button>
-    </div>
+    <h2 className="text-lg font-bold text-gray-800 mb-3">
+      12. Multi-Channel Outreach ({whatsappLinks.length})
+    </h2>
     <div className="max-h-96 overflow-y-auto space-y-3">
-      {whatsappLinks.map((link, i) => {
-        // ✅ Use stable key: email if present, otherwise phone
+      {whatsappLinks.map((link) => {
         const contactKey = link.email || link.phone;
         const last = lastSent[contactKey];
-        const score = leadScores[link.email] || 0; // lead score only exists for email leads
-        const isReplied = repliedLeads[link.email]; // replies only tracked via email
-        const isFollowUp = followUpLeads[link.email]; // follow-ups only tracked via email
-
+        const score = leadScores[link.email] || 0;
+        const isReplied = repliedLeads[link.email];
+        const isFollowUp = followUpLeads[link.email];
         return (
-          <div key={contactKey || i} className="p-3 bg-gray-50 rounded-lg border">
+          // ✅ CRITICAL: Use link.id as key (not index or phone)
+          <div key={link.id} className="p-3 bg-gray-50 rounded-lg border">
             <div className="flex justify-between">
               <div>
                 <div className="font-medium">{link.business}</div>
@@ -1410,7 +1385,6 @@ const handleSendEmails = async (templateToSend = null) => {
                     SMS
                   </button>
                 )}
-                {/* ✅ Only show deal stage dropdown if email exists */}
                 {link.email ? (
                   <select
                     value={dealStage[link.email] || 'new'}
@@ -1432,7 +1406,6 @@ const handleSendEmails = async (templateToSend = null) => {
         );
       })}
     </div>
-    {/* BULK SMS BUTTON */}
     <div className="mt-4">
       <button
         onClick={handleSendBulkSMS}
