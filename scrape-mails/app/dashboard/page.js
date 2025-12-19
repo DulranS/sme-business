@@ -242,6 +242,59 @@ export default function Dashboard() {
   const [sentLeads, setSentLeads] = useState([]);
   const [loadingSentLeads, setLoadingSentLeads] = useState(false);
 
+// ✅ ADD THESE STATES AFTER templateA, templateB, etc.
+const [followUpTemplates, setFollowUpTemplates] = useState([
+  {
+    id: 'followup_1',
+    name: 'Follow-Up 1 (Day 2)',
+    channel: 'email',
+    enabled: true,
+    delayDays: 2,
+    subject: 'Quick question for {{business_name}}',
+    body: `Hi {{business_name}},
+Just circling back—did my note about outsourced dev & ops support land at a bad time?
+No pressure at all, but if you’re ever swamped with web, automation, or backend work and need a reliable extra hand (especially for white-label or fast-turnaround needs), we’re ready to help.
+Even a 1-hour task is a great way to test the waters.
+Either way, wishing you a productive week!
+Best,  
+Dulran  
+Founder — Syndicate Solutions  
+WhatsApp: 0741143323`
+  },
+  {
+    id: 'followup_2',
+    name: 'Follow-Up 2 (Day 5)',
+    channel: 'email',
+    enabled: true,
+    delayDays: 5,
+    subject: '{{business_name}}, a quick offer (no strings)',
+    body: `Hi again,
+I noticed you haven’t had a chance to reply—totally understand!
+To make this zero-risk: **I’ll audit one of your digital workflows (e.g., lead capture, client onboarding, internal tooling) for free** and send 2–3 actionable automation ideas you can implement immediately—even if you never work with us.
+Zero sales pitch. Just value.
+Interested? Hit “Yes” or reply with a workflow you’d like optimized.
+Cheers,  
+Dulran  
+Portfolio: https://syndicatesolutions.vercel.app/  
+Book a call: https://cal.com/syndicate-solutions/15min`
+  },
+  {
+    id: 'followup_3',
+    name: 'Breakup Email (Day 7)',
+    channel: 'email',
+    enabled: true,
+    delayDays: 7,
+    subject: 'Closing the loop',
+    body: `Hi {{business_name}},
+I’ll stop emailing after this one! 😅
+Just wanted to say: if outsourcing ever becomes a priority—whether for web dev, AI tools, or ongoing ops—we’re here. Many of our clients started with a tiny $100 task and now work with us monthly.
+If now’s not the time, no worries! I’ll circle back in a few months.
+Either way, keep crushing it!
+— Dulran  
+WhatsApp: 0741143323`
+  }
+]);
+
   useEffect(() => {
     if (window.google?.accounts?.oauth2?.initTokenClient) {
       setIsGoogleLoaded(true);
@@ -295,11 +348,11 @@ export default function Dashboard() {
         const data = await response.json();
         if (response.ok) {
           successCount++;
-const contactKey = contact.email || contact.phone;
-setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
-if (dealStage[contactKey] === 'new') {
-  updateDealStage(contactKey, 'contacted');
-}
+          const contactKey = contact.email || contact.phone;
+          setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+          if (dealStage[contactKey] === 'new') {
+            updateDealStage(contactKey, 'contacted');
+          }
         } else {
           console.warn(`SMS failed for ${contact.business}:`, data.error);
         }
@@ -313,7 +366,7 @@ if (dealStage[contactKey] === 'new') {
     alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed/Skipped: ${totalCount - successCount}`);
   };
 
-    const handleSendSMS = async (contact) => {
+  const handleSendSMS = async (contact) => {
     if (!user?.uid) return;
     const confirmed = confirm(`Send SMS to ${contact.business} at +${contact.phone}?`);
     if (!confirmed) return;
@@ -340,11 +393,11 @@ if (dealStage[contactKey] === 'new') {
       const data = await response.json();
       if (response.ok) {
         alert(`✅ SMS sent to ${contact.business}!`);
-const contactKey = contact.email || contact.phone;
-setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
-if (dealStage[contactKey] === 'new') {
-  updateDealStage(contactKey, 'contacted');
-}
+        const contactKey = contact.email || contact.phone;
+        setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+        if (dealStage[contactKey] === 'new') {
+          updateDealStage(contactKey, 'contacted');
+        }
       } else {
         alert(`❌ SMS failed: ${data.error}`);
       }
@@ -419,46 +472,57 @@ if (dealStage[contactKey] === 'new') {
     }
   };
 
-  const loadSettings = async (userId) => {
-    try {
-      const docRef = doc(db, 'users', userId, 'settings', 'templates');
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setSenderName(data.senderName || 'Team');
-        setTemplateA(data.templateA || DEFAULT_TEMPLATE_A);
-        setTemplateB(data.templateB || DEFAULT_TEMPLATE_B);
-        setWhatsappTemplate(data.whatsappTemplate || DEFAULT_WHATSAPP_TEMPLATE);
-        setSmsTemplate(data.smsTemplate || DEFAULT_SMS_TEMPLATE);
-        setFieldMappings(data.fieldMappings || {});
-        setAbTestMode(data.abTestMode || false);
-        setSmsConsent(data.smsConsent || false);
-      } else {
-        setSenderName(auth.currentUser?.displayName?.split(' ')[0] || 'Team');
-      }
-    } catch (error) {
-      console.warn('Failed to load settings:', error);
+const loadSettings = async (userId) => {
+  try {
+    const docRef = doc(db, 'users', userId, 'settings', 'templates');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      setSenderName(data.senderName || 'Team');
+      setTemplateA(data.templateA || DEFAULT_TEMPLATE_A);
+      setTemplateB(data.templateB || DEFAULT_TEMPLATE_B);
+      setWhatsappTemplate(data.whatsappTemplate || DEFAULT_WHATSAPP_TEMPLATE);
+      setSmsTemplate(data.smsTemplate || DEFAULT_SMS_TEMPLATE);
+      setFollowUpTemplates(data.followUpTemplates || [ // ✅ Provide default array
+        {
+          id: 'followup_1',
+          name: 'Follow-Up 1 (Day 2)',
+          channel: 'email',
+          enabled: true,
+          delayDays: 2,
+          subject: 'Quick question for {{business_name}}',
+          body: `Hi {{business_name}},\nJust circling back...`
+        },
+        // ... other defaults
+      ]);
+      setFieldMappings(data.fieldMappings || {});
+      setAbTestMode(data.abTestMode || false);
+      setSmsConsent(data.smsConsent || false);
     }
-  };
+  } catch (error) {
+    console.warn('Failed to load settings:', error);
+  }
+};
 
-  const saveSettings = useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const docRef = doc(db, 'users', user.uid, 'settings', 'templates');
-      await setDoc(docRef, {
-        senderName,
-        templateA,
-        templateB,
-        whatsappTemplate,
-        smsTemplate,
-        fieldMappings,
-        abTestMode,
-        smsConsent
-      }, { merge: true });
-    } catch (error) {
-      console.warn('Failed to save settings:', error);
-    }
-  }, [user?.uid, senderName, templateA, templateB, whatsappTemplate, smsTemplate, fieldMappings, abTestMode, smsConsent]);
+const saveSettings = useCallback(async () => {
+  if (!user?.uid) return;
+  try {
+    const docRef = doc(db, 'users', user.uid, 'settings', 'templates');
+    await setDoc(docRef, {
+      senderName,
+      templateA,
+      templateB,
+      whatsappTemplate,
+      smsTemplate,
+      followUpTemplates, // ✅ Save follow-ups
+      fieldMappings,
+      abTestMode,
+      smsConsent
+    }, { merge: true });
+  } catch (error) {
+    console.warn('Failed to save settings:', error);
+  }
+}, [user?.uid, senderName, templateA, templateB, whatsappTemplate, smsTemplate, followUpTemplates, fieldMappings, abTestMode, smsConsent]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -542,8 +606,8 @@ const handleCsvUpload = (e) => {
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
-        // ✅ CRITICAL: Generate unique key using email + phone + index
-        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${i}`;
+        // ✅ CRITICAL: Unique key = email + phone + rowIndex
+        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now() + Math.random()}`;
         
         validPhoneContacts.push({
           id: contactId, // ✅ UNIQUE ID
@@ -733,246 +797,246 @@ const handleCsvUpload = (e) => {
     }
   };
 
-const sendFollowUpWithToken = async (email, accessToken) => {
-  if (!user?.uid || !email || !accessToken) {
-    alert('Missing required data to send follow-up.');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/send-followup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        accessToken,
-        userId: user.uid,
-        senderName
-      })
-    });
-
-    const data = await res.json();
-    if (res.ok) {
-      alert(`✅ Follow-up sent to ${email}`);
-      await loadSentLeads();
-      await loadDeals();
-    } else {
-      alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
+  const sendFollowUpWithToken = async (email, accessToken) => {
+    if (!user?.uid || !email || !accessToken) {
+      alert('Missing required data to send follow-up.');
+      return;
     }
-  } catch (err) {
-    console.error('Follow-up send error:', err);
-    alert(`❌ Error: ${err.message || 'Failed to send follow-up'}`);
-  }
-};
-
-  // ✅ HELPER: Check if a lead is ready for follow-up
-const isEligibleForFollowUp = (lead) => {
-  if (!lead || !lead.email || lead.replied) return false;
-  const now = new Date();
-  const followUpAt = new Date(lead.followUpAt);
-  return followUpAt <= now;
-};
-// ✅ MASS FOLLOW-UP FUNCTION
-const sendMassFollowUp = async (accessToken) => {
-  if (!user?.uid || !accessToken) return; // ✅ token now required
-
-  const confirmed = confirm(`Send follow-up to all eligible leads (${sentLeads.filter(isEligibleForFollowUp).length})?`);
-  if (!confirmed) return;
-
-  setIsSending(true);
-  setStatus('📤 Sending mass follow-ups...');
-
-  let successCount = 0;
-
-  for (const lead of sentLeads) {
-    if (!isEligibleForFollowUp(lead)) continue;
 
     try {
-      // ✅ Use passed-in token — no new popup!
       const res = await fetch('/api/send-followup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: lead.email,
-          accessToken, // ✅
+          email,
+          accessToken,
           userId: user.uid,
-          senderName,
+          senderName
         })
       });
 
-      if (res.ok) successCount++;
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ Follow-up sent to ${email}`);
+        await loadSentLeads();
+        await loadDeals();
+      } else {
+        alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
+      }
     } catch (err) {
-      console.error(`Error sending to ${lead.email}:`, err);
+      console.error('Follow-up send error:', err);
+      alert(`❌ Error: ${err.message || 'Failed to send follow-up'}`);
     }
-  }
+  };
 
-  setIsSending(false);
-  alert(`✅ Sent follow-ups to ${successCount} leads.`);
-  await loadSentLeads();
-};
+  // ✅ HELPER: Check if a lead is ready for follow-up
+  const isEligibleForFollowUp = (lead) => {
+    if (!lead || !lead.email || lead.replied) return false;
+    const now = new Date();
+    const followUpAt = new Date(lead.followUpAt);
+    return followUpAt <= now;
+  };
+  // ✅ MASS FOLLOW-UP FUNCTION
+  const sendMassFollowUp = async (accessToken) => {
+    if (!user?.uid || !accessToken) return; // ✅ token now required
+
+    const confirmed = confirm(`Send follow-up to all eligible leads (${sentLeads.filter(isEligibleForFollowUp).length})?`);
+    if (!confirmed) return;
+
+    setIsSending(true);
+    setStatus('📤 Sending mass follow-ups...');
+
+    let successCount = 0;
+
+    for (const lead of sentLeads) {
+      if (!isEligibleForFollowUp(lead)) continue;
+
+      try {
+        // ✅ Use passed-in token — no new popup!
+        const res = await fetch('/api/send-followup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: lead.email,
+            accessToken, // ✅
+            userId: user.uid,
+            senderName,
+          })
+        });
+
+        if (res.ok) successCount++;
+      } catch (err) {
+        console.error(`Error sending to ${lead.email}:`, err);
+      }
+    }
+
+    setIsSending(false);
+    alert(`✅ Sent follow-ups to ${successCount} leads.`);
+    await loadSentLeads();
+  };
   const checkRepliesAndLoad = async () => {
     await checkForReplies();
     await loadSentLeads();
   };
 
-const handleSendEmails = async (templateToSend = null) => {
-  if (!csvContent || typeof csvContent !== 'string' || csvContent.trim() === '') {
-    alert('Please upload a valid CSV file first.');
-    return;
-  }
-  if (!senderName.trim() || validEmails === 0) {
-    alert('Check sender name and valid emails.');
-    return;
-  }
-  if (abTestMode && !templateToSend) {
-    alert('Please select Template A or B.');
-    return;
-  }
-  if (abTestMode) {
-    if (templateToSend === 'A' && !templateA.subject.trim()) {
-      alert('Template A subject is required.');
+  const handleSendEmails = async (templateToSend = null) => {
+    if (!csvContent || typeof csvContent !== 'string' || csvContent.trim() === '') {
+      alert('Please upload a valid CSV file first.');
       return;
     }
-    if (templateToSend === 'B' && !templateB.subject.trim()) {
-      alert('Template B subject is required.');
+    if (!senderName.trim() || validEmails === 0) {
+      alert('Check sender name and valid emails.');
       return;
     }
-  } else {
-    if (!templateA.subject.trim()) {
-      alert('Email subject is required.');
+    if (abTestMode && !templateToSend) {
+      alert('Please select Template A or B.');
       return;
     }
-  }
-  setIsSending(true);
-  setStatus('Getting Gmail access...');
-  try {
-    const accessToken = await requestGmailToken();
-    const imagesWithBase64 = await Promise.all(
-      emailImages.map(async (img) => {
-        const base64 = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(',')[1]);
-          reader.readAsDataURL(img.file);
+    if (abTestMode) {
+      if (templateToSend === 'A' && !templateA.subject.trim()) {
+        alert('Template A subject is required.');
+        return;
+      }
+      if (templateToSend === 'B' && !templateB.subject.trim()) {
+        alert('Template B subject is required.');
+        return;
+      }
+    } else {
+      if (!templateA.subject.trim()) {
+        alert('Email subject is required.');
+        return;
+      }
+    }
+    setIsSending(true);
+    setStatus('Getting Gmail access...');
+    try {
+      const accessToken = await requestGmailToken();
+      const imagesWithBase64 = await Promise.all(
+        emailImages.map(async (img) => {
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(img.file);
+          });
+          return {
+            cid: img.cid,
+            mimeType: img.file.type,
+            base64,
+            placeholder: img.placeholder
+          };
+        })
+      );
+
+      // ✅ PARSE ORIGINAL CSV TO GET VALID RECIPIENTS
+      const lines = csvContent
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .filter(line => line.trim() !== '');
+      if (lines.length < 2) {
+        alert('CSV must have headers and data rows.');
+        setIsSending(false);
+        return;
+      }
+      const headers = parseCsvRow(lines[0]).map(h => h.trim());
+      let validRecipients = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCsvRow(lines[i]);
+        if (values.length !== headers.length) continue;
+        const row = {};
+        headers.forEach((header, idx) => {
+          row[header] = values[idx] || '';
         });
-        return {
-          cid: img.cid,
-          mimeType: img.file.type,
-          base64,
-          placeholder: img.placeholder
-        };
-      })
-    );
-
-    // ✅ PARSE ORIGINAL CSV TO GET VALID RECIPIENTS
-    const lines = csvContent
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .split('\n')
-      .filter(line => line.trim() !== '');
-    if (lines.length < 2) {
-      alert('CSV must have headers and data rows.');
-      setIsSending(false);
-      return;
-    }
-    const headers = parseCsvRow(lines[0]).map(h => h.trim());
-    let validRecipients = [];
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseCsvRow(lines[i]);
-      if (values.length !== headers.length) continue;
-      const row = {};
-      headers.forEach((header, idx) => {
-        row[header] = values[idx] || '';
-      });
-      if (!isValidEmail(row.email)) continue;
-      const quality = (row.lead_quality || '').trim() || 'HOT';
-      if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
-        validRecipients.push(row);
+        if (!isValidEmail(row.email)) continue;
+        const quality = (row.lead_quality || '').trim() || 'HOT';
+        if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
+          validRecipients.push(row);
+        }
       }
-    }
 
-    let recipientsToSend = [];
-    if (abTestMode && templateToSend) {
-      const half = Math.ceil(validRecipients.length / 2);
-      if (templateToSend === 'A') {
-        recipientsToSend = validRecipients.slice(0, half);
+      let recipientsToSend = [];
+      if (abTestMode && templateToSend) {
+        const half = Math.ceil(validRecipients.length / 2);
+        if (templateToSend === 'A') {
+          recipientsToSend = validRecipients.slice(0, half);
+        } else {
+          recipientsToSend = validRecipients.slice(half);
+        }
       } else {
-        recipientsToSend = validRecipients.slice(half);
+        recipientsToSend = validRecipients;
       }
-    } else {
-      recipientsToSend = validRecipients;
-    }
 
-    if (recipientsToSend.length === 0) {
-      setStatus('❌ No valid leads for selected criteria.');
-      setIsSending(false);
-      return;
-    }
-
-    // ✅ EXTRACT EMAILS (SPLIT SEMICOLON LISTS) FOR BACKEND
-    const emailsToSend = [];
-    for (const recipient of recipientsToSend) {
-      const emailField = (recipient.email || '').toString();
-      const emails = emailField
-        .split(';')
-        .map(e => e.trim())
-        .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-      emailsToSend.push(...emails);
-    }
-
-    if (emailsToSend.length === 0) {
-      setStatus('❌ No valid email addresses found after processing.');
-      setIsSending(false);
-      return;
-    }
-
-    // ✅ SEND ORIGINAL CSV + EMAIL LIST TO BACKEND
-    const res = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        csvContent,          // ✅ Original raw CSV
-        emailsToSend,        // ✅ List of individual emails (no semicolons)
-        senderName,
-        fieldMappings,
-        accessToken,
-        templateA,
-        templateB,
-        templateToSend,
-        userId: user.uid,
-        emailImages: imagesWithBase64
-      })
-    });
-
-    // ✅ DEBUG: LOG ACTUAL ERROR
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error('📧 Email API Error:', errorText);
-      setStatus(`❌ ${errorText}`);
-      setIsSending(false);
-      return;
-    }
-
-    const data = await res.json();
-    if (res.ok) {
-      setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
-      if (abTestMode) {
-        const newResults = { ...abResults };
-        if (templateToSend === 'A') newResults.a.sent = data.sent;
-        else newResults.b.sent = data.sent;
-        setAbResults(newResults);
-        await setDoc(doc(db, 'ab_results', user.uid), newResults);
+      if (recipientsToSend.length === 0) {
+        setStatus('❌ No valid leads for selected criteria.');
+        setIsSending(false);
+        return;
       }
-      // Also refresh reply/follow-up tracking if implemented later
-    } else {
-      setStatus(`❌ ${data.error}`);
+
+      // ✅ EXTRACT EMAILS (SPLIT SEMICOLON LISTS) FOR BACKEND
+      const emailsToSend = [];
+      for (const recipient of recipientsToSend) {
+        const emailField = (recipient.email || '').toString();
+        const emails = emailField
+          .split(';')
+          .map(e => e.trim())
+          .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+        emailsToSend.push(...emails);
+      }
+
+      if (emailsToSend.length === 0) {
+        setStatus('❌ No valid email addresses found after processing.');
+        setIsSending(false);
+        return;
+      }
+
+      // ✅ SEND ORIGINAL CSV + EMAIL LIST TO BACKEND
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csvContent,          // ✅ Original raw CSV
+          emailsToSend,        // ✅ List of individual emails (no semicolons)
+          senderName,
+          fieldMappings,
+          accessToken,
+          templateA,
+          templateB,
+          templateToSend,
+          userId: user.uid,
+          emailImages: imagesWithBase64
+        })
+      });
+
+      // ✅ DEBUG: LOG ACTUAL ERROR
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('📧 Email API Error:', errorText);
+        setStatus(`❌ ${errorText}`);
+        setIsSending(false);
+        return;
+      }
+
+      const data = await res.json();
+      if (res.ok) {
+        setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
+        if (abTestMode) {
+          const newResults = { ...abResults };
+          if (templateToSend === 'A') newResults.a.sent = data.sent;
+          else newResults.b.sent = data.sent;
+          setAbResults(newResults);
+          await setDoc(doc(db, 'ab_results', user.uid), newResults);
+        }
+        // Also refresh reply/follow-up tracking if implemented later
+      } else {
+        setStatus(`❌ ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Send error:', err);
+      setStatus(`❌ ${err.message || 'Failed to send'}`);
+    } finally {
+      setIsSending(false);
     }
-  } catch (err) {
-    console.error('Send error:', err);
-    setStatus(`❌ ${err.message || 'Failed to send'}`);
-  } finally {
-    setIsSending(false);
-  }
-};
+  };
 
   if (loadingAuth) {
     return (
@@ -1228,6 +1292,104 @@ const handleSendEmails = async (templateToSend = null) => {
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
+            {/* FOLLOW-UP TEMPLATES */}
+<div className="bg-white p-6 rounded-xl shadow">
+  <h2 className="text-xl font-bold mb-3">7. Follow-Up Sequences</h2>
+  {followUpTemplates.map((template, index) => (
+    <div key={template.id} className="border rounded p-3 mb-3">
+      <div className="flex justify-between items-start">
+        <h3 className="font-bold text-purple-600">{template.name}</h3>
+        <label className="flex items-center">
+          <input
+            type="checkbox"
+            checked={template.enabled}
+            onChange={(e) => {
+              const updated = [...followUpTemplates];
+              updated[index].enabled = e.target.checked;
+              setFollowUpTemplates(updated);
+            }}
+            className="mr-1"
+          />
+          <span className="text-xs">Enable</span>
+        </label>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <div>
+          <label className="text-xs block">Channel</label>
+          <select
+            value={template.channel}
+            onChange={(e) => {
+              const updated = [...followUpTemplates];
+              updated[index].channel = e.target.value;
+              setFollowUpTemplates(updated);
+            }}
+            className="w-full text-xs border rounded p-1"
+          >
+            <option value="email">Email</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="sms">SMS</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs block">Delay (days)</label>
+          <input
+            type="number"
+            min="1"
+            value={template.delayDays}
+            onChange={(e) => {
+              const updated = [...followUpTemplates];
+              updated[index].delayDays = parseInt(e.target.value) || 1;
+              setFollowUpTemplates(updated);
+            }}
+            className="w-full text-xs border rounded p-1"
+          />
+        </div>
+      </div>
+
+      {template.channel === 'email' && (
+        <>
+          <input
+            type="text"
+            value={template.subject || ''}
+            onChange={(e) => {
+              const updated = [...followUpTemplates];
+              updated[index].subject = e.target.value;
+              setFollowUpTemplates(updated);
+            }}
+            className="w-full mt-2 p-1 border rounded text-sm"
+            placeholder="Subject"
+          />
+          <textarea
+            value={template.body || ''}
+            onChange={(e) => {
+              const updated = [...followUpTemplates];
+              updated[index].body = e.target.value;
+              setFollowUpTemplates(updated);
+            }}
+            rows="3"
+            className="w-full mt-1 p-1 font-mono text-sm border rounded"
+            placeholder="Body..."
+          />
+        </>
+      )}
+
+      {(template.channel === 'whatsapp' || template.channel === 'sms') && (
+        <textarea
+          value={template.body || ''}
+          onChange={(e) => {
+            const updated = [...followUpTemplates];
+            updated[index].body = e.target.value;
+            setFollowUpTemplates(updated);
+          }}
+          rows="3"
+          className="w-full mt-1 p-1 font-mono text-sm border rounded"
+          placeholder="Message..."
+        />
+      )}
+    </div>
+  ))}
+</div>
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">6. SMS Template</h2>
               <textarea
@@ -1333,7 +1495,7 @@ const handleSendEmails = async (templateToSend = null) => {
         const isReplied = repliedLeads[link.email];
         const isFollowUp = followUpLeads[link.email];
         return (
-          // ✅ CRITICAL: Use link.id as key (not index or phone)
+          // ✅ CRITICAL: Use link.id as key (not index)
           <div key={link.id} className="p-3 bg-gray-50 rounded-lg border">
             <div className="flex justify-between">
               <div>
@@ -1416,11 +1578,6 @@ const handleSendEmails = async (templateToSend = null) => {
       >
         📲 Send SMS to All ({whatsappLinks.length})
       </button>
-      {!smsConsent && (
-        <p className="text-xs text-red-600 mt-1">
-          Enable SMS Consent above to send.
-        </p>
-      )}
     </div>
   </div>
 )}
@@ -1441,32 +1598,32 @@ const handleSendEmails = async (templateToSend = null) => {
                 ✕
               </button>
             </div>
-<div className="p-4 flex space-x-2">
-  <button
-    onClick={checkRepliesAndLoad}
-    className="text-xs bg-purple-600 text-white px-3 py-1.5 rounded"
-  >
-    🔄 Check for New Replies
-  </button>
-<button
-  onClick={async () => {
-    try {
-      const accessToken = await requestGmailToken(); // ✅ Direct user gesture
-      sendMassFollowUp(accessToken); // ✅ Pass token downstream
-    } catch (err) {
-      alert('Gmail access denied or blocked. Check popup blocker.');
-      console.error(err);
-    }
-  }}
-  className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded"
-  disabled={isSending}
->
-  📨 Send Mass Follow-Up
-</button>
-  <div className="text-xs text-gray-600 ml-2">
-    Auto-checks replies & updates follow-up status
-  </div>
-</div>
+            <div className="p-4 flex space-x-2">
+              <button
+                onClick={checkRepliesAndLoad}
+                className="text-xs bg-purple-600 text-white px-3 py-1.5 rounded"
+              >
+                🔄 Check for New Replies
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const accessToken = await requestGmailToken(); // ✅ Direct user gesture
+                    sendMassFollowUp(accessToken); // ✅ Pass token downstream
+                  } catch (err) {
+                    alert('Gmail access denied or blocked. Check popup blocker.');
+                    console.error(err);
+                  }
+                }}
+                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded"
+                disabled={isSending}
+              >
+                📨 Send Mass Follow-Up
+              </button>
+              <div className="text-xs text-gray-600 ml-2">
+                Auto-checks replies & updates follow-up status
+              </div>
+            </div>
             <div className="flex-1 overflow-y-auto p-4">
               {loadingSentLeads ? (
                 <div className="text-center py-6">Loading sent leads...</div>
@@ -1510,21 +1667,21 @@ const handleSendEmails = async (templateToSend = null) => {
                             )}
                           </div>
                           {!lead.replied && (
-<button
-  onClick={async () => {
-    try {
-      const token = await requestGmailToken(); // ← triggered by real click
-      sendFollowUpWithToken(lead.email, token);
-    } catch (err) {
-      alert('Gmail auth failed. Check popup blocker or try again.');
-      console.error(err);
-    }
-  }}
-  disabled={!needsFollowUp}
-  className={`text-xs px-3 py-1 rounded ${needsFollowUp ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'}`}
->
-  {needsFollowUp ? 'Send Follow-Up' : 'Too Early'}
-</button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const token = await requestGmailToken(); // ← triggered by real click
+                                  sendFollowUpWithToken(lead.email, token);
+                                } catch (err) {
+                                  alert('Gmail auth failed. Check popup blocker or try again.');
+                                  console.error(err);
+                                }
+                              }}
+                              disabled={!needsFollowUp}
+                              className={`text-xs px-3 py-1 rounded ${needsFollowUp ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'}`}
+                            >
+                              {needsFollowUp ? 'Send Follow-Up' : 'Too Early'}
+                            </button>
                           )}
                         </div>
                       </div>
