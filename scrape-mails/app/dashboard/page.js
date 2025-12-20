@@ -309,62 +309,7 @@ WhatsApp: 0741143323`
   }, []);
 
   // ✅ ADD THIS INSIDE Dashboard()
-  const handleSendBulkSMS = async () => {
-    if (!user?.uid || whatsappLinks.length === 0) return;
-    const confirmed = confirm(`Send SMS to ${whatsappLinks.length} contacts? Unreachable numbers will be skipped.`);
-    if (!confirmed) return;
 
-    let successCount = 0;
-    let totalCount = 0;
-    setStatus('📤 Sending SMS batch...');
-
-    const sendPromises = whatsappLinks.map(async (contact) => {
-      totalCount++;
-      const phone = formatForDialing(contact.phone);
-      if (!phone) {
-        console.warn('Skipping invalid phone for', contact.business);
-        return;
-      }
-
-      try {
-        const message = renderPreviewText(
-          smsTemplate,
-          { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
-          fieldMappings,
-          senderName
-        );
-
-        const response = await fetch('/api/send-sms', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone,
-            message,
-            businessName: contact.business,
-            userId: user.uid
-          })
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-          successCount++;
-          const contactKey = contact.email || contact.phone;
-          setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
-          if (dealStage[contactKey] === 'new') {
-            updateDealStage(contactKey, 'contacted');
-          }
-        } else {
-          console.warn(`SMS failed for ${contact.business}:`, data.error);
-        }
-      } catch (error) {
-        console.error(`SMS error for ${contact.business}:`, error);
-      }
-    });
-
-    await Promise.allSettled(sendPromises);
-    setStatus(`✅ SMS batch complete: ${successCount}/${totalCount} sent successfully.`);
-    alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed/Skipped: ${totalCount - successCount}`);
-  };
 
   const handleSendSMS = async (contact) => {
     if (!user?.uid) return;
@@ -540,10 +485,9 @@ const handleCsvUpload = (e) => {
   const reader = new FileReader();
   reader.onload = (e) => {
     const rawContent = e.target.result;
-    // ✅ Normalize AND save normalized content
+    // ✅ Normalize line endings AND save normalized content
     const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
-    
     if (lines.length < 2) {
       alert('CSV must have headers and data rows.');
       return;
@@ -588,7 +532,7 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ PROCESS EMAIL LEADS (for scoring & email count)
+      // ✅ Process EMAIL leads (for scoring & email count)
       const hasValidEmail = isValidEmail(row.email);
       if (hasValidEmail) {
         const quality = (row.lead_quality || '').trim() || 'HOT';
@@ -600,17 +544,16 @@ const handleCsvUpload = (e) => {
         if (dealStage[row.email] === 'contacted') score += 10;
         score = Math.min(100, Math.max(0, score));
         newLeadScores[row.email] = score;
-
         if (quality === 'HOT') hotEmails++;
         else if (quality === 'WARM') warmEmails++;
-
         if (!firstValid) firstValid = row;
       }
 
-      // ✅ PROCESS PHONE LEADS (even without email)
+      // ✅ Process PHONE leads (even without email)
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
+        // ✅ UNIQUE KEY = email + phone + timestamp (prevents duplicates)
         const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
         validPhoneContacts.push({
           id: contactId,
@@ -636,7 +579,7 @@ const handleCsvUpload = (e) => {
     setWhatsappLinks(validPhoneContacts); // ✅ NOW INCLUDES PHONE-ONLY LEADS
     setLeadScores(newLeadScores);
     setLastSent(newLastSent);
-    setCsvContent(normalizedContent); // ✅ Save normalized content
+    setCsvContent(normalizedContent); // ✅ CRITICAL: Save normalized content
   };
   reader.readAsText(file);
 };
@@ -714,7 +657,7 @@ const handleCsvUpload = (e) => {
     return () => unsubscribe();
   }, []);
 
-// ✅ Recalculate validEmails when leadQualityFilter or csvContent changes
+// ✅ Recalculate validEmails when filter or CSV changes
 useEffect(() => {
   if (!csvContent) return;
 
@@ -761,6 +704,48 @@ const generateSmsBody = (contact) => {
     fieldMappings,
     senderName
   );
+};
+
+const handleSendBulkSMS = async () => {
+  if (!user?.uid || whatsappLinks.length === 0) return;
+  const confirmed = confirm(`Send SMS to ${whatsappLinks.length} contacts?`);
+  if (!confirmed) return;
+
+  let successCount = 0;
+  setStatus('📤 Sending SMS batch...');
+
+  for (const contact of whatsappLinks) {
+    const phone = formatForDialing(contact.phone);
+    if (!phone) continue;
+
+    try {
+      const message = generateSmsBody(contact);
+      const response = await fetch('/api/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone,
+          message,
+          businessName: contact.business,
+          userId: user.uid
+        })
+      });
+
+      if (response.ok) {
+        successCount++;
+        const contactKey = contact.email || contact.phone;
+        setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+        if (dealStage[contactKey] === 'new') {
+          updateDealStage(contactKey, 'contacted');
+        }
+      }
+    } catch (error) {
+      console.error(`SMS error for ${contact.business}:`, error);
+    }
+  }
+
+  setStatus(`✅ SMS batch complete: ${successCount}/${whatsappLinks.length} sent.`);
+  alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed: ${whatsappLinks.length - successCount}`);
 };
 
 // ✅ Open native SMS app with pre-filled message
@@ -930,7 +915,8 @@ const handleOpenNativeSMS = (contact) => {
 
 const handleSendEmails = async (templateToSend = null) => {
   // ✅ VALIDATE CSV CONTENT
-  if (!csvContent || typeof csvContent !== 'string' || csvContent.trim() === '') {
+  const lines = csvContent?.split('\n').filter(line => line.trim() !== '') || [];
+  if (lines.length < 2) {
     alert('Please upload a valid CSV file first.');
     return;
   }
@@ -966,7 +952,6 @@ const handleSendEmails = async (templateToSend = null) => {
 
   try {
     const accessToken = await requestGmailToken();
-
     const imagesWithBase64 = await Promise.all(
       emailImages.map(async (img) => {
         const base64 = await new Promise((resolve) => {
@@ -983,17 +968,13 @@ const handleSendEmails = async (templateToSend = null) => {
       })
     );
 
-    // ✅ Parse SAVED (normalized) csvContent
-    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-    if (lines.length < 2) {
-      throw new Error('CSV must contain headers and at least one data row.');
-    }
-
-    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    // ✅ Use SAVED (normalized) csvContent
+    const normalizedLines = csvContent.split('\n').filter(line => line.trim() !== '');
+    const headers = parseCsvRow(normalizedLines[0]).map(h => h.trim());
     let validRecipients = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseCsvRow(lines[i]);
+    for (let i = 1; i < normalizedLines.length; i++) {
+      const values = parseCsvRow(normalizedLines[i]);
       if (values.length !== headers.length) continue;
 
       const row = {};
@@ -1001,10 +982,9 @@ const handleSendEmails = async (templateToSend = null) => {
         row[header] = values[idx]?.toString().trim() || '';
       });
 
-      // ✅ Skip invalid emails
       if (!isValidEmail(row.email)) continue;
 
-      // ✅ Handle blank lead_quality
+      // ✅ TREAT BLANK lead_quality AS 'HOT'
       const quality = (row.lead_quality || '').trim() || 'HOT';
       if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
         validRecipients.push(row);
@@ -1536,6 +1516,7 @@ const handleSendEmails = async (templateToSend = null) => {
         const isReplied = repliedLeads[link.email];
         const isFollowUp = followUpLeads[link.email];
         return (
+          // ✅ USE link.id AS KEY (NOT index)
           <div key={link.id} className="p-3 bg-gray-50 rounded-lg border">
             <div className="flex justify-between">
               <div>
@@ -1617,6 +1598,19 @@ const handleSendEmails = async (templateToSend = null) => {
           </div>
         );
       })}
+    </div>
+    
+    {/* ✅ BULK SMS BUTTON */}
+    <div className="mt-4">
+      <button
+        onClick={handleSendBulkSMS}
+        disabled={!smsConsent || isSending}
+        className={`w-full py-2 rounded font-bold text-white ${
+          !smsConsent ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'
+        }`}
+      >
+        📲 Send SMS to All ({whatsappLinks.length})
+      </button>
     </div>
   </div>
 )}
