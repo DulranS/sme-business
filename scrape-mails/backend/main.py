@@ -1,4 +1,3 @@
-# backend/main.py
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -9,8 +8,6 @@ from typing import Dict, Any
 from scraper import process_row, ORIGINAL_COLUMNS, OUTPUT_COLUMNS
 
 app = FastAPI()
-
-# In-memory job storage — replace with Redis in production
 jobs: Dict[str, Dict[str, Any]] = {}
 
 class CSVUpload(BaseModel):
@@ -19,15 +16,13 @@ class CSVUpload(BaseModel):
 @app.post("/api/scrape")
 async def scrape_emails(payload: CSVUpload):
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {"status": "processing", "current": 0, "total": 0, "results": []}
+    jobs[job_id] = {"status": "processing", "current": 0, "total": 0}
     
     try:
-        # Parse CSV
         f = io.StringIO(payload.csv_content)
         reader = csv.DictReader(f)
         rows = list(reader)
 
-        # Validate columns
         missing = [col for col in ORIGINAL_COLUMNS if col not in reader.fieldnames]
         if missing:
             jobs[job_id] = {"status": "failed", "error": f"Missing columns: {missing}"}
@@ -37,7 +32,6 @@ async def scrape_emails(payload: CSVUpload):
         jobs[job_id]["total"] = total
         results = []
 
-        # Process row-by-row and update progress
         for i, row in enumerate(rows):
             try:
                 result = process_row(row.copy())
@@ -45,12 +39,10 @@ async def scrape_emails(payload: CSVUpload):
             except Exception as e:
                 row['email'] = ""
                 results.append(row)
-            
             # Update progress
             jobs[job_id]["current"] = i + 1
-            jobs[job_id]["results"] = results  # store partial results
 
-        # Finalize
+        # Final output
         output_buffer = io.StringIO()
         writer = csv.DictWriter(output_buffer, fieldnames=OUTPUT_COLUMNS)
         writer.writeheader()

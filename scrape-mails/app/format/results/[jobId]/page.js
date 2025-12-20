@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getJobStatus } from '../../lib/api';
+import { getJobStatus } from '@/app/lib/api';
 
 export default function ResultsPage() {
   const { jobId } = useParams();
@@ -18,11 +18,11 @@ export default function ResultsPage() {
         const data = await getJobStatus(jobId);
         setJob(data);
         if (data.status === 'processing') {
-          const timer = setTimeout(poll, 1500); // Poll every 1.5s
+          const timer = setTimeout(poll, 1500);
           return () => clearTimeout(timer);
         }
       } catch (err) {
-        setError(err.message);
+        setError(err.message || 'Failed to fetch job status');
       }
     };
 
@@ -35,7 +35,7 @@ export default function ResultsPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
           <div className="text-red-500 text-5xl mb-4">❌</div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Failed</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Error</h2>
           <p className="text-gray-600 text-sm mb-6">{error}</p>
           <button
             onClick={() => router.push('/')}
@@ -48,7 +48,7 @@ export default function ResultsPage() {
     );
   }
 
-  // Processing state — REAL PROGRESS
+  // Processing — REAL PROGRESS
   if (!job || job.status === 'processing') {
     const current = job?.current || 0;
     const total = job?.total || 1;
@@ -64,44 +64,43 @@ export default function ResultsPage() {
               fill="none"
               viewBox="0 0 24 24"
             >
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
           </div>
 
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Extracting Emails</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Scraping in Progress</h2>
           
-          {/* REAL PROGRESS TEXT */}
-          <p className="text-gray-600 mb-4">
+          {/* ✅ REAL PROGRESS TEXT */}
+          <p className="text-gray-700 mb-2">
             <span className="font-bold text-blue-600">{current}</span> of{' '}
             <span className="font-bold">{total}</span> businesses processed
           </p>
 
-          {/* Progress bar */}
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
             <div
-              className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all duration-500"
+              className="bg-gradient-to-r from-blue-500 to-purple-600 h-2.5 rounded-full transition-all duration-500"
               style={{ width: `${percent}%` }}
             ></div>
           </div>
           <p className="text-sm text-gray-500">{percent}% complete</p>
 
-          <div className="mt-6 text-xs text-gray-500">
-            <p>Visiting websites and scanning for contact emails...</p>
-          </div>
+          <p className="mt-6 text-xs text-gray-500">
+            Visiting websites and extracting verified contact emails...
+          </p>
         </div>
       </div>
     );
   }
 
-  // Failed state
+  // Failed
   if (job.status === 'failed') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
           <div className="text-red-500 text-5xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Failed</h2>
-          <p className="text-gray-600 text-sm mb-6">{job.error || 'An error occurred.'}</p>
+          <p className="text-gray-600 text-sm mb-6">{job.error || 'An unknown error occurred.'}</p>
           <button
             onClick={() => router.push('/')}
             className="bg-blue-600 text-white py-2 px-6 rounded-lg font-medium hover:bg-blue-700"
@@ -113,7 +112,7 @@ export default function ResultsPage() {
     );
   }
 
-  // ✅ Success state
+  // Success
   const total = job.total || 0;
   const withEmail = job.with_email || 0;
   const successRate = total > 0 ? Math.round((withEmail / total) * 100) : 0;
@@ -129,7 +128,7 @@ export default function ResultsPage() {
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">✅ Complete!</h1>
           <p className="text-gray-600">
-            Successfully enriched <span className="font-bold">{total}</span> business leads.
+            Successfully enriched <span className="font-bold">{total}</span> leads.
           </p>
         </div>
 
