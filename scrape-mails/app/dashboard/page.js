@@ -586,6 +586,7 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
+      // ✅ Treat blank lead_quality as 'HOT'
       const quality = (row.lead_quality || '').trim() || 'HOT';
       const hasValidEmail = isValidEmail(row.email);
 
@@ -606,11 +607,11 @@ const handleCsvUpload = (e) => {
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
-        // ✅ CRITICAL: Unique key = email + phone + rowIndex
-        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now() + Math.random()}`;
+        // ✅ UNIQUE KEY: email + phone + timestamp (prevents duplicates)
+        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
         
         validPhoneContacts.push({
-          id: contactId, // ✅ UNIQUE ID
+          id: contactId,
           business: row.business_name || 'Business',
           address: row.address || '',
           phone: formattedPhone,
@@ -879,164 +880,165 @@ const handleCsvUpload = (e) => {
     await loadSentLeads();
   };
 
-  const handleSendEmails = async (templateToSend = null) => {
-    if (!csvContent || typeof csvContent !== 'string' || csvContent.trim() === '') {
-      alert('Please upload a valid CSV file first.');
-      return;
-    }
-    if (!senderName.trim() || validEmails === 0) {
-      alert('Check sender name and valid emails.');
-      return;
-    }
-    if (abTestMode && !templateToSend) {
-      alert('Please select Template A or B.');
-      return;
-    }
-    if (abTestMode) {
-      if (templateToSend === 'A' && !templateA.subject.trim()) {
-        alert('Template A subject is required.');
-        return;
-      }
-      if (templateToSend === 'B' && !templateB.subject.trim()) {
-        alert('Template B subject is required.');
-        return;
-      }
-    } else {
-      if (!templateA.subject.trim()) {
-        alert('Email subject is required.');
-        return;
-      }
-    }
-    setIsSending(true);
-    setStatus('Getting Gmail access...');
-    try {
-      const accessToken = await requestGmailToken();
-      const imagesWithBase64 = await Promise.all(
-        emailImages.map(async (img) => {
-          const base64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(img.file);
-          });
-          return {
-            cid: img.cid,
-            mimeType: img.file.type,
-            base64,
-            placeholder: img.placeholder
-          };
-        })
-      );
+const handleSendEmails = async (templateToSend = null) => {
+  // ✅ CRITICAL: Validate CSV CONTENT
+  if (!csvContent || typeof csvContent !== 'string' || csvContent.trim() === '') {
+    alert('Please upload a valid CSV file first.');
+    return;
+  }
 
-      // ✅ PARSE ORIGINAL CSV TO GET VALID RECIPIENTS
-      const lines = csvContent
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .split('\n')
-        .filter(line => line.trim() !== '');
-      if (lines.length < 2) {
-        alert('CSV must have headers and data rows.');
-        setIsSending(false);
-        return;
-      }
-      const headers = parseCsvRow(lines[0]).map(h => h.trim());
-      let validRecipients = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCsvRow(lines[i]);
-        if (values.length !== headers.length) continue;
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
+  if (!senderName.trim() || validEmails === 0) {
+    alert('Check sender name and valid emails.');
+    return;
+  }
+
+  if (abTestMode && !templateToSend) {
+    alert('Please select Template A or B.');
+    return;
+  }
+
+  if (abTestMode) {
+    if (templateToSend === 'A' && !templateA.subject.trim()) {
+      alert('Template A subject is required.');
+      return;
+    }
+    if (templateToSend === 'B' && !templateB.subject.trim()) {
+      alert('Template B subject is required.');
+      return;
+    }
+  } else {
+    if (!templateA.subject.trim()) {
+      alert('Email subject is required.');
+      return;
+    }
+  }
+
+  setIsSending(true);
+  setStatus('Getting Gmail access...');
+
+  try {
+    const accessToken = await requestGmailToken();
+
+    const imagesWithBase64 = await Promise.all(
+      emailImages.map(async (img) => {
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(img.file);
         });
-        if (!isValidEmail(row.email)) continue;
-        const quality = (row.lead_quality || '').trim() || 'HOT';
-        if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
-          validRecipients.push(row);
-        }
-      }
+        return {
+          cid: img.cid,
+          mimeType: img.file.type,
+          base64,
+          placeholder: img.placeholder
+        };
+      })
+    );
 
-      let recipientsToSend = [];
-      if (abTestMode && templateToSend) {
-        const half = Math.ceil(validRecipients.length / 2);
-        if (templateToSend === 'A') {
-          recipientsToSend = validRecipients.slice(0, half);
-        } else {
-          recipientsToSend = validRecipients.slice(half);
-        }
-      } else {
-        recipientsToSend = validRecipients;
-      }
+    // ✅ PARSE CSV AND FILTER VALID RECIPIENTS
+    const lines = csvContent
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .filter(line => line.trim() !== '');
+    
+    if (lines.length < 2) {
+      alert('CSV must have headers and data rows.');
+      setIsSending(false);
+      return;
+    }
 
-      if (recipientsToSend.length === 0) {
-        setStatus('❌ No valid leads for selected criteria.');
-        setIsSending(false);
-        return;
-      }
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    let validRecipients = [];
 
-      // ✅ EXTRACT EMAILS (SPLIT SEMICOLON LISTS) FOR BACKEND
-      const emailsToSend = [];
-      for (const recipient of recipientsToSend) {
-        const emailField = (recipient.email || '').toString();
-        const emails = emailField
-          .split(';')
-          .map(e => e.trim())
-          .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-        emailsToSend.push(...emails);
-      }
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
 
-      if (emailsToSend.length === 0) {
-        setStatus('❌ No valid email addresses found after processing.');
-        setIsSending(false);
-        return;
-      }
-
-      // ✅ SEND ORIGINAL CSV + EMAIL LIST TO BACKEND
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csvContent,          // ✅ Original raw CSV
-          emailsToSend,        // ✅ List of individual emails (no semicolons)
-          senderName,
-          fieldMappings,
-          accessToken,
-          templateA,
-          templateB,
-          templateToSend,
-          userId: user.uid,
-          emailImages: imagesWithBase64
-        })
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
       });
 
-      // ✅ DEBUG: LOG ACTUAL ERROR
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('📧 Email API Error:', errorText);
-        setStatus(`❌ ${errorText}`);
-        setIsSending(false);
-        return;
-      }
+      // ✅ SKIP INVALID EMAILS
+      if (!isValidEmail(row.email)) continue;
 
-      const data = await res.json();
-      if (res.ok) {
-        setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
-        if (abTestMode) {
-          const newResults = { ...abResults };
-          if (templateToSend === 'A') newResults.a.sent = data.sent;
-          else newResults.b.sent = data.sent;
-          setAbResults(newResults);
-          await setDoc(doc(db, 'ab_results', user.uid), newResults);
-        }
-        // Also refresh reply/follow-up tracking if implemented later
-      } else {
-        setStatus(`❌ ${data.error}`);
+      // ✅ TREAT BLANK lead_quality AS 'HOT'
+      const quality = (row.lead_quality || '').trim() || 'HOT';
+      if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
+        validRecipients.push(row);
       }
-    } catch (err) {
-      console.error('Send error:', err);
-      setStatus(`❌ ${err.message || 'Failed to send'}`);
-    } finally {
-      setIsSending(false);
     }
-  };
+
+    // ✅ SPLIT FOR A/B TESTING
+    let recipientsToSend = [];
+    if (abTestMode && templateToSend) {
+      const half = Math.ceil(validRecipients.length / 2);
+      if (templateToSend === 'A') {
+        recipientsToSend = validRecipients.slice(0, half);
+      } else {
+        recipientsToSend = validRecipients.slice(half);
+      }
+    } else {
+      recipientsToSend = validRecipients;
+    }
+
+    if (recipientsToSend.length === 0) {
+      setStatus('❌ No valid leads for selected criteria.');
+      setIsSending(false);
+      return;
+    }
+
+    // ✅ SEND EMAILS
+    const templateToSendData = abTestMode 
+      ? (templateToSend === 'A' ? templateA : templateB)
+      : templateA;
+
+    setStatus(`Sending Template ${abTestMode ? templateToSend : ''} to ${recipientsToSend.length} leads...`);
+
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        csvContent: [headers.join(','), ...recipientsToSend.map(r => 
+          headers.map(h => `"${r[h] || ''}"`).join(',')
+        ).join('\n')].join('\n'),
+        senderName,
+        fieldMappings,
+        accessToken,
+        abTestMode,
+        templateA,
+        templateB,
+        templateToSend,
+        leadQualityFilter,
+        emailImages: imagesWithBase64,
+        userId: user.uid
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
+      if (abTestMode) {
+        const newResults = { ...abResults };
+        if (templateToSend === 'A') {
+          newResults.a.sent = data.sent;
+        } else {
+          newResults.b.sent = data.sent;
+        }
+        setAbResults(newResults);
+        await setDoc(doc(db, 'ab_results', user.uid), newResults);
+      }
+    } else {
+      setStatus(`❌ ${data.error}`);
+    }
+  } catch (err) {
+    console.error('Send error:', err);
+    setStatus(`❌ ${err.message || 'Failed to send'}`);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   if (loadingAuth) {
     return (
@@ -1495,7 +1497,7 @@ const handleCsvUpload = (e) => {
         const isReplied = repliedLeads[link.email];
         const isFollowUp = followUpLeads[link.email];
         return (
-          // ✅ CRITICAL: Use link.id as key (not index)
+          // ✅ USE link.id AS KEY (NOT index)
           <div key={link.id} className="p-3 bg-gray-50 rounded-lg border">
             <div className="flex justify-between">
               <div>
@@ -1560,7 +1562,9 @@ const handleCsvUpload = (e) => {
                     <option value="won">Closed Won</option>
                   </select>
                 ) : (
-                  <div className="text-xs text-gray-400 mt-1 italic">No email → CRM not tracked</div>
+                  <div className="text-xs text-gray-400 mt-1 italic">
+                    No email → CRM not tracked
+                  </div>
                 )}
               </div>
             </div>
