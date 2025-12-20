@@ -5,6 +5,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
+import { useRouter } from 'next/navigation';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
@@ -211,6 +212,7 @@ export { FOLLOW_UP_1, FOLLOW_UP_2, FOLLOW_UP_3 };
 export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const router = useRouter();
   const [csvContent, setCsvContent] = useState('');
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [senderName, setSenderName] = useState('');
@@ -1104,6 +1106,11 @@ const handleSendEmails = async (templateToSend = null) => {
             >
               📬 Reply & Follow-Up Center
             </button>
+            
+            <button onClick={() => router.push('/format')} className="text-sm bg-green-600 text-white px-3 py-1.5 rounded">
+              📥 Scrape Mails
+            </button>
+
             <button onClick={() => signOut(auth)} className="text-sm text-gray-600">
               Sign Out
             </button>
