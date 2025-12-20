@@ -749,6 +749,38 @@ useEffect(() => {
   }
 }, [leadQualityFilter, csvContent]);
 
+const generateSmsBody = (contact) => {
+  return renderPreviewText(
+    smsTemplate,
+    {
+      business_name: contact.business,
+      address: contact.address || '',
+      phone_raw: contact.phone
+    },
+    fieldMappings,
+    senderName
+  );
+};
+
+const handleOpenNativeSMS = (contact) => {
+  if (!contact?.phone) return;
+
+  const messageBody = generateSmsBody(contact);
+  
+  // Format to E.164 (works globally)
+  let formattedPhone = contact.phone.toString().replace(/\D/g, '');
+  if (formattedPhone.startsWith('0') && formattedPhone.length >= 9) {
+    formattedPhone = '94' + formattedPhone.slice(1);
+  }
+  if (!formattedPhone.startsWith('+')) {
+    formattedPhone = '+' + formattedPhone;
+  }
+
+  // ✅ Open native SMS app (works on iOS and Android)
+  const smsUrl = `sms:${formattedPhone}?body=${encodeURIComponent(messageBody)}`;
+  window.location.href = smsUrl;
+};
+
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
       if (typeof window === 'undefined') return reject('Browser only');
@@ -1503,7 +1535,6 @@ const handleSendEmails = async (templateToSend = null) => {
         const isReplied = repliedLeads[link.email];
         const isFollowUp = followUpLeads[link.email];
         return (
-          // ✅ USE link.id AS KEY (NOT index)
           <div key={link.id} className="p-3 bg-gray-50 rounded-lg border">
             <div className="flex justify-between">
               <div>
@@ -1546,13 +1577,21 @@ const handleSendEmails = async (templateToSend = null) => {
                   >
                     WhatsApp
                   </a>
+                  {/* ✅ NEW: Native SMS button (same template) */}
+                  <button
+                    onClick={() => handleOpenNativeSMS(link)}
+                    className="text-xs bg-purple-600 text-white px-2 py-1 rounded"
+                    title="Open in Messages app"
+                  >
+                    SMS
+                  </button>
                 </div>
                 {smsConsent && (
                   <button
                     onClick={() => handleSendSMS(link)}
                     className="text-xs bg-orange-600 text-white px-2 py-1 rounded mt-1 w-full"
                   >
-                    SMS
+                    Twilio SMS
                   </button>
                 )}
                 {link.email ? (
