@@ -1,4 +1,6 @@
 // app/lib/api.js
+
+// Hardcoded backend URL — no env vars
 export async function submitCSV(csvText) {
   const res = await fetch('/api/proxy-scrape', {
     method: 'POST',
