@@ -574,7 +574,7 @@ const handleCsvUpload = (e) => {
     setFieldMappings(initialMappings);
 
     let hotEmails = 0, warmEmails = 0;
-    const validPhoneContacts = [];
+    const validPhoneContacts = []; // ✅ INCLUDES phone-only leads
     const newLeadScores = {};
     const newLastSent = {};
     let firstValid = null;
@@ -588,23 +588,26 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ Skip invalid/empty emails
-      if (!isValidEmail(row.email)) continue;
+      // ✅ PROCESS EMAIL LEADS (for scoring & email count)
+      const hasValidEmail = isValidEmail(row.email);
+      if (hasValidEmail) {
+        const quality = (row.lead_quality || '').trim() || 'HOT';
+        let score = 50;
+        if (quality === 'HOT') score += 30;
+        if (parseFloat(row.rating) >= 4.8) score += 20;
+        if (parseInt(row.review_count) > 100) score += 10;
+        if (clickStats[row.email]?.count > 0) score += 20;
+        if (dealStage[row.email] === 'contacted') score += 10;
+        score = Math.min(100, Math.max(0, score));
+        newLeadScores[row.email] = score;
 
-      // ✅ Treat blank lead_quality as 'HOT'
-      const quality = (row.lead_quality || '').trim() || 'HOT';
-      let score = 50;
-      if (quality === 'HOT') score += 30;
-      if (parseFloat(row.rating) >= 4.8) score += 20;
-      if (parseInt(row.review_count) > 100) score += 10;
-      if (clickStats[row.email]?.count > 0) score += 20;
-      if (dealStage[row.email] === 'contacted') score += 10;
-      score = Math.min(100, Math.max(0, score));
-      newLeadScores[row.email] = score;
+        if (quality === 'HOT') hotEmails++;
+        else if (quality === 'WARM') warmEmails++;
 
-      if (quality === 'HOT') hotEmails++;
-      else if (quality === 'WARM') warmEmails++;
+        if (!firstValid) firstValid = row;
+      }
 
+      // ✅ PROCESS PHONE LEADS (even without email)
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
@@ -614,15 +617,14 @@ const handleCsvUpload = (e) => {
           business: row.business_name || 'Business',
           address: row.address || '',
           phone: formattedPhone,
-          email: row.email || null,
+          email: row.email || null, // may be null
           place_id: row.place_id || '',
           url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
             renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
           )}`
         });
+        if (!firstValid) firstValid = row;
       }
-
-      if (!firstValid) firstValid = row;
     }
 
     setPreviewRecipient(firstValid);
@@ -631,12 +633,10 @@ const handleCsvUpload = (e) => {
     else setValidEmails(hotEmails + warmEmails);
     
     setValidWhatsApp(validPhoneContacts.length);
-    setWhatsappLinks(validPhoneContacts);
+    setWhatsappLinks(validPhoneContacts); // ✅ NOW INCLUDES PHONE-ONLY LEADS
     setLeadScores(newLeadScores);
     setLastSent(newLastSent);
-    
-    // ✅ CRITICAL: Save normalized content to csvContent
-    setCsvContent(normalizedContent);
+    setCsvContent(normalizedContent); // ✅ Save normalized content
   };
   reader.readAsText(file);
 };
@@ -749,6 +749,7 @@ useEffect(() => {
   }
 }, [leadQualityFilter, csvContent]);
 
+// ✅ Generate SMS body using the same template as Twilio
 const generateSmsBody = (contact) => {
   return renderPreviewText(
     smsTemplate,
@@ -762,12 +763,13 @@ const generateSmsBody = (contact) => {
   );
 };
 
+// ✅ Open native SMS app with pre-filled message
 const handleOpenNativeSMS = (contact) => {
   if (!contact?.phone) return;
 
   const messageBody = generateSmsBody(contact);
   
-  // Format to E.164 (works globally)
+  // Format to E.164
   let formattedPhone = contact.phone.toString().replace(/\D/g, '');
   if (formattedPhone.startsWith('0') && formattedPhone.length >= 9) {
     formattedPhone = '94' + formattedPhone.slice(1);
@@ -776,7 +778,6 @@ const handleOpenNativeSMS = (contact) => {
     formattedPhone = '+' + formattedPhone;
   }
 
-  // ✅ Open native SMS app (works on iOS and Android)
   const smsUrl = `sms:${formattedPhone}?body=${encodeURIComponent(messageBody)}`;
   window.location.href = smsUrl;
 };
@@ -1577,7 +1578,7 @@ const handleSendEmails = async (templateToSend = null) => {
                   >
                     WhatsApp
                   </a>
-                  {/* ✅ NEW: Native SMS button (same template) */}
+                  {/* ✅ Native SMS button (same template) */}
                   <button
                     onClick={() => handleOpenNativeSMS(link)}
                     className="text-xs bg-purple-600 text-white px-2 py-1 rounded"
@@ -1616,17 +1617,6 @@ const handleSendEmails = async (templateToSend = null) => {
           </div>
         );
       })}
-    </div>
-    <div className="mt-4">
-      <button
-        onClick={handleSendBulkSMS}
-        disabled={!smsConsent || isSending}
-        className={`w-full py-2 rounded font-bold text-white ${
-          !smsConsent ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'
-        }`}
-      >
-        📲 Send SMS to All ({whatsappLinks.length})
-      </button>
     </div>
   </div>
 )}
