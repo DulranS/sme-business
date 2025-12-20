@@ -485,7 +485,7 @@ const handleCsvUpload = (e) => {
   const reader = new FileReader();
   reader.onload = (e) => {
     const rawContent = e.target.result;
-    // ✅ Normalize line endings AND save normalized content
+    // ✅ Normalize AND save normalized content
     const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
     if (lines.length < 2) {
@@ -518,7 +518,7 @@ const handleCsvUpload = (e) => {
     setFieldMappings(initialMappings);
 
     let hotEmails = 0, warmEmails = 0;
-    const validPhoneContacts = []; // ✅ INCLUDES phone-only leads
+    const validPhoneContacts = [];
     const newLeadScores = {};
     const newLastSent = {};
     let firstValid = null;
@@ -532,10 +532,10 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ Process EMAIL leads (for scoring & email count)
+      // ✅ Treat blank lead_quality as 'HOT' for email leads
+      const quality = (row.lead_quality || '').trim() || 'HOT';
       const hasValidEmail = isValidEmail(row.email);
       if (hasValidEmail) {
-        const quality = (row.lead_quality || '').trim() || 'HOT';
         let score = 50;
         if (quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
@@ -549,18 +549,18 @@ const handleCsvUpload = (e) => {
         if (!firstValid) firstValid = row;
       }
 
-      // ✅ Process PHONE leads (even without email)
+      // ✅ Handle phone leads (even without email)
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
-        // ✅ UNIQUE KEY = email + phone + timestamp (prevents duplicates)
+        // ✅ Unique key = email + phone + timestamp
         const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
         validPhoneContacts.push({
           id: contactId,
           business: row.business_name || 'Business',
           address: row.address || '',
           phone: formattedPhone,
-          email: row.email || null, // may be null
+          email: row.email || null,
           place_id: row.place_id || '',
           url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
             renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
@@ -571,15 +571,16 @@ const handleCsvUpload = (e) => {
     }
 
     setPreviewRecipient(firstValid);
+    // ✅ Immediately set validEmails based on CURRENT filter
     if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
     else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
     else setValidEmails(hotEmails + warmEmails);
-    
+
     setValidWhatsApp(validPhoneContacts.length);
-    setWhatsappLinks(validPhoneContacts); // ✅ NOW INCLUDES PHONE-ONLY LEADS
+    setWhatsappLinks(validPhoneContacts);
     setLeadScores(newLeadScores);
     setLastSent(newLastSent);
-    setCsvContent(normalizedContent); // ✅ CRITICAL: Save normalized content
+    setCsvContent(normalizedContent); // ✅ Save normalized content
   };
   reader.readAsText(file);
 };
@@ -660,7 +661,6 @@ const handleCsvUpload = (e) => {
 // ✅ Recalculate validEmails when filter or CSV changes
 useEffect(() => {
   if (!csvContent) return;
-
   const lines = csvContent.split('\n').filter(line => line.trim() !== '');
   if (lines.length < 2) return;
 
@@ -678,18 +678,15 @@ useEffect(() => {
 
     if (!isValidEmail(row.email)) continue;
 
+    // ✅ TREAT BLANK lead_quality AS 'HOT'
     const quality = (row.lead_quality || '').trim() || 'HOT';
     if (quality === 'HOT') hot++;
     else if (quality === 'WARM') warm++;
   }
 
-  if (leadQualityFilter === 'HOT') {
-    setValidEmails(hot);
-  } else if (leadQualityFilter === 'WARM') {
-    setValidEmails(warm);
-  } else {
-    setValidEmails(hot + warm);
-  }
+  if (leadQualityFilter === 'HOT') setValidEmails(hot);
+  else if (leadQualityFilter === 'WARM') setValidEmails(warm);
+  else setValidEmails(hot + warm);
 }, [leadQualityFilter, csvContent]);
 
 // ✅ Generate SMS body using the same template as Twilio
@@ -751,10 +748,7 @@ const handleSendBulkSMS = async () => {
 // ✅ Open native SMS app with pre-filled message
 const handleOpenNativeSMS = (contact) => {
   if (!contact?.phone) return;
-
   const messageBody = generateSmsBody(contact);
-  
-  // Format to E.164
   let formattedPhone = contact.phone.toString().replace(/\D/g, '');
   if (formattedPhone.startsWith('0') && formattedPhone.length >= 9) {
     formattedPhone = '94' + formattedPhone.slice(1);
@@ -762,9 +756,7 @@ const handleOpenNativeSMS = (contact) => {
   if (!formattedPhone.startsWith('+')) {
     formattedPhone = '+' + formattedPhone;
   }
-
-  const smsUrl = `sms:${formattedPhone}?body=${encodeURIComponent(messageBody)}`;
-  window.location.href = smsUrl;
+  window.location.href = `sms:${formattedPhone}?body=${encodeURIComponent(messageBody)}`;
 };
 
   const requestGmailToken = () => {
@@ -914,7 +906,7 @@ const handleOpenNativeSMS = (contact) => {
   };
 
 const handleSendEmails = async (templateToSend = null) => {
-  // ✅ VALIDATE CSV CONTENT
+  // ✅ VALIDATE CSV USING SAVED (NORMALIZED) CONTENT
   const lines = csvContent?.split('\n').filter(line => line.trim() !== '') || [];
   if (lines.length < 2) {
     alert('Please upload a valid CSV file first.');
@@ -968,13 +960,12 @@ const handleSendEmails = async (templateToSend = null) => {
       })
     );
 
-    // ✅ Use SAVED (normalized) csvContent
-    const normalizedLines = csvContent.split('\n').filter(line => line.trim() !== '');
-    const headers = parseCsvRow(normalizedLines[0]).map(h => h.trim());
+    // ✅ Reuse SAVED normalized csvContent
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
     let validRecipients = [];
 
-    for (let i = 1; i < normalizedLines.length; i++) {
-      const values = parseCsvRow(normalizedLines[i]);
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
       if (values.length !== headers.length) continue;
 
       const row = {};
@@ -984,7 +975,7 @@ const handleSendEmails = async (templateToSend = null) => {
 
       if (!isValidEmail(row.email)) continue;
 
-      // ✅ TREAT BLANK lead_quality AS 'HOT'
+      // ✅ TREAT BLANK lead_quality AS 'HOT' (critical fix)
       const quality = (row.lead_quality || '').trim() || 'HOT';
       if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
         validRecipients.push(row);
@@ -1009,11 +1000,7 @@ const handleSendEmails = async (templateToSend = null) => {
       return;
     }
 
-    const templateToSendData = abTestMode 
-      ? (templateToSend === 'A' ? templateA : templateB)
-      : templateA;
-
-    setStatus(`Sending Template ${abTestMode ? templateToSend : ''} to ${recipientsToSend.length} leads...`);
+    setStatus(`Sending to ${recipientsToSend.length} leads...`);
 
     const res = await fetch('/api/send-email', {
       method: 'POST',
@@ -1037,14 +1024,11 @@ const handleSendEmails = async (templateToSend = null) => {
 
     const data = await res.json();
     if (res.ok) {
-      setStatus(`✅ Template ${abTestMode ? templateToSend : ''}: ${data.sent}/${data.total} emails sent!`);
+      setStatus(`✅ ${data.sent}/${data.total} emails sent!`);
       if (abTestMode) {
         const newResults = { ...abResults };
-        if (templateToSend === 'A') {
-          newResults.a.sent = data.sent;
-        } else {
-          newResults.b.sent = data.sent;
-        }
+        if (templateToSend === 'A') newResults.a.sent = data.sent;
+        else newResults.b.sent = data.sent;
         setAbResults(newResults);
         await setDoc(doc(db, 'ab_results', user.uid), newResults);
       }
@@ -1516,7 +1500,6 @@ const handleSendEmails = async (templateToSend = null) => {
         const isReplied = repliedLeads[link.email];
         const isFollowUp = followUpLeads[link.email];
         return (
-          // ✅ USE link.id AS KEY (NOT index)
           <div key={link.id} className="p-3 bg-gray-50 rounded-lg border">
             <div className="flex justify-between">
               <div>
@@ -1559,11 +1542,10 @@ const handleSendEmails = async (templateToSend = null) => {
                   >
                     WhatsApp
                   </a>
-                  {/* ✅ Native SMS button (same template) */}
+                  {/* ✅ Native SMS button */}
                   <button
                     onClick={() => handleOpenNativeSMS(link)}
                     className="text-xs bg-purple-600 text-white px-2 py-1 rounded"
-                    title="Open in Messages app"
                   >
                     SMS
                   </button>
@@ -1599,7 +1581,6 @@ const handleSendEmails = async (templateToSend = null) => {
         );
       })}
     </div>
-    
     {/* ✅ BULK SMS BUTTON */}
     <div className="mt-4">
       <button
