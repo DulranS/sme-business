@@ -12,12 +12,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import deque
 
 # -----------------------------
-# CONFIGURATION — TAILORED TO YOUR CSV
+# CONFIGURATION
 # -----------------------------
 CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-22 (1).csv"
 OUTPUT_BASE_NAME = "business_leads_with_email"
 
-# Expected column order (from your CSV)
+# Expected columns in input CSV
 ORIGINAL_COLUMNS = [
     'place_id',
     'business_name',
@@ -30,7 +30,7 @@ ORIGINAL_COLUMNS = [
 ]
 OUTPUT_COLUMNS = ORIGINAL_COLUMNS + ['email', 'instagram', 'twitter']
 
-# Scraper settings — balanced for speed + safety
+# Scraper settings
 EMAIL_TIMEOUT = 12
 MAX_RETRIES = 2
 MAX_PAGES_PER_SITE = 4
@@ -39,11 +39,13 @@ REQUEST_DELAY_MIN = 0.7
 REQUEST_DELAY_MAX = 1.3
 
 PRIORITY_PATHS = ['/contact', '/contact-us', '/about', '/team', '/info', '/support']
-EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
-INSTAGRAM_PATTERN = re.compile(r'https?://(www\.)?instagram\.com/([A-Za-z0-9._]+)/?', re.IGNORECASE)
-TWITTER_PATTERN = re.compile(r'https?://(www\.|mobile\.)?(twitter|x)\.com/([A-Za-z0-9_]{1,15})/?', re.IGNORECASE)
 
-# Logging setup
+# Regex patterns — compiled for performance
+EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
+INSTAGRAM_PATTERN = re.compile(r'https?://(www\.)?instagram\.com/([A-Za-z0-9._-]{1,30})/?', re.IGNORECASE)
+TWITTER_PATTERN = re.compile(r'https?://(www\.|mobile\.)?(twitter\.com|x\.com)/([A-Za-z0-9_]{1,15})/?', re.IGNORECASE)
+
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -71,19 +73,24 @@ def normalize_url(url):
     url = url.strip()
     if not url or url.lower() in {'n/a', 'null', 'none', '-', '', '·'}:
         return None
-    if any(x in url for x in ['google.com/aclk', 'google.com/maps', 'gclid=', 'maps.app.goo.gl']):
+    if any(x in url for x in ['google.com/aclk', 'google.com/maps', 'gclid=', 'maps.app.goo.gl', 'goo.gl', 'bit.ly']):
         return None
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
-    parsed = urlparse(url)
-    if not parsed.netloc or 'google.com' in parsed.netloc or len(parsed.netloc) < 4:
+    try:
+        parsed = urlparse(url)
+        if not parsed.netloc or 'google.com' in parsed.netloc or len(parsed.netloc) < 4:
+            return None
+    except:
         return None
     return url.rstrip('/')
 
 def extract_base_domain(netloc):
     netloc = netloc.lower().replace('www.', '').split(':')[0]
     parts = netloc.split('.')
-    return '.'.join(parts[-2:]) if len(parts) >= 2 else netloc
+    if len(parts) >= 2:
+        return '.'.join(parts[-2:])
+    return netloc
 
 def is_relevant_email(email, base_domain):
     try:
@@ -109,7 +116,7 @@ def get_soup(url, timeout=EMAIL_TIMEOUT):
             if response.status_code == 200:
                 response.encoding = response.apparent_encoding or 'utf-8'
                 return BeautifulSoup(response.text, 'html.parser')
-        except:
+        except Exception:
             if attempt < MAX_RETRIES:
                 time.sleep(random.uniform(0.6, 1.0))
                 continue
@@ -118,13 +125,13 @@ def get_soup(url, timeout=EMAIL_TIMEOUT):
 def scrape_emails_and_social_from_site(root_url):
     root_url = normalize_url(root_url)
     if not root_url:
-        return set(), None, None  # emails, instagram, twitter
+        return set(), "", ""
 
     parsed = urlparse(root_url)
     base_domain = extract_base_domain(parsed.netloc)
     all_emails = set()
-    instagram_url = None
-    twitter_url = None
+    instagram_url = ""
+    twitter_url = ""
     visited = set()
 
     priority_urls = [urljoin(root_url, path) for path in PRIORITY_PATHS]
@@ -141,35 +148,45 @@ def scrape_emails_and_social_from_site(root_url):
         if not soup:
             continue
 
-        # --- Extract social media links ---
+        # Extract social links from all 'a' tags
         for a_tag in soup.find_all('a', href=True):
             href = a_tag['href'].strip()
             if not href:
                 continue
             full_url = urljoin(root_url, href)
 
-            # Avoid relative or malformed URLs
+            # Skip non-HTTP URLs
             if not full_url.startswith(('http://', 'https://')):
                 continue
 
-            # Instagram
+            # --- Instagram: extract only valid profile URLs ---
             if not instagram_url:
-                insta_match = INSTAGRAM_PATTERN.match(full_url)
+                insta_match = INSTAGRAM_PATTERN.search(full_url)
                 if insta_match:
-                    username = insta_match.group(2)
-                    # Skip non-profile pages (e.g., /p/, /explore/)
-                    if not any(bad in username for bad in ['p/', 'explore', 'accounts', 'login', 'stories']):
-                        clean_insta = f"https://www.instagram.com/{username}/"
-                        instagram_url = clean_insta
+                    username = insta_match.group(2).rstrip('/')
+                    # Block non-profile paths (these shouldn't appear in username, but double-check)
+                    if not any(bad in username for bad in ['p', 'explore', 'accounts', 'login', 'stories', 'reels', 'direct', 'directory', 'legal', 'about']):
+                        if username and 2 <= len(username) <= 30 and not username.replace('.', '').replace('_', '').isdigit():
+                            # Final validation: ensure no query/fragment
+                            insta_clean = f"https://www.instagram.com/{username}/"
+                            instagram_url = insta_clean
 
-            # Twitter / X
+            # --- Twitter/X: extract only valid profile URLs ---
             if not twitter_url:
-                twitter_match = TWITTER_PATTERN.match(full_url)
+                twitter_match = TWITTER_PATTERN.search(full_url)
                 if twitter_match:
-                    username = twitter_match.group(3)
-                    if username and len(username) <= 15 and username.isalnum() or '_' in username:
-                        # Normalize to x.com for consistency
-                        twitter_url = f"https://x.com/{username}/"
+                    username = twitter_match.group(3).rstrip('/')
+                    # Validate username format
+                    if (
+                        username
+                        and 1 <= len(username) <= 15
+                        and username.replace('_', '').isalnum()
+                        and not username.isdigit()
+                        and not username.startswith('_')
+                        and not username.endswith('_')
+                    ):
+                        twitter_clean = f"https://x.com/{username}/"
+                        twitter_url = twitter_clean
 
         # --- Extract emails ---
         for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe', 'form', 'button', 'img', 'comment']):
@@ -185,7 +202,7 @@ def scrape_emails_and_social_from_site(root_url):
 
         time.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
 
-    # Clean emails
+    # Final email sanitization
     clean_emails = set()
     for e in all_emails:
         e = e.strip()
@@ -200,8 +217,8 @@ def process_row(row):
     try:
         emails, instagram, twitter = scrape_emails_and_social_from_site(website)
         row['email'] = '; '.join(sorted(emails)) if emails else ""
-        row['instagram'] = instagram or ""
-        row['twitter'] = twitter or ""
+        row['instagram'] = instagram
+        row['twitter'] = twitter
     except Exception as e:
         logger.warning(f"Failed to scrape {business_name}: {str(e)[:100]}")
         row['email'] = ""
@@ -241,13 +258,11 @@ def main():
                     result = future.result()
                     results.append(result)
                     completed += 1
-                    if completed % 5 == 0 or completed == total_leads:
+                    if completed % 10 == 0 or completed == total_leads:
                         logger.info(f"✔ Progress: {completed}/{total_leads} leads done")
                 except Exception as e:
                     row = future_to_row[future]
-                    row['email'] = ""
-                    row['instagram'] = ""
-                    row['twitter'] = ""
+                    row.update({'email': '', 'instagram': '', 'twitter': ''})
                     results.append(row)
                     logger.error(f"Row failed: {e}")
 
@@ -257,12 +272,21 @@ def main():
         logger.error(f"Unexpected error: {e}")
         sys.exit(1)
 
-    # Restore original order
-    key_to_original = {(r['business_name'], r['website']): r for r in rows}
-    key_to_result = {(r['business_name'], r['website']): r for r in results}
+    # Restore original order using (business_name, website) as key
+    key_to_result = {}
+    for r in results:
+        key = (r.get('business_name', ''), r.get('website', ''))
+        key_to_result[key] = r
+
     ordered_results = []
-    for key in [(r['business_name'], r['website']) for r in rows]:
-        ordered_results.append(key_to_result.get(key, {**key_to_original[key], 'email': '', 'instagram': '', 'twitter': ''}))
+    for row in rows:
+        key = (row.get('business_name', ''), row.get('website', ''))
+        if key in key_to_result:
+            ordered_results.append(key_to_result[key])
+        else:
+            fallback = row.copy()
+            fallback.update({'email': '', 'instagram': '', 'twitter': ''})
+            ordered_results.append(fallback)
 
     # Save output
     OUTPUT_FILE = get_unique_output_path(OUTPUT_BASE_NAME)
