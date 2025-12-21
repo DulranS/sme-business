@@ -4,7 +4,7 @@ import time
 import random
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, urljoin, urldefrag
+from urllib.parse import urlparse, urljoin
 import os
 import logging
 import sys
@@ -14,7 +14,7 @@ from collections import deque
 # -----------------------------
 # CONFIGURATION — TAILORED TO YOUR CSV
 # -----------------------------
-CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-20 (2).csv"
+CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google-2025-12-22 (1).csv"
 OUTPUT_BASE_NAME = "business_leads_with_email"
 
 # Expected column order (from your CSV)
@@ -28,7 +28,7 @@ ORIGINAL_COLUMNS = [
     'whatsapp_number',
     'website'
 ]
-OUTPUT_COLUMNS = ORIGINAL_COLUMNS + ['email']
+OUTPUT_COLUMNS = ORIGINAL_COLUMNS + ['email', 'instagram', 'twitter']
 
 # Scraper settings — balanced for speed + safety
 EMAIL_TIMEOUT = 12
@@ -40,6 +40,8 @@ REQUEST_DELAY_MAX = 1.3
 
 PRIORITY_PATHS = ['/contact', '/contact-us', '/about', '/team', '/info', '/support']
 EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
+INSTAGRAM_PATTERN = re.compile(r'https?://(www\.)?instagram\.com/([A-Za-z0-9._]+)/?', re.IGNORECASE)
+TWITTER_PATTERN = re.compile(r'https?://(www\.|mobile\.)?(twitter|x)\.com/([A-Za-z0-9_]{1,15})/?', re.IGNORECASE)
 
 # Logging setup
 logging.basicConfig(
@@ -113,14 +115,16 @@ def get_soup(url, timeout=EMAIL_TIMEOUT):
                 continue
     return None
 
-def scrape_emails_from_site(root_url):
+def scrape_emails_and_social_from_site(root_url):
     root_url = normalize_url(root_url)
     if not root_url:
-        return set()
+        return set(), None, None  # emails, instagram, twitter
 
     parsed = urlparse(root_url)
     base_domain = extract_base_domain(parsed.netloc)
     all_emails = set()
+    instagram_url = None
+    twitter_url = None
     visited = set()
 
     priority_urls = [urljoin(root_url, path) for path in PRIORITY_PATHS]
@@ -137,6 +141,37 @@ def scrape_emails_from_site(root_url):
         if not soup:
             continue
 
+        # --- Extract social media links ---
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag['href'].strip()
+            if not href:
+                continue
+            full_url = urljoin(root_url, href)
+
+            # Avoid relative or malformed URLs
+            if not full_url.startswith(('http://', 'https://')):
+                continue
+
+            # Instagram
+            if not instagram_url:
+                insta_match = INSTAGRAM_PATTERN.match(full_url)
+                if insta_match:
+                    username = insta_match.group(2)
+                    # Skip non-profile pages (e.g., /p/, /explore/)
+                    if not any(bad in username for bad in ['p/', 'explore', 'accounts', 'login', 'stories']):
+                        clean_insta = f"https://www.instagram.com/{username}/"
+                        instagram_url = clean_insta
+
+            # Twitter / X
+            if not twitter_url:
+                twitter_match = TWITTER_PATTERN.match(full_url)
+                if twitter_match:
+                    username = twitter_match.group(3)
+                    if username and len(username) <= 15 and username.isalnum() or '_' in username:
+                        # Normalize to x.com for consistency
+                        twitter_url = f"https://x.com/{username}/"
+
+        # --- Extract emails ---
         for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe', 'form', 'button', 'img', 'comment']):
             tag.decompose()
 
@@ -150,26 +185,32 @@ def scrape_emails_from_site(root_url):
 
         time.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
 
+    # Clean emails
     clean_emails = set()
     for e in all_emails:
         e = e.strip()
         if 5 <= len(e) <= 254 and EMAIL_PATTERN.fullmatch(e):
             clean_emails.add(e)
-    return clean_emails
+
+    return clean_emails, instagram_url, twitter_url
 
 def process_row(row):
     business_name = row.get('business_name', 'Unknown')
     website = row.get('website', "")
     try:
-        emails = scrape_emails_from_site(website)
+        emails, instagram, twitter = scrape_emails_and_social_from_site(website)
         row['email'] = '; '.join(sorted(emails)) if emails else ""
+        row['instagram'] = instagram or ""
+        row['twitter'] = twitter or ""
     except Exception as e:
         logger.warning(f"Failed to scrape {business_name}: {str(e)[:100]}")
         row['email'] = ""
+        row['instagram'] = ""
+        row['twitter'] = ""
     return row
 
 def main():
-    logger.info("🚀 Starting business email enrichment...")
+    logger.info("🚀 Starting business email & social link enrichment...")
 
     # Read input CSV
     try:
@@ -205,12 +246,13 @@ def main():
                 except Exception as e:
                     row = future_to_row[future]
                     row['email'] = ""
+                    row['instagram'] = ""
+                    row['twitter'] = ""
                     results.append(row)
                     logger.error(f"Row failed: {e}")
 
     except KeyboardInterrupt:
         logger.warning("⚠️ Script interrupted by user. Saving partial results...")
-        # Still save what we have
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         sys.exit(1)
@@ -220,7 +262,7 @@ def main():
     key_to_result = {(r['business_name'], r['website']): r for r in results}
     ordered_results = []
     for key in [(r['business_name'], r['website']) for r in rows]:
-        ordered_results.append(key_to_result.get(key, {**key_to_original[key], 'email': ''}))
+        ordered_results.append(key_to_result.get(key, {**key_to_original[key], 'email': '', 'instagram': '', 'twitter': ''}))
 
     # Save output
     OUTPUT_FILE = get_unique_output_path(OUTPUT_BASE_NAME)
@@ -236,12 +278,18 @@ def main():
 
     # Final stats
     with_email = sum(1 for r in ordered_results if r.get('email', '').strip())
-    pct = (with_email / total_leads) * 100 if total_leads > 0 else 0
+    with_instagram = sum(1 for r in ordered_results if r.get('instagram', '').strip())
+    with_twitter = sum(1 for r in ordered_results if r.get('twitter', '').strip())
+    pct_email = (with_email / total_leads) * 100 if total_leads > 0 else 0
+    pct_insta = (with_instagram / total_leads) * 100 if total_leads > 0 else 0
+    pct_twitter = (with_twitter / total_leads) * 100 if total_leads > 0 else 0
 
     logger.info("\n" + "="*60)
     logger.info("✅ ENRICHMENT COMPLETE!")
     logger.info(f"Total leads          : {total_leads}")
-    logger.info(f"Leads with email     : {with_email} ({pct:.1f}%)")
+    logger.info(f"With email           : {with_email} ({pct_email:.1f}%)")
+    logger.info(f"With Instagram       : {with_instagram} ({pct_insta:.1f}%)")
+    logger.info(f"With Twitter/X       : {with_twitter} ({pct_twitter:.1f}%)")
     logger.info(f"Output file          : {OUTPUT_FILE}")
     logger.info("="*60)
 
