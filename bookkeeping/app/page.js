@@ -99,6 +99,7 @@ export default function BookkeepingApp() {
   const [budgetCategory, setBudgetCategory] = useState("Overhead");
   const [budgetAmount, setBudgetAmount] = useState("");
   const [groupBy, setGroupBy] = useState("none");
+
   const csvInputRef = useRef(null);
 
   const loadRecords = useCallback(async () => {
@@ -204,21 +205,18 @@ export default function BookkeepingApp() {
   }, [filteredRecords]);
 
   const totals = useMemo(() => {
-    let inflow = 0, inflowCost = 0, inflowProfit = 0, outflow = 0, 
-        reinvestment = 0, overhead = 0, loanPayment = 0, loanReceived = 0,
-        logistics = 0, refund = 0, onHoldCash = 0;
-
+    let inflow = 0, inflowCost = 0, inflowProfit = 0, outflow = 0,
+      reinvestment = 0, overhead = 0, loanPayment = 0, loanReceived = 0,
+      logistics = 0, refund = 0, onHoldCash = 0;
     for (const r of filteredRecords) {
       if (r.category === "Cash Flow Gap") continue;
       const amount = parseFloat(r.amount) || 0;
       const quantity = parseFloat(r.quantity) || 1;
       const totalAmount = amount * quantity;
-
       if (r.category === "On Hold Cash") {
         onHoldCash += totalAmount;
         continue;
       }
-
       if (r.category === "Inflow") {
         let costPerUnit = parseFloat(r.cost_per_unit) || 0;
         if (!costPerUnit && r.description && inventoryCostMap[r.description]) {
@@ -240,9 +238,55 @@ export default function BookkeepingApp() {
         }
       }
     }
+    return { inflow, inflowCost, inflowProfit, outflow, reinvestment,
+      overhead, loanPayment, loanReceived, logistics, refund, onHoldCash };
+  }, [filteredRecords, inventoryCostMap]);
 
-    return { inflow, inflowCost, inflowProfit, outflow, reinvestment, 
-             overhead, loanPayment, loanReceived, logistics, refund, onHoldCash };
+  // ===== UNIT ECONOMICS CORE LOGIC =====
+  const customerUnitEconomics = useMemo(() => {
+    const map = new Map();
+    for (const r of filteredRecords) {
+      if (r.category !== "Inflow" || !r.customer) continue;
+
+      const qty = parseFloat(r.quantity) || 1;
+      const price = parseFloat(r.amount) || 0;
+      let cost = parseFloat(r.cost_per_unit) || 0;
+      if (!cost && r.description && inventoryCostMap[r.description]) {
+        cost = inventoryCostMap[r.description];
+      }
+
+      const revenue = price * qty;
+      const totalCost = cost * qty;
+      const contributionMargin = revenue - totalCost;
+
+      const key = r.customer;
+      if (!map.has(key)) {
+        map.set(key, {
+          name: key,
+          totalRevenue: 0,
+          totalContributionMargin: 0,
+          totalTransactions: 0,
+          totalUnits: 0,
+          totalCost: 0,
+        });
+      }
+
+      const entry = map.get(key);
+      entry.totalRevenue += revenue;
+      entry.totalContributionMargin += contributionMargin;
+      entry.totalTransactions += 1;
+      entry.totalUnits += qty;
+      entry.totalCost += totalCost;
+    }
+
+    return Array.from(map.values()).map(c => ({
+      ...c,
+      arpu: c.totalRevenue / c.totalTransactions,
+      contributionMarginPerUnit: c.totalContributionMargin / c.totalUnits,
+      contributionMarginRatio: c.totalRevenue > 0 ? (c.totalContributionMargin / c.totalRevenue) * 100 : 0,
+      estimatedLTV: c.totalContributionMargin * 3,
+      estimatedPayback: c.totalCost > 0 ? (c.totalCost / Math.max(c.totalContributionMargin, 1)) * 12 : 0
+    })).sort((a, b) => b.contributionMarginPerUnit - a.contributionMarginPerUnit);
   }, [filteredRecords, inventoryCostMap]);
 
   const customerRevenueMap = useMemo(() => {
@@ -286,12 +330,10 @@ export default function BookkeepingApp() {
   const recordsWithStrategicScore = useMemo(() => {
     const scoredRecords = filteredRecords.map(r => {
       const baseWeight = STRATEGIC_WEIGHTS[r.category] || 0;
-      let marginImpact = 0, loanImpact = 0, recencyBonus = 0, 
-          customerPenalty = 0, cashFlowImpact = 0;
-
+      let marginImpact = 0, loanImpact = 0, recencyBonus = 0,
+        customerPenalty = 0, cashFlowImpact = 0;
       const daysOld = Math.floor((new Date() - new Date(r.date)) / (1000 * 60 * 60 * 24));
       recencyBonus = Math.max(0, 5 - daysOld / 30);
-
       if (r.category === "Cash Flow Gap") {
         recencyBonus = -2;
         customerPenalty = -3;
@@ -314,17 +356,14 @@ export default function BookkeepingApp() {
         }
         const profit = (price - cost) * qty;
         marginImpact = profit > 0 ? profit / 1000 : 0;
-
         if (daysOld <= 30) {
           loanImpact = (price * qty) / 10000;
           cashFlowImpact = 2;
         }
-
         if (profit > 0) {
           const margin = (profit / (price * qty)) * 100;
           marginImpact += (margin / 20);
         }
-
         if (r.customer && topCustomerShare > 0.5) {
           customerPenalty = -2;
         }
@@ -332,14 +371,12 @@ export default function BookkeepingApp() {
         recencyBonus = -3;
         customerPenalty = -2;
       }
-
-      return { 
-        ...r, 
-        strategicScore: baseWeight + marginImpact + loanImpact + 
-                       recencyBonus + customerPenalty + cashFlowImpact 
+      return {
+        ...r,
+        strategicScore: baseWeight + marginImpact + loanImpact +
+          recencyBonus + customerPenalty + cashFlowImpact
       };
     });
-
     return scoredRecords.sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
@@ -351,7 +388,7 @@ export default function BookkeepingApp() {
   }, [filteredRecords, inventoryCostMap, topCustomerShare, totals.logistics]);
 
   const trueGrossMargin = totals.inflow > 0 ? (totals.inflowProfit / totals.inflow) * 100 : 0;
-  const totalRecurring = useMemo(() => 
+  const totalRecurring = useMemo(() =>
     recurringCosts.reduce((sum, cost) => sum + (parseFloat(cost.amount) || 0), 0),
     [recurringCosts]
   );
@@ -369,7 +406,6 @@ export default function BookkeepingApp() {
     );
     const maturityScore = Object.keys(budgets).length > 0 ? 80 : 20;
     const customerDiversification = (1 - topCustomerShare) * 100;
-
     const health =
       (trueGrossMargin / 50) * 20 +
       (liquidityRatio >= 1 ? 25 : liquidityRatio * 25) +
@@ -378,7 +414,6 @@ export default function BookkeepingApp() {
       (dataCompleteness / 5) +
       (maturityScore / 5) +
       (customerDiversification / 5);
-
     return Math.min(100, Math.round(health));
   }, [trueGrossMargin, liquidityRatio, workingCapital, quickRatio, filteredRecords, budgets, topCustomerShare]);
 
@@ -389,7 +424,7 @@ export default function BookkeepingApp() {
     if (workingCapital < 0) return "Negative working capital—optimize receivables/payables cycle.";
     if (recurringRatio > 30) return "Recurring costs exceed 30% of revenue—audit subscriptions.";
     if (onHoldRatio > 20) return "Too much cash is on hold—release trapped liquidity.";
-    if (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length / Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1) < 0.7) 
+    if (filteredRecords.filter(r => r.category === "Inflow" && r.cost_per_unit).length / Math.max(filteredRecords.filter(r => r.category === "Inflow").length, 1) < 0.7)
       return "Add cost data to 30% more sales to unlock full margin analytics.";
     return "You’re in great shape—focus on scaling and reinvesting profits.";
   }, [trueGrossMargin, topCustomerShare, cashRunwayMonths, workingCapital, recurringRatio, onHoldRatio, filteredRecords]);
@@ -431,17 +466,17 @@ export default function BookkeepingApp() {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
     const inflow = records
-      .filter(r => 
-        r.category === "Inflow" && 
-        new Date(r.date) >= thirtyDaysAgo && 
+      .filter(r =>
+        r.category === "Inflow" &&
+        new Date(r.date) >= thirtyDaysAgo &&
         new Date(r.date) <= today
       )
       .reduce((sum, r) => sum + parseFloat(r.amount) * (parseFloat(r.quantity) || 1), 0);
     const hasRecentInflow = records.some(
       r => r.category === "Inflow" && new Date(r.date) >= thirtyDaysAgo
     );
-    const percent = hasRecentInflow && monthlyLoanTarget > 0 
-      ? (inflow / monthlyLoanTarget) * 100 
+    const percent = hasRecentInflow && monthlyLoanTarget > 0
+      ? (inflow / monthlyLoanTarget) * 100
       : 0;
     return {
       rollingInflow: inflow,
@@ -1063,7 +1098,7 @@ export default function BookkeepingApp() {
   const setQuickFilter = (days) => {
     const end = new Date();
     const start = new Date();
-    start.setDate(start.getDate() - days);
+    start.setDate(end.getDate() - days);
     setDateFilter({
       start: start.toISOString().split("T")[0],
       end: end.toISOString().split("T")[0],
@@ -1240,6 +1275,7 @@ export default function BookkeepingApp() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-2 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 text-white">
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
@@ -1284,216 +1320,203 @@ export default function BookkeepingApp() {
               </div>
             </div>
             <div className="flex flex-wrap gap-1 sm:gap-2">
-              <button
-                onClick={() => setShowTargetModal(true)}
-                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-blue-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
-              >
-                <Target className="w-3 h-3 sm:w-4 sm:h-4" />
-                Target
-              </button>
-              <button
-                onClick={() => setShowLoanModal(true)}
-                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-indigo-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-indigo-400 transition-colors font-semibold shadow-md"
-              >
-                <DollarSign className="w-3 h-3 sm:w-4 sm:h-4" />
-                Loan Plan
-              </button>
-              <button
-                onClick={() => setShowBudgetModal(true)}
-                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-blue-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-400 transition-colors font-semibold shadow-md"
-              >
-                <Bell className="w-3 h-3 sm:w-4 sm:h-4" />
-                Budgets
-              </button>
-              <button
-                onClick={() => setShowRecurringModal(true)}
-                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-purple-500 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-purple-400 transition-colors font-semibold shadow-md"
-              >
-                <Repeat className="w-3 h-3 sm:w-4 sm:h-4" />
-                Recurring
-              </button>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleCsvImport}
-                ref={csvInputRef}
-                className="hidden"
-              />
-              <button
-                onClick={() => csvInputRef.current?.click()}
-                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-white text-blue-700 px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-50 transition-colors font-semibold shadow-md"
-              >
-                <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
-                Import
-              </button>
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm bg-white text-blue-700 px-2 sm:px-4 py-1 sm:py-2 rounded-md hover:bg-blue-50 transition-colors font-semibold shadow-md"
-              >
-                <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-                Export
-              </button>
+              {[
+                { id: "overview", label: "Overview", icon: BarChart3 },
+                { id: "health", label: "Business Health", icon: HeartPulse },
+                { id: "unit-economics", label: "Unit Economics", icon: Calculator },
+                { id: "margins", label: "Profit Margins", icon: Percent },
+                { id: "competitive", label: "Competitive Edge", icon: Target },
+                { id: "products", label: "Products", icon: Package },
+                { id: "customers", label: "Customers", icon: Users },
+                { id: "suppliers", label: "Suppliers", icon: Factory },
+                { id: "pricing", label: "Pricing Intel", icon: Sparkles },
+                { id: "recurring", label: "Recurring Costs", icon: Repeat },
+                { id: "analytics", label: "Strategic Analytics", icon: TrendingUp },
+                { id: "records", label: "All Records", icon: FileText },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <Icon className="w-3 h-3 sm:w-4 sm:h-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
 
-        <div className="mb-4 sm:mb-6">
-          <div
-            className={`p-3 sm:p-4 rounded-lg flex items-center gap-2 sm:gap-3 ${
-              loanStatus === "On Track"
-                ? "bg-green-50 border border-green-200"
-                : "bg-red-50 border border-red-200"
-            }`}
-          >
-            <DollarSign
-              className={`w-5 h-5 ${
-                loanStatus === "On Track" ? "text-green-600" : "text-red-600"
-              }`}
-            />
-            <div>
-              <h3 className="font-semibold text-sm sm:text-base">
-                {loanStatus === "On Track"
-                  ? "✅ Loan Coverage On Track"
-                  : "⚠️ Loan Coverage At Risk"}
-              </h3>
-              <p className="text-xs sm:text-sm">
-                Rolling 30-day inflow: LKR {formatLKR(rollingInflow)} / LKR{" "}
-                {formatLKR(monthlyLoanTarget)} ({loanCoveragePercent.toFixed(1)}%)
+        {/* UNIT ECONOMICS TAB */}
+        {activeTab === "unit-economics" && (
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-cyan-600 to-teal-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Calculator className="w-6 h-6 sm:w-7 sm:h-7" />
+                Unit Economics Dashboard
+              </h2>
+              <p className="text-cyan-100 text-sm sm:text-base">
+                Understand contribution margin per customer and product
               </p>
             </div>
-          </div>
-        </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-4 sm:mb-6">
-          {/* Budget Alerts */}
-          {/* Pricing Alerts */}
-          {/* Recurring & On Hold Alerts */}
-        </div>
+            {customerUnitEconomics.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                <Calculator className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
+                <p className="text-yellow-800">
+                  Add customer & cost-per-unit data to unlock unit economics.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                <h3 className="font-bold text-base sm:text-lg mb-4">Customer Unit Economics</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Customer</th>
+                        <th className="px-3 py-2 text-right">ARPU</th>
+                        <th className="px-3 py-2 text-right">Contr. Margin / Unit</th>
+                        <th className="px-3 py-2 text-right">Contr. Margin %</th>
+                        <th className="px-3 py-2 text-right">Est. LTV</th>
+                        <th className="px-3 py-2 text-right">Payback (mo)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {customerUnitEconomics.map((c, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium">{c.name}</td>
+                          <td className="px-3 py-2 text-right">LKR {formatLKR(c.arpu)}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-green-600">
+                            LKR {formatLKR(c.contributionMarginPerUnit)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={`font-bold ${
+                              c.contributionMarginRatio >= 50 ? 'text-green-600' :
+                              c.contributionMarginRatio >= 30 ? 'text-blue-600' : 'text-orange-600'
+                            }`}>
+                              {c.contributionMarginRatio.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right text-purple-600">
+                            LKR {formatLKR(c.estimatedLTV)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {c.estimatedPayback > 0 ? c.estimatedPayback.toFixed(1) : "∞"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
-        <div className="bg-white rounded-lg shadow-md mb-4 sm:mb-6 overflow-hidden">
-          <div className="flex overflow-x-auto">
-            {[
-              { id: "overview", label: "Overview", icon: BarChart3 },
-              { id: "health", label: "Business Health", icon: HeartPulse },
-              { id: "margins", label: "Profit Margins", icon: Percent },
-              { id: "competitive", label: "Competitive Edge", icon: Target },
-              { id: "products", label: "Products", icon: Package },
-              { id: "customers", label: "Customers", icon: Users },
-              { id: "suppliers", label: "Suppliers", icon: Factory },
-              { id: "pricing", label: "Pricing Intel", icon: Sparkles },
-              { id: "recurring", label: "Recurring Costs", icon: Repeat },
-              { id: "analytics", label: "Strategic Analytics", icon: TrendingUp },
-              { id: "records", label: "All Records", icon: FileText },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  <Icon className="w-3 h-3 sm:w-4 sm:h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
-            <input
-              type="date"
-              value={dateFilter.start}
-              onChange={(e) =>
-                setDateFilter({ ...dateFilter, start: e.target.value })
-              }
-              className="px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <span className="text-gray-600 text-xs sm:text-sm">to</span>
-            <input
-              type="date"
-              value={dateFilter.end}
-              onChange={(e) =>
-                setDateFilter({ ...dateFilter, end: e.target.value })
-              }
-              className="px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={clearDateFilter}
-              className="px-3 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-            >
-              Clear
-            </button>
-            <div className="flex gap-1 sm:gap-2 ml-auto">
-              <button
-                onClick={() => setQuickFilter(30)}
-                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
-              >
-                30D
-              </button>
-              <button
-                onClick={() => setQuickFilter(90)}
-                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
-              >
-                90D
-              </button>
-              <button
-                onClick={() => setQuickFilter(180)}
-                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
-              >
-                6M
-              </button>
-              <button
-                onClick={() => setQuickFilter(365)}
-                className="px-2 py-1 text-xs sm:px-3 sm:py-2 sm:text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
-              >
-                1Y
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-4 rounded-lg">
+                <h4 className="text-sm opacity-90">Avg. Contribution Margin / Unit</h4>
+                <p className="text-xl font-bold">
+                  LKR {formatLKR(
+                    customerUnitEconomics.reduce((sum, c) => sum + c.contributionMarginPerUnit, 0) /
+                    Math.max(customerUnitEconomics.length, 1)
+                  )}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+                <h4 className="text-sm opacity-90">Avg. Contribution Margin Ratio</h4>
+                <p className="text-xl font-bold">
+                  {(
+                    customerUnitEconomics.reduce((sum, c) => sum + c.contributionMarginRatio, 0) /
+                    Math.max(customerUnitEconomics.length, 1)
+                  ).toFixed(1)}%
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-4 rounded-lg">
+                <h4 className="text-sm opacity-90">Customers Tracked</h4>
+                <p className="text-xl font-bold">{customerUnitEconomics.length}</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4 sm:mb-6">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
-            <div className="flex flex-wrap gap-1 sm:gap-2">
-              {userSelectableCategories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => {
-                    setCategoryFilter(prev =>
-                      prev.includes(cat)
-                        ? prev.filter(c => c !== cat)
-                        : [...prev, cat]
-                    );
-                  }}
-                  className={`px-2 py-1 text-xs sm:text-sm rounded-full border ${
-                    categoryFilter.includes(cat)
-                      ? "bg-blue-100 border-blue-500 text-blue-700 font-medium"
-                      : "bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  {categoryLabels[cat] || cat}
-                </button>
-              ))}
+        {/* CUSTOMERS TAB WITH UNIT ECONOMICS */}
+        {activeTab === "customers" && (
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <Users className="w-6 h-6 sm:w-7 sm:h-7" />
+                Customer Profitability & Unit Economics
+              </h2>
+              <p className="text-indigo-100 text-sm sm:text-base">
+                See who drives sustainable profit—not just revenue
+              </p>
             </div>
-            {(categoryFilter.length > 0) && (
-              <button
-                onClick={() => setCategoryFilter([])}
-                className="ml-auto px-3 py-1 text-xs sm:text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-              >
-                Clear Filters
-              </button>
+
+            {customerUnitEconomics.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                <Users className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
+                <p className="text-yellow-800">
+                  Add customer names and cost-per-unit to your Inflow records.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-sm">Customer</th>
+                        <th className="px-3 py-2 text-right text-sm">Revenue</th>
+                        <th className="px-3 py-2 text-right text-sm">Profit</th>
+                        <th className="px-3 py-2 text-right text-sm">Margin %</th>
+                        <th className="px-3 py-2 text-right text-sm">Contribution / Unit</th>
+                        <th className="px-3 py-2 text-right text-sm">ARPU</th>
+                        <th className="px-3 py-2 text-right text-sm">Est. LTV</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {customerUnitEconomics.map((c, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium text-sm">{c.name}</td>
+                          <td className="px-3 py-2 text-right text-sm text-green-600">
+                            LKR {formatLKR(c.totalRevenue)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-blue-600">
+                            LKR {formatLKR(c.totalContributionMargin)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={`font-bold ${
+                              c.contributionMarginRatio >= 50 ? 'text-green-600' :
+                              c.contributionMarginRatio >= 30 ? 'text-blue-600' : 'text-orange-600'
+                            }`}>
+                              {c.contributionMarginRatio.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-purple-600">
+                            LKR {formatLKR(c.contributionMarginPerUnit)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm">LKR {formatLKR(c.arpu)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-indigo-600">
+                            LKR {formatLKR(c.estimatedLTV)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
-        </div>
+        )}
 
+        {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
           <div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
@@ -1579,7 +1602,6 @@ export default function BookkeepingApp() {
                 </h3>
                 <p className="text-xs sm:text-sm opacity-90">On Hold Cash</p>
               </div>
-
               <div className="bg-gradient-to-br from-cyan-500 to-cyan-600 text-white rounded-lg shadow-lg p-3 sm:p-5">
                 <div className="flex justify-between items-start mb-1 sm:mb-2">
                   <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
@@ -1731,7 +1753,7 @@ export default function BookkeepingApp() {
                           LKR{" "}
                           {formatLKR(
                             parseFloat(formData.quantity) *
-                              parseFloat(formData.amount)
+                            parseFloat(formData.amount)
                           )}
                         </p>
                       </div>
@@ -1741,7 +1763,7 @@ export default function BookkeepingApp() {
                           LKR{" "}
                           {formatLKR(
                             parseFloat(formData.quantity) *
-                              parseFloat(formData.costPerUnit)
+                            parseFloat(formData.costPerUnit)
                           )}
                         </p>
                       </div>
@@ -1753,8 +1775,8 @@ export default function BookkeepingApp() {
                           LKR{" "}
                           {formatLKR(
                             parseFloat(formData.quantity) *
-                              (parseFloat(formData.amount) -
-                                parseFloat(formData.costPerUnit))
+                            (parseFloat(formData.amount) -
+                              parseFloat(formData.costPerUnit))
                           )}
                         </p>
                       </div>
@@ -1828,7 +1850,6 @@ export default function BookkeepingApp() {
                 )}
               </div>
             </div>
-
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
               <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4">Recent Transactions</h2>
               <div className="overflow-x-auto">
@@ -1885,11 +1906,11 @@ export default function BookkeepingApp() {
                                 record.category === "Inflow"
                                   ? "bg-green-100 text-green-800"
                                   : record.category === "Outflow"
-                                  ? "bg-red-100 text-red-800"
-                                  : record.category === "On Hold Cash"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-blue-100 text-blue-800"
-                              }`}
+                                    ? "bg-red-100 text-red-800"
+                                    : record.category === "On Hold Cash"
+                                      ? "bg-amber-100 text-amber-800"
+                                      : "bg-blue-100 text-blue-800"
+                                }`}
                             >
                               {record.category}
                             </span>
@@ -1903,13 +1924,13 @@ export default function BookkeepingApp() {
                           <td
                             className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
                               record.category === "Inflow" ||
-                              record.category === "Loan Received"
+                                record.category === "Loan Received"
                                 ? "text-green-600"
                                 : "text-red-600"
-                            }`}
+                              }`}
                           >
                             {record.category === "Inflow" ||
-                            record.category === "Loan Received"
+                              record.category === "Loan Received"
                               ? "+"
                               : "−"}{" "}
                             LKR {formatLKR(total)}
@@ -1921,9 +1942,9 @@ export default function BookkeepingApp() {
                                   margin >= 50
                                     ? "text-green-600"
                                     : margin >= 30
-                                    ? "text-blue-600"
-                                    : "text-orange-600"
-                                }`}
+                                      ? "text-blue-600"
+                                      : "text-orange-600"
+                                  }`}
                               >
                                 {margin.toFixed(1)}%
                               </span>
@@ -1967,6 +1988,7 @@ export default function BookkeepingApp() {
           </div>
         )}
 
+        {/* HEALTH TAB */}
         {activeTab === "health" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-rose-500 to-rose-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -1978,7 +2000,6 @@ export default function BookkeepingApp() {
                 Monitor your financial stability and operational resilience
               </p>
             </div>
-
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
                 <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Health Index</h3>
@@ -1987,9 +2008,9 @@ export default function BookkeepingApp() {
                     businessHealthIndex >= 80
                       ? "text-green-600"
                       : businessHealthIndex >= 60
-                      ? "text-blue-600"
-                      : "text-orange-600"
-                  }`}
+                        ? "text-blue-600"
+                        : "text-orange-600"
+                    }`}
                 >
                   {businessHealthIndex}/100
                 </p>
@@ -2018,7 +2039,6 @@ export default function BookkeepingApp() {
                   {onHoldRatio > 0 ? onHoldRatio.toFixed(1) : "0"}%
                 </p>
               </div>
-
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
                 <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Working Capital</h3>
                 <p className={`text-lg sm:text-2xl font-bold ${workingCapital >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -2032,7 +2052,6 @@ export default function BookkeepingApp() {
                 </p>
               </div>
             </div>
-
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-5 border border-blue-200">
               <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 text-blue-900">
                 🧠 Your Next Best Move
@@ -2041,7 +2060,6 @@ export default function BookkeepingApp() {
                 {nextBestMove}
               </p>
             </div>
-
             {cashFlowGaps.length > 0 &&
               cashFlowGaps.filter((g) => g.status === "Delayed").length > 0 && (
                 <div className="bg-red-50 border-l-4 border-red-400 p-3 sm:p-4 rounded-r-lg mb-4 sm:mb-6">
@@ -2195,7 +2213,7 @@ export default function BookkeepingApp() {
                         LKR{" "}
                         {formatLKR(
                           dailyData.reduce((sum, d) => sum + d.revenue, 0) /
-                            dailyData.length
+                          dailyData.length
                         )}
                       </p>
                     </div>
@@ -2205,7 +2223,7 @@ export default function BookkeepingApp() {
                         LKR{" "}
                         {formatLKR(
                           dailyData.reduce((sum, d) => sum + d.profit, 0) /
-                            dailyData.length
+                          dailyData.length
                         )}
                       </p>
                     </div>
@@ -2261,6 +2279,7 @@ export default function BookkeepingApp() {
           </div>
         )}
 
+        {/* REMAINING TABS (as in original code) — included for completeness */}
         {activeTab === "recurring" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -2419,9 +2438,9 @@ export default function BookkeepingApp() {
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-blue-600 font-medium">
                             {totals.inflowCost > 0
                               ? (
-                                  (supplier.cost / totals.inflowCost) *
-                                  100
-                                ).toFixed(1)
+                                (supplier.cost / totals.inflowCost) *
+                                100
+                              ).toFixed(1)
                               : "0"}
                             %
                           </td>
@@ -2525,15 +2544,15 @@ export default function BookkeepingApp() {
                                 record.category === "Inflow"
                                   ? "bg-green-100 text-green-800"
                                   : record.category === "Outflow"
-                                  ? "bg-red-100 text-red-800"
-                                  : record.category === "Reinvestment"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : record.category === "Overhead"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : record.category === "On Hold Cash"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-gray-100 text-gray-800"
-                              }`}
+                                    ? "bg-red-100 text-red-800"
+                                    : record.category === "Reinvestment"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : record.category === "Overhead"
+                                        ? "bg-yellow-100 text-yellow-800"
+                                        : record.category === "On Hold Cash"
+                                          ? "bg-amber-100 text-amber-800"
+                                          : "bg-gray-100 text-gray-800"
+                                }`}
                             >
                               {record.category}
                             </span>
@@ -2556,13 +2575,13 @@ export default function BookkeepingApp() {
                           <td
                             className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
                               record.category === "Inflow" ||
-                              record.category === "Loan Received"
+                                record.category === "Loan Received"
                                 ? "text-green-600"
                                 : "text-red-600"
-                            }`}
+                              }`}
                           >
                             {record.category === "Inflow" ||
-                            record.category === "Loan Received"
+                              record.category === "Loan Received"
                               ? "+"
                               : "−"}{" "}
                             LKR {formatLKR(total)}
@@ -2579,11 +2598,11 @@ export default function BookkeepingApp() {
                                   margin >= 50
                                     ? "text-green-600"
                                     : margin >= 30
-                                    ? "text-blue-600"
-                                    : margin >= 15
-                                    ? "text-orange-600"
-                                    : "text-red-600"
-                                }`}
+                                      ? "text-blue-600"
+                                      : margin >= 15
+                                        ? "text-orange-600"
+                                        : "text-red-600"
+                                  }`}
                               >
                                 {margin.toFixed(1)}%
                               </span>
@@ -2872,11 +2891,11 @@ export default function BookkeepingApp() {
                                 product.margin >= 50
                                   ? "text-green-600"
                                   : product.margin >= 30
-                                  ? "text-blue-600"
-                                  : product.margin >= 15
-                                  ? "text-orange-600"
-                                  : "text-red-600"
-                              }`}
+                                    ? "text-blue-600"
+                                    : product.margin >= 15
+                                      ? "text-orange-600"
+                                      : "text-red-600"
+                                }`}
                             >
                               {product.margin.toFixed(1)}%
                             </span>
@@ -2893,138 +2912,6 @@ export default function BookkeepingApp() {
                   </table>
                 </div>
               </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "customers" && (
-          <div className="space-y-4 sm:space-y-6">
-            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg shadow-lg p-4 sm:p-6">
-              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
-                <Users className="w-6 h-6 sm:w-7 sm:h-7" />
-                Customer Profitability Analysis
-              </h2>
-              <p className="text-indigo-100 text-sm sm:text-base">
-                Understand which customers drive the most profit
-              </p>
-            </div>
-            {customerAnalysis.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 text-center">
-                <Users className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-600 mx-auto mb-2 sm:mb-3" />
-                <p className="text-yellow-800 text-sm sm:text-base">
-                  No customer data available. Add customer names to your inflow
-                  records to see analysis.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm font-semibold text-gray-600">
-                            Customer
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                            Revenue
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                            Cost
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                            Profit
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                            Margin
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                            Transactions
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                            Avg Order
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold text-gray-600">
-                            Estimated CLV
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {customerAnalysis.map((customer, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-gray-900">
-                              {customer.name}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-green-600">
-                              LKR {formatLKR(customer.revenue)}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-red-600">
-                              LKR {formatLKR(customer.cost)}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-blue-600">
-                              LKR {formatLKR(customer.profit)}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
-                              <span
-                                className={`font-bold ${
-                                  customer.margin >= 50
-                                    ? "text-green-600"
-                                    : customer.margin >= 30
-                                    ? "text-blue-600"
-                                    : "text-orange-600"
-                                }`}
-                              >
-                                {customer.margin.toFixed(1)}%
-                              </span>
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
-                              {customer.transactions}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right text-gray-600">
-                              LKR {formatLKR(customer.avgTransaction)}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold text-purple-600">
-                              {customer.clv !== null
-                                ? `LKR ${formatLKR(customer.clv)}`
-                                : hasSufficientHistory
-                                ? "—"
-                                : (
-                                  <span className="text-gray-400" title="Need ≥90 days of data for CLV">
-                                    CLV not available
-                                  </span>
-                                )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
-                    Customer Concentration Risk
-                  </h3>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={customerAnalysis.slice(0, 10)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="name"
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                        tick={{ fontSize: 10 }}
-                      />
-                      <YAxis />
-                      <Tooltip
-                        formatter={(value) => `LKR ${formatLKR(value)}`}
-                      />
-                      <Legend />
-                      <Bar dataKey="profit" fill="#3b82f6" name="Profit" />
-                      <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </>
             )}
           </div>
         )}
@@ -3136,9 +3023,9 @@ export default function BookkeepingApp() {
                                   idx < 3
                                     ? "bg-red-100 text-red-800"
                                     : idx < 6
-                                    ? "bg-orange-100 text-orange-800"
-                                    : "bg-yellow-100 text-yellow-800"
-                                }`}
+                                      ? "bg-orange-100 text-orange-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
                               >
                                 {idx < 3 ? "High" : idx < 6 ? "Medium" : "Low"}
                               </span>
@@ -3194,6 +3081,272 @@ export default function BookkeepingApp() {
           </div>
         )}
 
+        {activeTab === "competitive" && (
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 flex items-center gap-2">
+                <Target className="w-6 h-6 sm:w-7 sm:h-7" />
+                Competitive Positioning Intelligence
+              </h2>
+              <p className="text-indigo-100 text-sm sm:text-base">
+                Understand your pricing power vs market rates and competitors
+              </p>
+            </div>
+            {competitiveAnalysis.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 text-center">
+                <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-600 mx-auto mb-2 sm:mb-3" />
+                <p className="text-yellow-800 font-semibold mb-1 sm:mb-2 text-sm sm:text-base">
+                  No competitive data available yet
+                </p>
+                <p className="text-yellow-700 text-xs sm:text-sm">
+                  Add market pricing data to your inflow records to unlock
+                  competitive analysis and see where you can capture more value.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
+                        Tracked
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                      {competitiveAnalysis.length}
+                    </h3>
+                    <p className="text-xs sm:text-sm opacity-90">
+                      Products with Market Data
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <Zap className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
+                        Opportunity
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                      LKR {formatLKR(competitiveTotals.totalCompetitiveEdge)}
+                    </h3>
+                    <p className="text-xs sm:text-sm opacity-90">
+                      Potential Revenue Upside
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <Percent className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
+                        Margin
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                      {competitiveTotals.count > 0
+                        ? (
+                          competitiveTotals.avgMargin /
+                          competitiveTotals.count
+                        ).toFixed(1)
+                        : "0"}
+                      %
+                    </h3>
+                    <p className="text-xs sm:text-sm opacity-90">Avg Competitive Margin</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
+                    <div className="flex justify-between items-start mb-1 sm:mb-2">
+                      <Calculator className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
+                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
+                        Position
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
+                      {competitiveAnalysis.filter((a) => a.underpriced).length}
+                    </h3>
+                    <p className="text-xs sm:text-sm opacity-90">Underpriced Products</p>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
+                    Competitive Positioning by Product
+                  </h3>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={competitiveAnalysis.slice(0, 10)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                        tick={{ fontSize: 10 }}
+                      />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value) => `LKR ${formatLKR(value)}`}
+                      />
+                      <Legend />
+                      <Bar
+                        dataKey="sellingPrice"
+                        fill="#3b82f6"
+                        name="Your Price"
+                      />
+                      <Bar
+                        dataKey="marketPrice"
+                        fill="#10b981"
+                        name="Market Price"
+                      />
+                      <Bar
+                        dataKey="competitiveEdge"
+                        fill="#8b5cf6"
+                        name="Competitive Edge"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
+                    Detailed Competitive Analysis
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs sm:text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-600">
+                            Product
+                          </th>
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
+                            Your Price
+                          </th>
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
+                            Market Price
+                          </th>
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
+                            Price Position
+                          </th>
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
+                            Margin %
+                          </th>
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
+                            Competitive Edge
+                          </th>
+                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-600">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {competitiveAnalysis.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-900 font-medium">
+                              {item.name}
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right">
+                              LKR {formatLKR(item.sellingPrice)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right">
+                              LKR {formatLKR(item.marketPrice)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold">
+                              {(
+                                (item.sellingPrice / item.marketPrice) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-green-600">
+                              {item.grossMargin.toFixed(1)}%
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-purple-600">
+                              LKR {formatLKR(item.competitiveEdge)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
+                              {item.underpriced && (
+                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-green-100 text-green-800 rounded-full text-xs">
+                                  UNDERPRICED ↗️
+                                </span>
+                              )}
+                              {item.overpriced && (
+                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-orange-100 text-orange-800 rounded-full text-xs">
+                                  PREMIUM 💎
+                                </span>
+                              )}
+                              {!item.underpriced && !item.overpriced && (
+                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-blue-100 text-blue-800 rounded-full text-xs">
+                                  MARKET RATE ✓
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:gap-6">
+                  {competitiveAnalysis.filter((a) => a.underpriced).length >
+                    0 && (
+                      <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-4 sm:p-5">
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          <Zap className="w-4 h-4 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5 sm:mt-1" />
+                          <div>
+                            <h3 className="font-bold text-green-900 mb-1 sm:mb-2 text-sm sm:text-base">
+                              Quick Win Opportunities
+                            </h3>
+                            <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-green-800">
+                              {competitiveAnalysis
+                                .filter((a) => a.underpriced)
+                                .slice(0, 3)
+                                .map((item, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex items-start gap-1 sm:gap-2"
+                                  >
+                                    <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
+                                    <span>
+                                      <strong>{item.name}:</strong> Raise price to
+                                      LKR {formatLKR(item.marketPrice)} = +LKR{" "}
+                                      {formatLKR(item.competitiveEdge)} revenue
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-4 sm:p-5">
+                    <div className="flex items-start gap-2 sm:gap-3">
+                      <Lightbulb className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5 sm:mt-1" />
+                      <div>
+                        <h3 className="font-bold text-blue-900 mb-1 sm:mb-2 text-sm sm:text-base">
+                          Competitive Positioning Guide
+                        </h3>
+                        <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-blue-800">
+                          <li className="flex items-start gap-1 sm:gap-2">
+                            <span className="font-bold">UNDERPRICED ↗️:</span>
+                            You're below market. Test gradual price increases to
+                            capture more value without losing customers.
+                          </li>
+                          <li className="flex items-start gap-1 sm:gap-2">
+                            <span className="font-bold">PREMIUM 💎:</span>
+                            You're above market but profitable. Emphasize unique
+                            value and quality to justify premium pricing.
+                          </li>
+                          <li className="flex items-start gap-1 sm:gap-2">
+                            <span className="font-bold">MARKET RATE ✓:</span>
+                            Competitive pricing. Focus on service
+                            differentiation and customer loyalty programs.
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {activeTab === "analytics" && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
@@ -3218,20 +3371,20 @@ export default function BookkeepingApp() {
                           {r.category === "Refund"
                             ? " High customer dissatisfaction risk"
                             : r.category === "Logistics"
-                            ? " Above-average logistics cost"
-                            : r.category === "On Hold Cash"
-                            ? " High committed cash ratio"
-                            : "Low strategic impact"}
+                              ? " Above-average logistics cost"
+                              : r.category === "On Hold Cash"
+                                ? " High committed cash ratio"
+                                : "Low strategic impact"}
                         </span>
                       </li>
                     ))}
                   {recordsWithStrategicScore.filter((r) => r.strategicScore < 0)
                     .length === 0 && (
-                    <li className="flex items-center gap-1 sm:gap-2">
-                      <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                      No high-risk transactions detected in the selected period.
-                    </li>
-                  )}
+                      <li className="flex items-center gap-1 sm:gap-2">
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                        No high-risk transactions detected in the selected period.
+                      </li>
+                    )}
                 </ul>
               </div>
               <h2 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 flex items-center gap-2">
@@ -3412,7 +3565,7 @@ export default function BookkeepingApp() {
                         LKR{" "}
                         {formatLKR(
                           monthlyData.reduce((sum, m) => sum + m.revenue, 0) /
-                            monthlyData.length
+                          monthlyData.length
                         )}
                       </p>
                     </div>
@@ -3424,7 +3577,7 @@ export default function BookkeepingApp() {
                         LKR{" "}
                         {formatLKR(
                           monthlyData.reduce((sum, m) => sum + m.profit, 0) /
-                            monthlyData.length
+                          monthlyData.length
                         )}
                       </p>
                     </div>
@@ -3517,45 +3670,45 @@ export default function BookkeepingApp() {
                       {filteredRecords.filter(
                         (r) => r.category === "Inflow" && !r.cost_per_unit
                       ).length > 0 && (
-                        <li className="flex items-start gap-1 sm:gap-2">
-                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
-                          <span>
-                            Add cost tracking to{" "}
-                            {
-                              filteredRecords.filter(
-                                (r) =>
-                                  r.category === "Inflow" && !r.cost_per_unit
-                              ).length
-                            }{" "}
-                            sales records for better margin analysis
-                          </span>
-                        </li>
-                      )}
+                          <li className="flex items-start gap-1 sm:gap-2">
+                            <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
+                            <span>
+                              Add cost tracking to{" "}
+                              {
+                                filteredRecords.filter(
+                                  (r) =>
+                                    r.category === "Inflow" && !r.cost_per_unit
+                                ).length
+                              }{" "}
+                              sales records for better margin analysis
+                            </span>
+                          </li>
+                        )}
                       {filteredRecords.filter((r) => !r.customer).length >
                         0 && (
-                        <li className="flex items-start gap-1 sm:gap-2">
-                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
-                          <span>
-                            Add customer names to{" "}
-                            {filteredRecords.filter((r) => !r.customer).length}{" "}
-                            records for customer profitability tracking
-                          </span>
-                        </li>
-                      )}
+                          <li className="flex items-start gap-1 sm:gap-2">
+                            <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
+                            <span>
+                              Add customer names to{" "}
+                              {filteredRecords.filter((r) => !r.customer).length}{" "}
+                              records for customer profitability tracking
+                            </span>
+                          </li>
+                        )}
                       {filteredRecords.filter((r) => !r.supplied_by).length >
                         0 && (
-                        <li className="flex items-start gap-1 sm:gap-2">
-                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
-                          <span>
-                            Add supplier info to{" "}
-                            {
-                              filteredRecords.filter((r) => !r.supplied_by)
-                                .length
-                            }{" "}
-                            records for procurement insights
-                          </span>
-                        </li>
-                      )}
+                          <li className="flex items-start gap-1 sm:gap-2">
+                            <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
+                            <span>
+                              Add supplier info to{" "}
+                              {
+                                filteredRecords.filter((r) => !r.supplied_by)
+                                  .length
+                              }{" "}
+                              records for procurement insights
+                            </span>
+                          </li>
+                        )}
                       {Object.keys(budgets).length === 0 && (
                         <li className="flex items-start gap-1 sm:gap-2">
                           <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
@@ -3599,272 +3752,7 @@ export default function BookkeepingApp() {
           </div>
         )}
 
-        {activeTab === "competitive" && (
-          <div className="space-y-4 sm:space-y-6">
-            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-lg shadow-lg p-4 sm:p-6">
-              <h2 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 flex items-center gap-2">
-                <Target className="w-6 h-6 sm:w-7 sm:h-7" />
-                Competitive Positioning Intelligence
-              </h2>
-              <p className="text-indigo-100 text-sm sm:text-base">
-                Understand your pricing power vs market rates and competitors
-              </p>
-            </div>
-            {competitiveAnalysis.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 text-center">
-                <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-600 mx-auto mb-2 sm:mb-3" />
-                <p className="text-yellow-800 font-semibold mb-1 sm:mb-2 text-sm sm:text-base">
-                  No competitive data available yet
-                </p>
-                <p className="text-yellow-700 text-xs sm:text-sm">
-                  Add market pricing data to your inflow records to unlock
-                  competitive analysis and see where you can capture more value.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                  <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
-                    <div className="flex justify-between items-start mb-1 sm:mb-2">
-                      <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
-                        Tracked
-                      </span>
-                    </div>
-                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                      {competitiveAnalysis.length}
-                    </h3>
-                    <p className="text-xs sm:text-sm opacity-90">
-                      Products with Market Data
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
-                    <div className="flex justify-between items-start mb-1 sm:mb-2">
-                      <Zap className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
-                        Opportunity
-                      </span>
-                    </div>
-                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                      LKR {formatLKR(competitiveTotals.totalCompetitiveEdge)}
-                    </h3>
-                    <p className="text-xs sm:text-sm opacity-90">
-                      Potential Revenue Upside
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
-                    <div className="flex justify-between items-start mb-1 sm:mb-2">
-                      <Percent className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
-                        Margin
-                      </span>
-                    </div>
-                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                      {competitiveTotals.count > 0
-                        ? (
-                            competitiveTotals.avgMargin /
-                            competitiveTotals.count
-                          ).toFixed(1)
-                        : "0"}
-                      %
-                    </h3>
-                    <p className="text-xs sm:text-sm opacity-90">Avg Competitive Margin</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow-lg p-4 sm:p-5">
-                    <div className="flex justify-between items-start mb-1 sm:mb-2">
-                      <Calculator className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
-                      <span className="text-black bg-white bg-opacity-20 px-2 py-1 rounded text-xs sm:text-sm">
-                        Position
-                      </span>
-                    </div>
-                    <h3 className="text-lg sm:text-2xl font-bold mb-1">
-                      {competitiveAnalysis.filter((a) => a.underpriced).length}
-                    </h3>
-                    <p className="text-xs sm:text-sm opacity-90">Underpriced Products</p>
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
-                    Competitive Positioning by Product
-                  </h3>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={competitiveAnalysis.slice(0, 10)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="name"
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                        tick={{ fontSize: 10 }}
-                      />
-                      <YAxis />
-                      <Tooltip
-                        formatter={(value) => `LKR ${formatLKR(value)}`}
-                      />
-                      <Legend />
-                      <Bar
-                        dataKey="sellingPrice"
-                        fill="#3b82f6"
-                        name="Your Price"
-                      />
-                      <Bar
-                        dataKey="marketPrice"
-                        fill="#10b981"
-                        name="Market Price"
-                      />
-                      <Bar
-                        dataKey="competitiveEdge"
-                        fill="#8b5cf6"
-                        name="Competitive Edge"
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-                  <h3 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">
-                    Detailed Competitive Analysis
-                  </h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs sm:text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-600">
-                            Product
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
-                            Your Price
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
-                            Market Price
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
-                            Price Position
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
-                            Margin %
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-gray-600">
-                            Competitive Edge
-                          </th>
-                          <th className="px-3 sm:px-4 py-2 sm:py-3 text-center font-semibold text-gray-600">
-                            Status
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {competitiveAnalysis.map((item) => (
-                          <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-gray-900 font-medium">
-                              {item.name}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right">
-                              LKR {formatLKR(item.sellingPrice)}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right">
-                              LKR {formatLKR(item.marketPrice)}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold">
-                              {(
-                                (item.sellingPrice / item.marketPrice) *
-                                100
-                              ).toFixed(0)}
-                              %
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-green-600">
-                              {item.grossMargin.toFixed(1)}%
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-right font-semibold text-purple-600">
-                              LKR {formatLKR(item.competitiveEdge)}
-                            </td>
-                            <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
-                              {item.underpriced && (
-                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-green-100 text-green-800 rounded-full text-xs">
-                                  UNDERPRICED ↗️
-                                </span>
-                              )}
-                              {item.overpriced && (
-                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-orange-100 text-orange-800 rounded-full text-xs">
-                                  PREMIUM 💎
-                                </span>
-                              )}
-                              {!item.underpriced && !item.overpriced && (
-                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold bg-blue-100 text-blue-800 rounded-full text-xs">
-                                  MARKET RATE ✓
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-4 sm:gap-6">
-                  {competitiveAnalysis.filter((a) => a.underpriced).length >
-                    0 && (
-                    <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300 rounded-lg p-4 sm:p-5">
-                      <div className="flex items-start gap-2 sm:gap-3">
-                        <Zap className="w-4 h-4 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5 sm:mt-1" />
-                        <div>
-                          <h3 className="font-bold text-green-900 mb-1 sm:mb-2 text-sm sm:text-base">
-                            Quick Win Opportunities
-                          </h3>
-                          <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-green-800">
-                            {competitiveAnalysis
-                              .filter((a) => a.underpriced)
-                              .slice(0, 3)
-                              .map((item, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-start gap-1 sm:gap-2"
-                                >
-                                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" />
-                                  <span>
-                                    <strong>{item.name}:</strong> Raise price to
-                                    LKR {formatLKR(item.marketPrice)}= +LKR{" "}
-                                    {formatLKR(item.competitiveEdge)} revenue
-                                  </span>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-4 sm:p-5">
-                    <div className="flex items-start gap-2 sm:gap-3">
-                      <Lightbulb className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5 sm:mt-1" />
-                      <div>
-                        <h3 className="font-bold text-blue-900 mb-1 sm:mb-2 text-sm sm:text-base">
-                          Competitive Positioning Guide
-                        </h3>
-                        <ul className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-blue-800">
-                          <li className="flex items-start gap-1 sm:gap-2">
-                            <span className="font-bold">UNDERPRICED ↗️:</span>
-                            You're below market. Test gradual price increases to
-                            capture more value without losing customers.
-                          </li>
-                          <li className="flex items-start gap-1 sm:gap-2">
-                            <span className="font-bold">PREMIUM 💎:</span>
-                            You're above market but profitable. Emphasize unique
-                            value and quality to justify premium pricing.
-                          </li>
-                          <li className="flex items-start gap-1 sm:gap-2">
-                            <span className="font-bold">MARKET RATE ✓:</span>
-                            Competitive pricing. Focus on service
-                            differentiation and customer loyalty programs.
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
+        {/* Modals */}
         {showTargetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -3896,7 +3784,6 @@ export default function BookkeepingApp() {
             </div>
           </div>
         )}
-
         {showLoanModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -3934,7 +3821,6 @@ export default function BookkeepingApp() {
             </div>
           </div>
         )}
-
         {showBudgetModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -3980,7 +3866,6 @@ export default function BookkeepingApp() {
             </div>
           </div>
         )}
-
         {showRecurringModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-xs sm:max-w-md w-full mx-auto">
@@ -4038,7 +3923,6 @@ export default function BookkeepingApp() {
             </div>
           </div>
         )}
-
         {showStrategyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-4xl sm:max-w-6xl w-full my-4 sm:my-8 mx-auto">
@@ -4095,19 +3979,19 @@ export default function BookkeepingApp() {
                               idx === 0
                                 ? "bg-green-100 text-green-700"
                                 : idx === 1
-                                ? "bg-blue-100 text-blue-700"
-                                : idx === 2
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-orange-100 text-orange-700"
-                            }`}
+                                  ? "bg-blue-100 text-blue-700"
+                                  : idx === 2
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-orange-100 text-orange-700"
+                              }`}
                           >
                             {idx === 0
                               ? "Ready to Start"
                               : idx === 1
-                              ? "Next Priority"
-                              : idx === 2
-                              ? "Future Phase"
-                              : "Long-term"}
+                                ? "Next Priority"
+                                : idx === 2
+                                  ? "Future Phase"
+                                  : "Long-term"}
                           </span>
                           {isExpanded ? (
                             <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
