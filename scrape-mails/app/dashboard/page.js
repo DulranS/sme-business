@@ -265,6 +265,17 @@ Would you be open to a quick chat?`);
     return () => document.head.removeChild(script);
   }, []);
 
+
+  const handleSmartCall = (contact) => {
+  if (contact.dealStage === 'replied' || contact.leadScore >= 80) {
+    handleTwilioCall(contact, 'bridge');
+  } else if (contact.followUpCount >= 2) {
+    handleTwilioCall(contact, 'voicemail');
+  } else {
+    handleTwilioCall(contact, 'interactive'); // IVR
+  }
+};
+
   // ✅ Social Handle Generator
   const generateSocialHandle = (businessName, platform) => {
     if (!businessName) return null;
@@ -1681,6 +1692,12 @@ Please check your Twilio configuration and try again.`);
                               >
                                 📞 Auto Call
                               </button>
+                              <button
+  onClick={() => handleSmartCall(contact)}
+  className="text-xs bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-3 py-1.5 rounded font-medium"
+>
+  📞 Smart Call
+</button>
                               <button
                                 onClick={() => handleTwilioCall(link, 'bridge')}
                                 className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
