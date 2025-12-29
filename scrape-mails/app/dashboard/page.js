@@ -380,105 +380,113 @@ Check call history for final status.`);
   };
 
   // ✅ Twilio Call
-  const handleTwilioCall = async (contact, callType = 'direct') => {
-    if (!user?.uid || !contact?.phone) {
-      alert('❌ Missing user or phone number');
-      return;
-    }
+// ✅ REPLACE YOUR handleTwilioCall FUNCTION WITH THIS
+const handleTwilioCall = async (contact, callType = 'direct') => {
+  // 🔒 SAFETY: Ensure contact is valid and has required fields
+  if (!contact || !contact.phone || !contact.business) {
+    console.warn('Invalid contact passed to handleTwilioCall:', contact);
+    alert('❌ Contact data is incomplete. Cannot place call.');
+    return;
+  }
 
-    const callTypeLabels = {
-      direct: 'Automated Message (Plays your script)',
-      bridge: 'Bridge Call (Connects you first)',
-      interactive: 'Interactive Menu (They can press buttons)'
-    };
+  if (!user?.uid) {
+    alert('❌ You must be signed in to make calls.');
+    return;
+  }
 
-    const confirmed = confirm(
-      `📞 Call ${contact.business} at +${contact.phone}?\nType: ${callTypeLabels[callType]}\nClick OK to proceed.`
-    );
-    if (!confirmed) return;
-
-    try {
-      setStatus(`📞 Initiating ${callType} call to ${contact.business}...`);
-      setActiveCallStatus({
-        business: contact.business,
-        phone: contact.phone,
-        status: 'initiating',
-        timestamp: new Date().toISOString()
-      });
-
-      const response = await fetch('/api/make-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toPhone: contact.phone,
-          businessName: contact.business,
-          userId: user.uid,
-          callType
-        })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setStatus(`✅ Call initiated to ${contact.business}!
-Call ID: ${data.callId}
-Status: ${data.status}
-Twilio SID: ${data.callSid}
-${data.message}`);
-
-        setActiveCallStatus({
-          business: contact.business,
-          phone: contact.phone,
-          status: data.status,
-          callId: data.callId,
-          callSid: data.callSid,
-          timestamp: new Date().toISOString()
-        });
-
-        alert(`✅ Call Successfully Initiated!
-Business: ${contact.business}
-Phone: +${contact.phone}
-Type: ${callType}
-Status: ${data.status}
-Call ID: ${data.callId}
-Twilio is now connecting the call. You'll see status updates in real-time.`);
-
-        const contactKey = contact.email || contact.phone;
-        setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
-
-        if (contact.email && dealStage[contactKey] === 'new') {
-          updateDealStage(contactKey, 'contacted');
-        }
-
-        pollCallStatus(data.callId, contact.business);
-      } else {
-        setStatus(`❌ Call Failed\nError: ${data.error}\nCode: ${data.code || 'N/A'}\nDetails: ${data.details || 'None'}`);
-        setActiveCallStatus({
-          business: contact.business,
-          phone: contact.phone,
-          status: 'failed',
-          error: data.error,
-          timestamp: new Date().toISOString()
-        });
-        alert(`❌ Call Failed!
-Business: ${contact.business}
-Error: ${data.error}
-Code: ${data.code || 'Unknown'}
-Please check your Twilio configuration and try again.`);
-      }
-    } catch (error) {
-      console.error('Twilio call error:', error);
-      setStatus(`❌ Network Error\n${error.message}`);
-      setActiveCallStatus({
-        business: contact.business,
-        phone: contact.phone,
-        status: 'error',
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-      alert(`❌ Network Error!\n${error.message}\nCheck your internet connection and try again.`);
-    }
+  const callTypeLabels = {
+    direct: 'Automated Message (Plays your script)',
+    bridge: 'Bridge Call (Connects you first)',
+    interactive: 'Interactive Menu (They can press buttons)'
   };
+
+  const confirmed = confirm(
+    `📞 Call ${contact.business} at +${contact.phone}?\nType: ${callTypeLabels[callType]}\nClick OK to proceed.`
+  );
+  if (!confirmed) return;
+
+  try {
+    setStatus(`📞 Initiating ${callType} call to ${contact.business}...`);
+    setActiveCallStatus({
+      business: contact.business,
+      phone: contact.phone,
+      status: 'initiating',
+      timestamp: new Date().toISOString()
+    });
+
+    const response = await fetch('/api/make-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toPhone: contact.phone,
+        businessName: contact.business,
+        userId: user.uid,
+        callType
+      })
+    });
+
+    // ✅ CRITICAL: Check if response is valid JSON
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      console.error('Invalid JSON from /api/make-call:', await response.text());
+      throw new Error('Server returned an invalid response. Check Vercel logs.');
+    }
+
+    if (response.ok) {
+      setStatus(`✅ Call initiated to ${contact.business}!\nCall ID: ${data.callId}\nStatus: ${data.status}`);
+      setActiveCallStatus({
+        business: contact.business,
+        phone: contact.phone,
+        status: data.status,
+        callId: data.callId,
+        callSid: data.callSid,
+        timestamp: new Date().toISOString()
+      });
+
+      alert(
+        `✅ Call Successfully Initiated!\n` +
+        `Business: ${contact.business}\n` +
+        `Phone: +${contact.phone}\n` +
+        `Type: ${callType}\n` +
+        `Status: ${data.status}\n` +
+        `Call ID: ${data.callId}`
+      );
+
+      const contactKey = contact.email || contact.phone;
+      setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+      if (contact.email && dealStage[contactKey] === 'new') {
+        updateDealStage(contactKey, 'contacted');
+      }
+
+      pollCallStatus(data.callId, contact.business);
+    } else {
+      const errorMsg = data.error || 'Unknown error';
+      setStatus(`❌ Call Failed\nError: ${errorMsg}`);
+      setActiveCallStatus({
+        business: contact.business,
+        phone: contact.phone,
+        status: 'failed',
+        error: errorMsg,
+        timestamp: new Date().toISOString()
+      });
+      alert(`❌ Call Failed!\nBusiness: ${contact.business}\nError: ${errorMsg}`);
+    }
+  } catch (error) {
+    console.error('Twilio call error:', error);
+    const userMessage = error.message || 'Network or server error. Check Vercel logs.';
+    setStatus(`❌ ${userMessage}`);
+    setActiveCallStatus({
+      business: contact?.business || 'Unknown',
+      phone: contact?.phone || 'Unknown',
+      status: 'error',
+      error: userMessage,
+      timestamp: new Date().toISOString()
+    });
+    alert(`❌ ${userMessage}\nCheck browser console and Vercel function logs.`);
+  }
+};
 
   // ✅ Load Call History
   const loadCallHistory = async () => {
@@ -2078,12 +2086,12 @@ Please check your Twilio configuration and try again.`);
                             {call.toPhone && (
                             <button
   onClick={() => {
-    // Try to find contact in current whatsappLinks
+    // 🔍 Try to find contact in current whatsappLinks
     let contact = whatsappLinks.find(c => 
       c.phone === call.toPhone.replace(/\D/g, '')
     );
     
-    // If not found, create minimal fallback contact
+    // 🔒 Fallback: create minimal contact if not found
     if (!contact) {
       contact = {
         business: call.businessName || 'Unknown Business',
