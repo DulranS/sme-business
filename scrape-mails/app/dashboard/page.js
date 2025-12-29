@@ -149,6 +149,56 @@ const handleCall = (phone) => {
   }
 };
 
+const handleTwilioCall = async (contact) => {
+  if (!user?.uid || !contact?.phone) {
+    alert('❌ Missing user or phone number');
+    return;
+  }
+
+  const confirmed = confirm(
+    `📞 Initiate Twilio call to ${contact.business} at +${contact.phone}?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    setStatus('📞 Initiating call...');
+
+    const response = await fetch('/api/make-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toPhone: contact.phone,
+        businessName: contact.business,
+        userId: user.uid
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      alert(`✅ Call initiated to ${contact.business}!\nCall SID: ${data.callSid}`);
+      setStatus(`✅ Call connected to ${contact.business}`);
+
+      // Update last contacted timestamp
+      const contactKey = contact.email || contact.phone;
+      setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+
+      // Update deal stage if applicable
+      if (contact.email && dealStage[contactKey] === 'new') {
+        updateDealStage(contactKey, 'contacted');
+      }
+    } else {
+      alert(`❌ Call failed: ${data.error || 'Unknown error'}`);
+      setStatus(`❌ Call failed: ${data.error}`);
+    }
+  } catch (error) {
+    console.error('Twilio call error:', error);
+    alert(`❌ Failed to initiate call: ${error.message}`);
+    setStatus(`❌ Call error: ${error.message}`);
+  }
+};
+
 const extractTemplateVariables = (text) => {
   if (!text) return [];
   const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || [];
@@ -918,7 +968,7 @@ Would you be open to a quick chat?`);
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          csvContent: [headers.join(','), ...recipientsToSend.map(r => 
+          csvContent: [headers.join(','), ...recipientsToSend.map(r =>
             headers.map(h => `"${r[h] || ''}"`).join(',')
           ).join('\n')].join('\n'),
           senderName,
@@ -1505,6 +1555,13 @@ Would you be open to a quick chat?`);
                               >
                                 Call
                               </button>
+                              <button
+                                onClick={() => handleTwilioCall(link)}
+                                className="text-xs bg-green-600 text-white px-2 py-1 rounded"
+                                title="Call via Twilio"
+                              >
+                                📞 Twilio
+                              </button>
                               <a
                                 href={link.url}
                                 target="_blank"
@@ -1570,9 +1627,8 @@ Would you be open to a quick chat?`);
                   <button
                     onClick={handleSendBulkSMS}
                     disabled={!smsConsent || isSending}
-                    className={`w-full py-2 rounded font-bold text-white ${
-                      !smsConsent ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'
-                    }`}
+                    className={`w-full py-2 rounded font-bold text-white ${!smsConsent ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'
+                      }`}
                   >
                     📲 Send SMS to All ({whatsappLinks.length})
                   </button>
