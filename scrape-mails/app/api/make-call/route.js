@@ -15,35 +15,49 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
-// Initialize Twilio
+// ✅ SAFELY get env vars — fail fast if missing
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
 const yourPhone = process.env.YOUR_PHONE_NUMBER;
 
-const client = twilio(accountSid, authToken);
+if (!accountSid || !authToken || !twilioPhone || !yourPhone) {
+  console.error('❌ Missing Twilio environment variables');
+}
+
+const client = accountSid && authToken ? twilio(accountSid, authToken) : null;
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { toPhone, businessName, userId, callType = 'direct' } = req.body;
-
-  if (!toPhone || !businessName || !userId) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
+  // ✅ Ensure JSON response ALWAYS
+  res.setHeader('Content-Type', 'application/json');
 
   try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const { toPhone, businessName, userId, callType = 'direct' } = req.body;
+
+    if (!toPhone || !businessName || !userId) {
+      return res.status(400).json({ error: 'Missing required fields: toPhone, businessName, userId' });
+    }
+
+    // ✅ Early exit if Twilio not configured
+    if (!client) {
+      console.error('Twilio client not initialized — check env vars');
+      return res.status(500).json({
+        error: 'Twilio is not configured',
+        code: 'TWILIO_NOT_READY'
+      });
+    }
+
     // Format phone number
     let formattedPhone = toPhone.toString().replace(/\D/g, '');
     if (!formattedPhone.startsWith('+')) {
       formattedPhone = '+' + formattedPhone;
     }
 
-    console.log(`📞 Initiating ${callType} call to ${businessName} at ${formattedPhone}`);
-
-    // Save initial call record to Firebase
+    // Save call record
     const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     await setDoc(doc(db, 'calls', callId), {
       userId,
@@ -55,28 +69,23 @@ export default async function handler(req, res) {
       updatedAt: new Date().toISOString()
     });
 
-    // Create call based on type
+    // Build URL safely
+    const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://mails2leadsfvxx.vercel.app').replace(/\s+$/, '');
+    
     let call;
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-domain.vercel.app';
-
     if (callType === 'direct') {
-      // Direct call - plays automated message
       call = await client.calls.create({
         from: twilioPhone,
         to: formattedPhone,
         url: `${baseUrl}/api/voice-response?business=${encodeURIComponent(businessName)}&callId=${callId}`,
         statusCallback: `${baseUrl}/api/call-status`,
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer'],
-        statusCallbackMethod: 'POST',
         record: true,
         recordingStatusCallback: `${baseUrl}/api/recording-callback`,
-        recordingStatusCallbackMethod: 'POST',
         timeout: 60,
-        machineDetection: 'DetectMessageEnd',
-        machineDetectionTimeout: 5
+        machineDetection: 'DetectMessageEnd'
       });
     } else if (callType === 'bridge') {
-      // Bridge call - connects you first
       call = await client.calls.create({
         from: twilioPhone,
         to: yourPhone,
@@ -86,7 +95,6 @@ export default async function handler(req, res) {
         record: true
       });
     } else if (callType === 'interactive') {
-      // Interactive IVR
       call = await client.calls.create({
         from: twilioPhone,
         to: formattedPhone,
@@ -97,14 +105,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // Update Firebase with call SID
+    // Update with SID
     await setDoc(doc(db, 'calls', callId), {
-      callSid: call.sid,
-      status: call.status,
+      callSid: call?.sid,
+      status: call?.status || 'queued',
       updatedAt: new Date().toISOString()
     }, { merge: true });
-
-    console.log(`✅ Call initiated: ${call.sid} - Status: ${call.status}`);
 
     return res.status(200).json({
       success: true,
@@ -115,31 +121,30 @@ export default async function handler(req, res) {
       from: twilioPhone,
       businessName,
       callType,
-      message: `Call ${call.status} - Twilio is processing your request`
+      message: `Call ${call.status} — Twilio is processing your request`
     });
 
   } catch (error) {
-    console.error('❌ Twilio call error:', error);
-    
-    // Save error to Firebase
+    console.error('❌ FATAL Twilio API error:', error);
+
+    // Try to log to Firebase even on error
     try {
-      await setDoc(doc(db, 'calls', callId || `error_${Date.now()}`), {
-        userId,
-        businessName,
-        toPhone: formattedPhone,
+      const callId = `error_${Date.now()}`;
+      await setDoc(doc(db, 'calls', callId), {
         status: 'failed',
-        error: error.message,
-        errorCode: error.code,
+        error: error.message || 'Unknown error',
+        stack: error.stack?.substring(0, 1000),
         updatedAt: new Date().toISOString()
       }, { merge: true });
     } catch (dbError) {
-      console.error('Failed to save error to Firebase:', dbError);
+      console.error('Failed to log error to Firebase:', dbError);
     }
 
+    // ✅ ALWAYS return valid JSON
     return res.status(500).json({
-      error: error.message || 'Failed to initiate call',
-      code: error.code || 'UNKNOWN_ERROR',
-      details: error.moreInfo || error.toString()
+      error: error.message || 'Internal Server Error',
+      code: error.code || 'INTERNAL_ERROR',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
