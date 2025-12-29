@@ -5,7 +5,16 @@ import { initializeApp, getApps } from 'firebase/app';
 import twilio from 'twilio';
 
 // ✅ Initialize Firebase safely
-const firebaseConfig = { /* your config */ };
+const firebaseConfig = {
+  apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
+  authDomain: "email-marketing-c775d.firebaseapp.com",
+  projectId: "email-marketing-c775d",
+  storageBucket: "email-marketing-c775d.firebasestorage.app",
+  messagingSenderId: "178196903576",
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
+  measurementId: "G-6CL2EGLEVH"
+};
+
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
