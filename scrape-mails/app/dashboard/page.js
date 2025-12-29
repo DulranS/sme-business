@@ -25,37 +25,27 @@ const auth = getAuth(app);
 const DEFAULT_TEMPLATE_A = {
   subject: 'Quick question for {{business_name}}',
   body: `Hi {{business_name}}, 😊👋🏻
-
 I hope you're doing well.
-
-My name is Dulran Samarasinghe. I run Syndicate Solutions, a Sri Lanka–based mini agency supporting 
-small to mid-sized agencies and businesses with reliable execution across web, software, 
+My name is Dulran Samarasinghe. I run Syndicate Solutions, a Sri Lanka–based mini agency supporting
+small to mid-sized agencies and businesses with reliable execution across web, software,
 AI automation, and ongoing digital operations.
-
 We typically work as a white-label or outsourced partner when teams need:
 • extra delivery capacity
 • fast turnarounds without hiring
 • ongoing technical and digital support
-
 I'm reaching out to ask – do you ever use external support when workload or deadlines increase?
-
-If helpful, I'm open to starting with a small task or short contract to build trust before 
+If helpful, I'm open to starting with a small task or short contract to build trust before
 discussing anything larger.
-
 You can review my work here:
-Portfolio: https://syndicatesolutions.vercel.app/      
-LinkedIn: https://www.linkedin.com/in/dulran-samarasinghe-13941b175/      
-
+Portfolio: https://syndicatesolutions.vercel.app/
+LinkedIn: https://www.linkedin.com/in/dulran-samarasinghe-13941b175/
 If it makes sense, you can book a short 15-minute call:
-https://cal.com/syndicate-solutions/15min      
-
+https://cal.com/syndicate-solutions/15min
 You can contact me on Whatsapp - 0741143323
 You can email me at - syndicatesoftwaresolutions@gmail.com
-
 Otherwise, happy to continue the conversation over email.
-
-Best regards,  
-Dulran Samarasinghe  
+Best regards,
+Dulran Samarasinghe
 Founder – Syndicate Solutions`
 };
 
@@ -63,52 +53,37 @@ Founder – Syndicate Solutions`
 const FOLLOW_UP_1 = {
   subject: 'Quick question for {{business_name}}',
   body: `Hi {{business_name}},
-
 Just circling back—did my note about outsourced dev & ops support land at a bad time?
-
 No pressure at all, but if you're ever swamped with web, automation, or backend work and need a reliable extra hand (especially for white-label or fast-turnaround needs), we're ready to help.
-
 Even a 1-hour task is a great way to test the waters.
-
 Either way, wishing you a productive week!
-
-Best,  
-Dulran  
-Founder – Syndicate Solutions  
+Best,
+Dulran
+Founder – Syndicate Solutions
 WhatsApp: 0741143323`
 };
 
 const FOLLOW_UP_2 = {
   subject: '{{business_name}}, a quick offer (no strings)',
   body: `Hi again,
-
 I noticed you haven't had a chance to reply—totally understand!
-
 To make this zero-risk: **I'll audit one of your digital workflows (e.g., lead capture, client onboarding, internal tooling) for free** and send 2–3 actionable automation ideas you can implement immediately—even if you never work with us.
-
 Zero sales pitch. Just value.
-
 Interested? Hit "Yes" or reply with a workflow you'd like optimized.
-
-Cheers,  
-Dulran  
-Portfolio: https://syndicatesolutions.vercel.app/  
+Cheers,
+Dulran
+Portfolio: https://syndicatesolutions.vercel.app/
 Book a call: https://cal.com/syndicate-solutions/15min`
 };
 
 const FOLLOW_UP_3 = {
   subject: 'Closing the loop',
   body: `Hi {{business_name}},
-
 I'll stop emailing after this one! 😅
-
 Just wanted to say: if outsourcing ever becomes a priority—whether for web dev, AI tools, or ongoing ops—we're here. Many of our clients started with a tiny $100 task and now work with us monthly.
-
 If now's not the time, no worries! I'll circle back in a few months.
-
 Either way, keep crushing it!
-
-— Dulran  
+— Dulran
 WhatsApp: 0741143323`
 };
 
@@ -137,88 +112,10 @@ function formatForDialing(raw) {
   return /^[1-9]\d{9,14}$/.test(cleaned) ? cleaned : null;
 }
 
-const handleCall = (phone) => {
-  if (!phone) return;
-  const dialNumber = formatForDialing(phone) || phone.toString().replace(/\D/g, '');
-  if (typeof window !== 'undefined') {
-    if (/iPhone|Android/i.test(navigator.userAgent)) {
-      window.location.href = `tel:${dialNumber}`;
-    } else {
-      window.open(`https://wa.me/${dialNumber}`, '_blank');
-    }
-  }
-};
-
-const handleTwilioCall = async (contact) => {
-  if (!user?.uid || !contact?.phone) {
-    alert('❌ Missing user or phone number');
-    return;
-  }
-
-  const confirmed = confirm(
-    `📞 Initiate Twilio call to ${contact.business} at +${contact.phone}?`
-  );
-
-  if (!confirmed) return;
-
-  try {
-    setStatus('📞 Initiating call...');
-
-    const response = await fetch('/api/make-call', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        toPhone: contact.phone,
-        businessName: contact.business,
-        userId: user.uid
-      })
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      alert(`✅ Call initiated to ${contact.business}!\nCall SID: ${data.callSid}`);
-      setStatus(`✅ Call connected to ${contact.business}`);
-
-      // Update last contacted timestamp
-      const contactKey = contact.email || contact.phone;
-      setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
-
-      // Update deal stage if applicable
-      if (contact.email && dealStage[contactKey] === 'new') {
-        updateDealStage(contactKey, 'contacted');
-      }
-    } else {
-      alert(`❌ Call failed: ${data.error || 'Unknown error'}`);
-      setStatus(`❌ Call failed: ${data.error}`);
-    }
-  } catch (error) {
-    console.error('Twilio call error:', error);
-    alert(`❌ Failed to initiate call: ${error.message}`);
-    setStatus(`❌ Call error: ${error.message}`);
-  }
-};
-
 const extractTemplateVariables = (text) => {
   if (!text) return [];
   const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g) || [];
   return [...new Set(matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, '').trim()))];
-};
-
-const renderPreviewText = (text, recipient, mappings, sender) => {
-  if (!text) return '';
-  let result = text;
-  Object.entries(mappings).forEach(([varName, col]) => {
-    const regex = new RegExp(`{{\\s*${varName}\\s*}}`, 'g');
-    if (varName === 'sender_name') {
-      result = result.replace(regex, sender || 'Team');
-    } else if (recipient && col && recipient[col] !== undefined) {
-      result = result.replace(regex, String(recipient[col]));
-    } else {
-      result = result.replace(regex, `[MISSING: ${varName}]`);
-    }
-  });
-  return result;
 };
 
 const isValidEmail = (email) => {
@@ -255,6 +152,22 @@ const parseCsvRow = (str) => {
   });
 };
 
+const renderPreviewText = (text, recipient, mappings, sender) => {
+  if (!text) return '';
+  let result = text;
+  Object.entries(mappings).forEach(([varName, col]) => {
+    const regex = new RegExp(`{{\\s*${varName}\\s*}}`, 'g');
+    if (varName === 'sender_name') {
+      result = result.replace(regex, sender || 'Team');
+    } else if (recipient && col && recipient[col] !== undefined) {
+      result = result.replace(regex, String(recipient[col]));
+    } else {
+      result = result.replace(regex, `[MISSING: ${varName}]`);
+    }
+  });
+  return result;
+};
+
 // ✅ EXPORT TEMPLATES FOR API USE
 export { FOLLOW_UP_1, FOLLOW_UP_2, FOLLOW_UP_3 };
 
@@ -262,6 +175,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const router = useRouter();
+
   const [csvContent, setCsvContent] = useState('');
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [senderName, setSenderName] = useState('');
@@ -285,13 +199,17 @@ export default function Dashboard() {
   const [isSending, setIsSending] = useState(false);
   const [status, setStatus] = useState('');
   const [smsConsent, setSmsConsent] = useState(true);
-  const [abResults, setAbResults] = useState({ a: { opens: 0, clicks: 0 }, b: { opens: 0, clicks: 0 } });
+  const [abResults, setAbResults] = useState({ a: { opens: 0, clicks: 0, sent: 0 }, b: { opens: 0, clicks: 0, sent: 0 } });
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   const [repliedLeads, setRepliedLeads] = useState({});
   const [followUpLeads, setFollowUpLeads] = useState({});
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [sentLeads, setSentLeads] = useState([]);
   const [loadingSentLeads, setLoadingSentLeads] = useState(false);
+  const [callHistory, setCallHistory] = useState([]);
+  const [loadingCallHistory, setLoadingCallHistory] = useState(false);
+  const [showCallHistoryModal, setShowCallHistoryModal] = useState(false);
+  const [activeCallStatus, setActiveCallStatus] = useState(null);
 
   // ✅ Instagram & Twitter Templates
   const [instagramTemplate, setInstagramTemplate] = useState(`Hi {{business_name}} 👋
@@ -387,7 +305,224 @@ Would you be open to a quick chat?`);
     }
   };
 
-  // ✅ Send SMS (Twilio)
+  // ✅ Handle Call
+  const handleCall = (phone) => {
+    if (!phone) return;
+    const dialNumber = formatForDialing(phone) || phone.toString().replace(/\D/g, '');
+    if (typeof window !== 'undefined') {
+      if (/iPhone|Android/i.test(navigator.userAgent)) {
+        window.location.href = `tel:${dialNumber}`;
+      } else {
+        window.open(`https://wa.me/${dialNumber}`, '_blank');
+      }
+    }
+  };
+
+  // ✅ Poll Call Status
+  const pollCallStatus = (callId, businessName) => {
+    let attempts = 0;
+    const maxAttempts = 20;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const callDoc = await getDoc(doc(db, 'calls', callId));
+        if (callDoc.exists()) {
+          const callData = callDoc.data();
+          const status = callData.status;
+          setActiveCallStatus(prev => ({
+            ...prev,
+            status: status,
+            duration: callData.duration || 0,
+            answeredBy: callData.answeredBy || 'unknown',
+            updatedAt: callData.updatedAt
+          }));
+
+          if (status === 'ringing') {
+            setStatus(`📞 Ringing ${businessName}...`);
+          } else if (status === 'in-progress' || status === 'answered') {
+            setStatus(`✅ Call connected to ${businessName}!
+Duration: ${callData.duration || 0}s
+Answered by: ${callData.answeredBy || 'unknown'}`);
+          } else if (status === 'completed') {
+            setStatus(`✅ Call Completed!
+Business: ${businessName}
+Duration: ${callData.duration || 0}s
+Answered by: ${callData.answeredBy || 'unknown'}
+${callData.recordingUrl ? '\n🎙️ Recording available' : ''}`);
+            clearInterval(interval);
+          } else if (status === 'failed' || status === 'busy' || status === 'no-answer') {
+            setStatus(`❌ Call ${status}
+Business: ${businessName}
+Reason: ${status.toUpperCase()}`);
+            clearInterval(interval);
+          }
+        }
+        if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          setStatus(`⏱️ Status polling stopped after 2 minutes.
+Check call history for final status.`);
+        }
+      } catch (error) {
+        console.error('Poll error:', error);
+      }
+    }, 6000);
+  };
+
+  // ✅ Twilio Call
+  const handleTwilioCall = async (contact, callType = 'direct') => {
+    if (!user?.uid || !contact?.phone) {
+      alert('❌ Missing user or phone number');
+      return;
+    }
+
+    const callTypeLabels = {
+      direct: 'Automated Message (Plays your script)',
+      bridge: 'Bridge Call (Connects you first)',
+      interactive: 'Interactive Menu (They can press buttons)'
+    };
+
+    const confirmed = confirm(
+      `📞 Call ${contact.business} at +${contact.phone}?\nType: ${callTypeLabels[callType]}\nClick OK to proceed.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setStatus(`📞 Initiating ${callType} call to ${contact.business}...`);
+      setActiveCallStatus({
+        business: contact.business,
+        phone: contact.phone,
+        status: 'initiating',
+        timestamp: new Date().toISOString()
+      });
+
+      const response = await fetch('/api/make-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toPhone: contact.phone,
+          businessName: contact.business,
+          userId: user.uid,
+          callType
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setStatus(`✅ Call initiated to ${contact.business}!
+Call ID: ${data.callId}
+Status: ${data.status}
+Twilio SID: ${data.callSid}
+${data.message}`);
+
+        setActiveCallStatus({
+          business: contact.business,
+          phone: contact.phone,
+          status: data.status,
+          callId: data.callId,
+          callSid: data.callSid,
+          timestamp: new Date().toISOString()
+        });
+
+        alert(`✅ Call Successfully Initiated!
+Business: ${contact.business}
+Phone: +${contact.phone}
+Type: ${callType}
+Status: ${data.status}
+Call ID: ${data.callId}
+Twilio is now connecting the call. You'll see status updates in real-time.`);
+
+        const contactKey = contact.email || contact.phone;
+        setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+
+        if (contact.email && dealStage[contactKey] === 'new') {
+          updateDealStage(contactKey, 'contacted');
+        }
+
+        pollCallStatus(data.callId, contact.business);
+      } else {
+        setStatus(`❌ Call Failed\nError: ${data.error}\nCode: ${data.code || 'N/A'}\nDetails: ${data.details || 'None'}`);
+        setActiveCallStatus({
+          business: contact.business,
+          phone: contact.phone,
+          status: 'failed',
+          error: data.error,
+          timestamp: new Date().toISOString()
+        });
+        alert(`❌ Call Failed!
+Business: ${contact.business}
+Error: ${data.error}
+Code: ${data.code || 'Unknown'}
+Please check your Twilio configuration and try again.`);
+      }
+    } catch (error) {
+      console.error('Twilio call error:', error);
+      setStatus(`❌ Network Error\n${error.message}`);
+      setActiveCallStatus({
+        business: contact.business,
+        phone: contact.phone,
+        status: 'error',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      alert(`❌ Network Error!\n${error.message}\nCheck your internet connection and try again.`);
+    }
+  };
+
+  // ✅ Load Call History
+  const loadCallHistory = async () => {
+    if (!user?.uid) return;
+    setLoadingCallHistory(true);
+    try {
+      const q = query(
+        collection(db, 'calls'),
+        where('userId', '==', user.uid)
+      );
+      const snapshot = await getDocs(q);
+      const calls = [];
+      snapshot.forEach(doc => {
+        calls.push({ id: doc.id, ...doc.data() });
+      });
+      calls.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setCallHistory(calls);
+
+      const total = calls.length;
+      const completed = calls.filter(c => c.status === 'completed').length;
+      const failed = calls.filter(c => c.status === 'failed').length;
+      const avgDuration = calls.reduce((sum, c) => sum + (c.duration || 0), 0) / (total || 1);
+
+      console.log('📊 Call Stats:', {
+        total,
+        completed,
+        failed,
+        avgDuration: Math.round(avgDuration),
+        answeredByHuman: calls.filter(c => c.answeredBy === 'human').length,
+        answeredByMachine: calls.filter(c => c.answeredBy?.includes('machine')).length
+      });
+    } catch (error) {
+      console.error('Failed to load call history:', error);
+      alert('Failed to load call history');
+    } finally {
+      setLoadingCallHistory(false);
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const badges = {
+      'initiating': { bg: 'bg-blue-100', text: 'text-blue-800', label: '🔵 Initiating' },
+      'queued': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '⏳ Queued' },
+      'ringing': { bg: 'bg-purple-100', text: 'text-purple-800', label: '📞 Ringing' },
+      'in-progress': { bg: 'bg-green-100', text: 'text-green-800', label: '✅ In Progress' },
+      'answered': { bg: 'bg-green-100', text: 'text-green-800', label: '✅ Answered' },
+      'completed': { bg: 'bg-green-200', text: 'text-green-900', label: '✅ Completed' },
+      'failed': { bg: 'bg-red-100', text: 'text-red-800', label: '❌ Failed' },
+      'busy': { bg: 'bg-orange-100', text: 'text-orange-800', label: '📵 Busy' },
+      'no-answer': { bg: 'bg-gray-100', text: 'text-gray-800', label: '📞 No Answer' }
+    };
+    return badges[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
+  };
+
+  // ✅ SMS Handlers
   const handleSendSMS = async (contact) => {
     if (!user?.uid) return;
     const confirmed = confirm(`Send SMS to ${contact.business} at +${contact.phone}?`);
@@ -426,7 +561,67 @@ Would you be open to a quick chat?`);
     }
   };
 
-  // ✅ Load Settings
+  const handleOpenNativeSMS = (contact) => {
+    if (!contact?.phone) return;
+    const messageBody = renderPreviewText(
+      smsTemplate,
+      { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
+      fieldMappings,
+      senderName
+    );
+    let formattedPhone = contact.phone.toString().replace(/\D/g, '');
+    if (formattedPhone.startsWith('0') && formattedPhone.length >= 9) {
+      formattedPhone = '94' + formattedPhone.slice(1);
+    }
+    if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+' + formattedPhone;
+    }
+    window.location.href = `sms:${formattedPhone}?body=${encodeURIComponent(messageBody)}`;
+  };
+
+  const handleSendBulkSMS = async () => {
+    if (!user?.uid || whatsappLinks.length === 0) return;
+    const confirmed = confirm(`Send SMS to ${whatsappLinks.length} contacts?`);
+    if (!confirmed) return;
+    let successCount = 0;
+    setStatus('📤 Sending SMS batch...');
+    for (const contact of whatsappLinks) {
+      const phone = formatForDialing(contact.phone);
+      if (!phone) continue;
+      try {
+        const message = renderPreviewText(
+          smsTemplate,
+          { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
+          fieldMappings,
+          senderName
+        );
+        const response = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone,
+            message,
+            businessName: contact.business,
+            userId: user.uid
+          })
+        });
+        if (response.ok) {
+          successCount++;
+          const contactKey = contact.email || contact.phone;
+          setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+          if (dealStage[contactKey] === 'new') {
+            updateDealStage(contactKey, 'contacted');
+          }
+        }
+      } catch (error) {
+        console.error(`SMS error for ${contact.business}:`, error);
+      }
+    }
+    setStatus(`✅ SMS batch complete: ${successCount}/${whatsappLinks.length} sent.`);
+    alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed: ${whatsappLinks.length - successCount}`);
+  };
+
+  // ✅ Settings
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
@@ -450,7 +645,6 @@ Would you be open to a quick chat?`);
     }
   };
 
-  // ✅ Save Settings
   const saveSettings = useCallback(async () => {
     if (!user?.uid) return;
     try {
@@ -495,7 +689,6 @@ Would you be open to a quick chat?`);
         alert('CSV must have headers and data rows.');
         return;
       }
-
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       setCsvHeaders(headers);
       setPreviewRecipient(null);
@@ -536,7 +729,6 @@ Would you be open to a quick chat?`);
         headers.forEach((header, idx) => {
           row[header] = values[idx] || '';
         });
-
         const quality = (row.lead_quality || '').trim() || 'HOT';
         const hasValidEmail = isValidEmail(row.email);
         if (hasValidEmail) {
@@ -552,7 +744,6 @@ Would you be open to a quick chat?`);
           else if (quality === 'WARM') warmEmails++;
           if (!firstValid) firstValid = row;
         }
-
         const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
         const formattedPhone = formatForDialing(rawPhone);
         if (formattedPhone) {
@@ -576,7 +767,6 @@ Would you be open to a quick chat?`);
       if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
       else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
       else setValidEmails(hotEmails + warmEmails);
-
       setValidWhatsApp(validPhoneContacts.length);
       setWhatsappLinks(validPhoneContacts);
       setLeadScores(newLeadScores);
@@ -584,68 +774,6 @@ Would you be open to a quick chat?`);
       setCsvContent(normalizedContent);
     };
     reader.readAsText(file);
-  };
-
-  // ✅ Bulk SMS
-  const handleSendBulkSMS = async () => {
-    if (!user?.uid || whatsappLinks.length === 0) return;
-    const confirmed = confirm(`Send SMS to ${whatsappLinks.length} contacts?`);
-    if (!confirmed) return;
-    let successCount = 0;
-    setStatus('📤 Sending SMS batch...');
-    for (const contact of whatsappLinks) {
-      const phone = formatForDialing(contact.phone);
-      if (!phone) continue;
-      try {
-        const message = renderPreviewText(
-          smsTemplate,
-          { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
-          fieldMappings,
-          senderName
-        );
-        const response = await fetch('/api/send-sms', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone,
-            message,
-            businessName: contact.business,
-            userId: user.uid
-          })
-        });
-        if (response.ok) {
-          successCount++;
-          const contactKey = contact.email || contact.phone;
-          setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
-          if (dealStage[contactKey] === 'new') {
-            updateDealStage(contactKey, 'contacted');
-          }
-        }
-      } catch (error) {
-        console.error(`SMS error for ${contact.business}:`, error);
-      }
-    }
-    setStatus(`✅ SMS batch complete: ${successCount}/${whatsappLinks.length} sent.`);
-    alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed: ${whatsappLinks.length - successCount}`);
-  };
-
-  // ✅ Native SMS
-  const handleOpenNativeSMS = (contact) => {
-    if (!contact?.phone) return;
-    const messageBody = renderPreviewText(
-      smsTemplate,
-      { business_name: contact.business, address: contact.address || '', phone_raw: contact.phone },
-      fieldMappings,
-      senderName
-    );
-    let formattedPhone = contact.phone.toString().replace(/\D/g, '');
-    if (formattedPhone.startsWith('0') && formattedPhone.length >= 9) {
-      formattedPhone = '94' + formattedPhone.slice(1);
-    }
-    if (!formattedPhone.startsWith('+')) {
-      formattedPhone = '+' + formattedPhone;
-    }
-    window.location.href = `sms:${formattedPhone}?body=${encodeURIComponent(messageBody)}`;
   };
 
   // ✅ Gmail Token
@@ -665,7 +793,7 @@ Would you be open to a quick chat?`);
     });
   };
 
-  // ✅ Load Functions
+  // ✅ Data Loaders
   const loadAbResults = async () => {
     try {
       const q = query(collection(db, 'ab_results'), where('userId', '==', user.uid));
@@ -804,7 +932,6 @@ Would you be open to a quick chat?`);
       alert('Missing required data to send follow-up.');
       return;
     }
-
     try {
       const res = await fetch('/api/send-followup', {
         method: 'POST',
@@ -816,7 +943,6 @@ Would you be open to a quick chat?`);
           senderName
         })
       });
-
       const data = await res.json();
       if (res.ok) {
         alert(`✅ Follow-up sent to ${email}`);
@@ -840,18 +966,13 @@ Would you be open to a quick chat?`);
 
   const sendMassFollowUp = async (accessToken) => {
     if (!user?.uid || !accessToken) return;
-
     const confirmed = confirm(`Send follow-up to all eligible leads (${sentLeads.filter(isEligibleForFollowUp).length})?`);
     if (!confirmed) return;
-
     setIsSending(true);
     setStatus('📤 Sending mass follow-ups...');
-
     let successCount = 0;
-
     for (const lead of sentLeads) {
       if (!isEligibleForFollowUp(lead)) continue;
-
       try {
         const res = await fetch('/api/send-followup', {
           method: 'POST',
@@ -863,13 +984,11 @@ Would you be open to a quick chat?`);
             senderName,
           })
         });
-
         if (res.ok) successCount++;
       } catch (err) {
         console.error(`Error sending to ${lead.email}:`, err);
       }
     }
-
     setIsSending(false);
     alert(`✅ Sent follow-ups to ${successCount} leads.`);
     await loadSentLeads();
@@ -917,7 +1036,7 @@ Would you be open to a quick chat?`);
     try {
       const accessToken = await requestGmailToken();
       const imagesWithBase64 = await Promise.all(
-        emailImages.map(async (img) => {
+        emailImages.map(async (img, index) => {
           const base64 = await new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result.split(',')[1]);
@@ -1023,7 +1142,6 @@ Would you be open to a quick chat?`);
     return () => unsubscribe();
   }, []);
 
-  // ✅ Recalculate validEmails when filter or CSV changes
   useEffect(() => {
     if (!csvContent) return;
     const lines = csvContent.split('\n').filter(line => line.trim() !== '');
@@ -1138,6 +1256,15 @@ Would you be open to a quick chat?`);
           <div className="flex items-center space-x-2">
             <button
               onClick={() => {
+                loadCallHistory();
+                setShowCallHistoryModal(true);
+              }}
+              className="text-sm bg-green-600 text-white px-3 py-1.5 rounded"
+            >
+              📞 Call History
+            </button>
+            <button
+              onClick={() => {
                 loadSentLeads();
                 setShowFollowUpModal(true);
               }}
@@ -1191,7 +1318,6 @@ Would you be open to a quick chat?`);
                 </label>
               </div>
             </div>
-
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">2. Field Mappings</h2>
               {allVars.map(varName => (
@@ -1215,7 +1341,6 @@ Would you be open to a quick chat?`);
                 </div>
               ))}
             </div>
-
             {abSummary}
           </div>
 
@@ -1231,7 +1356,6 @@ Would you be open to a quick chat?`);
                 placeholder="e.g., Alex from GrowthCo"
               />
             </div>
-
             <div className="bg-white p-6 rounded-xl shadow">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-bold">4. Email Template</h2>
@@ -1335,7 +1459,6 @@ Would you be open to a quick chat?`);
                 </button>
               )}
             </div>
-
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">5. WhatsApp Template</h2>
               <textarea
@@ -1346,7 +1469,6 @@ Would you be open to a quick chat?`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">6. SMS Template</h2>
               <textarea
@@ -1464,7 +1586,6 @@ Would you be open to a quick chat?`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-3">9. Twitter Template</h2>
               <textarea
@@ -1475,7 +1596,6 @@ Would you be open to a quick chat?`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-
             {status && (
               <div className={`p-3 rounded text-center whitespace-pre-line ${status.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                 {status}
@@ -1507,7 +1627,6 @@ Would you be open to a quick chat?`);
                 </div>
               </div>
             </div>
-
             {whatsappLinks.length > 0 && (
               <div className="bg-white p-4 rounded-xl shadow">
                 <h2 className="text-lg font-bold text-gray-800 mb-3">
@@ -1556,11 +1675,25 @@ Would you be open to a quick chat?`);
                                 Call
                               </button>
                               <button
-                                onClick={() => handleTwilioCall(link)}
-                                className="text-xs bg-green-600 text-white px-2 py-1 rounded"
-                                title="Call via Twilio"
+                                onClick={() => handleTwilioCall(link, 'direct')}
+                                className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                                title="Automated message"
                               >
-                                📞 Twilio
+                                📞 Auto Call
+                              </button>
+                              <button
+                                onClick={() => handleTwilioCall(link, 'bridge')}
+                                className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                                title="Connect you first"
+                              >
+                                🤝 Bridge
+                              </button>
+                              <button
+                                onClick={() => handleTwilioCall(link, 'interactive')}
+                                className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700"
+                                title="Interactive menu"
+                              >
+                                🎛️ IVR
                               </button>
                               <a
                                 href={link.url}
@@ -1732,7 +1865,8 @@ Would you be open to a quick chat?`);
                                 }
                               }}
                               disabled={!needsFollowUp}
-                              className={`text-xs px-3 py-1 rounded ${needsFollowUp ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'}`}
+                              className={`text-xs px-3 py-1 rounded ${needsFollowUp ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
+                                }`}
                             >
                               {needsFollowUp ? 'Send Follow-Up' : 'Too Early'}
                             </button>
@@ -1748,6 +1882,218 @@ Would you be open to a quick chat?`);
               • Replied leads are auto-detected<br />
               • Follow-ups are ready 48h after send if no reply<br />
               • Click "Send Follow-Up" to send a polite reminder
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CALL HISTORY MODAL */}
+      {showCallHistoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-green-50 to-blue-50">
+              <div>
+                <h2 className="text-xl font-bold">📞 Call History & Analytics</h2>
+                <p className="text-sm text-gray-600">Track all your Twilio calls</p>
+              </div>
+              <button
+                onClick={() => setShowCallHistoryModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            {/* Stats Bar */}
+            <div className="p-4 bg-gray-50 border-b grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{callHistory.length}</div>
+                <div className="text-xs text-gray-600">Total Calls</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">
+                  {callHistory.filter(c => c.status === 'completed').length}
+                </div>
+                <div className="text-xs text-gray-600">Completed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">
+                  {callHistory.filter(c => c.status === 'failed').length}
+                </div>
+                <div className="text-xs text-gray-600">Failed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">
+                  {callHistory.filter(c => c.answeredBy === 'human').length}
+                </div>
+                <div className="text-xs text-gray-600">Human Answered</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">
+                  {callHistory.filter(c => c.answeredBy?.includes('machine')).length}
+                </div>
+                <div className="text-xs text-gray-600">Voicemail</div>
+              </div>
+            </div>
+            {/* Action Bar */}
+            <div className="p-4 border-b flex space-x-2">
+              <button
+                onClick={loadCallHistory}
+                disabled={loadingCallHistory}
+                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:bg-gray-400"
+              >
+                {loadingCallHistory ? '🔄 Loading...' : '🔄 Refresh'}
+              </button>
+              <button
+                onClick={() => {
+                  const csvContent = [
+                    ['Business', 'Phone', 'Status', 'Duration', 'Answered By', 'Date', 'Call SID'].join(','),
+                    ...callHistory.map(call => [
+                      call.businessName,
+                      call.toPhone,
+                      call.status,
+                      call.duration || 0,
+                      call.answeredBy || 'unknown',
+                      new Date(call.createdAt).toLocaleString(),
+                      call.callSid
+                    ].join(','))
+                  ].join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `call-history-${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click();
+                }}
+                className="text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700"
+              >
+                📥 Export CSV
+              </button>
+            </div>
+            {/* Call List */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingCallHistory ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">⏳</div>
+                  <div className="text-lg">Loading call history...</div>
+                </div>
+              ) : callHistory.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📞</div>
+                  <div className="text-xl font-medium mb-2">No calls yet</div>
+                  <div className="text-gray-600">Start making calls to see them here</div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {callHistory.map((call) => {
+                    const statusBadge = getStatusBadge(call.status);
+                    const isCompleted = call.status === 'completed';
+                    const hasRecording = !!call.recordingUrl;
+                    return (
+                      <div
+                        key={call.id}
+                        className={`p-4 rounded-lg border-2 transition-all ${
+                          isCompleted
+                            ? 'border-green-200 bg-green-50'
+                            : call.status === 'failed'
+                              ? 'border-red-200 bg-red-50'
+                              : 'border-gray-200 bg-white'
+                          }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          {/* Left: Business Info */}
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <h3 className="font-bold text-lg">{call.businessName}</h3>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge.bg} ${statusBadge.text}`}>
+                                {statusBadge.label}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 mt-2">
+                              <div>
+                                <span className="font-medium">📞 Phone:</span> {call.toPhone}
+                              </div>
+                              <div>
+                                <span className="font-medium">⏱️ Duration:</span> {call.duration || 0}s
+                              </div>
+                              <div>
+                                <span className="font-medium">🎤 Answered by:</span>{' '}
+                                {call.answeredBy === 'human'
+                                  ? '👤 Human'
+                                  : call.answeredBy?.includes('machine')
+                                    ? '📠 Voicemail'
+                                    : '❓ Unknown'}
+                              </div>
+                              <div>
+                                <span className="font-medium">📅 Date:</span>{' '}
+                                {new Date(call.createdAt).toLocaleDateString() + ' ' +
+                                  new Date(call.createdAt).toLocaleTimeString()}
+                              </div>
+                            </div>
+                            {call.callSid && (
+                              <div className="text-xs text-gray-500 mt-2 font-mono">
+                                SID: {call.callSid}
+                              </div>
+                            )}
+                            {call.error && (
+                              <div className="mt-2 p-2 bg-red-100 rounded text-xs text-red-800">
+                                <strong>Error:</strong> {call.error}
+                              </div>
+                            )}
+                          </div>
+                          {/* Right: Actions */}
+                          <div className="flex flex-col space-y-2 ml-4">
+                            {hasRecording && (
+                              <a
+                                href={call.recordingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs bg-purple-600 text-white px-3 py-1.5 rounded hover:bg-purple-700 text-center"
+                              >
+                                🎙️ Listen
+                              </a>
+                            )}
+                            {isCompleted && (
+                              <span className="text-xs bg-green-100 text-green-800 px-3 py-1.5 rounded text-center font-medium">
+                                ✅ Success
+                              </span>
+                            )}
+                            {call.toPhone && (
+                              <button
+                                onClick={() => {
+                                  const contact = whatsappLinks.find(c => c.phone === call.toPhone.replace(/\D/g, ''));
+                                  if (contact) {
+                                    handleTwilioCall(contact, call.callType || 'direct');
+                                  } else {
+                                    alert('Contact not found in current list');
+                                  }
+                                }}
+                                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+                              >
+                                🔄 Retry
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* Footer */}
+            <div className="p-4 border-t bg-gray-50 text-xs text-gray-600">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div>
+                  <strong>💡 Tip:</strong> Calls are tracked in real-time
+                </div>
+                <div>
+                  <strong>🎙️ Recordings:</strong> Available for completed calls
+                </div>
+                <div>
+                  <strong>📊 Analytics:</strong> Filter and export your data
+                </div>
+              </div>
             </div>
           </div>
         </div>
