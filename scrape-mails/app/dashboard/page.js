@@ -2076,19 +2076,29 @@ Please check your Twilio configuration and try again.`);
                               </span>
                             )}
                             {call.toPhone && (
-                              <button
-                                onClick={() => {
-                                  const contact = whatsappLinks.find(c => c.phone === call.toPhone.replace(/\D/g, ''));
-                                  if (contact) {
-                                    handleTwilioCall(contact, call.callType || 'direct');
-                                  } else {
-                                    alert('Contact not found in current list');
-                                  }
-                                }}
-                                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
-                              >
-                                🔄 Retry
-                              </button>
+                            <button
+  onClick={() => {
+    // Try to find contact in current whatsappLinks
+    let contact = whatsappLinks.find(c => 
+      c.phone === call.toPhone.replace(/\D/g, '')
+    );
+    
+    // If not found, create minimal fallback contact
+    if (!contact) {
+      contact = {
+        business: call.businessName || 'Unknown Business',
+        phone: call.toPhone,
+        email: null,
+        address: ''
+      };
+    }
+    
+    handleTwilioCall(contact, call.callType || 'direct');
+  }}
+  className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+>
+  🔄 Retry
+</button>
                             )}
                           </div>
                         </div>
