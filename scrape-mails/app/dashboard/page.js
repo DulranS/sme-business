@@ -712,24 +712,24 @@ const handleCsvUpload = (e) => {
     setCsvHeaders(headers);
     setPreviewRecipient(null);
 
-    // ✅ DYNAMICALLY EXTRACT ALL TEMPLATE VARIABLES (including IG, Twitter, follow-ups)
-    const allTemplateTexts = [
-      templateA.subject, templateA.body,
-      templateB.subject, templateB.body,
-      whatsappTemplate,
-      smsTemplate,
-      instagramTemplate,
-      twitterTemplate,
-      ...followUpTemplates.flatMap(t => [t.subject, t.body])
-    ];
-
-    const allVars = [...new Set([
-      ...allTemplateTexts.flatMap(text => extractTemplateVariables(text)),
+    // ✅ DYNAMICALLY COLLECT ALL POSSIBLE TEMPLATE VARIABLES + ALL CSV COLUMNS
+    const allTemplateVars = [
+      ...extractTemplateVariables(templateA.subject),
+      ...extractTemplateVariables(templateA.body),
+      ...extractTemplateVariables(templateB.subject),
+      ...extractTemplateVariables(templateB.body),
+      ...extractTemplateVariables(whatsappTemplate),
+      ...extractTemplateVariables(smsTemplate),
+      ...extractTemplateVariables(instagramTemplate),
+      ...extractTemplateVariables(twitterTemplate),
       'sender_name',
       ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
-    ])];
+    ];
 
-    // ✅ AUTO-MAP CSV COLUMNS TO TEMPLATE VARIABLES
+    // ✅ MERGE: template vars + ALL CSV headers → ensures every column appears as {{column_name}}
+    const allVars = [...new Set([...allTemplateVars, ...headers])];
+
+    // Auto-initialize mappings
     const initialMappings = {};
     allVars.forEach(varName => {
       if (headers.includes(varName)) {
@@ -740,6 +740,7 @@ const handleCsvUpload = (e) => {
     initialMappings.sender_name = 'sender_name';
     setFieldMappings(initialMappings);
 
+    // Process leads
     let hotEmails = 0, warmEmails = 0;
     const validPhoneContacts = [];
     const newLeadScores = {};
@@ -754,7 +755,7 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
-      // ✅ Process email leads (with lead_quality fallback)
+      // Handle email leads
       const quality = (row.lead_quality || '').trim() || 'HOT';
       const hasValidEmail = isValidEmail(row.email);
       if (hasValidEmail) {
@@ -771,7 +772,7 @@ const handleCsvUpload = (e) => {
         if (!firstValid) firstValid = row;
       }
 
-      // ✅ Process phone leads (even without email)
+      // Handle phone leads (even without email)
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
@@ -795,6 +796,7 @@ const handleCsvUpload = (e) => {
     if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
     else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
     else setValidEmails(hotEmails + warmEmails);
+    
     setValidWhatsApp(validPhoneContacts.length);
     setWhatsappLinks(validPhoneContacts);
     setLeadScores(newLeadScores);
@@ -1249,7 +1251,8 @@ const handleCsvUpload = (e) => {
     );
   }
 
-const allVars = [...new Set([
+// ✅ SHOW ALL POSSIBLE VARIABLES + CSV COLUMNS
+const uiVars = [...new Set([
   ...extractTemplateVariables(templateA.subject),
   ...extractTemplateVariables(templateA.body),
   ...extractTemplateVariables(templateB.subject),
@@ -1258,12 +1261,9 @@ const allVars = [...new Set([
   ...extractTemplateVariables(smsTemplate),
   ...extractTemplateVariables(instagramTemplate),
   ...extractTemplateVariables(twitterTemplate),
-  ...followUpTemplates.flatMap(t => [
-    ...extractTemplateVariables(t.subject || ''),
-    ...extractTemplateVariables(t.body || '')
-  ]),
   'sender_name',
-  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
+  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+  ...csvHeaders // 👈 CRITICAL: include all CSV columns
 ])];
 
   const abSummary = abTestMode ? (
@@ -1352,7 +1352,7 @@ const allVars = [...new Set([
             </div>
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">2. Field Mappings</h2>
-{allVars.map(varName => (
+{uiVars.map(varName => (
   <div key={varName} className="flex items-center mb-2">
     <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
       {`{{${varName}}}`}
@@ -1362,7 +1362,7 @@ const allVars = [...new Set([
       onChange={(e) => handleMappingChange(varName, e.target.value)}
       className="text-xs border rounded px-1 py-0.5 flex-1"
     >
-      <option value="">-- Map to CSV Column --</option>
+      <option value="">-- Map to Column --</option>
       {csvHeaders.map(col => (
         <option key={col} value={col}>{col}</option>
       ))}
