@@ -702,6 +702,7 @@ const handleCsvUpload = (e) => {
   const reader = new FileReader();
   reader.onload = (e) => {
     const rawContent = e.target.result;
+    // ✅ Normalize line endings AND save normalized content
     const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
     if (lines.length < 2) {
@@ -712,24 +713,56 @@ const handleCsvUpload = (e) => {
     setCsvHeaders(headers);
     setPreviewRecipient(null);
 
-    // ✅ DYNAMICALLY COLLECT ALL POSSIBLE TEMPLATE VARIABLES + ALL CSV COLUMNS
-    const allTemplateVars = [
-      ...extractTemplateVariables(templateA.subject),
-      ...extractTemplateVariables(templateA.body),
-      ...extractTemplateVariables(templateB.subject),
-      ...extractTemplateVariables(templateB.body),
-      ...extractTemplateVariables(whatsappTemplate),
-      ...extractTemplateVariables(smsTemplate),
-      ...extractTemplateVariables(instagramTemplate),
-      ...extractTemplateVariables(twitterTemplate),
-      'sender_name',
-      ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
+    // ✅ DYNAMICALLY COLLECT ALL TEMPLATE VARIABLES (including Instagram, Twitter, follow-ups)
+    const allTemplateTexts = [
+      templateA.subject, templateA.body,
+      templateB.subject, templateB.body,
+      whatsappTemplate,
+      smsTemplate,
+      instagramTemplate,
+      twitterTemplate,
+      ...followUpTemplates.flatMap(t => [t.subject, t.body])
     ];
 
-    // ✅ MERGE: template vars + ALL CSV headers → ensures every column appears as {{column_name}}
-    const allVars = [...new Set([...allTemplateVars, ...headers])];
+    const allVars = {/* ✅ DYNAMIC MAPPINGS: Show every template var + EVERY CSV COLUMN */}
+{[...new Set([
+  ...extractTemplateVariables(templateA.subject),
+  ...extractTemplateVariables(templateA.body),
+  ...extractTemplateVariables(templateB.subject),
+  ...extractTemplateVariables(templateB.body),
+  ...extractTemplateVariables(whatsappTemplate),
+  ...extractTemplateVariables(smsTemplate),
+  ...extractTemplateVariables(instagramTemplate),
+  ...extractTemplateVariables(twitterTemplate),
+  ...followUpTemplates.flatMap(t => [
+    ...extractTemplateVariables(t.subject || ''),
+    ...extractTemplateVariables(t.body || '')
+  ]),
+  'sender_name',
+  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+  ...csvHeaders // ✅ THIS IS THE KEY: expose ALL CSV columns as {{column_name}}
+])].map(varName => (
+  <div key={varName} className="flex items-center mb-2">
+    <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
+      {`{{${varName}}}`}
+    </span>
+    <select
+      value={fieldMappings[varName] || ''}
+      onChange={(e) => handleMappingChange(varName, e.target.value)}
+      className="text-xs border rounded px-1 py-0.5 flex-1"
+    >
+      <option value="">-- Map to Column --</option>
+      {csvHeaders.map(col => (
+        <option key={col} value={col}>{col}</option>
+      ))}
+      {varName === 'sender_name' && (
+        <option value="sender_name">Use sender name</option>
+      )}
+    </select>
+  </div>
+))}
 
-    // Auto-initialize mappings
+    // ✅ AUTO-INITIALIZE MAPPINGS: template var → matching CSV column
     const initialMappings = {};
     allVars.forEach(varName => {
       if (headers.includes(varName)) {
@@ -740,7 +773,7 @@ const handleCsvUpload = (e) => {
     initialMappings.sender_name = 'sender_name';
     setFieldMappings(initialMappings);
 
-    // Process leads
+    // ✅ PROCESS LEADS
     let hotEmails = 0, warmEmails = 0;
     const validPhoneContacts = [];
     const newLeadScores = {};
@@ -755,10 +788,11 @@ const handleCsvUpload = (e) => {
         row[header] = values[idx] || '';
       });
 
-      // Handle email leads
-      const quality = (row.lead_quality || '').trim() || 'HOT';
+      // ✅ PROCESS EMAIL LEADS
       const hasValidEmail = isValidEmail(row.email);
       if (hasValidEmail) {
+        // ✅ Treat blank lead_quality as 'HOT'
+        const quality = (row.lead_quality || '').trim() || 'HOT';
         let score = 50;
         if (quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
@@ -772,7 +806,7 @@ const handleCsvUpload = (e) => {
         if (!firstValid) firstValid = row;
       }
 
-      // Handle phone leads (even without email)
+      // ✅ PROCESS PHONE LEADS (even without email)
       const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
       const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
@@ -801,7 +835,7 @@ const handleCsvUpload = (e) => {
     setWhatsappLinks(validPhoneContacts);
     setLeadScores(newLeadScores);
     setLastSent(newLastSent);
-    setCsvContent(normalizedContent);
+    setCsvContent(normalizedContent); // ✅ Save normalized content
   };
   reader.readAsText(file);
 };
