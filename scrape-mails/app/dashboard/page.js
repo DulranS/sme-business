@@ -693,112 +693,116 @@ const handleTwilioCall = async (contact, callType = 'direct') => {
   }, [saveSettings, user?.uid]);
 
   // ✅ CSV Upload
-  const handleCsvUpload = (e) => {
-    setValidEmails(0);
-    setValidWhatsApp(0);
-    setWhatsappLinks([]);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const rawContent = e.target.result;
-      const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
-      if (lines.length < 2) {
-        alert('CSV must have headers and data rows.');
-        return;
+const handleCsvUpload = (e) => {
+  setValidEmails(0);
+  setValidWhatsApp(0);
+  setWhatsappLinks([]);
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const rawContent = e.target.result;
+    const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
+    if (lines.length < 2) {
+      alert('CSV must have headers and data rows.');
+      return;
+    }
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    setCsvHeaders(headers);
+    setPreviewRecipient(null);
+
+    // ✅ DYNAMICALLY EXTRACT ALL TEMPLATE VARIABLES (including IG, Twitter, follow-ups)
+    const allTemplateTexts = [
+      templateA.subject, templateA.body,
+      templateB.subject, templateB.body,
+      whatsappTemplate,
+      smsTemplate,
+      instagramTemplate,
+      twitterTemplate,
+      ...followUpTemplates.flatMap(t => [t.subject, t.body])
+    ];
+
+    const allVars = [...new Set([
+      ...allTemplateTexts.flatMap(text => extractTemplateVariables(text)),
+      'sender_name',
+      ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
+    ])];
+
+    // ✅ AUTO-MAP CSV COLUMNS TO TEMPLATE VARIABLES
+    const initialMappings = {};
+    allVars.forEach(varName => {
+      if (headers.includes(varName)) {
+        initialMappings[varName] = varName;
       }
-      const headers = parseCsvRow(lines[0]).map(h => h.trim());
-      setCsvHeaders(headers);
-      setPreviewRecipient(null);
+    });
+    if (headers.includes('email')) initialMappings.email = 'email';
+    initialMappings.sender_name = 'sender_name';
+    setFieldMappings(initialMappings);
 
-const allVars = [...new Set([
-  ...extractTemplateVariables(templateA.subject),
-  ...extractTemplateVariables(templateA.body),
-  ...extractTemplateVariables(templateB.subject),
-  ...extractTemplateVariables(templateB.body),
-  ...extractTemplateVariables(whatsappTemplate),
-  ...extractTemplateVariables(smsTemplate),
-  ...extractTemplateVariables(instagramTemplate),
-  ...extractTemplateVariables(twitterTemplate),
-  ...followUpTemplates.flatMap(t => [
-    ...extractTemplateVariables(t.subject || ''),
-    ...extractTemplateVariables(t.body || '')
-  ]),
-  'sender_name',
-  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
-])];
+    let hotEmails = 0, warmEmails = 0;
+    const validPhoneContacts = [];
+    const newLeadScores = {};
+    const newLastSent = {};
+    let firstValid = null;
 
-const initialMappings = {};
-allVars.forEach(varName => {
-  if (headers.includes(varName)) {
-    initialMappings[varName] = varName;
-  }
-});
-if (headers.includes('email')) initialMappings.email = 'email';
-initialMappings.sender_name = 'sender_name';
-setFieldMappings(initialMappings);
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
+      });
 
-      let hotEmails = 0, warmEmails = 0;
-      const validPhoneContacts = [];
-      const newLeadScores = {};
-      const newLastSent = {};
-      let firstValid = null;
+      // ✅ Process email leads (with lead_quality fallback)
+      const quality = (row.lead_quality || '').trim() || 'HOT';
+      const hasValidEmail = isValidEmail(row.email);
+      if (hasValidEmail) {
+        let score = 50;
+        if (quality === 'HOT') score += 30;
+        if (parseFloat(row.rating) >= 4.8) score += 20;
+        if (parseInt(row.review_count) > 100) score += 10;
+        if (clickStats[row.email]?.count > 0) score += 20;
+        if (dealStage[row.email] === 'contacted') score += 10;
+        score = Math.min(100, Math.max(0, score));
+        newLeadScores[row.email] = score;
+        if (quality === 'HOT') hotEmails++;
+        else if (quality === 'WARM') warmEmails++;
+        if (!firstValid) firstValid = row;
+      }
 
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCsvRow(lines[i]);
-        if (values.length !== headers.length) continue;
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
+      // ✅ Process phone leads (even without email)
+      const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
+      const formattedPhone = formatForDialing(rawPhone);
+      if (formattedPhone) {
+        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
+        validPhoneContacts.push({
+          id: contactId,
+          business: row.business_name || 'Business',
+          address: row.address || '',
+          phone: formattedPhone,
+          email: row.email || null,
+          place_id: row.place_id || '',
+          url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
+            renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
+          )}`
         });
-        const quality = (row.lead_quality || '').trim() || 'HOT';
-        const hasValidEmail = isValidEmail(row.email);
-        if (hasValidEmail) {
-          let score = 50;
-          if (quality === 'HOT') score += 30;
-          if (parseFloat(row.rating) >= 4.8) score += 20;
-          if (parseInt(row.review_count) > 100) score += 10;
-          if (clickStats[row.email]?.count > 0) score += 20;
-          if (dealStage[row.email] === 'contacted') score += 10;
-          score = Math.min(100, Math.max(0, score));
-          newLeadScores[row.email] = score;
-          if (quality === 'HOT') hotEmails++;
-          else if (quality === 'WARM') warmEmails++;
-          if (!firstValid) firstValid = row;
-        }
-        const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
-        const formattedPhone = formatForDialing(rawPhone);
-        if (formattedPhone) {
-          const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
-// Inside handleCsvUpload, when building whatsappLinks:
-validPhoneContacts.push({
-  id: contactId,
-  business: row.business_name || 'Business',
-  address: row.address || '',
-  phone: formattedPhone,
-  email: row.email || null,
-  place_id: row.place_id || '',
-  url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
-    renderPreviewText(whatsappTemplate, row, fieldMappings, senderName) // ✅ PASS FULL 'row'
-  )}`
-});
-          if (!firstValid) firstValid = row;
-        }
+        if (!firstValid) firstValid = row;
       }
+    }
 
-      setPreviewRecipient(firstValid);
-      if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
-      else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
-      else setValidEmails(hotEmails + warmEmails);
-      setValidWhatsApp(validPhoneContacts.length);
-      setWhatsappLinks(validPhoneContacts);
-      setLeadScores(newLeadScores);
-      setLastSent(newLastSent);
-      setCsvContent(normalizedContent);
-    };
-    reader.readAsText(file);
+    setPreviewRecipient(firstValid);
+    if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
+    else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
+    else setValidEmails(hotEmails + warmEmails);
+    setValidWhatsApp(validPhoneContacts.length);
+    setWhatsappLinks(validPhoneContacts);
+    setLeadScores(newLeadScores);
+    setLastSent(newLastSent);
+    setCsvContent(normalizedContent);
   };
+  reader.readAsText(file);
+};
 
   // ✅ Gmail Token
   const requestGmailToken = () => {
@@ -1245,18 +1249,22 @@ validPhoneContacts.push({
     );
   }
 
-  const allVars = [...new Set([
-    ...extractTemplateVariables(templateA.subject),
-    ...extractTemplateVariables(templateA.body),
-    ...extractTemplateVariables(templateB.subject),
-    ...extractTemplateVariables(templateB.body),
-    ...extractTemplateVariables(whatsappTemplate),
-    ...extractTemplateVariables(smsTemplate),
-    ...extractTemplateVariables(instagramTemplate),
-    ...extractTemplateVariables(twitterTemplate),
-    'sender_name',
-    ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
-  ])];
+const allVars = [...new Set([
+  ...extractTemplateVariables(templateA.subject),
+  ...extractTemplateVariables(templateA.body),
+  ...extractTemplateVariables(templateB.subject),
+  ...extractTemplateVariables(templateB.body),
+  ...extractTemplateVariables(whatsappTemplate),
+  ...extractTemplateVariables(smsTemplate),
+  ...extractTemplateVariables(instagramTemplate),
+  ...extractTemplateVariables(twitterTemplate),
+  ...followUpTemplates.flatMap(t => [
+    ...extractTemplateVariables(t.subject || ''),
+    ...extractTemplateVariables(t.body || '')
+  ]),
+  'sender_name',
+  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
+])];
 
   const abSummary = abTestMode ? (
     <div className="bg-blue-50 p-3 rounded-lg mt-4">
