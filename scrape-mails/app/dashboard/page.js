@@ -267,14 +267,14 @@ Would you be open to a quick chat?`);
 
 
   const handleSmartCall = (contact) => {
-  if (contact.dealStage === 'replied' || contact.leadScore >= 80) {
-    handleTwilioCall(contact, 'bridge');
-  } else if (contact.followUpCount >= 2) {
-    handleTwilioCall(contact, 'voicemail');
-  } else {
-    handleTwilioCall(contact, 'interactive'); // IVR
-  }
-};
+    if (contact.dealStage === 'replied' || contact.leadScore >= 80) {
+      handleTwilioCall(contact, 'bridge');
+    } else if (contact.followUpCount >= 2) {
+      handleTwilioCall(contact, 'voicemail');
+    } else {
+      handleTwilioCall(contact, 'interactive'); // IVR
+    }
+  };
 
   // ✅ Social Handle Generator
   const generateSocialHandle = (businessName, platform) => {
@@ -380,113 +380,113 @@ Check call history for final status.`);
   };
 
   // ✅ Twilio Call
-// ✅ REPLACE YOUR handleTwilioCall FUNCTION WITH THIS
-const handleTwilioCall = async (contact, callType = 'direct') => {
-  // 🔒 SAFETY: Ensure contact is valid and has required fields
-  if (!contact || !contact.phone || !contact.business) {
-    console.warn('Invalid contact passed to handleTwilioCall:', contact);
-    alert('❌ Contact data is incomplete. Cannot place call.');
-    return;
-  }
-
-  if (!user?.uid) {
-    alert('❌ You must be signed in to make calls.');
-    return;
-  }
-
-  const callTypeLabels = {
-    direct: 'Automated Message (Plays your script)',
-    bridge: 'Bridge Call (Connects you first)',
-    interactive: 'Interactive Menu (They can press buttons)'
-  };
-
-  const confirmed = confirm(
-    `📞 Call ${contact.business} at +${contact.phone}?\nType: ${callTypeLabels[callType]}\nClick OK to proceed.`
-  );
-  if (!confirmed) return;
-
-  try {
-    setStatus(`📞 Initiating ${callType} call to ${contact.business}...`);
-    setActiveCallStatus({
-      business: contact.business,
-      phone: contact.phone,
-      status: 'initiating',
-      timestamp: new Date().toISOString()
-    });
-
-    const response = await fetch('/api/make-call', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        toPhone: contact.phone,
-        businessName: contact.business,
-        userId: user.uid,
-        callType
-      })
-    });
-
-    // ✅ CRITICAL: Check if response is valid JSON
-    let data;
-    try {
-      data = await response.json();
-    } catch (parseError) {
-      console.error('Invalid JSON from /api/make-call:', await response.text());
-      throw new Error('Server returned an invalid response. Check Vercel logs.');
+  // ✅ REPLACE YOUR handleTwilioCall FUNCTION WITH THIS
+  const handleTwilioCall = async (contact, callType = 'direct') => {
+    // 🔒 SAFETY: Ensure contact is valid and has required fields
+    if (!contact || !contact.phone || !contact.business) {
+      console.warn('Invalid contact passed to handleTwilioCall:', contact);
+      alert('❌ Contact data is incomplete. Cannot place call.');
+      return;
     }
 
-    if (response.ok) {
-      setStatus(`✅ Call initiated to ${contact.business}!\nCall ID: ${data.callId}\nStatus: ${data.status}`);
+    if (!user?.uid) {
+      alert('❌ You must be signed in to make calls.');
+      return;
+    }
+
+    const callTypeLabels = {
+      direct: 'Automated Message (Plays your script)',
+      bridge: 'Bridge Call (Connects you first)',
+      interactive: 'Interactive Menu (They can press buttons)'
+    };
+
+    const confirmed = confirm(
+      `📞 Call ${contact.business} at +${contact.phone}?\nType: ${callTypeLabels[callType]}\nClick OK to proceed.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setStatus(`📞 Initiating ${callType} call to ${contact.business}...`);
       setActiveCallStatus({
         business: contact.business,
         phone: contact.phone,
-        status: data.status,
-        callId: data.callId,
-        callSid: data.callSid,
+        status: 'initiating',
         timestamp: new Date().toISOString()
       });
 
-      alert(
-        `✅ Call Successfully Initiated!\n` +
-        `Business: ${contact.business}\n` +
-        `Phone: +${contact.phone}\n` +
-        `Type: ${callType}\n` +
-        `Status: ${data.status}\n` +
-        `Call ID: ${data.callId}`
-      );
+      const response = await fetch('/api/make-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toPhone: contact.phone,
+          businessName: contact.business,
+          userId: user.uid,
+          callType
+        })
+      });
 
-      const contactKey = contact.email || contact.phone;
-      setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
-      if (contact.email && dealStage[contactKey] === 'new') {
-        updateDealStage(contactKey, 'contacted');
+      // ✅ CRITICAL: Check if response is valid JSON
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Invalid JSON from /api/make-call:', await response.text());
+        throw new Error('Server returned an invalid response. Check Vercel logs.');
       }
 
-      pollCallStatus(data.callId, contact.business);
-    } else {
-      const errorMsg = data.error || 'Unknown error';
-      setStatus(`❌ Call Failed\nError: ${errorMsg}`);
+      if (response.ok) {
+        setStatus(`✅ Call initiated to ${contact.business}!\nCall ID: ${data.callId}\nStatus: ${data.status}`);
+        setActiveCallStatus({
+          business: contact.business,
+          phone: contact.phone,
+          status: data.status,
+          callId: data.callId,
+          callSid: data.callSid,
+          timestamp: new Date().toISOString()
+        });
+
+        alert(
+          `✅ Call Successfully Initiated!\n` +
+          `Business: ${contact.business}\n` +
+          `Phone: +${contact.phone}\n` +
+          `Type: ${callType}\n` +
+          `Status: ${data.status}\n` +
+          `Call ID: ${data.callId}`
+        );
+
+        const contactKey = contact.email || contact.phone;
+        setLastSent(prev => ({ ...prev, [contactKey]: new Date().toISOString() }));
+        if (contact.email && dealStage[contactKey] === 'new') {
+          updateDealStage(contactKey, 'contacted');
+        }
+
+        pollCallStatus(data.callId, contact.business);
+      } else {
+        const errorMsg = data.error || 'Unknown error';
+        setStatus(`❌ Call Failed\nError: ${errorMsg}`);
+        setActiveCallStatus({
+          business: contact.business,
+          phone: contact.phone,
+          status: 'failed',
+          error: errorMsg,
+          timestamp: new Date().toISOString()
+        });
+        alert(`❌ Call Failed!\nBusiness: ${contact.business}\nError: ${errorMsg}`);
+      }
+    } catch (error) {
+      console.error('Twilio call error:', error);
+      const userMessage = error.message || 'Network or server error. Check Vercel logs.';
+      setStatus(`❌ ${userMessage}`);
       setActiveCallStatus({
-        business: contact.business,
-        phone: contact.phone,
-        status: 'failed',
-        error: errorMsg,
+        business: contact?.business || 'Unknown',
+        phone: contact?.phone || 'Unknown',
+        status: 'error',
+        error: userMessage,
         timestamp: new Date().toISOString()
       });
-      alert(`❌ Call Failed!\nBusiness: ${contact.business}\nError: ${errorMsg}`);
+      alert(`❌ ${userMessage}\nCheck browser console and Vercel function logs.`);
     }
-  } catch (error) {
-    console.error('Twilio call error:', error);
-    const userMessage = error.message || 'Network or server error. Check Vercel logs.';
-    setStatus(`❌ ${userMessage}`);
-    setActiveCallStatus({
-      business: contact?.business || 'Unknown',
-      phone: contact?.phone || 'Unknown',
-      status: 'error',
-      error: userMessage,
-      timestamp: new Date().toISOString()
-    });
-    alert(`❌ ${userMessage}\nCheck browser console and Vercel function logs.`);
-  }
-};
+  };
 
   // ✅ Load Call History
   const loadCallHistory = async () => {
@@ -693,152 +693,132 @@ const handleTwilioCall = async (contact, callType = 'direct') => {
   }, [saveSettings, user?.uid]);
 
   // ✅ CSV Upload
-const handleCsvUpload = (e) => {
-  setValidEmails(0);
-  setValidWhatsApp(0);
-  setWhatsappLinks([]);
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const rawContent = e.target.result;
-    // ✅ Normalize line endings AND save normalized content
-    const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
-    if (lines.length < 2) {
-      alert('CSV must have headers and data rows.');
-      return;
-    }
-    const headers = parseCsvRow(lines[0]).map(h => h.trim());
-    setCsvHeaders(headers);
-    setPreviewRecipient(null);
-
-    // ✅ DYNAMICALLY COLLECT ALL TEMPLATE VARIABLES (including Instagram, Twitter, follow-ups)
-    const allTemplateTexts = [
-      templateA.subject, templateA.body,
-      templateB.subject, templateB.body,
-      whatsappTemplate,
-      smsTemplate,
-      instagramTemplate,
-      twitterTemplate,
-      ...followUpTemplates.flatMap(t => [t.subject, t.body])
-    ];
-
-    const allVars = {/* ✅ DYNAMIC MAPPINGS: Show every template var + EVERY CSV COLUMN */}
-{[...new Set([
-  ...extractTemplateVariables(templateA.subject),
-  ...extractTemplateVariables(templateA.body),
-  ...extractTemplateVariables(templateB.subject),
-  ...extractTemplateVariables(templateB.body),
-  ...extractTemplateVariables(whatsappTemplate),
-  ...extractTemplateVariables(smsTemplate),
-  ...extractTemplateVariables(instagramTemplate),
-  ...extractTemplateVariables(twitterTemplate),
-  ...followUpTemplates.flatMap(t => [
-    ...extractTemplateVariables(t.subject || ''),
-    ...extractTemplateVariables(t.body || '')
-  ]),
-  'sender_name',
-  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
-  ...csvHeaders // ✅ THIS IS THE KEY: expose ALL CSV columns as {{column_name}}
-])].map(varName => (
-  <div key={varName} className="flex items-center mb-2">
-    <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
-      {`{{${varName}}}`}
-    </span>
-    <select
-      value={fieldMappings[varName] || ''}
-      onChange={(e) => handleMappingChange(varName, e.target.value)}
-      className="text-xs border rounded px-1 py-0.5 flex-1"
-    >
-      <option value="">-- Map to Column --</option>
-      {csvHeaders.map(col => (
-        <option key={col} value={col}>{col}</option>
-      ))}
-      {varName === 'sender_name' && (
-        <option value="sender_name">Use sender name</option>
-      )}
-    </select>
-  </div>
-))}
-
-    // ✅ AUTO-INITIALIZE MAPPINGS: template var → matching CSV column
-    const initialMappings = {};
-    allVars.forEach(varName => {
-      if (headers.includes(varName)) {
-        initialMappings[varName] = varName;
+  const handleCsvUpload = (e) => {
+    setValidEmails(0);
+    setValidWhatsApp(0);
+    setWhatsappLinks([]);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const rawContent = e.target.result;
+      // ✅ Normalize line endings AND save normalized content
+      const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
+      if (lines.length < 2) {
+        alert('CSV must have headers and data rows.');
+        return;
       }
-    });
-    if (headers.includes('email')) initialMappings.email = 'email';
-    initialMappings.sender_name = 'sender_name';
-    setFieldMappings(initialMappings);
+      const headers = parseCsvRow(lines[0]).map(h => h.trim());
+      setCsvHeaders(headers);
+      setPreviewRecipient(null);
 
-    // ✅ PROCESS LEADS
-    let hotEmails = 0, warmEmails = 0;
-    const validPhoneContacts = [];
-    const newLeadScores = {};
-    const newLastSent = {};
-    let firstValid = null;
+      // ✅ DYNAMICALLY COLLECT ALL TEMPLATE VARIABLES (including Instagram, Twitter, follow-ups)
+      const allTemplateTexts = [
+        templateA.subject, templateA.body,
+        templateB.subject, templateB.body,
+        whatsappTemplate,
+        smsTemplate,
+        instagramTemplate,
+        twitterTemplate,
+        ...followUpTemplates.flatMap(t => [t.subject, t.body])
+      ];
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseCsvRow(lines[i]);
-      if (values.length !== headers.length) continue;
-      const row = {};
-      headers.forEach((header, idx) => {
-        row[header] = values[idx] || '';
+      const allVars = [...new Set([
+        ...extractTemplateVariables(templateA.subject),
+        ...extractTemplateVariables(templateA.body),
+        ...extractTemplateVariables(templateB.subject),
+        ...extractTemplateVariables(templateB.body),
+        ...extractTemplateVariables(whatsappTemplate),
+        ...extractTemplateVariables(smsTemplate),
+        ...extractTemplateVariables(instagramTemplate),
+        ...extractTemplateVariables(twitterTemplate),
+        ...followUpTemplates.flatMap(t => [
+          ...extractTemplateVariables(t.subject || ''),
+          ...extractTemplateVariables(t.body || '')
+        ]),
+        'sender_name',
+        ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+        ...csvHeaders // ✅ ADD THIS LINE
+      ])];
+
+      // ✅ AUTO-INITIALIZE MAPPINGS: template var → matching CSV column
+      const initialMappings = {};
+      allVars.forEach(varName => {
+        if (headers.includes(varName)) {
+          initialMappings[varName] = varName;
+        }
       });
+      if (headers.includes('email')) initialMappings.email = 'email';
+      initialMappings.sender_name = 'sender_name';
+      setFieldMappings(initialMappings);
 
-      // ✅ PROCESS EMAIL LEADS
-      const hasValidEmail = isValidEmail(row.email);
-      if (hasValidEmail) {
-        // ✅ Treat blank lead_quality as 'HOT'
-        const quality = (row.lead_quality || '').trim() || 'HOT';
-        let score = 50;
-        if (quality === 'HOT') score += 30;
-        if (parseFloat(row.rating) >= 4.8) score += 20;
-        if (parseInt(row.review_count) > 100) score += 10;
-        if (clickStats[row.email]?.count > 0) score += 20;
-        if (dealStage[row.email] === 'contacted') score += 10;
-        score = Math.min(100, Math.max(0, score));
-        newLeadScores[row.email] = score;
-        if (quality === 'HOT') hotEmails++;
-        else if (quality === 'WARM') warmEmails++;
-        if (!firstValid) firstValid = row;
-      }
+      // ✅ PROCESS LEADS
+      let hotEmails = 0, warmEmails = 0;
+      const validPhoneContacts = [];
+      const newLeadScores = {};
+      const newLastSent = {};
+      let firstValid = null;
 
-      // ✅ PROCESS PHONE LEADS (even without email)
-      const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
-      const formattedPhone = formatForDialing(rawPhone);
-      if (formattedPhone) {
-        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
-        validPhoneContacts.push({
-          id: contactId,
-          business: row.business_name || 'Business',
-          address: row.address || '',
-          phone: formattedPhone,
-          email: row.email || null,
-          place_id: row.place_id || '',
-          url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
-            renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
-          )}`
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCsvRow(lines[i]);
+        if (values.length !== headers.length) continue;
+        const row = {};
+        headers.forEach((header, idx) => {
+          row[header] = values[idx] || '';
         });
-        if (!firstValid) firstValid = row;
-      }
-    }
 
-    setPreviewRecipient(firstValid);
-    if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
-    else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
-    else setValidEmails(hotEmails + warmEmails);
-    
-    setValidWhatsApp(validPhoneContacts.length);
-    setWhatsappLinks(validPhoneContacts);
-    setLeadScores(newLeadScores);
-    setLastSent(newLastSent);
-    setCsvContent(normalizedContent); // ✅ Save normalized content
+        // ✅ PROCESS EMAIL LEADS
+        const hasValidEmail = isValidEmail(row.email);
+        if (hasValidEmail) {
+          // ✅ Treat blank lead_quality as 'HOT'
+          const quality = (row.lead_quality || '').trim() || 'HOT';
+          let score = 50;
+          if (quality === 'HOT') score += 30;
+          if (parseFloat(row.rating) >= 4.8) score += 20;
+          if (parseInt(row.review_count) > 100) score += 10;
+          if (clickStats[row.email]?.count > 0) score += 20;
+          if (dealStage[row.email] === 'contacted') score += 10;
+          score = Math.min(100, Math.max(0, score));
+          newLeadScores[row.email] = score;
+          if (quality === 'HOT') hotEmails++;
+          else if (quality === 'WARM') warmEmails++;
+          if (!firstValid) firstValid = row;
+        }
+
+        // ✅ PROCESS PHONE LEADS (even without email)
+        const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
+        const formattedPhone = formatForDialing(rawPhone);
+        if (formattedPhone) {
+          const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
+          validPhoneContacts.push({
+            id: contactId,
+            business: row.business_name || 'Business',
+            address: row.address || '',
+            phone: formattedPhone,
+            email: row.email || null,
+            place_id: row.place_id || '',
+            url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
+              renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
+            )}`
+          });
+          if (!firstValid) firstValid = row;
+        }
+      }
+
+      setPreviewRecipient(firstValid);
+      if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
+      else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
+      else setValidEmails(hotEmails + warmEmails);
+
+      setValidWhatsApp(validPhoneContacts.length);
+      setWhatsappLinks(validPhoneContacts);
+      setLeadScores(newLeadScores);
+      setLastSent(newLastSent);
+      setCsvContent(normalizedContent); // ✅ Save normalized content
+    };
+    reader.readAsText(file);
   };
-  reader.readAsText(file);
-};
 
   // ✅ Gmail Token
   const requestGmailToken = () => {
@@ -1285,20 +1265,20 @@ const handleCsvUpload = (e) => {
     );
   }
 
-// ✅ SHOW ALL POSSIBLE VARIABLES + CSV COLUMNS
-const uiVars = [...new Set([
-  ...extractTemplateVariables(templateA.subject),
-  ...extractTemplateVariables(templateA.body),
-  ...extractTemplateVariables(templateB.subject),
-  ...extractTemplateVariables(templateB.body),
-  ...extractTemplateVariables(whatsappTemplate),
-  ...extractTemplateVariables(smsTemplate),
-  ...extractTemplateVariables(instagramTemplate),
-  ...extractTemplateVariables(twitterTemplate),
-  'sender_name',
-  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
-  ...csvHeaders // 👈 CRITICAL: include all CSV columns
-])];
+  // ✅ SHOW ALL POSSIBLE VARIABLES + CSV COLUMNS
+  const uiVars = [...new Set([
+    ...extractTemplateVariables(templateA.subject),
+    ...extractTemplateVariables(templateA.body),
+    ...extractTemplateVariables(templateB.subject),
+    ...extractTemplateVariables(templateB.body),
+    ...extractTemplateVariables(whatsappTemplate),
+    ...extractTemplateVariables(smsTemplate),
+    ...extractTemplateVariables(instagramTemplate),
+    ...extractTemplateVariables(twitterTemplate),
+    'sender_name',
+    ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+    ...csvHeaders // 👈 CRITICAL: include all CSV columns
+  ])];
 
   const abSummary = abTestMode ? (
     <div className="bg-blue-50 p-3 rounded-lg mt-4">
@@ -1386,26 +1366,26 @@ const uiVars = [...new Set([
             </div>
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">2. Field Mappings</h2>
-{uiVars.map(varName => (
-  <div key={varName} className="flex items-center mb-2">
-    <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
-      {`{{${varName}}}`}
-    </span>
-    <select
-      value={fieldMappings[varName] || ''}
-      onChange={(e) => handleMappingChange(varName, e.target.value)}
-      className="text-xs border rounded px-1 py-0.5 flex-1"
-    >
-      <option value="">-- Map to Column --</option>
-      {csvHeaders.map(col => (
-        <option key={col} value={col}>{col}</option>
-      ))}
-      {varName === 'sender_name' && (
-        <option value="sender_name">Use sender name</option>
-      )}
-    </select>
-  </div>
-))}
+              {allVars.map(varName => (
+                <div key={varName} className="flex items-center mb-2">
+                  <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
+                    {`{{${varName}}}`}
+                  </span>
+                  <select
+                    value={fieldMappings[varName] || ''}
+                    onChange={(e) => handleMappingChange(varName, e.target.value)}
+                    className="text-xs border rounded px-1 py-0.5 flex-1"
+                  >
+                    <option value="">-- Map to Column --</option>
+                    {csvHeaders.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                    {varName === 'sender_name' && (
+                      <option value="sender_name">Use sender name</option>
+                    )}
+                  </select>
+                </div>
+              ))}
             </div>
             {abSummary}
           </div>
@@ -1683,14 +1663,14 @@ const uiVars = [...new Set([
                     senderName
                   )}
                 </div>
-<div className="mt-2 whitespace-pre-wrap text-sm">
-  {renderPreviewText(
-    templateA.body,
-    previewRecipient,        // ← full row object
-    fieldMappings,
-    senderName
-  )}
-</div>
+                <div className="mt-2 whitespace-pre-wrap text-sm">
+                  {renderPreviewText(
+                    templateA.body,
+                    previewRecipient,        // ← full row object
+                    fieldMappings,
+                    senderName
+                  )}
+                </div>
               </div>
             </div>
             {whatsappLinks.length > 0 && (
@@ -1748,11 +1728,11 @@ const uiVars = [...new Set([
                                 📞 Auto Call
                               </button>
                               <button
-  onClick={() => handleSmartCall(contact)}
-  className="text-xs bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-3 py-1.5 rounded font-medium"
->
-  📞 Smart Call
-</button>
+                                onClick={() => handleSmartCall(contact)}
+                                className="text-xs bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-3 py-1.5 rounded font-medium"
+                              >
+                                📞 Smart Call
+                              </button>
                               <button
                                 onClick={() => handleTwilioCall(link, 'bridge')}
                                 className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
@@ -2064,8 +2044,7 @@ const uiVars = [...new Set([
                     return (
                       <div
                         key={call.id}
-                        className={`p-4 rounded-lg border-2 transition-all ${
-                          isCompleted
+                        className={`p-4 rounded-lg border-2 transition-all ${isCompleted
                             ? 'border-green-200 bg-green-50'
                             : call.status === 'failed'
                               ? 'border-red-200 bg-red-50'
@@ -2131,29 +2110,29 @@ const uiVars = [...new Set([
                               </span>
                             )}
                             {call.toPhone && (
-                            <button
-  onClick={() => {
-    // 🔍 Try to find contact in current whatsappLinks
-    let contact = whatsappLinks.find(c => 
-      c.phone === call.toPhone.replace(/\D/g, '')
-    );
-    
-    // 🔒 Fallback: create minimal contact if not found
-    if (!contact) {
-      contact = {
-        business: call.businessName || 'Unknown Business',
-        phone: call.toPhone,
-        email: null,
-        address: ''
-      };
-    }
-    
-    handleTwilioCall(contact, call.callType || 'direct');
-  }}
-  className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
->
-  🔄 Retry
-</button>
+                              <button
+                                onClick={() => {
+                                  // 🔍 Try to find contact in current whatsappLinks
+                                  let contact = whatsappLinks.find(c =>
+                                    c.phone === call.toPhone.replace(/\D/g, '')
+                                  );
+
+                                  // 🔒 Fallback: create minimal contact if not found
+                                  if (!contact) {
+                                    contact = {
+                                      business: call.businessName || 'Unknown Business',
+                                      phone: call.toPhone,
+                                      email: null,
+                                      address: ''
+                                    };
+                                  }
+
+                                  handleTwilioCall(contact, call.callType || 'direct');
+                                }}
+                                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+                              >
+                                🔄 Retry
+                              </button>
                             )}
                           </div>
                         </div>
