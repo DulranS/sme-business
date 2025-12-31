@@ -712,28 +712,32 @@ const handleTwilioCall = async (contact, callType = 'direct') => {
       setCsvHeaders(headers);
       setPreviewRecipient(null);
 
-      const allVars = [...new Set([
-        ...extractTemplateVariables(templateA.subject),
-        ...extractTemplateVariables(templateA.body),
-        ...extractTemplateVariables(templateB.subject),
-        ...extractTemplateVariables(templateB.body),
-        ...extractTemplateVariables(whatsappTemplate),
-        ...extractTemplateVariables(smsTemplate),
-        ...extractTemplateVariables(instagramTemplate),
-        ...extractTemplateVariables(twitterTemplate),
-        'sender_name',
-        ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
-      ])];
+const allVars = [...new Set([
+  ...extractTemplateVariables(templateA.subject),
+  ...extractTemplateVariables(templateA.body),
+  ...extractTemplateVariables(templateB.subject),
+  ...extractTemplateVariables(templateB.body),
+  ...extractTemplateVariables(whatsappTemplate),
+  ...extractTemplateVariables(smsTemplate),
+  ...extractTemplateVariables(instagramTemplate),
+  ...extractTemplateVariables(twitterTemplate),
+  ...followUpTemplates.flatMap(t => [
+    ...extractTemplateVariables(t.subject || ''),
+    ...extractTemplateVariables(t.body || '')
+  ]),
+  'sender_name',
+  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
+])];
 
-      const initialMappings = {};
-      allVars.forEach(varName => {
-        if (headers.includes(varName)) {
-          initialMappings[varName] = varName;
-        }
-      });
-      if (headers.includes('email')) initialMappings.email = 'email';
-      initialMappings.sender_name = 'sender_name';
-      setFieldMappings(initialMappings);
+const initialMappings = {};
+allVars.forEach(varName => {
+  if (headers.includes(varName)) {
+    initialMappings[varName] = varName;
+  }
+});
+if (headers.includes('email')) initialMappings.email = 'email';
+initialMappings.sender_name = 'sender_name';
+setFieldMappings(initialMappings);
 
       let hotEmails = 0, warmEmails = 0;
       const validPhoneContacts = [];
@@ -767,17 +771,18 @@ const handleTwilioCall = async (contact, callType = 'direct') => {
         const formattedPhone = formatForDialing(rawPhone);
         if (formattedPhone) {
           const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
-          validPhoneContacts.push({
-            id: contactId,
-            business: row.business_name || 'Business',
-            address: row.address || '',
-            phone: formattedPhone,
-            email: row.email || null,
-            place_id: row.place_id || '',
-            url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
-              renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
-            )}`
-          });
+// Inside handleCsvUpload, when building whatsappLinks:
+validPhoneContacts.push({
+  id: contactId,
+  business: row.business_name || 'Business',
+  address: row.address || '',
+  phone: formattedPhone,
+  email: row.email || null,
+  place_id: row.place_id || '',
+  url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
+    renderPreviewText(whatsappTemplate, row, fieldMappings, senderName) // ✅ PASS FULL 'row'
+  )}`
+});
           if (!firstValid) firstValid = row;
         }
       }
@@ -1339,26 +1344,26 @@ const handleTwilioCall = async (contact, callType = 'direct') => {
             </div>
             <div className="bg-white p-6 rounded-xl shadow">
               <h2 className="text-xl font-bold mb-4">2. Field Mappings</h2>
-              {allVars.map(varName => (
-                <div key={varName} className="flex items-center mb-2">
-                  <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
-                    {`{{${varName}}}`}
-                  </span>
-                  <select
-                    value={fieldMappings[varName] || ''}
-                    onChange={(e) => handleMappingChange(varName, e.target.value)}
-                    className="text-xs border rounded px-1 py-0.5 flex-1"
-                  >
-                    <option value="">-- Map to Column --</option>
-                    {csvHeaders.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                    {varName === 'sender_name' && (
-                      <option value="sender_name">Use sender name</option>
-                    )}
-                  </select>
-                </div>
-              ))}
+{allVars.map(varName => (
+  <div key={varName} className="flex items-center mb-2">
+    <span className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono mr-2">
+      {`{{${varName}}}`}
+    </span>
+    <select
+      value={fieldMappings[varName] || ''}
+      onChange={(e) => handleMappingChange(varName, e.target.value)}
+      className="text-xs border rounded px-1 py-0.5 flex-1"
+    >
+      <option value="">-- Map to CSV Column --</option>
+      {csvHeaders.map(col => (
+        <option key={col} value={col}>{col}</option>
+      ))}
+      {varName === 'sender_name' && (
+        <option value="sender_name">Use sender name</option>
+      )}
+    </select>
+  </div>
+))}
             </div>
             {abSummary}
           </div>
@@ -1636,14 +1641,14 @@ const handleTwilioCall = async (contact, callType = 'direct') => {
                     senderName
                   )}
                 </div>
-                <div className="mt-2 whitespace-pre-wrap text-sm">
-                  {renderPreviewText(
-                    abTestMode ? templateA.body : templateA.body,
-                    previewRecipient,
-                    fieldMappings,
-                    senderName
-                  )}
-                </div>
+<div className="mt-2 whitespace-pre-wrap text-sm">
+  {renderPreviewText(
+    templateA.body,
+    previewRecipient,        // ← full row object
+    fieldMappings,
+    senderName
+  )}
+</div>
               </div>
             </div>
             {whatsappLinks.length > 0 && (
