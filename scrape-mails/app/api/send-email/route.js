@@ -13,7 +13,6 @@ const firebaseConfig = {
   measurementId: "G-6CL2EGLEVH"
 };
 
-
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
@@ -65,7 +64,6 @@ export async function POST(req) {
   try {
     const {
       csvContent,
-      emailsToSend,
       senderName,
       fieldMappings,
       accessToken,
@@ -73,11 +71,12 @@ export async function POST(req) {
       templateB,
       templateToSend,
       userId,
-      emailImages = []
+      emailImages = [],
+      leadQualityFilter
     } = await req.json();
 
-    if (!csvContent || !accessToken || !userId || !Array.isArray(emailsToSend)) {
-      return Response.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!csvContent || !accessToken || !userId) {
+      return Response.json({ error: 'Missing required fields: csvContent, accessToken, or userId' }, { status: 400 });
     }
 
     const lines = csvContent
@@ -91,31 +90,63 @@ export async function POST(req) {
     }
 
     const headers = parseCsvRow(lines[0]).map(h => h.trim());
-    const emailSet = new Set(emailsToSend);
     const recipients = [];
+
+    // ✅ FIXED: Find the actual CSV column names from fieldMappings
+    const emailColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'email')?.[1] || 'email';
+    const qualityColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'lead_quality')?.[1] || 'lead_quality';
+
+    console.log('API 🔍 Email column:', emailColumnName);
+    console.log('API 🔍 Quality column:', qualityColumnName);
+    console.log('API 🔍 Headers:', headers);
+    console.log('API 🔍 Lead Quality Filter:', leadQualityFilter);
+
+    // ✅ Check if quality column exists in headers
+    const hasQualityField = headers.includes(qualityColumnName);
 
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
       if (values.length !== headers.length) continue;
 
       const row = {};
-      headers.forEach((h, idx) => row[h] = values[idx] || '');
+      headers.forEach((h, idx) => {
+        row[h] = values[idx] || '';
+      });
 
-      const emailList = (row.email || '')
-        .toString()
-        .split(';')
-        .map(e => e.trim())
-        .filter(e => isValidEmail(e));
-
-      for (const email of emailList) {
-        if (emailSet.has(email)) {
-          recipients.push({ ...row, email });
-        }
+      // ✅ Get email using actual CSV column name
+      const emailValue = row[emailColumnName] || '';
+      if (!isValidEmail(emailValue)) {
+        console.log('API ❌ Invalid email:', emailValue);
+        continue;
       }
+
+      // ✅ Apply quality filter only if column exists
+      let include = true;
+      if (hasQualityField) {
+        const quality = (row[qualityColumnName] || '').trim() || 'HOT';
+        console.log(`API 📧 ${emailValue} - Quality: ${quality}, Filter: ${leadQualityFilter}`);
+        
+        if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) {
+          console.log(`API ⏭️ Skipping ${emailValue} - Quality mismatch`);
+          include = false;
+        }
+      } else {
+        console.log(`API ⚠️ No quality column found, including all emails`);
+      }
+
+      if (!include) continue;
+
+      // ✅ Push with normalized 'email' key for rendering
+      recipients.push({ ...row, email: emailValue });
+      console.log(`API ✅ Added ${emailValue} to recipients`);
     }
 
+    console.log(`API 📊 Total valid recipients: ${recipients.length}`);
+
     if (recipients.length === 0) {
-      return Response.json({ error: 'No valid email recipients found' }, { status: 400 });
+      return Response.json({
+        error: `No valid email recipients found. Email column: "${emailColumnName}", Quality column: "${qualityColumnName}", Filter: "${leadQualityFilter}". Check if these columns exist in your CSV.`
+      }, { status: 400 });
     }
 
     const oauth2Client = new google.auth.OAuth2();
@@ -132,8 +163,8 @@ export async function POST(req) {
 
         let rawMessage;
         if (emailImages.length > 0) {
-          let htmlBody = body;
-          const messageParts = [
+          let htmlBody = body.replace(/\n/g, '<br>');
+          const finalMessage = [
             `To: ${recipient.email}`,
             `Subject: ${subject}`,
             'MIME-Version: 1.0',
@@ -147,22 +178,11 @@ export async function POST(req) {
           ];
 
           emailImages.forEach(img => {
-            const imgTag = `<img src="cid:${img.cid}" alt="Inline">`;
+            const imgTag = `<img src="cid:${img.cid}" alt="Inline" style="max-width:100%;">`;
             htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
           });
 
-          const finalMessage = [
-            `To: ${recipient.email}`,
-            `Subject: ${subject}`,
-            'MIME-Version: 1.0',
-            'Content-Type: multipart/related; boundary="boundary"',
-            '',
-            '--boundary',
-            'Content-Type: text/html; charset=utf-8',
-            '',
-            htmlBody,
-            ''
-          ];
+          finalMessage[9] = htmlBody;
 
           emailImages.forEach(img => {
             finalMessage.push('--boundary');
@@ -200,15 +220,11 @@ export async function POST(req) {
         });
 
         const { threadId } = response.data;
-
         if (threadId) {
           const sentAt = new Date();
           const followUpAt = new Date(sentAt.getTime() + 48 * 60 * 60 * 1000); // 48 hours
 
-          // ✅ CORRECT DOCUMENT ID
-          const docId = `${userId}_${recipient.email}`;
-
-          await setDoc(doc(db, 'sent_emails', docId), {
+          await setDoc(doc(db, 'sent_emails', `${userId}_${recipient.email}`), {
             userId,
             to: recipient.email,
             threadId,
@@ -220,11 +236,14 @@ export async function POST(req) {
           });
 
           sentCount++;
+          console.log(`API ✅ Sent to ${recipient.email}`);
         }
       } catch (e) {
-        console.warn(`Failed to send to ${recipient.email}:`, e.message);
+        console.warn(`API ❌ Failed to send to ${recipient.email}:`, e.message);
       }
     }
+
+    console.log(`API 📊 Final results: ${sentCount}/${recipients.length} sent`);
 
     return Response.json({ sent: sentCount, total: recipients.length });
   } catch (error) {

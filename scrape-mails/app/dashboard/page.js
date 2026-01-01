@@ -701,87 +701,100 @@ const handleCsvUpload = (e) => {
   setWhatsappLinks([]);
   const file = e.target.files?.[0];
   if (!file) return;
-
   const reader = new FileReader();
   reader.onload = (e) => {
-    let rawContent = e.target.result;
-
-    // 🔥 Remove BOM (common in Excel exports)
-    if (rawContent.charCodeAt(0) === 0xFEFF) {
-      rawContent = rawContent.slice(1);
-    }
-
-    // Normalize line endings
+    const rawContent = e.target.result;
     const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
-
     if (lines.length < 2) {
-      alert('CSV must have headers and at least one data row.');
+      alert('CSV must have headers and data rows.');
       return;
     }
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    setCsvHeaders(headers);
+    setPreviewRecipient(null);
 
-    // ✅ YOUR FIXED COLUMN ORDER – DO NOT CHANGE
-    const EXPECTED_COLUMNS = [
-      'place_id',
-      'business_name',
-      'rating',
-      'reviews',
-      'category',
-      'address',
-      'whatsapp_number',
-      'website',
-      'email',
-      'instagram',
-      'twitter'
+    // ✅ Expose all possible variables + CSV headers for mapping
+    const allTemplateTexts = [
+      templateA.subject, templateA.body,
+      templateB.subject, templateB.body,
+      whatsappTemplate,
+      smsTemplate,
+      instagramTemplate,
+      twitterTemplate,
+      ...followUpTemplates.flatMap(t => [t.subject, t.body])
     ];
+    const allVars = [...new Set([
+      ...allTemplateTexts.flatMap(text => extractTemplateVariables(text)),
+      'sender_name',
+      ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+      ...headers
+    ])];
+    const initialMappings = {};
+    allVars.forEach(varName => {
+      if (headers.includes(varName)) {
+        initialMappings[varName] = varName;
+      }
+    });
+    if (headers.includes('email')) initialMappings.email = 'email';
+    initialMappings.sender_name = 'sender_name';
+    setFieldMappings(initialMappings);
 
-    // Parse raw headers (for debugging)
-    const rawHeaders = parseCsvRow(lines[0]).map(h => h.trim());
-    console.log('🔍 Raw CSV headers:', rawHeaders);
-
-    // Rebuild rows using POSITIONAL mapping (not header names)
-    let hotEmails = 0;
-    let warmEmails = 0;
+    // ✅ Lead processing with lead_quality column presence check
+    let hotEmails = 0, warmEmails = 0;
     const validPhoneContacts = [];
     const newLeadScores = {};
+    const newLastSent = {};
     let firstValid = null;
+
+    // ✅ CRITICAL: Only filter by leadQuality if the column exists
+    const hasLeadQualityCol = headers.includes('lead_quality');
 
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
-      if (values.length < EXPECTED_COLUMNS.length) continue;
+      if (values.length !== headers.length) continue;
 
-      // Build row using known schema by position
       const row = {};
-      for (let j = 0; j < EXPECTED_COLUMNS.length; j++) {
-        let val = values[j] || '';
-        if (typeof val === 'string') {
-          // Remove zero-width and invisible Unicode
-          val = val.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      headers.forEach((header, idx) => {
+        row[header] = values[idx] || '';
+      });
+
+      // ✅ Include email only if valid AND passes quality filter (if applicable)
+      let includeEmail = true;
+      if (hasLeadQualityCol) {
+        const quality = (row.lead_quality || '').trim() || 'HOT';
+        if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) {
+          includeEmail = false;
         }
-        row[EXPECTED_COLUMNS[j]] = val;
       }
 
-      // 🔥 Now row.email is guaranteed to exist
-      if (isValidEmail(row.email)) {
-        const quality = 'HOT'; // your CSV has no lead_quality → default to HOT
+      const hasValidEmail = isValidEmail(row.email);
+      if (hasValidEmail && includeEmail) {
         let score = 50;
+        const quality = (row.lead_quality || '').trim() || 'HOT';
         if (quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
-        if (parseInt(row.reviews) > 100) score += 10;
+        if (parseInt(row.review_count) > 100) score += 10;
+        if (clickStats[row.email]?.count > 0) score += 20;
+        if (dealStage[row.email] === 'contacted') score += 10;
         score = Math.min(100, Math.max(0, score));
         newLeadScores[row.email] = score;
-        if (quality === 'HOT') hotEmails++;
-        else if (quality === 'WARM') warmEmails++;
+
+        if (!hasLeadQualityCol || quality === 'HOT') {
+          hotEmails++;
+        } else if (quality === 'WARM') {
+          warmEmails++;
+        }
+
         if (!firstValid) firstValid = row;
       }
 
-      // Handle WhatsApp
-      const formattedPhone = formatForDialing(row.whatsapp_number);
+      const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
+      const formattedPhone = formatForDialing(rawPhone);
       if (formattedPhone) {
-        // ✅ UNIQUE KEY: include row index `i` + random suffix
-        const uniqueId = `contact-row-${i}-${formattedPhone}-${Math.random().toString(36).slice(2, 10)}`;
+        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
         validPhoneContacts.push({
-          id: uniqueId, // 🔑 this fixes the "duplicate key" error
+          id: contactId,
           business: row.business_name || 'Business',
           address: row.address || '',
           phone: formattedPhone,
@@ -795,45 +808,15 @@ const handleCsvUpload = (e) => {
       }
     }
 
-    // Update state
     setPreviewRecipient(firstValid);
-    if (leadQualityFilter === 'HOT') {
-      setValidEmails(hotEmails);
-    } else if (leadQualityFilter === 'WARM') {
-      setValidEmails(warmEmails);
-    } else {
-      setValidEmails(hotEmails + warmEmails);
-    }
-
+    if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
+    else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
+    else setValidEmails(hotEmails + warmEmails);
     setValidWhatsApp(validPhoneContacts.length);
     setWhatsappLinks(validPhoneContacts);
     setLeadScores(newLeadScores);
+    setLastSent(newLastSent);
     setCsvContent(normalizedContent);
-    setCsvHeaders(EXPECTED_COLUMNS); // expose correct headers for UI
-
-    // Auto-init field mappings
-    const allVars = [...new Set([
-      ...extractTemplateVariables(templateA.subject),
-      ...extractTemplateVariables(templateA.body),
-      ...extractTemplateVariables(templateB.subject),
-      ...extractTemplateVariables(templateB.body),
-      ...extractTemplateVariables(whatsappTemplate),
-      ...extractTemplateVariables(smsTemplate),
-      ...extractTemplateVariables(instagramTemplate),
-      ...extractTemplateVariables(twitterTemplate),
-      ...followUpTemplates.flatMap(t => [
-        ...extractTemplateVariables(t.subject || ''),
-        ...extractTemplateVariables(t.body || '')
-      ]),
-      'sender_name'
-    ])];
-    const initialMappings = { sender_name: 'sender_name' };
-    allVars.forEach(varName => {
-      if (EXPECTED_COLUMNS.includes(varName)) {
-        initialMappings[varName] = varName;
-      }
-    });
-    setFieldMappings(initialMappings);
   };
   reader.readAsText(file);
 };
@@ -1061,129 +1044,168 @@ const handleCsvUpload = (e) => {
   };
 
   // ✅ Send Emails
-  const handleSendEmails = async (templateToSend = null) => {
-    const lines = csvContent?.split('\n').filter(line => line.trim() !== '') || [];
-    if (lines.length < 2) {
-      alert('Please upload a valid CSV file first.');
+// ✅ Send Emails
+const handleSendEmails = async (templateToSend = null) => {
+  const lines = csvContent?.split('\n').filter(line => line.trim() !== '') || [];
+  if (lines.length < 2) {
+    alert('Please upload a valid CSV file first.');
+    return;
+  }
+  if (!senderName.trim() || validEmails === 0) {
+    alert('Check sender name and valid emails.');
+    return;
+  }
+  if (abTestMode && !templateToSend) {
+    alert('Please select Template A or B.');
+    return;
+  }
+  if (abTestMode) {
+    if (templateToSend === 'A' && !templateA.subject?.trim()) {
+      alert('Template A subject is required.');
       return;
     }
-    if (!senderName.trim() || validEmails === 0) {
-      alert('Check sender name and valid emails.');
+    if (templateToSend === 'B' && !templateB.subject?.trim()) {
+      alert('Template B subject is required.');
       return;
     }
-    if (abTestMode && !templateToSend) {
-      alert('Please select Template A or B.');
+  } else {
+    if (!templateA.subject?.trim()) {
+      alert('Email subject is required.');
       return;
     }
-    if (abTestMode) {
-      if (templateToSend === 'A' && !templateA.subject?.trim()) {
-        alert('Template A subject is required.');
-        return;
-      }
-      if (templateToSend === 'B' && !templateB.subject?.trim()) {
-        alert('Template B subject is required.');
-        return;
-      }
-    } else {
-      if (!templateA.subject?.trim()) {
-        alert('Email subject is required.');
-        return;
-      }
-    }
+  }
 
-    setIsSending(true);
-    setStatus('Getting Gmail access...');
+  setIsSending(true);
+  setStatus('Getting Gmail access...');
 
-    try {
-      const accessToken = await requestGmailToken();
-      const imagesWithBase64 = await Promise.all(
-        emailImages.map(async (img, index) => {
-          const base64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(img.file);
-          });
-          return {
-            cid: img.cid,
-            mimeType: img.file.type,
-            base64,
-            placeholder: img.placeholder
-          };
-        })
-      );
+  try {
+    const accessToken = await requestGmailToken();
 
-      const headers = parseCsvRow(lines[0]).map(h => h.trim());
-      let validRecipients = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCsvRow(lines[i]);
-        if (values.length !== headers.length) continue;
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx]?.toString().trim() || '';
+    const imagesWithBase64 = await Promise.all(
+      emailImages.map(async (img, index) => {
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(img.file);
         });
-        if (!isValidEmail(row.email)) continue;
-        const quality = (row.lead_quality || '').trim() || 'HOT';
-        if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
-          validRecipients.push(row);
-        }
-      }
+        return {
+          cid: img.cid,
+          mimeType: img.file.type,
+          base64,
+          placeholder: img.placeholder
+        };
+      })
+    );
 
-      let recipientsToSend = [];
-      if (abTestMode && templateToSend) {
-        const half = Math.ceil(validRecipients.length / 2);
-        if (templateToSend === 'A') recipientsToSend = validRecipients.slice(0, half);
-        else recipientsToSend = validRecipients.slice(half);
-      } else {
-        recipientsToSend = validRecipients;
-      }
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    let validRecipients = [];
 
-      if (recipientsToSend.length === 0) {
-        setStatus('❌ No valid leads for selected criteria.');
-        setIsSending(false);
-        return;
-      }
+    // ✅ FIXED: Find the actual CSV column names from fieldMappings
+    const emailColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'email')?.[1] || 'email';
+    const qualityColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'lead_quality')?.[1] || 'lead_quality';
 
-      setStatus(`Sending to ${recipientsToSend.length} leads...`);
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csvContent: [headers.join(','), ...recipientsToSend.map(r =>
-            headers.map(h => `"${r[h] || ''}"`).join(',')
-          ).join('\n')].join('\n'),
-          senderName,
-          fieldMappings,
-          accessToken,
-          abTestMode,
-          templateA,
-          templateB,
-          templateToSend,
-          leadQualityFilter,
-          emailImages: imagesWithBase64,
-          userId: user.uid
-        })
+    console.log('🔍 Debug - Email column:', emailColumnName);
+    console.log('🔍 Debug - Quality column:', qualityColumnName);
+    console.log('🔍 Debug - Headers:', headers);
+    console.log('🔍 Debug - Lead Quality Filter:', leadQualityFilter);
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvRow(lines[i]);
+      if (values.length !== headers.length) continue;
+
+      const row = {};
+      headers.forEach((header, idx) => {
+        row[header] = values[idx]?.toString().trim() || '';
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setStatus(`✅ ${data.sent}/${data.total} emails sent!`);
-        if (abTestMode) {
-          const newResults = { ...abResults };
-          if (templateToSend === 'A') newResults.a.sent = data.sent;
-          else newResults.b.sent = data.sent;
-          setAbResults(newResults);
-          await setDoc(doc(db, 'ab_results', user.uid), newResults);
-        }
-      } else {
-        setStatus(`❌ ${data.error}`);
+      // ✅ Get email using actual CSV column name
+      const emailValue = row[emailColumnName] || '';
+      if (!isValidEmail(emailValue)) {
+        console.log('❌ Invalid email:', emailValue);
+        continue;
       }
-    } catch (err) {
-      console.error('Send error:', err);
-      setStatus(`❌ ${err.message || 'Failed to send'}`);
-    } finally {
-      setIsSending(false);
+
+      // ✅ Check if quality column exists in headers
+      const hasQualityColumn = headers.includes(qualityColumnName);
+      const quality = hasQualityColumn ? (row[qualityColumnName] || '').trim() || 'HOT' : 'HOT';
+
+      console.log(`📧 ${emailValue} - Quality: ${quality}, Filter: ${leadQualityFilter}`);
+
+      // ✅ Apply quality filter
+      if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) {
+        console.log(`⏭️ Skipping ${emailValue} - Quality mismatch`);
+        continue;
+      }
+
+      // ✅ Normalize row to include 'email' key for consistent rendering
+      const normalizedRow = { ...row, email: emailValue };
+      validRecipients.push(normalizedRow);
+      console.log(`✅ Added ${emailValue} to recipients`);
     }
-  };
+
+    console.log(`📊 Total valid recipients: ${validRecipients.length}`);
+
+    let recipientsToSend = [];
+    if (abTestMode && templateToSend) {
+      const half = Math.ceil(validRecipients.length / 2);
+      if (templateToSend === 'A') recipientsToSend = validRecipients.slice(0, half);
+      else recipientsToSend = validRecipients.slice(half);
+    } else {
+      recipientsToSend = validRecipients;
+    }
+
+    if (recipientsToSend.length === 0) {
+      setStatus('❌ No valid leads for selected criteria.');
+      setIsSending(false);
+      alert(`❌ No valid recipients found!\n\nEmail column: ${emailColumnName}\nQuality column: ${qualityColumnName}\nFilter: ${leadQualityFilter}\n\nCheck browser console for details.`);
+      return;
+    }
+
+    setStatus(`Sending to ${recipientsToSend.length} leads...`);
+
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        csvContent: [headers.join(','), ...recipientsToSend.map(r =>
+          headers.map(h => `"${(r[h] || '').replace(/"/g, '""')}"`).join(',')
+        )].join('\n'),
+        senderName,
+        fieldMappings,
+        accessToken,
+        abTestMode,
+        templateA,
+        templateB,
+        templateToSend,
+        leadQualityFilter,
+        emailImages: imagesWithBase64,
+        userId: user.uid
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      setStatus(`✅ ${data.sent}/${data.total} emails sent!`);
+      if (abTestMode) {
+        const newResults = { ...abResults };
+        if (templateToSend === 'A') newResults.a.sent = data.sent;
+        else newResults.b.sent = data.sent;
+        setAbResults(newResults);
+        await setDoc(doc(db, 'ab_results', user.uid), newResults);
+      }
+    } else {
+      setStatus(`❌ ${data.error}`);
+      alert(`❌ Error: ${data.error}`);
+    }
+  } catch (err) {
+    console.error('Send error:', err);
+    setStatus(`❌ ${err.message || 'Failed to send'}`);
+    alert(`❌ ${err.message || 'Failed to send emails'}`);
+  } finally {
+    setIsSending(false);
+  }
+};
+
 
   // ✅ Auth & Data Loading
   useEffect(() => {
@@ -1395,52 +1417,49 @@ return (
             </div>
           </div>
 
-          {(() => {
-            const allVars = [...new Set([
-              ...extractTemplateVariables(templateA.subject),
-              ...extractTemplateVariables(templateA.body),
-              ...extractTemplateVariables(templateB.subject),
-              ...extractTemplateVariables(templateB.body),
-              ...extractTemplateVariables(whatsappTemplate),
-              ...extractTemplateVariables(smsTemplate),
-              ...extractTemplateVariables(instagramTemplate),
-              ...extractTemplateVariables(twitterTemplate),
-              ...followUpTemplates.flatMap(t => [
-                ...extractTemplateVariables(t.subject || ''),
-                ...extractTemplateVariables(t.body || '')
-              ]),
-              'sender_name',
-              ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
-              ...csvHeaders
-            ])];
-            return (
-              <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-                <h2 className="text-xl font-bold mb-4 text-white">2. Field Mappings</h2>
-                {allVars.map(varName => (
-                  <div key={varName} className="flex items-center mb-2">
-                    <span className="bg-gray-700 px-1 py-0.5 rounded text-xs font-mono mr-2 text-gray-200">
-                      {`{{${varName}}}`}
-                    </span>
-                    <select
-                      value={fieldMappings[varName] || ''}
-                      onChange={(e) => handleMappingChange(varName, e.target.value)}
-                      className="text-xs bg-gray-700 text-white border border-gray-600 rounded px-1 py-0.5 flex-1"
-                    >
-                      <option value="">-- Map to Column --</option>
-                      {csvHeaders.map(col => (
-                        <option key={col} value={col} className="bg-gray-800 text-white">
-                          {col}
-                        </option>
-                      ))}
-                      {varName === 'sender_name' && (
-                        <option value="sender_name">Use sender name</option>
-                      )}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+{/* ✅ FIELD MAPPINGS: SHOW ALL VARS + ALL CSV COLUMNS */}
+<div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
+  <h2 className="text-xl font-bold mb-4 text-white">2. Field Mappings</h2>
+  {(() => {
+    const allVars = [...new Set([
+      ...extractTemplateVariables(templateA.subject),
+      ...extractTemplateVariables(templateA.body),
+      ...extractTemplateVariables(templateB.subject),
+      ...extractTemplateVariables(templateB.body),
+      ...extractTemplateVariables(whatsappTemplate),
+      ...extractTemplateVariables(smsTemplate),
+      ...extractTemplateVariables(instagramTemplate),
+      ...extractTemplateVariables(twitterTemplate),
+      ...followUpTemplates.flatMap(t => [
+        ...extractTemplateVariables(t.subject || ''),
+        ...extractTemplateVariables(t.body || '')
+      ]),
+      'sender_name',
+      ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+      ...csvHeaders
+    ])];
+    return allVars.map(varName => (
+      <div key={varName} className="flex items-center mb-2">
+        <span className="bg-gray-700 px-1.5 py-0.5 rounded text-xs font-mono mr-2 text-gray-200">
+          {`{{${varName}}}`}
+        </span>
+        <select
+          value={fieldMappings[varName] || ''}
+          onChange={(e) => handleMappingChange(varName, e.target.value)}
+          className="text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 flex-1"
+        >
+          <option value="">-- Map to Column --</option>
+          {csvHeaders.map(col => (
+            <option key={col} value={col} className="bg-gray-800 text-gray-200">{col}</option>
+          ))}
+          {varName === 'sender_name' && (
+            <option value="sender_name" className="bg-gray-800 text-gray-200">Use sender name</option>
+          )}
+        </select>
+      </div>
+    ));
+  })()}
+</div>
 
           {abSummary}
         </div>
