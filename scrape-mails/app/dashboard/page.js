@@ -122,12 +122,10 @@ const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
   if (trimmed.length === 0) return false;
-  // Must have exactly one @, and domain must contain a dot
   const parts = trimmed.split('@');
   if (parts.length !== 2) return false;
   const [local, domain] = parts;
-  if (!local || !domain || domain.indexOf('.') === -1) return false;
-  // Simple regex to block spaces and obvious junk
+  if (!local || !domain || !domain.includes('.')) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 };
 const parseCsvRow = (str) => {
@@ -722,7 +720,7 @@ const handleCsvUpload = (e) => {
       return;
     }
 
-    // ✅ You know your exact column order — use it
+    // ✅ YOUR FIXED COLUMN ORDER – DO NOT CHANGE
     const EXPECTED_COLUMNS = [
       'place_id',
       'business_name',
@@ -737,11 +735,11 @@ const handleCsvUpload = (e) => {
       'twitter'
     ];
 
-    // Parse headers (for UI mapping only)
+    // Parse raw headers (for debugging)
     const rawHeaders = parseCsvRow(lines[0]).map(h => h.trim());
-    console.log('🔍 Raw headers from CSV:', rawHeaders);
+    console.log('🔍 Raw CSV headers:', rawHeaders);
 
-    // Rebuild rows using POSITION, not header names
+    // Rebuild rows using POSITIONAL mapping (not header names)
     let hotEmails = 0;
     let warmEmails = 0;
     const validPhoneContacts = [];
@@ -757,15 +755,15 @@ const handleCsvUpload = (e) => {
       for (let j = 0; j < EXPECTED_COLUMNS.length; j++) {
         let val = values[j] || '';
         if (typeof val === 'string') {
-          // Remove zero-width and other invisible Unicode chars
+          // Remove zero-width and invisible Unicode
           val = val.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
         }
         row[EXPECTED_COLUMNS[j]] = val;
       }
 
-      // 🔥 CRITICAL: Now row.email is ALWAYS available
+      // 🔥 Now row.email is guaranteed to exist
       if (isValidEmail(row.email)) {
-        const quality = 'HOT'; // your CSV has no lead_quality, so default
+        const quality = 'HOT'; // your CSV has no lead_quality → default to HOT
         let score = 50;
         if (quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
@@ -780,8 +778,10 @@ const handleCsvUpload = (e) => {
       // Handle WhatsApp
       const formattedPhone = formatForDialing(row.whatsapp_number);
       if (formattedPhone) {
+        // ✅ UNIQUE KEY: include row index `i` + random suffix
+        const uniqueId = `contact-row-${i}-${formattedPhone}-${Math.random().toString(36).slice(2, 10)}`;
         validPhoneContacts.push({
-          id: `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}`,
+          id: uniqueId, // 🔑 this fixes the "duplicate key" error
           business: row.business_name || 'Business',
           address: row.address || '',
           phone: formattedPhone,
@@ -811,7 +811,7 @@ const handleCsvUpload = (e) => {
     setCsvContent(normalizedContent);
     setCsvHeaders(EXPECTED_COLUMNS); // expose correct headers for UI
 
-    // Auto-initialize field mappings
+    // Auto-init field mappings
     const allVars = [...new Set([
       ...extractTemplateVariables(templateA.subject),
       ...extractTemplateVariables(templateA.body),
@@ -837,7 +837,6 @@ const handleCsvUpload = (e) => {
   };
   reader.readAsText(file);
 };
-
   // ✅ Gmail Token
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
