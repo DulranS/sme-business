@@ -122,10 +122,14 @@ const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
   if (trimmed.length === 0) return false;
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(trimmed);
+  // Must have exactly one @, and domain must contain a dot
+  const parts = trimmed.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  if (!local || !domain || domain.indexOf('.') === -1) return false;
+  // Simple regex to block spaces and obvious junk
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 };
-
 const parseCsvRow = (str) => {
   const result = [];
   let current = '';
@@ -699,74 +703,73 @@ const handleCsvUpload = (e) => {
   setWhatsappLinks([]);
   const file = e.target.files?.[0];
   if (!file) return;
+
   const reader = new FileReader();
   reader.onload = (e) => {
-    const rawContent = e.target.result;
-    // ✅ Normalize line endings AND save normalized content
+    let rawContent = e.target.result;
+
+    // 🔥 Remove BOM (common in Excel exports)
+    if (rawContent.charCodeAt(0) === 0xFEFF) {
+      rawContent = rawContent.slice(1);
+    }
+
+    // Normalize line endings
     const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
+
     if (lines.length < 2) {
-      alert('CSV must have headers and data rows.');
+      alert('CSV must have headers and at least one data row.');
       return;
     }
-    const headers = parseCsvRow(lines[0]).map(h => h.trim());
-    setCsvHeaders(headers);
-    setPreviewRecipient(null);
 
-    // ✅ DYNAMICALLY COLLECT ALL TEMPLATE VARIABLES (including Instagram, Twitter, follow-ups)
-    const allTemplateTexts = [
-      templateA.subject, templateA.body,
-      templateB.subject, templateB.body,
-      whatsappTemplate,
-      smsTemplate,
-      instagramTemplate,
-      twitterTemplate,
-      ...followUpTemplates.flatMap(t => [t.subject, t.body])
+    // ✅ You know your exact column order — use it
+    const EXPECTED_COLUMNS = [
+      'place_id',
+      'business_name',
+      'rating',
+      'reviews',
+      'category',
+      'address',
+      'whatsapp_number',
+      'website',
+      'email',
+      'instagram',
+      'twitter'
     ];
 
-    const allVars = [...new Set([
-      ...allTemplateTexts.flatMap(text => extractTemplateVariables(text)),
-      'sender_name',
-      ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
-    ])];
+    // Parse headers (for UI mapping only)
+    const rawHeaders = parseCsvRow(lines[0]).map(h => h.trim());
+    console.log('🔍 Raw headers from CSV:', rawHeaders);
 
-    // ✅ AUTO-INITIALIZE MAPPINGS: template var → matching CSV column
-    const initialMappings = {};
-    allVars.forEach(varName => {
-      if (headers.includes(varName)) {
-        initialMappings[varName] = varName;
-      }
-    });
-    if (headers.includes('email')) initialMappings.email = 'email';
-    initialMappings.sender_name = 'sender_name';
-    setFieldMappings(initialMappings);
-
-    // ✅ PROCESS LEADS
-    let hotEmails = 0, warmEmails = 0;
+    // Rebuild rows using POSITION, not header names
+    let hotEmails = 0;
+    let warmEmails = 0;
     const validPhoneContacts = [];
     const newLeadScores = {};
-    const newLastSent = {};
     let firstValid = null;
 
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
-      if (values.length !== headers.length) continue;
-      const row = {};
-      headers.forEach((header, idx) => {
-        row[header] = values[idx] || '';
-      });
+      if (values.length < EXPECTED_COLUMNS.length) continue;
 
-      // ✅ PROCESS EMAIL LEADS
-      const hasValidEmail = isValidEmail(row.email);
-      if (hasValidEmail) {
-        // ✅ Treat blank lead_quality as 'HOT'
-        const quality = (row.lead_quality || '').trim() || 'HOT';
+      // Build row using known schema by position
+      const row = {};
+      for (let j = 0; j < EXPECTED_COLUMNS.length; j++) {
+        let val = values[j] || '';
+        if (typeof val === 'string') {
+          // Remove zero-width and other invisible Unicode chars
+          val = val.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+        }
+        row[EXPECTED_COLUMNS[j]] = val;
+      }
+
+      // 🔥 CRITICAL: Now row.email is ALWAYS available
+      if (isValidEmail(row.email)) {
+        const quality = 'HOT'; // your CSV has no lead_quality, so default
         let score = 50;
         if (quality === 'HOT') score += 30;
         if (parseFloat(row.rating) >= 4.8) score += 20;
-        if (parseInt(row.review_count) > 100) score += 10;
-        if (clickStats[row.email]?.count > 0) score += 20;
-        if (dealStage[row.email] === 'contacted') score += 10;
+        if (parseInt(row.reviews) > 100) score += 10;
         score = Math.min(100, Math.max(0, score));
         newLeadScores[row.email] = score;
         if (quality === 'HOT') hotEmails++;
@@ -774,13 +777,11 @@ const handleCsvUpload = (e) => {
         if (!firstValid) firstValid = row;
       }
 
-      // ✅ PROCESS PHONE LEADS (even without email)
-      const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
-      const formattedPhone = formatForDialing(rawPhone);
+      // Handle WhatsApp
+      const formattedPhone = formatForDialing(row.whatsapp_number);
       if (formattedPhone) {
-        const contactId = `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}-${Math.random()}`;
         validPhoneContacts.push({
-          id: contactId,
+          id: `${row.email || 'no-email'}-${formattedPhone}-${Date.now()}`,
           business: row.business_name || 'Business',
           address: row.address || '',
           phone: formattedPhone,
@@ -794,16 +795,45 @@ const handleCsvUpload = (e) => {
       }
     }
 
+    // Update state
     setPreviewRecipient(firstValid);
-    if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
-    else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
-    else setValidEmails(hotEmails + warmEmails);
-    
+    if (leadQualityFilter === 'HOT') {
+      setValidEmails(hotEmails);
+    } else if (leadQualityFilter === 'WARM') {
+      setValidEmails(warmEmails);
+    } else {
+      setValidEmails(hotEmails + warmEmails);
+    }
+
     setValidWhatsApp(validPhoneContacts.length);
     setWhatsappLinks(validPhoneContacts);
     setLeadScores(newLeadScores);
-    setLastSent(newLastSent);
-    setCsvContent(normalizedContent); // ✅ Save normalized content
+    setCsvContent(normalizedContent);
+    setCsvHeaders(EXPECTED_COLUMNS); // expose correct headers for UI
+
+    // Auto-initialize field mappings
+    const allVars = [...new Set([
+      ...extractTemplateVariables(templateA.subject),
+      ...extractTemplateVariables(templateA.body),
+      ...extractTemplateVariables(templateB.subject),
+      ...extractTemplateVariables(templateB.body),
+      ...extractTemplateVariables(whatsappTemplate),
+      ...extractTemplateVariables(smsTemplate),
+      ...extractTemplateVariables(instagramTemplate),
+      ...extractTemplateVariables(twitterTemplate),
+      ...followUpTemplates.flatMap(t => [
+        ...extractTemplateVariables(t.subject || ''),
+        ...extractTemplateVariables(t.body || '')
+      ]),
+      'sender_name'
+    ])];
+    const initialMappings = { sender_name: 'sender_name' };
+    allVars.forEach(varName => {
+      if (EXPECTED_COLUMNS.includes(varName)) {
+        initialMappings[varName] = varName;
+      }
+    });
+    setFieldMappings(initialMappings);
   };
   reader.readAsText(file);
 };
