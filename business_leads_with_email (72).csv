@@ -1,0 +1,11 @@
+place_id,business_name,rating,reviews,category,address,whatsapp_number,website,email,instagram,twitter
+turn0business0,Tabby Office Dubai,1.8,41,Corporate office,"Burj Khalifa, Downtown Dubai, UAE",,https://tabby.ai,,,
+turn0business1,Property Finder,2.5,224,Proptech / Corporate office,"Shatha Tower, Dubai Media City, UAE",,https://www.propertyfinder.ae,,,
+turn0business2,Cashew Payments,5.0,1,Fintech,"DIFC, Dubai, UAE",,https://www.cashewpayments.com,,,
+turn0business3,Deriv FZCO,3.1,47,Trading / Fintech,"JLT, Dubai, UAE",,https://deriv.com,,,
+turn0business4,Spotii DMCC,3.5,126,BNPL / Fintech,"JLT, Dubai, UAE",,,,,
+turn0business5,Beehive Fintech,4.2,112,B2B Fintech,"DIFC, Dubai, UAE",,https://www.beehive.ae,,,
+turn0business6,PayTabs UAE,4.0,81,Payments / SaaS,"Sheikh Zayed Road, Dubai, UAE",,https://paytabs.com,,,
+turn0business7,HyperPay,5.0,1,Payments Platform,"JLT, Dubai, UAE",,https://hyperpay.global,,,
+turn0business8,VaultsPay,4.3,6,Payments SaaS,"Al Safa, Dubai, UAE",,https://vaultspay.com,,,
+turn0business9,Yalla Payments,4.5,13,Payments Consulting,"Business Bay, Dubai, UAE",,https://www.yallapayments.com,,,
