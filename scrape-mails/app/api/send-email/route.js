@@ -53,13 +53,19 @@ function parseCsvRow(str) {
   );
 }
 
-// ✅ IMPROVED EMAIL VALIDATION (handles real-world cases)
+// ✅ BULLETPROOF EMAIL VALIDATION - accepts almost anything valid
 function isValidEmail(email) {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
-  if (trimmed.length === 0) return false;
-  // Allow common variations (Gmail dots, plus addressing, etc.)
-  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(trimmed);
+  if (trimmed.length < 3) return false;
+  if (trimmed.startsWith('[') || trimmed.endsWith(']')) return false;
+  if (trimmed === 'undefined' || trimmed === 'null' || trimmed === '') return false;
+  // Ultra-lenient: just needs @ and something after it
+  const atIndex = trimmed.indexOf('@');
+  if (atIndex < 1 || atIndex === trimmed.length - 1) return false;
+  const afterAt = trimmed.substring(atIndex + 1);
+  // Must have at least one dot after @
+  return afterAt.includes('.') && afterAt.length > 1;
 }
 
 export async function POST(req) {
@@ -96,62 +102,102 @@ export async function POST(req) {
     const rawHeaders = parseCsvRow(lines[0]);
     const headers = rawHeaders.map(h => h.trim());
     
+    console.log('[CSV PARSE] Headers found:', headers);
+    
     // ✅ CRITICAL FIX: Auto-detect email column
     const emailCol = findEmailColumn(headers, fieldMappings);
     if (!emailCol) {
+      console.error('[CSV PARSE] No email column found. Headers:', headers);
       return Response.json({ 
         error: `No email column found. Check your CSV headers: ${headers.join(', ')}` 
       }, { status: 400 });
     }
 
+    console.log('[CSV PARSE] Email column detected:', emailCol);
+    
     // ✅ CRITICAL FIX: Auto-detect lead quality column
     const qualityCol = fieldMappings.lead_quality 
       ? headers.find(h => h.toLowerCase() === fieldMappings.lead_quality.toLowerCase())
-      : 'lead_quality';
+      : null;
     
-    const hasQualityField = qualityCol && headers.includes(qualityCol);
+    const hasQualityField = qualityCol !== null;
 
     const recipients = [];
     const template = templateToSend === 'B' ? templateB : templateA;
+    let skippedCount = 0;
+    let invalidEmailCount = 0;
+    let emptyRowCount = 0;
+    let qualityFilterSkipped = 0;
+
+    console.log(`[PARSE START] Processing ${lines.length - 1} data rows, email column: "${emailCol}"`);
 
     // Process data rows
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
-      if (values.length !== headers.length) continue;
+      
+      // Skip completely empty rows
+      if (!values || values.length === 0 || !values.some(v => v?.trim())) {
+        emptyRowCount++;
+        continue;
+      }
 
       const row = {};
-      headers.forEach((h, idx) => row[h] = values[idx]?.trim() || '');
+      // LENIENT: Map all available values to headers, don't care about count mismatch
+      headers.forEach((h, idx) => {
+        row[h] = (values[idx] || '').trim();
+      });
 
-      // ✅ Use detected email column
-      const email = row[emailCol];
-      if (!isValidEmail(email)) continue;
+      // ✅ CRITICAL: Get email from the detected column
+      const rawEmail = row[emailCol];
+      const email = rawEmail?.trim();
+      
+      if (!isValidEmail(email)) {
+        invalidEmailCount++;
+        if (i <= 3) console.log(`[PARSE] Row ${i}: Rejected - invalid email: "${email}"`);
+        continue;
+      }
 
-      // Apply lead quality filter if column exists
-      if (hasQualityField) {
-        const quality = (row[qualityCol] || '').trim() || 'HOT';
-        if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) continue;
+      // ✅ Apply lead quality filter ONLY if explicitly set (not 'all')
+      if (hasQualityField && leadQualityFilter && leadQualityFilter !== 'all') {
+        const quality = (row[qualityCol] || '').trim().toUpperCase();
+        // Only skip if quality column has a value AND it doesn't match filter
+        if (quality && quality !== leadQualityFilter.toUpperCase()) {
+          qualityFilterSkipped++;
+          if (i <= 3) console.log(`[PARSE] Row ${i}: Filtered by quality - got "${quality}", wanted "${leadQualityFilter}"`);
+          continue;
+        }
       }
 
       recipients.push({ ...row, email });
     }
+    
+    const parseLog = `[PARSE COMPLETE] Rows: ${lines.length - 1} → Recipients: ${recipients.length} (Invalid emails: ${invalidEmailCount}, Empty: ${emptyRowCount}, Quality filtered: ${qualityFilterSkipped})`;
+    console.log(parseLog);
 
     if (recipients.length === 0) {
-      // ✅ IMPROVED ERROR MESSAGE WITH DEBUG INFO
+      // ✅ DIAGNOSTIC MODE: Show you EXACTLY what went wrong
+      console.error('[PARSE ERROR] No recipients found! Diagnostic info:');
+      console.error('  Email column:', emailCol);
+      console.error('  Quality column:', qualityCol);
+      console.error('  Quality filter:', leadQualityFilter);
+      console.error('  Headers:', headers);
+      
+      if (lines[1]) {
+        const firstRowRaw = parseCsvRow(lines[1]);
+        const firstRowMapped = {};
+        headers.forEach((h, i) => firstRowMapped[h] = firstRowRaw[i] || '');
+        console.error('  First data row (raw):', firstRowRaw);
+        console.error('  First data row (mapped):', firstRowMapped);
+        console.error('  Email from row:', firstRowMapped[emailCol]);
+        console.error('  Email valid?', isValidEmail(firstRowMapped[emailCol]));
+      }
+      
+      const diagMsg = `No valid recipients. Debug: emailCol="${emailCol}", qualityFilter="${leadQualityFilter}", totalRows=${lines.length - 1}. Check browser console for full diagnostics.`;
       return Response.json({ 
-        error: `No valid recipients found. 
-        • Email column used: "${emailCol}" 
-        • Quality column: ${qualityCol ? `"${qualityCol}"` : 'none'}
-        • Filter: "${leadQualityFilter}"
-        • Total rows processed: ${lines.length - 1}
-        • Sample headers: ${headers.slice(0, 5).join(', ')}
-        Check your CSV structure and field mappings.`,
-        debug: {
-          emailCol,
-          qualityCol,
-          leadQualityFilter,
-          headers,
-          sampleRow: lines[1] ? parseCsvRow(lines[1]) : null
-        }
+        error: diagMsg,
+        headers,
+        emailColumn: emailCol,
+        firstRow: lines[1] ? Object.fromEntries(headers.map((h, i) => [h, parseCsvRow(lines[1])[i] || ''])) : null
       }, { status: 400 });
     }
 
@@ -192,30 +238,52 @@ export async function POST(req) {
   }
 }
 
-// ✅ AUTO-DETECT EMAIL COLUMN (critical fix)
+// ✅ AUTO-DETECT EMAIL COLUMN (bulletproof version)
 function findEmailColumn(headers, fieldMappings) {
+  if (!headers || headers.length === 0) return null;
+  
   // 1. Check field mappings first (user-defined)
-  if (fieldMappings.email) {
+  if (fieldMappings?.email) {
     const mappedCol = headers.find(h => 
       h.toLowerCase() === fieldMappings.email.toLowerCase()
     );
-    if (mappedCol) return mappedCol;
+    if (mappedCol) {
+      console.log('[EMAIL COL] Found via fieldMappings:', mappedCol);
+      return mappedCol;
+    }
   }
 
-  // 2. Try common email column names
+  // 2. Try exact and common email column names (highest priority)
   const emailCandidates = [
     'email', 'Email', 'EMAIL', 
-    'email_address', 'Email Address', 'contact_email',
-    'primary_email', 'business_email'
+    'email_address', 'Email Address', 'emailaddress',
+    'contact_email', 'e-mail', 'E-mail',
+    'primary_email', 'business_email', 'work_email',
+    'mail', 'Mail', 'MAIL'
   ];
   
   for (const candidate of emailCandidates) {
     const match = headers.find(h => h.toLowerCase() === candidate.toLowerCase());
-    if (match) return match;
+    if (match) {
+      console.log('[EMAIL COL] Found via exact match:', match);
+      return match;
+    }
   }
 
   // 3. Fallback: find any header containing "email"
-  return headers.find(h => h.toLowerCase().includes('email'));
+  const emailMatch = headers.find(h => h.toLowerCase().includes('email'));
+  if (emailMatch) {
+    console.log('[EMAIL COL] Found via substring match:', emailMatch);
+    return emailMatch;
+  }
+  
+  // 4. Last resort: try first column as email (might work)
+  if (headers.length > 0) {
+    console.log('[EMAIL COL] WARNING: Using first column as fallback:', headers[0]);
+    return headers[0];
+  }
+  
+  return null;
 }
 
 // Rest of the functions remain the same (buildPlainTextEmail, buildHtmlEmail, saveSentEmailRecord)
