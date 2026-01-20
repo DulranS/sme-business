@@ -58,14 +58,20 @@ function isValidEmail(email) {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
   if (trimmed.length < 3) return false;
-  if (trimmed.startsWith('[') || trimmed.endsWith(']')) return false;
-  if (trimmed === 'undefined' || trimmed === 'null' || trimmed === '') return false;
-  // Ultra-lenient: just needs @ and something after it
+  if (trimmed === 'undefined' || trimmed === 'null' || trimmed === '' || trimmed === 'NA' || trimmed === 'N/A') return false;
+  if (trimmed.startsWith('[') || trimmed.includes('[MISSING')) return false;
+  
+  // Must have @ symbol
   const atIndex = trimmed.indexOf('@');
   if (atIndex < 1 || atIndex === trimmed.length - 1) return false;
+  
   const afterAt = trimmed.substring(atIndex + 1);
-  // Must have at least one dot after @
-  return afterAt.includes('.') && afterAt.length > 1;
+  // After @ must have at least one dot and something after it
+  const dotIndex = afterAt.indexOf('.');
+  if (dotIndex < 1 || dotIndex === afterAt.length - 1) return false;
+  
+  // Must have at least one character for domain name, then dot, then TLD
+  return true;
 }
 
 export async function POST(req) {
@@ -138,7 +144,7 @@ export async function POST(req) {
     let emptyRowCount = 0;
     let qualityFilterSkipped = 0;
 
-    console.log(`[PARSE START] Processing ${lines.length - 1} data rows, email column: "${emailCol}"`);
+    console.log(`[PARSE START] Processing ${lines.length - 1} data rows, email column: "${emailCol}", shouldApplyQualityFilter: ${shouldApplyQualityFilter}`);
 
     // Process data rows
     for (let i = 1; i < lines.length; i++) {
@@ -160,9 +166,15 @@ export async function POST(req) {
       const rawEmail = row[emailCol];
       const email = rawEmail?.trim();
       
+      if (!email) {
+        invalidEmailCount++;
+        if (i <= 3) console.log(`[PARSE] Row ${i}: Empty email field`);
+        continue;
+      }
+      
       if (!isValidEmail(email)) {
         invalidEmailCount++;
-        if (i <= 3) console.log(`[PARSE] Row ${i}: Rejected - invalid email: "${email}"`);
+        if (i <= 5) console.log(`[PARSE] Row ${i}: Invalid email format: "${email}"`);
         continue;
       }
 
@@ -191,38 +203,38 @@ export async function POST(req) {
 
     if (recipients.length === 0) {
       // ✅ DIAGNOSTIC MODE: Show you EXACTLY what went wrong
-      console.error('[PARSE ERROR] No recipients found! Diagnostic info:');
+      console.error('[PARSE ERROR] No recipients found! Full diagnostic:');
       console.error('  Email column:', emailCol);
       console.error('  Quality column:', qualityCol);
+      console.error('  Should apply quality filter:', shouldApplyQualityFilter);
       console.error('  Quality filter:', leadQualityFilter);
-      console.error('  Has quality field:', hasQualityField);
       console.error('  Headers:', headers);
+      console.error('  Total rows processed:', lines.length - 1);
+      console.error('  Invalid emails: ' + invalidEmailCount);
+      console.error('  Empty fields: ' + emptyRowCount);
+      console.error('  Quality filtered: ' + qualityFilterSkipped);
       
       if (lines[1]) {
         const firstRowRaw = parseCsvRow(lines[1]);
         const firstRowMapped = {};
         headers.forEach((h, i) => firstRowMapped[h] = firstRowRaw[i] || '');
-        console.error('  First data row (mapped):', firstRowMapped);
+        console.error('  FIRST ROW DATA:', firstRowMapped);
         const emailFromRow = firstRowMapped[emailCol];
-        console.error('  Email from row:', emailFromRow);
+        console.error('  Email from first row:', emailFromRow);
         console.error('  Email valid?', isValidEmail(emailFromRow));
-        if (hasQualityField) {
-          console.error('  Quality from row:', firstRowMapped[qualityCol]);
-        }
       }
       
-      const suggestion = !hasQualityField && leadQualityFilter && leadQualityFilter !== 'all'
-        ? ' (Quality column not found - try sending with filter="all")'
-        : '';
-      
-      const diagMsg = `No valid recipients.${suggestion} Debug: emailCol="${emailCol}", qualityCol="${qualityCol}", filter="${leadQualityFilter}", rows=${lines.length - 1}. Check browser console.`;
+      const diagMsg = `No valid recipients found. Processed ${lines.length - 1} rows: ${invalidEmailCount} invalid emails, ${emptyRowCount} empty, ${qualityFilterSkipped} filtered. See console for details.`;
       return Response.json({ 
         error: diagMsg,
-        suggestion: suggestion.slice(2, -1),
-        headers,
+        stats: {
+          totalRows: lines.length - 1,
+          invalidEmails: invalidEmailCount,
+          emptyFields: emptyRowCount,
+          qualityFiltered: qualityFilterSkipped
+        },
         emailColumn: emailCol,
-        qualityColumn: qualityCol,
-        firstRow: lines[1] ? Object.fromEntries(headers.map((h, i) => [h, parseCsvRow(lines[1])[i] || ''])) : null
+        qualityColumn: qualityCol
       }, { status: 400 });
     }
 
