@@ -1146,13 +1146,31 @@ Check browser console for details.`);
       }
       
       setStatus(`Sending to ${recipientsToSend.length} leads...`);
+      
+      // ✅ SMARTER CSV RECONSTRUCTION - Only quote fields that need it
+      const csvLines = [headers.join(',')];
+      for (const row of recipientsToSend) {
+        const csvFields = headers.map(h => {
+          const val = (row[h] || '').toString().trim();
+          // Only quote if contains comma, quotes, or newlines
+          if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+            return `"${val.replace(/"/g, '""')}"`;
+          }
+          return val;
+        });
+        csvLines.push(csvFields.join(','));
+      }
+      const reconstructedCsv = csvLines.join('\n');
+      
+      console.log('📤 Reconstructed CSV sample (first 3 rows):');
+      console.log(csvLines.slice(0, 3).join('\n'));
+      console.log(`✅ Total rows being sent: ${recipientsToSend.length}`);
+      
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          csvContent: [headers.join(','), ...recipientsToSend.map(r =>
-            headers.map(h => `"${(r[h] || '').replace(/"/g, '""')}"`).join(',')
-          ).join('\n')].join('\n'),
+          csvContent: reconstructedCsv,
           senderName,
           fieldMappings,
           accessToken,

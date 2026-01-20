@@ -107,6 +107,68 @@ function cleanEmail(email) {
     .trim();
 }
 
+// ✅ DIAGNOSTIC: Why did email validation fail?
+function getEmailValidationFailureReasons(email) {
+  const reasons = [];
+  
+  if (!email || typeof email !== 'string') {
+    reasons.push('Not a string or empty');
+    return reasons;
+  }
+  
+  if (email.length < 5) {
+    reasons.push(`Too short (${email.length} chars)`);
+  }
+  if (email === 'undefined' || email === 'null' || email === 'na' || email === 'n/a') {
+    reasons.push('Placeholder value');
+  }
+  if (email.startsWith('[') || email.includes('missing')) {
+    reasons.push('Contains [MISSING] marker');
+  }
+  
+  const atCount = (email.match(/@/g) || []).length;
+  if (atCount !== 1) {
+    reasons.push(`Wrong @ count: ${atCount}`);
+  }
+  
+  if (atCount === 1) {
+    const parts = email.split('@');
+    const localPart = parts[0];
+    const domainPart = parts[1];
+    
+    if (!localPart || localPart.length < 1) {
+      reasons.push('Empty local part');
+    }
+    if (localPart.startsWith('.') || localPart.endsWith('.')) {
+      reasons.push('Local part starts/ends with dot');
+    }
+    
+    if (!domainPart || domainPart.length < 3) {
+      reasons.push(`Domain too short: "${domainPart}"`);
+    }
+    if (!domainPart.includes('.')) {
+      reasons.push('Domain has no dot');
+    }
+    if (domainPart.startsWith('.') || domainPart.endsWith('.')) {
+      reasons.push('Domain starts/ends with dot');
+    }
+    
+    if (domainPart && domainPart.includes('.')) {
+      const domainBits = domainPart.split('.');
+      const tld = domainBits[domainBits.length - 1];
+      
+      if (!tld || tld.length < 2 || tld.length > 6) {
+        reasons.push(`Invalid TLD: "${tld}" (len=${tld?.length})`);
+      }
+      if (tld && !/^[a-z]+$/.test(tld)) {
+        reasons.push(`TLD has non-letters: "${tld}"`);
+      }
+    }
+  }
+  
+  return reasons.length === 0 ? ['Unknown'] : reasons;
+}
+
 export async function POST(req) {
   try {
     const {
@@ -176,6 +238,7 @@ export async function POST(req) {
     let emptyRowCount = 0;
     let qualityFilterSkipped = 0;
     const emailSamples = []; // Collect first 10 emails for debugging
+    const invalidSamples = []; // Collect first 10 INVALID emails for debugging
 
     console.log(`[PARSE START] Processing ${lines.length - 1} data rows, email column: "${emailCol}", shouldApplyQualityFilter: ${shouldApplyQualityFilter}`);
 
@@ -204,16 +267,17 @@ export async function POST(req) {
         continue;
       }
       
-      // Log first 10 raw emails to debug format issues
+      // Log first 10 raw emails to debug format issues (BOTH valid and invalid)
       if (emailSamples.length < 10) {
-        emailSamples.push({ raw: rawEmail, cleaned: email, valid: isValidEmail(email) });
+        const isValid = isValidEmail(email);
+        emailSamples.push({ raw: rawEmail, cleaned: email, valid: isValid });
+        if (!isValid && invalidSamples.length < 10) {
+          invalidSamples.push({ raw: rawEmail, cleaned: email, reasons: getEmailValidationFailureReasons(email) });
+        }
       }
       
       if (!isValidEmail(email)) {
         invalidEmailCount++;
-        if (invalidEmailCount <= 3) {
-          console.log(`  [INVALID EMAIL #${invalidEmailCount}] Raw: "${rawEmail}" | Cleaned: "${email}"`);
-        }
         continue;
       }
 
@@ -246,19 +310,27 @@ export async function POST(req) {
       console.error('  Empty fields: ' + emptyRowCount);
       console.error('  Quality filtered: ' + qualityFilterSkipped);
       console.error('  EMAIL FORMAT SAMPLES:', emailSamples);
+      console.error('  WHY EMAILS FAILED:', invalidSamples);
       
       // Provide intelligent guidance based on what went wrong
       let guidance = '';
+      let detailedReasons = '';
+      
       if (emptyRowCount === lines.length - 1) {
         guidance = ' ALL EMAIL FIELDS ARE EMPTY - Your CSV has no email data at all.';
-      } else if (invalidEmailCount > emptyRowCount) {
-        guidance = ` Check EMAIL FORMAT SAMPLES in console. Emails don't look right.`;
+      } else if (invalidEmailCount > emptyRowCount * 5) {
+        guidance = ` MOST EMAILS ARE INVALID - Check EMAIL FORMAT SAMPLES in console.`;
+        if (invalidSamples.length > 0) {
+          detailedReasons = invalidSamples.slice(0, 3).map(s => 
+            `  • "${s.raw}" → cleaned to "${s.cleaned}": ${s.reasons.join(', ')}`
+          ).join('\n');
+        }
       } else if (qualityFilterSkipped > 0 && recipients.length === 0) {
         guidance = ` All rows were filtered by lead quality. Remove quality filter or add more data.`;
       }
       
       const diagMsg = `No valid recipients.${guidance} Processed ${lines.length - 1} rows: ${invalidEmailCount} invalid, ${emptyRowCount} empty, ${qualityFilterSkipped} quality-filtered.`;
-      return Response.json({ 
+      const fullResponse = {
         error: diagMsg,
         stats: {
           totalRows: lines.length - 1,
@@ -268,8 +340,14 @@ export async function POST(req) {
         },
         emailColumn: emailCol,
         samples: emailSamples,
-        guidance
-      }, { status: 400 });
+        invalidDetails: invalidSamples.slice(0, 5),
+        guidance,
+        detailedReasons
+      };
+      
+      console.error('FULL DIAGNOSTIC:', fullResponse);
+      
+      return Response.json(fullResponse, { status: 400 });
     }
 
     const oauth2Client = new google.auth.OAuth2();

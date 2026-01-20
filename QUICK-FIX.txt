@@ -1,0 +1,84 @@
+# ⚡ QUICK FIX REFERENCE
+
+## What Broke
+- 92% of emails rejected with no explanation
+- CSV parsing issue causing valid emails to become invalid
+- Zero visibility into what was happening
+
+## What I Fixed
+1. **Dashboard CSV reconstruction** - Only quote fields that need it
+2. **API validation diagnostics** - Shows WHY each email failed
+3. **Better logging** - Console shows exactly what's being sent/received
+
+## How to Test
+
+### Test 1: Run Validation Tests (2 seconds)
+```bash
+python test-email-validation.py
+```
+Shows all validation rules in action
+
+### Test 2: Analyze Your CSVs (5 seconds)
+```bash
+python check-csv-emails.py
+```
+Shows which CSVs are usable
+
+### Test 3: Upload a Test CSV
+- Create `test.csv` with a few emails you know work
+- Upload through dashboard
+- Check browser console (F12 → Console tab)
+- Should see: `✅ Total rows being sent: X`
+
+## If Still Failing
+
+### Check 1: Browser Console
+F12 → Console → Look for:
+```
+📤 Reconstructed CSV sample (first 3 rows):
+```
+
+### Check 2: Network Response
+F12 → Network → Click `send-email` POST → Response tab
+Look for `invalidDetails` array showing which emails failed and why
+
+### Check 3: Run Validator on That Email
+```bash
+python test-email-validation.py "the-email@that-failed.com"
+```
+Shows exactly why it's being rejected
+
+## Email Validation Rules
+
+Must be in format: `localpart@domain.tld`
+
+**Valid:**
+- `john@example.com` ✅
+- `john.doe@example.co.uk` ✅
+- `user+tag@example.com` ✅
+
+**Invalid:**
+- `john@example.c` ❌ (TLD too short)
+- `john@example` ❌ (no TLD)
+- `@example.com` ❌ (no local part)
+- `john@@example.com` ❌ (double @)
+
+## Files Changed
+
+| What | File | Line |
+|------|------|------|
+| CSV Fix | dashboard/page.js | ~1094 |
+| Diagnostics | route.js | ~37-153, ~300-330 |
+| New Tools | test-email-validation.py | NEW |
+| Docs | DEBUG-EMAIL-ERRORS.md | NEW |
+
+## Next Step
+
+1. Try uploading a test CSV
+2. Open browser console (F12)
+3. Report back with the error message from `invalidDetails`
+4. I'll tell you exactly what's wrong
+
+---
+
+**TL;DR**: Code was fixed. High rejection rate was likely CSV data quality issue. Use the diagnostic tools to identify exactly which emails/why they're failing.
