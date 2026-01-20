@@ -6,7 +6,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, u
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 import { useRouter } from 'next/navigation';
-import AiLeadEngine from './components/AiLeadEngine'; // ✅ IMPORT THE AI LEAD ENGINE
+import AiLeadEngine from '../components/AiLeadEngine';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
