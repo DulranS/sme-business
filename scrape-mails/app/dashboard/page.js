@@ -1195,7 +1195,32 @@ Check browser console for details.`);
         }
       } else {
         setStatus(`❌ ${data.error}`);
-        alert(`❌ Error: ${data.error}`);
+        
+        // 🚨 CRITICAL DEBUG OUTPUT
+        console.error('╔════════════════════════════════════════════════════════════╗');
+        console.error('║          EMAIL SEND ERROR - DEBUG INFORMATION              ║');
+        console.error('╚════════════════════════════════════════════════════════════╝');
+        console.error('');
+        console.error('ERROR STATS:', data.stats);
+        console.error('EMAIL COLUMN:', data.emailColumn);
+        console.error('');
+        console.error('FIRST 5 INVALID EMAILS (THIS IS YOUR KEY):');
+        if (data.invalidDetails && data.invalidDetails.length > 0) {
+          data.invalidDetails.forEach((invalid, idx) => {
+            console.error(`  ${idx + 1}. Raw: "${invalid.raw}"`);
+            console.error(`     Cleaned: "${invalid.cleaned}"`);
+            console.error(`     Reasons: ${invalid.reasons.join(', ')}`);
+            console.error('');
+          });
+        } else {
+          console.error('  (No invalidDetails found)');
+        }
+        console.error('FULL RESPONSE:', data);
+        console.error('');
+        console.error('📋 COPY THE SECTION ABOVE AND SEND IT TO DEVELOPER');
+        console.error('╔════════════════════════════════════════════════════════════╗');
+        
+        alert(`❌ Error: ${data.error}\n\nCheck Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAILS"`);
       }
     } catch (err) {
       console.error('Send error:', err);
