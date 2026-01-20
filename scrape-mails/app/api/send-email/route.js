@@ -116,11 +116,16 @@ export async function POST(req) {
     console.log('[CSV PARSE] Email column detected:', emailCol);
     
     // ✅ CRITICAL FIX: Auto-detect lead quality column
-    const qualityCol = fieldMappings.lead_quality 
+    const qualityCol = fieldMappings?.lead_quality 
       ? headers.find(h => h.toLowerCase() === fieldMappings.lead_quality.toLowerCase())
       : null;
     
     const hasQualityField = qualityCol !== null;
+    
+    // ⚠️ IMPORTANT: Warn if filter passed but no quality column found
+    if (leadQualityFilter && leadQualityFilter !== 'all' && !hasQualityField) {
+      console.warn(`[PARSE WARNING] Quality filter "${leadQualityFilter}" requested but NO quality column found. Ignoring filter.`);
+    }
 
     const recipients = [];
     const template = templateToSend === 'B' ? templateB : templateA;
@@ -157,7 +162,8 @@ export async function POST(req) {
         continue;
       }
 
-      // ✅ Apply lead quality filter ONLY if explicitly set (not 'all')
+      // ✅ Apply lead quality filter ONLY if column actually exists AND filter is set
+      // NEVER apply filter if quality column wasn't found - that would silently drop all rows!
       if (hasQualityField && leadQualityFilter && leadQualityFilter !== 'all') {
         const quality = (row[qualityCol] || '').trim().toUpperCase();
         // Only skip if quality column has a value AND it doesn't match filter
@@ -173,6 +179,11 @@ export async function POST(req) {
     
     const parseLog = `[PARSE COMPLETE] Rows: ${lines.length - 1} → Recipients: ${recipients.length} (Invalid emails: ${invalidEmailCount}, Empty: ${emptyRowCount}, Quality filtered: ${qualityFilterSkipped})`;
     console.log(parseLog);
+    
+    // ⚠️ Show sample recipients for debugging
+    if (recipients.length > 0 && recipients.length <= 10) {
+      console.log('[SAMPLE RECIPIENTS]', recipients.slice(0, 3).map(r => r.email));
+    }
 
     if (recipients.length === 0) {
       // ✅ DIAGNOSTIC MODE: Show you EXACTLY what went wrong
@@ -180,23 +191,33 @@ export async function POST(req) {
       console.error('  Email column:', emailCol);
       console.error('  Quality column:', qualityCol);
       console.error('  Quality filter:', leadQualityFilter);
+      console.error('  Has quality field:', hasQualityField);
       console.error('  Headers:', headers);
       
       if (lines[1]) {
         const firstRowRaw = parseCsvRow(lines[1]);
         const firstRowMapped = {};
         headers.forEach((h, i) => firstRowMapped[h] = firstRowRaw[i] || '');
-        console.error('  First data row (raw):', firstRowRaw);
         console.error('  First data row (mapped):', firstRowMapped);
-        console.error('  Email from row:', firstRowMapped[emailCol]);
-        console.error('  Email valid?', isValidEmail(firstRowMapped[emailCol]));
+        const emailFromRow = firstRowMapped[emailCol];
+        console.error('  Email from row:', emailFromRow);
+        console.error('  Email valid?', isValidEmail(emailFromRow));
+        if (hasQualityField) {
+          console.error('  Quality from row:', firstRowMapped[qualityCol]);
+        }
       }
       
-      const diagMsg = `No valid recipients. Debug: emailCol="${emailCol}", qualityFilter="${leadQualityFilter}", totalRows=${lines.length - 1}. Check browser console for full diagnostics.`;
+      const suggestion = !hasQualityField && leadQualityFilter && leadQualityFilter !== 'all'
+        ? ' (Quality column not found - try sending with filter="all")'
+        : '';
+      
+      const diagMsg = `No valid recipients.${suggestion} Debug: emailCol="${emailCol}", qualityCol="${qualityCol}", filter="${leadQualityFilter}", rows=${lines.length - 1}. Check browser console.`;
       return Response.json({ 
         error: diagMsg,
+        suggestion: suggestion.slice(2, -1),
         headers,
         emailColumn: emailCol,
+        qualityColumn: qualityCol,
         firstRow: lines[1] ? Object.fromEntries(headers.map((h, i) => [h, parseCsvRow(lines[1])[i] || ''])) : null
       }, { status: 400 });
     }
