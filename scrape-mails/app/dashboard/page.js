@@ -116,15 +116,42 @@ const extractTemplateVariables = (text) => {
   return [...new Set(matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, '').trim()))];
 };
 
+// ✅ SYNC WITH API: Use the EXACT same validation rules
 const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
-  const trimmed = email.trim();
-  if (trimmed.length === 0) return false;
-  const parts = trimmed.split('@');
-  if (parts.length !== 2) return false;
-  const [local, domain] = parts;
-  if (!local || !domain || !domain.includes('.')) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  
+  let cleaned = email.trim()
+    .toLowerCase()
+    .replace(/^["'`]+/, '')
+    .replace(/["'`]+$/, '')
+    .replace(/\s+/g, '')
+    .replace(/[<>]/g, '');
+  
+  if (cleaned.length < 5) return false;
+  if (cleaned === 'undefined' || cleaned === 'null' || cleaned === 'na' || cleaned === 'n/a') return false;
+  if (cleaned.startsWith('[') || cleaned.includes('missing')) return false;
+  
+  const atCount = (cleaned.match(/@/g) || []).length;
+  if (atCount !== 1) return false;
+  
+  const parts = cleaned.split('@');
+  const [localPart, domainPart] = parts;
+  
+  if (!localPart || localPart.length < 1) return false;
+  if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
+  
+  if (!domainPart || domainPart.length < 3) return false;
+  if (!domainPart.includes('.')) return false;
+  if (domainPart.startsWith('.') || domainPart.endsWith('.')) return false;
+  
+  const domainBits = domainPart.split('.');
+  const tld = domainBits[domainBits.length - 1];
+  
+  if (!tld || tld.length < 2 || tld.length > 6) return false;
+  if (!/^[a-z0-9-]+$/.test(tld)) return false;
+  if (tld.startsWith('-') || tld.endsWith('-')) return false;
+  
+  return true;
 };
 
 const parseCsvRow = (str) => {
