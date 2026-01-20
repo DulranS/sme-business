@@ -9,8 +9,7 @@ const firebaseConfig = {
   projectId: "email-marketing-c775d",
   storageBucket: "email-marketing-c775d.firebasestorage.app",
   messagingSenderId: "178196903576",
-  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed",
-  measurementId: "G-6CL2EGLEVH"
+  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed"
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -18,18 +17,14 @@ const db = getFirestore(app);
 
 function renderText(text, recipient, mappings, sender) {
   if (!text) return '';
-  let result = text;
-  Object.entries(mappings).forEach(([varName, col]) => {
-    const regex = new RegExp(`{{\\s*${varName}\\s*}}`, 'g');
-    if (varName === 'sender_name') {
-      result = result.replace(regex, sender || 'Team');
-    } else if (recipient && col && recipient[col] !== undefined) {
-      result = result.replace(regex, String(recipient[col]));
-    } else {
-      result = result.replace(regex, `[MISSING: ${varName}]`);
-    }
+  return text.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, varName) => {
+    const cleanVar = varName.trim();
+    if (cleanVar === 'sender_name') return sender || 'Team';
+    const col = mappings[cleanVar];
+    return col && recipient[col] !== undefined 
+      ? String(recipient[col]) 
+      : `[MISSING: ${cleanVar}]`;
   });
-  return result;
 }
 
 function parseCsvRow(str) {
@@ -45,19 +40,24 @@ function parseCsvRow(str) {
         i++;
       } else inQuotes = false;
     } else if (char === ',' && !inQuotes) {
-      result.push(current); current = '';
+      result.push(current); 
+      current = '';
     } else current += char;
   }
   result.push(current);
-  return result.map(field => field.replace(/[\r\n]/g, '').trim().replace(/^"(.*)"$/, '$1').replace(/""/g, '"'));
+  return result.map(field => 
+    field.replace(/[\r\n]/g, '')
+      .trim()
+      .replace(/^"(.*)"$/, '$1')
+      .replace(/""/g, '"')
+  );
 }
 
 function isValidEmail(email) {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
   if (trimmed.length === 0) return false;
-  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-  return emailRegex.test(trimmed);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
 export async function POST(req) {
@@ -72,11 +72,11 @@ export async function POST(req) {
       templateToSend,
       userId,
       emailImages = [],
-      leadQualityFilter
+      leadQualityFilter = 'all'
     } = await req.json();
 
     if (!csvContent || !accessToken || !userId) {
-      return Response.json({ error: 'Missing required fields: csvContent, accessToken, or userId' }, { status: 400 });
+      return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const lines = csvContent
@@ -86,66 +86,38 @@ export async function POST(req) {
       .filter(line => line.trim() !== '');
 
     if (lines.length < 2) {
-      return Response.json({ error: 'Invalid CSV' }, { status: 400 });
+      return Response.json({ error: 'Invalid CSV format' }, { status: 400 });
     }
 
     const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    const emailCol = fieldMappings.email || 'email';
+    const qualityCol = fieldMappings.lead_quality || 'lead_quality';
+    const hasQualityField = headers.includes(qualityCol);
+
     const recipients = [];
-
-    // ✅ FIXED: Find the actual CSV column names from fieldMappings
-    const emailColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'email')?.[1] || 'email';
-    const qualityColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'lead_quality')?.[1] || 'lead_quality';
-
-    console.log('API 🔍 Email column:', emailColumnName);
-    console.log('API 🔍 Quality column:', qualityColumnName);
-    console.log('API 🔍 Headers:', headers);
-    console.log('API 🔍 Lead Quality Filter:', leadQualityFilter);
-
-    // ✅ Check if quality column exists in headers
-    const hasQualityField = headers.includes(qualityColumnName);
+    const template = templateToSend === 'B' ? templateB : templateA;
 
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
       if (values.length !== headers.length) continue;
 
       const row = {};
-      headers.forEach((h, idx) => {
-        row[h] = values[idx] || '';
-      });
+      headers.forEach((h, idx) => row[h] = values[idx]?.trim() || '');
 
-      // ✅ Get email using actual CSV column name
-      const emailValue = row[emailColumnName] || '';
-      if (!isValidEmail(emailValue)) {
-        console.log('API ❌ Invalid email:', emailValue);
-        continue;
-      }
+      const email = row[emailCol];
+      if (!isValidEmail(email)) continue;
 
-      // ✅ Apply quality filter only if column exists
-      let include = true;
       if (hasQualityField) {
-        const quality = (row[qualityColumnName] || '').trim() || 'HOT';
-        console.log(`API 📧 ${emailValue} - Quality: ${quality}, Filter: ${leadQualityFilter}`);
-        
-        if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) {
-          console.log(`API ⏭️ Skipping ${emailValue} - Quality mismatch`);
-          include = false;
-        }
-      } else {
-        console.log(`API ⚠️ No quality column found, including all emails`);
+        const quality = (row[qualityCol] || '').trim() || 'HOT';
+        if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) continue;
       }
 
-      if (!include) continue;
-
-      // ✅ Push with normalized 'email' key for rendering
-      recipients.push({ ...row, email: emailValue });
-      console.log(`API ✅ Added ${emailValue} to recipients`);
+      recipients.push({ ...row, email });
     }
 
-    console.log(`API 📊 Total valid recipients: ${recipients.length}`);
-
     if (recipients.length === 0) {
-      return Response.json({
-        error: `No valid email recipients found. Email column: "${emailColumnName}", Quality column: "${qualityColumnName}", Filter: "${leadQualityFilter}". Check if these columns exist in your CSV.`
+      return Response.json({ 
+        error: 'No valid recipients. Check email column mapping and lead quality filter.'
       }, { status: 400 });
     }
 
@@ -153,101 +125,107 @@ export async function POST(req) {
     oauth2Client.setCredentials({ access_token: accessToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const template = templateToSend === 'B' ? templateB : templateA;
     let sentCount = 0;
-
     for (const recipient of recipients) {
       try {
         const subject = renderText(template.subject, recipient, fieldMappings, senderName);
-        let body = renderText(template.body, recipient, fieldMappings, senderName);
+        const body = renderText(template.body, recipient, fieldMappings, senderName);
 
-        let rawMessage;
-        if (emailImages.length > 0) {
-          let htmlBody = body.replace(/\n/g, '<br>');
-          const finalMessage = [
-            `To: ${recipient.email}`,
-            `Subject: ${subject}`,
-            'MIME-Version: 1.0',
-            'Content-Type: multipart/related; boundary="boundary"',
-            '',
-            '--boundary',
-            'Content-Type: text/html; charset=utf-8',
-            '',
-            htmlBody,
-            ''
-          ];
-
-          emailImages.forEach(img => {
-            const imgTag = `<img src="cid:${img.cid}" alt="Inline" style="max-width:100%;">`;
-            htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
-          });
-
-          finalMessage[9] = htmlBody;
-
-          emailImages.forEach(img => {
-            finalMessage.push('--boundary');
-            finalMessage.push(`Content-Type: ${img.mimeType}`);
-            finalMessage.push('Content-Transfer-Encoding: base64');
-            finalMessage.push(`Content-ID: <${img.cid}>`);
-            finalMessage.push('');
-            finalMessage.push(img.base64);
-          });
-          finalMessage.push('--boundary--');
-
-          rawMessage = Buffer.from(finalMessage.join('\r\n'))
-            .toString('base64')
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
-        } else {
-          const emailLines = [
-            `To: ${recipient.email}`,
-            `Subject: ${subject}`,
-            'Content-Type: text/plain; charset=utf-8',
-            '',
-            body
-          ];
-          rawMessage = Buffer.from(emailLines.join('\r\n'))
-            .toString('base64')
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
-        }
+        const rawMessage = emailImages.length > 0 
+          ? buildHtmlEmail(recipient.email, subject, body, emailImages)
+          : buildPlainTextEmail(recipient.email, subject, body);
 
         const response = await gmail.users.messages.send({
           userId: 'me',
           requestBody: { raw: rawMessage }
         });
 
-        const { threadId } = response.data;
-        if (threadId) {
-          const sentAt = new Date();
-          const followUpAt = new Date(sentAt.getTime() + 48 * 60 * 60 * 1000); // 48 hours
-
-          await setDoc(doc(db, 'sent_emails', `${userId}_${recipient.email}`), {
-            userId,
-            to: recipient.email,
-            threadId,
-            sentAt: sentAt.toISOString(),
-            replied: false,
-            followUpAt: followUpAt.toISOString(),
-            followUpSentCount: 0,
-            lastFollowUpSentAt: null
-          });
-
+        if (response.data?.threadId) {
+          await saveSentEmailRecord(userId, recipient.email, response.data.threadId);
           sentCount++;
-          console.log(`API ✅ Sent to ${recipient.email}`);
         }
       } catch (e) {
-        console.warn(`API ❌ Failed to send to ${recipient.email}:`, e.message);
+        console.warn(`Failed to send to ${recipient.email}:`, e.message);
       }
     }
 
-    console.log(`API 📊 Final results: ${sentCount}/${recipients.length} sent`);
-
     return Response.json({ sent: sentCount, total: recipients.length });
   } catch (error) {
-    console.error('📧 Send Email API Error:', error);
-    return Response.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    console.error('Send Email API Error:', error);
+    return Response.json({ 
+      error: error.message || 'Internal server error' 
+    }, { status: 500 });
   }
+}
+
+function buildPlainTextEmail(to, subject, body) {
+  const emailLines = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    body
+  ];
+  return Buffer.from(emailLines.join('\r\n'))
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function buildHtmlEmail(to, subject, body, images) {
+  let htmlBody = body.replace(/\n/g, '<br>');
+  const boundary = 'boundary_' + Date.now();
+
+  // Replace placeholders with image tags
+  images.forEach(img => {
+    const imgTag = `<img src="cid:${img.cid}" alt="Inline" style="max-width:100%;">`;
+    htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
+  });
+
+  const parts = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/related; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    htmlBody,
+    ''
+  ];
+
+  // Add image attachments
+  images.forEach(img => {
+    parts.push(`--${boundary}`);
+    parts.push(`Content-Type: ${img.mimeType}`);
+    parts.push('Content-Transfer-Encoding: base64');
+    parts.push(`Content-ID: <${img.cid}>`);
+    parts.push('');
+    parts.push(img.base64);
+  });
+
+  parts.push(`--${boundary}--`);
+  return Buffer.from(parts.join('\r\n'))
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+async function saveSentEmailRecord(userId, email, threadId) {
+  const sentAt = new Date();
+  const followUpAt = new Date(sentAt.getTime() + 48 * 60 * 60 * 1000); // 48 hours
+
+  await setDoc(doc(db, 'sent_emails', `${userId}_${email}`), {
+    userId,
+    to: email,
+    threadId,
+    sentAt: sentAt.toISOString(),
+    replied: false,
+    followUpAt: followUpAt.toISOString(),
+    followUpSentCount: 0,
+    lastFollowUpSentAt: null
+  });
 }
