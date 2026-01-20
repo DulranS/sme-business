@@ -1,4 +1,3 @@
-
 // app/dashboard/page.js
 'use client';
 import { useState, useEffect, useCallback } from 'react';
@@ -7,6 +6,7 @@ import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, u
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 import { useRouter } from 'next/navigation';
+import AiLeadEngine from './components/AiLeadEngine'; // ✅ IMPORT THE AI LEAD ENGINE
 
 const firebaseConfig = {
   apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
@@ -55,7 +55,7 @@ const FOLLOW_UP_1 = {
   subject: 'Quick question for {{business_name}}',
   body: `Hi {{business_name}},
 Just circling back—did my note about outsourced dev & ops support land at a bad time?
-No pressure at all, but if you’re ever swamped with web, automation, or backend work and need a reliable extra hand (especially for white-label or fast-turnaround needs), we’re ready to help.
+No pressure at all, but if you're ever swamped with web, automation, or backend work and need a reliable extra hand (especially for white-label or fast-turnaround needs), we're ready to help.
 Even a 1-hour task is a great way to test the waters.
 Either way, wishing you a productive week!
 Best,  
@@ -66,10 +66,10 @@ WhatsApp: 0741143323`
 const FOLLOW_UP_2 = {
   subject: '{{business_name}}, a quick offer (no strings)',
   body: `Hi again,
-I noticed you haven’t had a chance to reply—totally understand!
-To make this zero-risk: **I’ll audit one of your digital workflows (e.g., lead capture, client onboarding, internal tooling) for free** and send 2–3 actionable automation ideas you can implement immediately—even if you never work with us.
+I noticed you haven't had a chance to reply—totally understand!
+To make this zero-risk: **I'll audit one of your digital workflows (e.g., lead capture, client onboarding, internal tooling) for free** and send 2–3 actionable automation ideas you can implement immediately—even if you never work with us.
 Zero sales pitch. Just value.
-Interested? Hit “Yes” or reply with a workflow you’d like optimized.
+Interested? Hit "Yes" or reply with a workflow you'd like optimized.
 Cheers,  
 Dulran  
 Portfolio: https://syndicatesolutions.vercel.app/  
@@ -78,9 +78,9 @@ Book a call: https://cal.com/syndicate-solutions/15min`
 const FOLLOW_UP_3 = {
   subject: 'Closing the loop',
   body: `Hi {{business_name}},
-I’ll stop emailing after this one! 😅
-Just wanted to say: if outsourcing ever becomes a priority—whether for web dev, AI tools, or ongoing ops—we’re here. Many of our clients started with a tiny $100 task and now work with us monthly.
-If now’s not the time, no worries! I’ll circle back in a few months.
+I'll stop emailing after this one! 😅
+Just wanted to say: if outsourcing ever becomes a priority—whether for web dev, AI tools, or ongoing ops—we're here. Many of our clients started with a tiny $100 task and now work with us monthly.
+If now's not the time, no worries! I'll circle back in a few months.
 Either way, keep crushing it!
 — Dulran  
 WhatsApp: 0741143323`
@@ -89,14 +89,14 @@ WhatsApp: 0741143323`
 // Keep B as fallback
 const DEFAULT_TEMPLATE_B = FOLLOW_UP_1;
 const DEFAULT_WHATSAPP_TEMPLATE = `Hi {{business_name}} 👋😊
-Hope you’re doing well.
-I’m {{sender_name}} from Sri Lanka — I run a small digital mini-agency supporting businesses with websites, content, and AI automation.
+Hope you're doing well.
+I'm {{sender_name}} from Sri Lanka — I run a small digital mini-agency supporting businesses with websites, content, and AI automation.
 Quick question:
-Are you currently working on anything digital that’s taking too much time or not delivering the results you want?
-If yes, I’d be happy to share a quick idea — no pressure at all.`;
+Are you currently working on anything digital that's taking too much time or not delivering the results you want?
+If yes, I'd be happy to share a quick idea — no pressure at all.`;
 const DEFAULT_SMS_TEMPLATE = `Hi {{business_name}} 👋
 This is {{sender_name}} from Syndicate Solutions.
-Quick question — are you currently working on any digital work that’s delayed or not giving results?
+Quick question — are you currently working on any digital work that's delayed or not giving results?
 Reply YES or NO.`;
 
 // --- UTILITY FUNCTIONS ---
@@ -119,11 +119,8 @@ const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
   if (trimmed.length === 0) return false;
-  const parts = trimmed.split('@');
-  if (parts.length !== 2) return false;
-  const [local, domain] = parts;
-  if (!local || !domain || !domain.includes('.')) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(trimmed);
 };
 
 const parseCsvRow = (str) => {
@@ -209,7 +206,9 @@ export default function Dashboard() {
   const [loadingCallHistory, setLoadingCallHistory] = useState(false);
   const [showCallHistoryModal, setShowCallHistoryModal] = useState(false);
   const [activeCallStatus, setActiveCallStatus] = useState(null);
-  const [showMultiChannelModal, setShowMultiChannelModal] = useState(false); // ✅ NEW MODAL STATE
+  
+  // ✅ NEW STATE FOR AI LEAD RESEARCH
+  const [aiResearchResults, setAiResearchResults] = useState(null);
 
   // ✅ Instagram & Twitter Templates
   const [instagramTemplate, setInstagramTemplate] = useState(`Hi {{business_name}} 👋
@@ -264,47 +263,42 @@ Would you be open to a quick chat?`);
     return () => document.head.removeChild(script);
   }, []);
 
-  // ✅ Social Handle Generator
-  const generateSocialHandle = (businessName, platform) => {
-    if (!businessName) return null;
-    let handle = businessName
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .replace(/\s+/g, '_')
-      .substring(0, 30);
-    return handle;
-  };
-
-  // ✅ Instagram Handler
-  const handleOpenInstagram = (contact) => {
-    if (!contact.business) return;
-    const igHandle = generateSocialHandle(contact.business, 'instagram');
-    if (igHandle) {
-      window.open(`https://www.instagram.com/${igHandle}/`, '_blank');
-    } else {
-      window.open(`https://www.instagram.com/`, '_blank');
+  // ✅ Load Call History
+  const loadCallHistory = async () => {
+    if (!user?.uid) return;
+    setLoadingCallHistory(true);
+    try {
+      const q = query(collection(db, 'calls'), where('userId', '==', user.uid));
+      const snapshot = await getDocs(q);
+      const calls = [];
+      snapshot.forEach(doc => {
+        calls.push({ id: doc.id, ...doc.data() });
+      });
+      calls.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setCallHistory(calls);
+    } catch (error) {
+      console.error('Failed to load call history:', error);
+      alert('Failed to load call history');
+    } finally {
+      setLoadingCallHistory(false);
     }
   };
 
-  // ✅ Twitter Handler
-  const handleOpenTwitter = (contact) => {
-    if (!contact.business) return;
-    const twitterHandle = generateSocialHandle(contact.business, 'twitter');
-    if (twitterHandle) {
-      const tweetText = encodeURIComponent(`@${twitterHandle} ${renderPreviewText(
-        twitterTemplate,
-        { business_name: contact.business, address: contact.address || '' },
-        fieldMappings,
-        senderName
-      )}`);
-      window.open(`https://twitter.com/intent/tweet?text=${tweetText}`, '_blank');
-    } else {
-      const query = encodeURIComponent(contact.business);
-      window.open(`https://twitter.com/search?q=${query}&src=typed_query`, '_blank');
-    }
+  const getStatusBadge = (status) => {
+    const badges = {
+      'initiating': { bg: 'bg-blue-900', text: 'text-blue-300', label: '🔵 Initiating' },
+      'queued': { bg: 'bg-yellow-900', text: 'text-yellow-300', label: '⏳ Queued' },
+      'ringing': { bg: 'bg-purple-900', text: 'text-purple-300', label: '📞 Ringing' },
+      'in-progress': { bg: 'bg-green-900', text: 'text-green-300', label: '✅ In Progress' },
+      'answered': { bg: 'bg-green-900', text: 'text-green-300', label: '✅ Answered' },
+      'completed': { bg: 'bg-green-800', text: 'text-green-200', label: '✅ Completed' },
+      'failed': { bg: 'bg-red-900', text: 'text-red-300', label: '❌ Failed' },
+      'busy': { bg: 'bg-orange-900', text: 'text-orange-300', label: '📵 Busy' },
+      'no-answer': { bg: 'bg-gray-800', text: 'text-gray-300', label: '📞 No Answer' }
+    };
+    return badges[status] || { bg: 'bg-gray-800', text: 'text-gray-300', label: status };
   };
 
-  // ✅ Handle Call
   const handleCall = (phone) => {
     if (!phone) return;
     const dialNumber = formatForDialing(phone) || phone.toString().replace(/\D/g, '');
@@ -453,42 +447,6 @@ Would you be open to a quick chat?`);
     }
   };
 
-  // ✅ Load Call History
-  const loadCallHistory = async () => {
-    if (!user?.uid) return;
-    setLoadingCallHistory(true);
-    try {
-      const q = query(collection(db, 'calls'), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      const calls = [];
-      snapshot.forEach(doc => {
-        calls.push({ id: doc.id, ...doc.data() });
-      });
-      calls.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      setCallHistory(calls);
-    } catch (error) {
-      console.error('Failed to load call history:', error);
-      alert('Failed to load call history');
-    } finally {
-      setLoadingCallHistory(false);
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    const badges = {
-      'initiating': { bg: 'bg-blue-900', text: 'text-blue-300', label: '🔵 Initiating' },
-      'queued': { bg: 'bg-yellow-900', text: 'text-yellow-300', label: '⏳ Queued' },
-      'ringing': { bg: 'bg-purple-900', text: 'text-purple-300', label: '📞 Ringing' },
-      'in-progress': { bg: 'bg-green-900', text: 'text-green-300', label: '✅ In Progress' },
-      'answered': { bg: 'bg-green-900', text: 'text-green-300', label: '✅ Answered' },
-      'completed': { bg: 'bg-green-800', text: 'text-green-200', label: '✅ Completed' },
-      'failed': { bg: 'bg-red-900', text: 'text-red-300', label: '❌ Failed' },
-      'busy': { bg: 'bg-orange-900', text: 'text-orange-300', label: '📵 Busy' },
-      'no-answer': { bg: 'bg-gray-800', text: 'text-gray-300', label: '📞 No Answer' }
-    };
-    return badges[status] || { bg: 'bg-gray-800', text: 'text-gray-300', label: status };
-  };
-
   // ✅ SMS Handlers
   const handleSendSMS = async (contact) => {
     if (!user?.uid) return;
@@ -588,7 +546,47 @@ Would you be open to a quick chat?`);
     alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed: ${whatsappLinks.length - successCount}`);
   };
 
-  // ✅ Settings
+  // ✅ Social Handle Generator
+  const generateSocialHandle = (businessName, platform) => {
+    if (!businessName) return null;
+    let handle = businessName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, '_')
+      .substring(0, 30);
+    return handle;
+  };
+
+  // ✅ Instagram Handler
+  const handleOpenInstagram = (contact) => {
+    if (!contact.business) return;
+    const igHandle = generateSocialHandle(contact.business, 'instagram');
+    if (igHandle) {
+      window.open(`https://www.instagram.com/${igHandle}/`, '_blank');
+    } else {
+      window.open(`https://www.instagram.com/`, '_blank');
+    }
+  };
+
+  // ✅ Twitter Handler
+  const handleOpenTwitter = (contact) => {
+    if (!contact.business) return;
+    const twitterHandle = generateSocialHandle(contact.business, 'twitter');
+    if (twitterHandle) {
+      const tweetText = encodeURIComponent(`@${twitterHandle} ${renderPreviewText(
+        twitterTemplate,
+        { business_name: contact.business, address: contact.address || '' },
+        fieldMappings,
+        senderName
+      )}`);
+      window.open(`https://twitter.com/intent/tweet?text=${tweetText}`, '_blank');
+    } else {
+      const query = encodeURIComponent(contact.business);
+      window.open(`https://twitter.com/search?q=${query}&src=typed_query`, '_blank');
+    }
+  };
+
+  // ✅ Load functions
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
@@ -650,6 +648,7 @@ Would you be open to a quick chat?`);
     const reader = new FileReader();
     reader.onload = (e) => {
       const rawContent = e.target.result;
+      // ✅ Normalize line endings AND save normalized content
       const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
       if (lines.length < 2) {
@@ -673,10 +672,10 @@ Would you be open to a quick chat?`);
       const allVars = [...new Set([
         ...allTemplateTexts.flatMap(text => extractTemplateVariables(text)),
         'sender_name',
-        ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
-        ...headers // ✅ INCLUDE ALL CSV COLUMNS
+        ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
       ])];
 
+      // ✅ AUTO-INITIALIZE MAPPINGS: template var → matching CSV column
       const initialMappings = {};
       allVars.forEach(varName => {
         if (headers.includes(varName)) {
@@ -693,7 +692,6 @@ Would you be open to a quick chat?`);
       const newLeadScores = {};
       const newLastSent = {};
       let firstValid = null;
-      const hasLeadQualityCol = headers.includes('lead_quality');
 
       for (let i = 1; i < lines.length; i++) {
         const values = parseCsvRow(lines[i]);
@@ -749,7 +747,7 @@ Would you be open to a quick chat?`);
       setWhatsappLinks(validPhoneContacts);
       setLeadScores(newLeadScores);
       setLastSent(newLastSent);
-      setCsvContent(normalizedContent);
+      setCsvContent(normalizedContent); // ✅ Save normalized content
     };
     reader.readAsText(file);
   };
@@ -1064,7 +1062,7 @@ Would you be open to a quick chat?`);
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           csvContent: [headers.join(','), ...recipientsToSend.map(r =>
-            headers.map(h => `"${(r[h] || '').replace(/"/g, '""')}"`).join(',')
+            headers.map(h => `"${r[h] || ''}"`).join(',')
           ).join('\n')].join('\n'),
           senderName,
           fieldMappings,
@@ -1090,16 +1088,50 @@ Would you be open to a quick chat?`);
         }
       } else {
         setStatus(`❌ ${data.error}`);
-        alert(`❌ ${data.error}`);
       }
     } catch (err) {
       console.error('Send error:', err);
       setStatus(`❌ ${err.message || 'Failed to send'}`);
-      alert(`❌ ${err.message || 'Failed to send emails'}`);
     } finally {
       setIsSending(false);
     }
   };
+
+  // ✅ HANDLE AI LEADS GENERATED
+  const handleLeadsGenerated = useCallback((results) => {
+    setAiResearchResults(results);
+    
+    // Automatically load into CSV system
+    setCsvContent(results.csvContent);
+    
+    // Auto-map the new fields
+    const headers = results.csvContent.split('\n')[0].split(',').map(h => h.replace(/"/g, ''));
+    setCsvHeaders(headers);
+    
+    // Set up field mappings for the new fields
+    const newMappings = {
+      business_name: 'business_name',
+      email: 'email',
+      email_subject: 'email_subject',
+      email_body: 'email_body',
+      sender_name: 'sender_name'
+    };
+    setFieldMappings(newMappings);
+    
+    // Set templates to use the researched content
+    if (results.leads[0]) {
+      setTemplateA({
+        subject: results.leads[0].email_subject,
+        body: results.leads[0].email_body
+      });
+    }
+    
+    // Show success notification
+    setStatus(`✅ Successfully loaded ${results.leads.length} AI-researched leads!`);
+    
+    // Auto-open the email template section
+    document.getElementById('email-template-section')?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   // ✅ Auth & Data Loading
   useEffect(() => {
@@ -1252,14 +1284,9 @@ Would you be open to a quick chat?`);
               📬 Reply & Follow-Up Center
             </button>
             <button
-              onClick={() => {
-                setShowMultiChannelModal(true); // ✅ OPEN MODAL
-              }}
-              className="text-sm bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 rounded"
+              onClick={() => router.push('/format')}
+              className="text-sm bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded"
             >
-              🌐 Multi-Channel Outreach
-            </button>
-            <button onClick={() => router.push('/format')} className="text-sm bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded">
               🔥 Scrape Mails
             </button>
             <button onClick={() => signOut(auth)} className="text-sm text-gray-300 hover:text-white">
@@ -1272,6 +1299,12 @@ Would you be open to a quick chat?`);
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* LEFT PANEL */}
           <div className="lg:col-span-1 space-y-6">
+            {/* ✅ AI LEAD GENERATOR SECTION */}
+            <AiLeadEngine 
+              onLeadsGenerated={handleLeadsGenerated} 
+              currentUser={user} 
+            />
+            
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-xl font-bold mb-4 text-white">1. Upload Leads CSV</h2>
               <input
@@ -1280,15 +1313,15 @@ Would you be open to a quick chat?`);
                 onChange={handleCsvUpload}
                 className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded"
               />
-              <p className="text-xs text-gray-400 mt-2">Auto-scores leads and binds fields.</p>
+              <p className="text-xs text-gray-400 mt-2">
+                Auto-scores leads and binds fields.
+              </p>
               <div className="mt-3">
-                <label className="block text-sm font-medium mb-1 text-gray-200">
-                  Target Lead Quality
-                </label>
+                <label className="block text-sm font-medium mb-1 text-gray-200">Target Lead Quality</label>
                 <select
                   value={leadQualityFilter}
                   onChange={(e) => setLeadQualityFilter(e.target.value)}
-                  className="                  w-full p-1 bg-gray-700 text-white border border-gray-600 rounded text-sm"
+                  className="w-full p-1 bg-gray-700 text-white border border-gray-600 rounded text-sm"
                 >
                   <option value="HOT">🔥 HOT Leads Only</option>
                   <option value="WARM">📈 WARM Leads Only</option>
@@ -1311,7 +1344,6 @@ Would you be open to a quick chat?`);
               </div>
             </div>
 
-            {/* ✅ FIELD MAPPINGS IN DARK MODE */}
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-xl font-bold mb-4 text-white">2. Field Mappings</h2>
               {uiVars.map(varName => (
@@ -1615,7 +1647,7 @@ Would you be open to a quick chat?`);
           {/* RIGHT PANEL - PREVIEWS */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">10. Email Preview</h2>
+              <h2 className="text-xl font-bold mb-3 text-white" id="email-template-section">10. Email Preview</h2>
               <div className="bg-gray-900 p-4 rounded border border-gray-700">
                 <div className="text-sm text-gray-400">To: {previewRecipient?.email || 'email@example.com'}</div>
                 <div className="mt-1 font-medium text-white">
@@ -1641,7 +1673,7 @@ Would you be open to a quick chat?`);
               <h2 className="text-xl font-bold mb-3 text-white">11. WhatsApp Preview</h2>
               <div className="bg-gray-900 p-4 rounded border border-gray-700">
                 <div className="text-sm text-gray-400">To: {previewRecipient?.business || 'Business'}</div>
-                <div className="mt-1 whitespace-pre-wrap text-sm text-gray-200">
+                <div className="mt-2 whitespace-pre-wrap text-sm text-gray-200">
                   {renderPreviewText(
                     whatsappTemplate,
                     previewRecipient,
@@ -1656,7 +1688,7 @@ Would you be open to a quick chat?`);
               <h2 className="text-xl font-bold mb-3 text-white">12. SMS Preview</h2>
               <div className="bg-gray-900 p-4 rounded border border-gray-700">
                 <div className="text-sm text-gray-400">To: {previewRecipient?.business || 'Business'}</div>
-                <div className="mt-1 whitespace-pre-wrap text-sm text-gray-200">
+                <div className="mt-2 whitespace-pre-wrap text-sm text-gray-200">
                   {renderPreviewText(
                     smsTemplate,
                     previewRecipient,
