@@ -143,11 +143,11 @@ export async function POST(req) {
 
     console.log(`API 📊 Total valid recipients: ${recipients.length}`);
 
-    if (recipients.length === 0) {
-      return Response.json({
-        error: `No valid email recipients found. Email column: "${emailColumnName}", Quality column: "${qualityColumnName}", Filter: "${leadQualityFilter}". Check if these columns exist in your CSV.`
-      }, { status: 400 });
-    }
+    // if (recipients.length === 0) {
+    //   return Response.json({
+    //     error: `No valid email recipients found. Email column: "${emailColumnName}", Quality column: "${qualityColumnName}", Filter: "${leadQualityFilter}". Check if these columns exist in your CSV.`
+    //   }, { status: 400 });
+    // }
 
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: accessToken });
