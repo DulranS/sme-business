@@ -6,7 +6,6 @@ import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, u
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 import Head from 'next/head';
 import { useRouter } from 'next/navigation';
-import AiLeadEngine from '../components/AiLeadEngine';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
@@ -27,27 +26,27 @@ const DEFAULT_TEMPLATE_A = {
   subject: 'Quick question for {{business_name}}',
   body: `Hi {{business_name}}, 😊👋🏻
 I hope you're doing well.
-My name is Dulran Samarasinghe. I run Syndicate Solutions, a Sri Lanka–based mini agency supporting 
-small to mid-sized agencies and businesses with reliable execution across web, software, 
+My name is Dulran Samarasinghe. I run Syndicate Solutions, a Sri Lanka–based mini agency supporting
+small to mid-sized agencies and businesses with reliable execution across web, software,
 AI automation, and ongoing digital operations.
 We typically work as a white-label or outsourced partner when teams need:
 • extra delivery capacity
 • fast turnarounds without hiring
 • ongoing technical and digital support
-I'm reaching out to ask — do you ever use external support when workload or deadlines increase?
-If helpful, I'm open to starting with a small task or short contract to build trust before 
+I'm reaching out to ask – do you ever use external support when workload or deadlines increase?
+If helpful, I'm open to starting with a small task or short contract to build trust before
 discussing anything larger.
 You can review my work here:
-Portfolio: https://syndicatesolutions.vercel.app/      
-LinkedIn: https://www.linkedin.com/in/dulran-samarasinghe-13941b175/      
+Portfolio: https://syndicatesolutions.vercel.app/
+LinkedIn: https://www.linkedin.com/in/dulran-samarasinghe-13941b175/
 If it makes sense, you can book a short 15-minute call:
-https://cal.com/syndicate-solutions/15min      
+https://cal.com/syndicate-solutions/15min
 You can contact me on Whatsapp - 0741143323
 You can email me at - syndicatesoftwaresolutions@gmail.com
 Otherwise, happy to continue the conversation over email.
-Best regards,  
-Dulran Samarasinghe  
-Founder — Syndicate Solutions`
+Best regards,
+Dulran Samarasinghe
+Founder – Syndicate Solutions`
 };
 
 // ✅ FOLLOW-UP TEMPLATES
@@ -58,11 +57,12 @@ Just circling back—did my note about outsourced dev & ops support land at a ba
 No pressure at all, but if you're ever swamped with web, automation, or backend work and need a reliable extra hand (especially for white-label or fast-turnaround needs), we're ready to help.
 Even a 1-hour task is a great way to test the waters.
 Either way, wishing you a productive week!
-Best,  
-Dulran  
-Founder — Syndicate Solutions  
+Best,
+Dulran
+Founder – Syndicate Solutions
 WhatsApp: 0741143323`
 };
+
 const FOLLOW_UP_2 = {
   subject: '{{business_name}}, a quick offer (no strings)',
   body: `Hi again,
@@ -70,11 +70,12 @@ I noticed you haven't had a chance to reply—totally understand!
 To make this zero-risk: **I'll audit one of your digital workflows (e.g., lead capture, client onboarding, internal tooling) for free** and send 2–3 actionable automation ideas you can implement immediately—even if you never work with us.
 Zero sales pitch. Just value.
 Interested? Hit "Yes" or reply with a workflow you'd like optimized.
-Cheers,  
-Dulran  
-Portfolio: https://syndicatesolutions.vercel.app/  
+Cheers,
+Dulran
+Portfolio: https://syndicatesolutions.vercel.app/
 Book a call: https://cal.com/syndicate-solutions/15min`
 };
+
 const FOLLOW_UP_3 = {
   subject: 'Closing the loop',
   body: `Hi {{business_name}},
@@ -82,21 +83,21 @@ I'll stop emailing after this one! 😅
 Just wanted to say: if outsourcing ever becomes a priority—whether for web dev, AI tools, or ongoing ops—we're here. Many of our clients started with a tiny $100 task and now work with us monthly.
 If now's not the time, no worries! I'll circle back in a few months.
 Either way, keep crushing it!
-— Dulran  
+— Dulran
 WhatsApp: 0741143323`
 };
 
-// Keep B as fallback
+// Keep B as fallback (or repurpose)
 const DEFAULT_TEMPLATE_B = FOLLOW_UP_1;
 const DEFAULT_WHATSAPP_TEMPLATE = `Hi {{business_name}} 👋😊
 Hope you're doing well.
-I'm {{sender_name}} from Sri Lanka — I run a small digital mini-agency supporting businesses with websites, content, and AI automation.
+I'm {{sender_name}} from Sri Lanka – I run a small digital mini-agency supporting businesses with websites, content, and AI automation.
 Quick question:
 Are you currently working on anything digital that's taking too much time or not delivering the results you want?
-If yes, I'd be happy to share a quick idea — no pressure at all.`;
+If yes, I'd be happy to share a quick idea – no pressure at all.`;
 const DEFAULT_SMS_TEMPLATE = `Hi {{business_name}} 👋
 This is {{sender_name}} from Syndicate Solutions.
-Quick question — are you currently working on any digital work that's delayed or not giving results?
+Quick question – are you currently working on any digital work that's delayed or not giving results?
 Reply YES or NO.`;
 
 // --- UTILITY FUNCTIONS ---
@@ -119,8 +120,11 @@ const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
   if (trimmed.length === 0) return false;
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(trimmed);
+  const parts = trimmed.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  if (!local || !domain || !domain.includes('.')) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 };
 
 const parseCsvRow = (str) => {
@@ -206,10 +210,7 @@ export default function Dashboard() {
   const [loadingCallHistory, setLoadingCallHistory] = useState(false);
   const [showCallHistoryModal, setShowCallHistoryModal] = useState(false);
   const [activeCallStatus, setActiveCallStatus] = useState(null);
-  
-  // ✅ NEW STATE FOR AI LEAD RESEARCH
-  const [aiResearchResults, setAiResearchResults] = useState(null);
-
+  const [showMultiChannelModal, setShowMultiChannelModal] = useState(false);
   // ✅ Instagram & Twitter Templates
   const [instagramTemplate, setInstagramTemplate] = useState(`Hi {{business_name}} 👋
 I run Syndicate Solutions – we help businesses like yours with web, AI, and digital ops.
@@ -218,7 +219,6 @@ No pressure at all.`);
   const [twitterTemplate, setTwitterTemplate] = useState(`Hi {{business_name}} 👋
 I run Syndicate Solutions – we help businesses like yours with web, AI, and digital ops.
 Would you be open to a quick chat?`);
-
   // ✅ Follow-Up Templates
   const [followUpTemplates, setFollowUpTemplates] = useState([
     {
@@ -263,42 +263,57 @@ Would you be open to a quick chat?`);
     return () => document.head.removeChild(script);
   }, []);
 
-  // ✅ Load Call History
-  const loadCallHistory = async () => {
-    if (!user?.uid) return;
-    setLoadingCallHistory(true);
-    try {
-      const q = query(collection(db, 'calls'), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      const calls = [];
-      snapshot.forEach(doc => {
-        calls.push({ id: doc.id, ...doc.data() });
-      });
-      calls.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      setCallHistory(calls);
-    } catch (error) {
-      console.error('Failed to load call history:', error);
-      alert('Failed to load call history');
-    } finally {
-      setLoadingCallHistory(false);
+  const handleSmartCall = (contact) => {
+    if (contact.dealStage === 'replied' || contact.leadScore >= 80) {
+      handleTwilioCall(contact, 'bridge');
+    } else if (contact.followUpCount >= 2) {
+      handleTwilioCall(contact, 'voicemail');
+    } else {
+      handleTwilioCall(contact, 'interactive'); // IVR
     }
   };
 
-  const getStatusBadge = (status) => {
-    const badges = {
-      'initiating': { bg: 'bg-blue-900', text: 'text-blue-300', label: '🔵 Initiating' },
-      'queued': { bg: 'bg-yellow-900', text: 'text-yellow-300', label: '⏳ Queued' },
-      'ringing': { bg: 'bg-purple-900', text: 'text-purple-300', label: '📞 Ringing' },
-      'in-progress': { bg: 'bg-green-900', text: 'text-green-300', label: '✅ In Progress' },
-      'answered': { bg: 'bg-green-900', text: 'text-green-300', label: '✅ Answered' },
-      'completed': { bg: 'bg-green-800', text: 'text-green-200', label: '✅ Completed' },
-      'failed': { bg: 'bg-red-900', text: 'text-red-300', label: '❌ Failed' },
-      'busy': { bg: 'bg-orange-900', text: 'text-orange-300', label: '📵 Busy' },
-      'no-answer': { bg: 'bg-gray-800', text: 'text-gray-300', label: '📞 No Answer' }
-    };
-    return badges[status] || { bg: 'bg-gray-800', text: 'text-gray-300', label: status };
+  // ✅ Social Handle Generator
+  const generateSocialHandle = (businessName, platform) => {
+    if (!businessName) return null;
+    let handle = businessName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, '_')
+      .substring(0, 30);
+    return handle;
   };
 
+  // ✅ Instagram Handler
+  const handleOpenInstagram = (contact) => {
+    if (!contact.business) return;
+    const igHandle = generateSocialHandle(contact.business, 'instagram');
+    if (igHandle) {
+      window.open(`https://www.instagram.com/${igHandle}/`, '_blank');
+    } else {
+      window.open(`https://www.instagram.com/`, '_blank');
+    }
+  };
+
+  // ✅ Twitter Handler
+  const handleOpenTwitter = (contact) => {
+    if (!contact.business) return;
+    const twitterHandle = generateSocialHandle(contact.business, 'twitter');
+    if (twitterHandle) {
+      const tweetText = encodeURIComponent(`@${twitterHandle} ${renderPreviewText(
+        twitterTemplate,
+        { business_name: contact.business, address: contact.address || '' },
+        fieldMappings,
+        senderName
+      )}`);
+      window.open(`https://twitter.com/intent/tweet?text=${tweetText}`, '_blank');
+    } else {
+      const query = encodeURIComponent(contact.business);
+      window.open(`https://twitter.com/search?q=${query}&src=typed_query`, '_blank');
+    }
+  };
+
+  // ✅ Handle Call
   const handleCall = (phone) => {
     if (!phone) return;
     const dialNumber = formatForDialing(phone) || phone.toString().replace(/\D/g, '');
@@ -332,18 +347,27 @@ Would you be open to a quick chat?`);
           if (status === 'ringing') {
             setStatus(`📞 Ringing ${businessName}...`);
           } else if (status === 'in-progress' || status === 'answered') {
-            setStatus(`✅ Call connected to ${businessName}!\nDuration: ${callData.duration || 0}s\nAnswered by: ${callData.answeredBy || 'unknown'}`);
+            setStatus(`✅ Call connected to ${businessName}!
+Duration: ${callData.duration || 0}s
+Answered by: ${callData.answeredBy || 'unknown'}`);
           } else if (status === 'completed') {
-            setStatus(`✅ Call Completed!\nBusiness: ${businessName}\nDuration: ${callData.duration || 0}s\nAnswered by: ${callData.answeredBy || 'unknown'}\n${callData.recordingUrl ? '\n🎙️ Recording available' : ''}`);
+            setStatus(`✅ Call Completed!
+Business: ${businessName}
+Duration: ${callData.duration || 0}s
+Answered by: ${callData.answeredBy || 'unknown'}
+${callData.recordingUrl ? '\n🎙️ Recording available' : ''}`);
             clearInterval(interval);
           } else if (status === 'failed' || status === 'busy' || status === 'no-answer') {
-            setStatus(`❌ Call ${status}\nBusiness: ${businessName}\nReason: ${status.toUpperCase()}`);
+            setStatus(`❌ Call ${status}
+Business: ${businessName}
+Reason: ${status.toUpperCase()}`);
             clearInterval(interval);
           }
         }
         if (attempts >= maxAttempts) {
           clearInterval(interval);
-          setStatus(`⏱️ Status polling stopped after 2 minutes.\nCheck call history for final status.`);
+          setStatus(`⏱️ Status polling stopped after 2 minutes.
+Check call history for final status.`);
         }
       } catch (error) {
         console.error('Poll error:', error);
@@ -353,6 +377,7 @@ Would you be open to a quick chat?`);
 
   // ✅ Twilio Call
   const handleTwilioCall = async (contact, callType = 'direct') => {
+    // 🔒 SAFETY: Ensure contact is valid and has required fields
     if (!contact || !contact.phone || !contact.business) {
       console.warn('Invalid contact passed to handleTwilioCall:', contact);
       alert('❌ Contact data is incomplete. Cannot place call.');
@@ -368,7 +393,9 @@ Would you be open to a quick chat?`);
       interactive: 'Interactive Menu (They can press buttons)'
     };
     const confirmed = confirm(
-      `📞 Call ${contact.business} at +${contact.phone}?\nType: ${callTypeLabels[callType]}\nClick OK to proceed.`
+      `📞 Call ${contact.business} at +${contact.phone}?
+Type: ${callTypeLabels[callType]}
+Click OK to proceed.`
     );
     if (!confirmed) return;
     try {
@@ -389,6 +416,7 @@ Would you be open to a quick chat?`);
           callType
         })
       });
+      // ✅ CRITICAL: Check if response is valid JSON
       let data;
       try {
         data = await response.json();
@@ -397,7 +425,9 @@ Would you be open to a quick chat?`);
         throw new Error('Server returned an invalid response. Check Vercel logs.');
       }
       if (response.ok) {
-        setStatus(`✅ Call initiated to ${contact.business}!\nCall ID: ${data.callId}\nStatus: ${data.status}`);
+        setStatus(`✅ Call initiated to ${contact.business}!
+Call ID: ${data.callId}
+Status: ${data.status}`);
         setActiveCallStatus({
           business: contact.business,
           phone: contact.phone,
@@ -407,11 +437,16 @@ Would you be open to a quick chat?`);
           timestamp: new Date().toISOString()
         });
         alert(
-          `✅ Call Successfully Initiated!\n` +
-          `Business: ${contact.business}\n` +
-          `Phone: +${contact.phone}\n` +
-          `Type: ${callType}\n` +
-          `Status: ${data.status}\n` +
+          `✅ Call Successfully Initiated!
+` +
+          `Business: ${contact.business}
+` +
+          `Phone: +${contact.phone}
+` +
+          `Type: ${callType}
+` +
+          `Status: ${data.status}
+` +
           `Call ID: ${data.callId}`
         );
         const contactKey = contact.email || contact.phone;
@@ -422,7 +457,8 @@ Would you be open to a quick chat?`);
         pollCallStatus(data.callId, contact.business);
       } else {
         const errorMsg = data.error || 'Unknown error';
-        setStatus(`❌ Call Failed\nError: ${errorMsg}`);
+        setStatus(`❌ Call Failed
+Error: ${errorMsg}`);
         setActiveCallStatus({
           business: contact.business,
           phone: contact.phone,
@@ -430,7 +466,9 @@ Would you be open to a quick chat?`);
           error: errorMsg,
           timestamp: new Date().toISOString()
         });
-        alert(`❌ Call Failed!\nBusiness: ${contact.business}\nError: ${errorMsg}`);
+        alert(`❌ Call Failed!
+Business: ${contact.business}
+Error: ${errorMsg}`);
       }
     } catch (error) {
       console.error('Twilio call error:', error);
@@ -443,8 +481,60 @@ Would you be open to a quick chat?`);
         error: userMessage,
         timestamp: new Date().toISOString()
       });
-      alert(`❌ ${userMessage}\nCheck browser console and Vercel function logs.`);
+      alert(`❌ ${userMessage}
+Check browser console and Vercel function logs.`);
     }
+  };
+
+  // ✅ Load Call History
+  const loadCallHistory = async () => {
+    if (!user?.uid) return;
+    setLoadingCallHistory(true);
+    try {
+      const q = query(
+        collection(db, 'calls'),
+        where('userId', '==', user.uid)
+      );
+      const snapshot = await getDocs(q);
+      const calls = [];
+      snapshot.forEach(doc => {
+        calls.push({ id: doc.id, ...doc.data() });
+      });
+      calls.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setCallHistory(calls);
+      const total = calls.length;
+      const completed = calls.filter(c => c.status === 'completed').length;
+      const failed = calls.filter(c => c.status === 'failed').length;
+      const avgDuration = calls.reduce((sum, c) => sum + (c.duration || 0), 0) / (total || 1);
+      console.log('📊 Call Stats:', {
+        total,
+        completed,
+        failed,
+        avgDuration: Math.round(avgDuration),
+        answeredByHuman: calls.filter(c => c.answeredBy === 'human').length,
+        answeredByMachine: calls.filter(c => c.answeredBy?.includes('machine')).length
+      });
+    } catch (error) {
+      console.error('Failed to load call history:', error);
+      alert('Failed to load call history');
+    } finally {
+      setLoadingCallHistory(false);
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const badges = {
+      'initiating': { bg: 'bg-blue-100', text: 'text-blue-800', label: '🔵 Initiating' },
+      'queued': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '⏳ Queued' },
+      'ringing': { bg: 'bg-purple-100', text: 'text-purple-800', label: '📞 Ringing' },
+      'in-progress': { bg: 'bg-green-100', text: 'text-green-800', label: '✅ In Progress' },
+      'answered': { bg: 'bg-green-100', text: 'text-green-800', label: '✅ Answered' },
+      'completed': { bg: 'bg-green-200', text: 'text-green-900', label: '✅ Completed' },
+      'failed': { bg: 'bg-red-100', text: 'text-red-800', label: '❌ Failed' },
+      'busy': { bg: 'bg-orange-100', text: 'text-orange-800', label: '📵 Busy' },
+      'no-answer': { bg: 'bg-gray-100', text: 'text-gray-800', label: '📞 No Answer' }
+    };
+    return badges[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
   };
 
   // ✅ SMS Handlers
@@ -543,50 +633,12 @@ Would you be open to a quick chat?`);
       }
     }
     setStatus(`✅ SMS batch complete: ${successCount}/${whatsappLinks.length} sent.`);
-    alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed: ${whatsappLinks.length - successCount}`);
+    alert(`✅ SMS batch complete!
+Sent: ${successCount}
+Failed: ${whatsappLinks.length - successCount}`);
   };
 
-  // ✅ Social Handle Generator
-  const generateSocialHandle = (businessName, platform) => {
-    if (!businessName) return null;
-    let handle = businessName
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .replace(/\s+/g, '_')
-      .substring(0, 30);
-    return handle;
-  };
-
-  // ✅ Instagram Handler
-  const handleOpenInstagram = (contact) => {
-    if (!contact.business) return;
-    const igHandle = generateSocialHandle(contact.business, 'instagram');
-    if (igHandle) {
-      window.open(`https://www.instagram.com/${igHandle}/`, '_blank');
-    } else {
-      window.open(`https://www.instagram.com/`, '_blank');
-    }
-  };
-
-  // ✅ Twitter Handler
-  const handleOpenTwitter = (contact) => {
-    if (!contact.business) return;
-    const twitterHandle = generateSocialHandle(contact.business, 'twitter');
-    if (twitterHandle) {
-      const tweetText = encodeURIComponent(`@${twitterHandle} ${renderPreviewText(
-        twitterTemplate,
-        { business_name: contact.business, address: contact.address || '' },
-        fieldMappings,
-        senderName
-      )}`);
-      window.open(`https://twitter.com/intent/tweet?text=${tweetText}`, '_blank');
-    } else {
-      const query = encodeURIComponent(contact.business);
-      window.open(`https://twitter.com/search?q=${query}&src=typed_query`, '_blank');
-    }
-  };
-
-  // ✅ Load functions
+  // ✅ Settings
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
@@ -648,7 +700,6 @@ Would you be open to a quick chat?`);
     const reader = new FileReader();
     reader.onload = (e) => {
       const rawContent = e.target.result;
-      // ✅ Normalize line endings AND save normalized content
       const normalizedContent = rawContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const lines = normalizedContent.split('\n').filter(line => line.trim() !== '');
       if (lines.length < 2) {
@@ -658,8 +709,7 @@ Would you be open to a quick chat?`);
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       setCsvHeaders(headers);
       setPreviewRecipient(null);
-
-      // ✅ DYNAMICALLY COLLECT ALL TEMPLATE VARIABLES (including Instagram, Twitter, follow-ups)
+      // ✅ Expose all possible variables + CSV headers for mapping
       const allTemplateTexts = [
         templateA.subject, templateA.body,
         templateB.subject, templateB.body,
@@ -672,10 +722,9 @@ Would you be open to a quick chat?`);
       const allVars = [...new Set([
         ...allTemplateTexts.flatMap(text => extractTemplateVariables(text)),
         'sender_name',
-        ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, ''))
+        ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+        ...headers
       ])];
-
-      // ✅ AUTO-INITIALIZE MAPPINGS: template var → matching CSV column
       const initialMappings = {};
       allVars.forEach(varName => {
         if (headers.includes(varName)) {
@@ -685,14 +734,14 @@ Would you be open to a quick chat?`);
       if (headers.includes('email')) initialMappings.email = 'email';
       initialMappings.sender_name = 'sender_name';
       setFieldMappings(initialMappings);
-
-      // ✅ PROCESS LEADS
+      // ✅ Lead processing with lead_quality column presence check
       let hotEmails = 0, warmEmails = 0;
       const validPhoneContacts = [];
       const newLeadScores = {};
       const newLastSent = {};
       let firstValid = null;
-
+      // ✅ CRITICAL: Only filter by leadQuality if the column exists
+      const hasLeadQualityCol = headers.includes('lead_quality');
       for (let i = 1; i < lines.length; i++) {
         const values = parseCsvRow(lines[i]);
         if (values.length !== headers.length) continue;
@@ -700,13 +749,18 @@ Would you be open to a quick chat?`);
         headers.forEach((header, idx) => {
           row[header] = values[idx] || '';
         });
-
-        // ✅ PROCESS EMAIL LEADS
-        const hasValidEmail = isValidEmail(row.email);
-        if (hasValidEmail) {
-          // ✅ Treat blank lead_quality as 'HOT'
+        // ✅ Include email only if valid AND passes quality filter (if applicable)
+        let includeEmail = true;
+        if (hasLeadQualityCol) {
           const quality = (row.lead_quality || '').trim() || 'HOT';
+          if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) {
+            includeEmail = false;
+          }
+        }
+        const hasValidEmail = isValidEmail(row.email);
+        if (hasValidEmail && includeEmail) {
           let score = 50;
+          const quality = (row.lead_quality || '').trim() || 'HOT';
           if (quality === 'HOT') score += 30;
           if (parseFloat(row.rating) >= 4.8) score += 20;
           if (parseInt(row.review_count) > 100) score += 10;
@@ -714,12 +768,13 @@ Would you be open to a quick chat?`);
           if (dealStage[row.email] === 'contacted') score += 10;
           score = Math.min(100, Math.max(0, score));
           newLeadScores[row.email] = score;
-          if (quality === 'HOT') hotEmails++;
-          else if (quality === 'WARM') warmEmails++;
+          if (!hasLeadQualityCol || quality === 'HOT') {
+            hotEmails++;
+          } else if (quality === 'WARM') {
+            warmEmails++;
+          }
           if (!firstValid) firstValid = row;
         }
-
-        // ✅ PROCESS PHONE LEADS (even without email)
         const rawPhone = row.whatsapp_number || row.phone_raw || row.phone;
         const formattedPhone = formatForDialing(rawPhone);
         if (formattedPhone) {
@@ -738,7 +793,6 @@ Would you be open to a quick chat?`);
           if (!firstValid) firstValid = row;
         }
       }
-
       setPreviewRecipient(firstValid);
       if (leadQualityFilter === 'HOT') setValidEmails(hotEmails);
       else if (leadQualityFilter === 'WARM') setValidEmails(warmEmails);
@@ -747,7 +801,7 @@ Would you be open to a quick chat?`);
       setWhatsappLinks(validPhoneContacts);
       setLeadScores(newLeadScores);
       setLastSent(newLastSent);
-      setCsvContent(normalizedContent); // ✅ Save normalized content
+      setCsvContent(normalizedContent);
     };
     reader.readAsText(file);
   };
@@ -1024,9 +1078,19 @@ Would you be open to a quick chat?`);
           };
         })
       );
-
+      
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       let validRecipients = [];
+      
+      // ✅ FIXED: Find the actual CSV column names from fieldMappings
+      const emailColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'email')?.[1] || 'email';
+      const qualityColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'lead_quality')?.[1] || 'lead_quality';
+      
+      console.log('🔍 Debug - Email column:', emailColumnName);
+      console.log('🔍 Debug - Quality column:', qualityColumnName);
+      console.log('🔍 Debug - Headers:', headers);
+      console.log('🔍 Debug - Lead Quality Filter:', leadQualityFilter);
+      
       for (let i = 1; i < lines.length; i++) {
         const values = parseCsvRow(lines[i]);
         if (values.length !== headers.length) continue;
@@ -1034,13 +1098,33 @@ Would you be open to a quick chat?`);
         headers.forEach((header, idx) => {
           row[header] = values[idx]?.toString().trim() || '';
         });
-        if (!isValidEmail(row.email)) continue;
-        const quality = (row.lead_quality || '').trim() || 'HOT';
-        if (leadQualityFilter === 'all' || quality === leadQualityFilter) {
-          validRecipients.push(row);
+        
+        // ✅ Get email using actual CSV column name
+        const emailValue = row[emailColumnName] || '';
+        if (!isValidEmail(emailValue)) {
+          console.log('❌ Invalid email:', emailValue);
+          continue;
         }
+        
+        // ✅ Check if quality column exists in headers
+        const hasQualityColumn = headers.includes(qualityColumnName);
+        const quality = hasQualityColumn ? (row[qualityColumnName] || '').trim() || 'HOT' : 'HOT';
+        console.log(`📧 ${emailValue} - Quality: ${quality}, Filter: ${leadQualityFilter}`);
+        
+        // ✅ Apply quality filter
+        if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) {
+          console.log(`⏭️ Skipping ${emailValue} - Quality mismatch`);
+          continue;
+        }
+        
+        // ✅ Normalize row to include 'email' key for consistent rendering
+        const normalizedRow = { ...row, email: emailValue };
+        validRecipients.push(normalizedRow);
+        console.log(`✅ Added ${emailValue} to recipients`);
       }
-
+      
+      console.log(`📊 Total valid recipients: ${validRecipients.length}`);
+      
       let recipientsToSend = [];
       if (abTestMode && templateToSend) {
         const half = Math.ceil(validRecipients.length / 2);
@@ -1049,20 +1133,25 @@ Would you be open to a quick chat?`);
       } else {
         recipientsToSend = validRecipients;
       }
-
+      
       if (recipientsToSend.length === 0) {
         setStatus('❌ No valid leads for selected criteria.');
         setIsSending(false);
+        alert(`❌ No valid recipients found!
+Email column: ${emailColumnName}
+Quality column: ${qualityColumnName}
+Filter: ${leadQualityFilter}
+Check browser console for details.`);
         return;
       }
-
+      
       setStatus(`Sending to ${recipientsToSend.length} leads...`);
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           csvContent: [headers.join(','), ...recipientsToSend.map(r =>
-            headers.map(h => `"${r[h] || ''}"`).join(',')
+            headers.map(h => `"${(r[h] || '').replace(/"/g, '""')}"`).join(',')
           ).join('\n')].join('\n'),
           senderName,
           fieldMappings,
@@ -1088,50 +1177,16 @@ Would you be open to a quick chat?`);
         }
       } else {
         setStatus(`❌ ${data.error}`);
+        alert(`❌ Error: ${data.error}`);
       }
     } catch (err) {
       console.error('Send error:', err);
       setStatus(`❌ ${err.message || 'Failed to send'}`);
+      alert(`❌ ${err.message || 'Failed to send emails'}`);
     } finally {
       setIsSending(false);
     }
   };
-
-  // ✅ HANDLE AI LEADS GENERATED
-  const handleLeadsGenerated = useCallback((results) => {
-    setAiResearchResults(results);
-    
-    // Automatically load into CSV system
-    setCsvContent(results.csvContent);
-    
-    // Auto-map the new fields
-    const headers = results.csvContent.split('\n')[0].split(',').map(h => h.replace(/"/g, ''));
-    setCsvHeaders(headers);
-    
-    // Set up field mappings for the new fields
-    const newMappings = {
-      business_name: 'business_name',
-      email: 'email',
-      email_subject: 'email_subject',
-      email_body: 'email_body',
-      sender_name: 'sender_name'
-    };
-    setFieldMappings(newMappings);
-    
-    // Set templates to use the researched content
-    if (results.leads[0]) {
-      setTemplateA({
-        subject: results.leads[0].email_subject,
-        body: results.leads[0].email_body
-      });
-    }
-    
-    // Show success notification
-    setStatus(`✅ Successfully loaded ${results.leads.length} AI-researched leads!`);
-    
-    // Auto-open the email template section
-    document.getElementById('email-template-section')?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
 
   // ✅ Auth & Data Loading
   useEffect(() => {
@@ -1211,15 +1266,15 @@ Would you be open to a quick chat?`);
 
   if (loadingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-lg text-white">Loading your strategic outreach dashboard...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-lg">Loading your strategic outreach dashboard...</div>
       </div>
     );
   }
-
+  
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center">
         <button
           onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}
           className="bg-blue-600 text-white px-6 py-3 rounded-lg"
@@ -1246,13 +1301,13 @@ Would you be open to a quick chat?`);
   ])];
 
   const abSummary = abTestMode ? (
-    <div className="bg-blue-900/30 p-3 rounded-lg mt-4 border border-blue-700">
-      <h3 className="text-sm font-bold text-blue-300">📊 A/B Test Results</h3>
+    <div className="bg-blue-50 p-3 rounded-lg mt-4">
+      <h3 className="text-sm font-bold text-blue-800">📊 A/B Test Results</h3>
       <div className="flex justify-between text-xs mt-1">
         <span>Template A: {abResults.a.sent || 0} sent</span>
         <span>Template B: {abResults.b.sent || 0} sent</span>
       </div>
-      <div className="text-xs text-blue-400 mt-1">
+      <div className="text-xs text-blue-700 mt-1">
         Check back in 48h for open/click rates
       </div>
     </div>
@@ -1260,7 +1315,9 @@ Would you be open to a quick chat?`);
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200">
-      <Head><title>B2B Growth Engine | Strategic Outreach</title></Head>
+      <Head>
+        <title>B2B Growth Engine | Strategic Outreach</title>
+      </Head>
       <header className="bg-gray-800 shadow-sm border-b border-gray-700">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-xl font-bold text-white">B2B Growth Engine</h1>
@@ -1289,7 +1346,10 @@ Would you be open to a quick chat?`);
             >
               🔥 Scrape Mails
             </button>
-            <button onClick={() => signOut(auth)} className="text-sm text-gray-300 hover:text-white">
+            <button
+              onClick={() => signOut(auth)}
+              className="text-sm text-gray-300 hover:text-white"
+            >
               Sign Out
             </button>
           </div>
@@ -1299,12 +1359,6 @@ Would you be open to a quick chat?`);
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* LEFT PANEL */}
           <div className="lg:col-span-1 space-y-6">
-            {/* ✅ AI LEAD GENERATOR SECTION */}
-            <AiLeadEngine 
-              onLeadsGenerated={handleLeadsGenerated} 
-              currentUser={user} 
-            />
-            
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-xl font-bold mb-4 text-white">1. Upload Leads CSV</h2>
               <input
@@ -1313,11 +1367,11 @@ Would you be open to a quick chat?`);
                 onChange={handleCsvUpload}
                 className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded"
               />
-              <p className="text-xs text-gray-400 mt-2">
-                Auto-scores leads and binds fields.
-              </p>
+              <p className="text-xs text-gray-400 mt-2">Auto-scores leads and binds fields.</p>
               <div className="mt-3">
-                <label className="block text-sm font-medium mb-1 text-gray-200">Target Lead Quality</label>
+                <label className="block text-sm font-medium mb-1 text-gray-200">
+                  Target Lead Quality
+                </label>
                 <select
                   value={leadQualityFilter}
                   onChange={(e) => setLeadQualityFilter(e.target.value)}
@@ -1343,31 +1397,49 @@ Would you be open to a quick chat?`);
                 </label>
               </div>
             </div>
-
+            {/* ✅ FIELD MAPPINGS: SHOW ALL VARS + ALL CSV COLUMNS */}
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-xl font-bold mb-4 text-white">2. Field Mappings</h2>
-              {uiVars.map(varName => (
-                <div key={varName} className="flex items-center mb-2">
-                  <span className="bg-gray-700 px-1 py-0.5 rounded text-xs font-mono mr-2 text-gray-200">
-                    {`{{${varName}}}`}
-                  </span>
-                  <select
-                    value={fieldMappings[varName] || ''}
-                    onChange={(e) => handleMappingChange(varName, e.target.value)}
-                    className="text-xs bg-gray-700 border border-gray-600 text-white rounded px-1 py-0.5 flex-1"
-                  >
-                    <option value="">-- Map to Column --</option>
-                    {csvHeaders.map(col => (
-                      <option key={col} value={col} className="bg-gray-800 text-white">{col}</option>
-                    ))}
-                    {varName === 'sender_name' && (
-                      <option value="sender_name" className="bg-gray-800 text-white">Use sender name</option>
-                    )}
-                  </select>
-                </div>
-              ))}
+              {(() => {
+                const allVars = [...new Set([
+                  ...extractTemplateVariables(templateA.subject),
+                  ...extractTemplateVariables(templateA.body),
+                  ...extractTemplateVariables(templateB.subject),
+                  ...extractTemplateVariables(templateB.body),
+                  ...extractTemplateVariables(whatsappTemplate),
+                  ...extractTemplateVariables(smsTemplate),
+                  ...extractTemplateVariables(instagramTemplate),
+                  ...extractTemplateVariables(twitterTemplate),
+                  ...followUpTemplates.flatMap(t => [
+                    ...extractTemplateVariables(t.subject || ''),
+                    ...extractTemplateVariables(t.body || '')
+                  ]),
+                  'sender_name',
+                  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+                  ...csvHeaders
+                ])];
+                return allVars.map(varName => (
+                  <div key={varName} className="flex items-center mb-2">
+                    <span className="bg-gray-700 px-1.5 py-0.5 rounded text-xs font-mono mr-2 text-gray-200">
+                      {`{{${varName}}}`}
+                    </span>
+                    <select
+                      value={fieldMappings[varName] || ''}
+                      onChange={(e) => handleMappingChange(varName, e.target.value)}
+                      className="text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 flex-1"
+                    >
+                      <option value="">-- Map to Column --</option>
+                      {csvHeaders.map(col => (
+                        <option key={col} value={col} className="bg-gray-800 text-gray-200">{col}</option>
+                      ))}
+                      {varName === 'sender_name' && (
+                        <option value="sender_name" className="bg-gray-800 text-gray-200">Use sender name</option>
+                      )}
+                    </select>
+                  </div>
+                ));
+              })()}
             </div>
-
             {abSummary}
           </div>
 
@@ -1383,7 +1455,6 @@ Would you be open to a quick chat?`);
                 placeholder="e.g., Alex from GrowthCo"
               />
             </div>
-
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-bold text-white">4. Email Template</h2>
@@ -1399,8 +1470,8 @@ Would you be open to a quick chat?`);
               </div>
               {abTestMode ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border border-gray-700 rounded p-3 bg-gray-800">
-                    <h3 className="font-bold text-green-400 mb-2">Template A (Offer)</h3>
+                  <div className="border border-gray-700 rounded p-3 bg-gray-750">
+                    <h3 className="font-bold text-green-400 mb-2">Template A</h3>
                     <input
                       type="text"
                       value={templateA.subject}
@@ -1416,8 +1487,8 @@ Would you be open to a quick chat?`);
                       placeholder="Body A..."
                     />
                   </div>
-                  <div className="border border-gray-700 rounded p-3 bg-gray-800">
-                    <h3 className="font-bold text-blue-400 mb-2">Template B (Call)</h3>
+                  <div className="border border-gray-700 rounded p-3 bg-gray-750">
+                    <h3 className="font-bold text-blue-400 mb-2">Template B</h3>
                     <input
                       type="text"
                       value={templateB.subject}
@@ -1459,8 +1530,8 @@ Would you be open to a quick chat?`);
                     disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
                     className={`w-full py-2.5 rounded font-bold ${
                       isSending || !csvContent || !senderName.trim() || validEmails === 0
-                        ? 'bg-gray-600'
-                        : 'bg-green-600 text-white hover:bg-green-700'
+                      ? 'bg-gray-600 cursor-not-allowed'
+                      : 'bg-green-700 hover:bg-green-600 text-white'
                     }`}
                   >
                     📧 Send Template A (First {Math.ceil(validEmails / 2)} leads)
@@ -1470,8 +1541,8 @@ Would you be open to a quick chat?`);
                     disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
                     className={`w-full py-2.5 rounded font-bold ${
                       isSending || !csvContent || !senderName.trim() || validEmails === 0
-                        ? 'bg-gray-600'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                      ? 'bg-gray-600 cursor-not-allowed'
+                      : 'bg-blue-700 hover:bg-blue-600 text-white'
                     }`}
                   >
                     📧 Send Template B (Last {Math.floor(validEmails / 2)} leads)
@@ -1482,15 +1553,14 @@ Would you be open to a quick chat?`);
                   onClick={() => handleSendEmails()}
                   className={`w-full py-2.5 rounded font-bold mt-4 ${
                     isSending || !csvContent || !senderName.trim() || validEmails === 0
-                      ? 'bg-gray-600'
-                      : 'bg-green-600 text-white hover:bg-green-700'
+                    ? 'bg-gray-600 cursor-not-allowed'
+                    : 'bg-green-700 hover:bg-green-600 text-white'
                   }`}
                 >
                   📧 Send Emails ({validEmails})
                 </button>
               )}
             </div>
-
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-xl font-bold mb-3 text-white">5. WhatsApp Template</h2>
               <textarea
@@ -1501,7 +1571,6 @@ Would you be open to a quick chat?`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-xl font-bold mb-3 text-white">6. SMS Template</h2>
               <textarea
@@ -1512,36 +1581,12 @@ Would you be open to a quick chat?`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-
-            {/* Instagram Template */}
+            
+            {/* FOLLOW-UP TEMPLATES */}
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">7. Instagram Template</h2>
-              <textarea
-                value={instagramTemplate}
-                onChange={(e) => setInstagramTemplate(e.target.value)}
-                rows="3"
-                className="w-full p-2 font-mono bg-gray-700 text-white border border-gray-600 rounded"
-                placeholder="Hi {{business_name}}! ..."
-              />
-            </div>
-
-            {/* Twitter Template */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">8. Twitter Template</h2>
-              <textarea
-                value={twitterTemplate}
-                onChange={(e) => setTwitterTemplate(e.target.value)}
-                rows="3"
-                className="w-full p-2 font-mono bg-gray-700 text-white border border-gray-600 rounded"
-                placeholder="Hi {{business_name}}! ..."
-              />
-            </div>
-
-            {/* Follow-Up Templates */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">9. Follow-Up Sequences</h2>
+              <h2 className="text-xl font-bold mb-3 text-white">7. Follow-Up Sequences</h2>
               {followUpTemplates.map((template, index) => (
-                <div key={template.id} className="border border-gray-700 rounded p-3 mb-3 bg-gray-800">
+                <div key={template.id} className="border border-gray-700 rounded p-3 mb-3 bg-gray-750">
                   <div className="flex justify-between items-start">
                     <h3 className="font-bold text-purple-400">{template.name}</h3>
                     <label className="flex items-center">
@@ -1555,12 +1600,12 @@ Would you be open to a quick chat?`);
                         }}
                         className="mr-1"
                       />
-                      <span className="text-xs text-gray-200">Enable</span>
+                      <span className="text-xs text-gray-300">Enable</span>
                     </label>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <div>
-                      <label className="text-xs block text-gray-200">Channel</label>
+                      <label className="text-xs block text-gray-300">Channel</label>
                       <select
                         value={template.channel}
                         onChange={(e) => {
@@ -1576,7 +1621,7 @@ Would you be open to a quick chat?`);
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs block text-gray-200">Delay (days)</label>
+                      <label className="text-xs block text-gray-300">Delay (days)</label>
                       <input
                         type="number"
                         min="1"
@@ -1632,24 +1677,50 @@ Would you be open to a quick chat?`);
                 </div>
               ))}
             </div>
-
+            
+            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-xl font-bold mb-3 text-white">8. Instagram Template</h2>
+              <textarea
+                value={instagramTemplate}
+                onChange={(e) => setInstagramTemplate(e.target.value)}
+                rows="3"
+                className="w-full p-2 font-mono bg-gray-700 text-white border border-gray-600 rounded"
+                placeholder="Hi {{business_name}}! ..."
+              />
+            </div>
+            
+            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-xl font-bold mb-3 text-white">9. Twitter Template</h2>
+              <textarea
+                value={twitterTemplate}
+                onChange={(e) => setTwitterTemplate(e.target.value)}
+                rows="3"
+                className="w-full p-2 font-mono bg-gray-700 text-white border border-gray-600 rounded"
+                placeholder="Hi {{business_name}}! ..."
+              />
+            </div>
+            
             {status && (
-              <div className={`p-3 rounded text-center whitespace-pre-line ${
-                status.includes('✅') 
-                  ? 'bg-green-900/50 text-green-300 border border-green-700' 
+              <div
+                className={`p-3 rounded text-center whitespace-pre-line ${
+                  status.includes('✅')
+                  ? 'bg-green-900/50 text-green-300 border border-green-700'
                   : 'bg-red-900/50 text-red-300 border border-red-700'
-              }`}>
+                }`}
+              >
                 {status}
               </div>
             )}
           </div>
 
-          {/* RIGHT PANEL - PREVIEWS */}
+          {/* RIGHT PANEL */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white" id="email-template-section">10. Email Preview</h2>
-              <div className="bg-gray-900 p-4 rounded border border-gray-700">
-                <div className="text-sm text-gray-400">To: {previewRecipient?.email || 'email@example.com'}</div>
+              <h2 className="text-xl font-bold mb-3 text-white">10. Email Preview</h2>
+              <div className="bg-gray-750 p-4 rounded border border-gray-600">
+                <div className="text-sm text-gray-400">
+                  To: {previewRecipient?.email || 'email@example.com'}
+                </div>
                 <div className="mt-1 font-medium text-white">
                   {renderPreviewText(
                     abTestMode ? templateA.subject : templateA.subject,
@@ -1659,92 +1730,26 @@ Would you be open to a quick chat?`);
                   )}
                 </div>
                 <div className="mt-2 whitespace-pre-wrap text-sm text-gray-200">
-                  {renderPreviewText(
-                    abTestMode ? templateA.body : templateA.body,
-                    previewRecipient,
-                    fieldMappings,
-                    senderName
-                  )}
+                  {renderPreviewText(templateA.body, previewRecipient, fieldMappings, senderName)}
                 </div>
               </div>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">11. WhatsApp Preview</h2>
-              <div className="bg-gray-900 p-4 rounded border border-gray-700">
-                <div className="text-sm text-gray-400">To: {previewRecipient?.business || 'Business'}</div>
-                <div className="mt-2 whitespace-pre-wrap text-sm text-gray-200">
-                  {renderPreviewText(
-                    whatsappTemplate,
-                    previewRecipient,
-                    fieldMappings,
-                    senderName
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">12. SMS Preview</h2>
-              <div className="bg-gray-900 p-4 rounded border border-gray-700">
-                <div className="text-sm text-gray-400">To: {previewRecipient?.business || 'Business'}</div>
-                <div className="mt-2 whitespace-pre-wrap text-sm text-gray-200">
-                  {renderPreviewText(
-                    smsTemplate,
-                    previewRecipient,
-                    fieldMappings,
-                    senderName
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-
-      {/* ✅ MULTI-CHANNEL OUTREACH MODAL */}
-      {showMultiChannelModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 text-gray-200 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
-            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-              <h2 className="text-xl font-bold">🌐 Multi-Channel Outreach ({whatsappLinks.length})</h2>
-              <button
-                onClick={() => setShowMultiChannelModal(false)}
-                className="text-gray-400 hover:text-white text-2xl"
-              >
-                ✕
-              </button>
             </div>
             
-            {/* Search & Filters */}
-            <div className="p-4 border-b border-gray-700 flex flex-wrap gap-2">
-              <input
-                type="text"
-                placeholder="Search by business or phone..."
-                value={''}
-                onChange={(e) => {}}
-                className="px-3 py-1.5 bg-gray-700 text-white rounded text-sm border border-gray-600"
-              />
-              <select className="px-3 py-1.5 bg-gray-700 text-white rounded text-sm border border-gray-600">
-                <option>All Leads</option>
-                <option>HOT Only</option>
-                <option>WARM Only</option>
-                <option>Replied</option>
-                <option>Needs Follow-up</option>
-              </select>
-              <button className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white rounded text-sm">
-                📲 Bulk SMS
-              </button>
-            </div>
-
-            {/* Contact List */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {whatsappLinks.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  Upload a CSV to see your leads here
+            {whatsappLinks.length > 0 && (
+              <div className="bg-gray-800 p-4 rounded-xl shadow border border-gray-700">
+                <div className="flex justify-between items-center mb-3">
+                  <h2 className="text-lg font-bold text-white">
+                    11. Multi-Channel Outreach ({whatsappLinks.length})
+                  </h2>
+                  <button
+                    onClick={() => setShowMultiChannelModal(true)}
+                    className="text-sm bg-indigo-700 hover:bg-indigo-600 text-white px-3 py-1.5 rounded font-medium"
+                    title="Expand to full view for easier management"
+                  >
+                    ⬆️ Expand
+                  </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="max-h-96 overflow-y-auto space-y-3">
                   {whatsappLinks.map((link) => {
                     const contactKey = link.email || link.phone;
                     const last = lastSent[contactKey];
@@ -1752,7 +1757,7 @@ Would you be open to a quick chat?`);
                     const isReplied = repliedLeads[link.email];
                     const isFollowUp = followUpLeads[link.email];
                     return (
-                      <div key={link.id} className="p-3 bg-gray-900 rounded-lg border border-gray-700">
+                      <div key={link.id} className="p-3 bg-gray-750 rounded-lg border border-gray-600">
                         <div className="flex justify-between">
                           <div>
                             <div className="font-medium text-white">{link.business}</div>
@@ -1768,18 +1773,18 @@ Would you be open to a quick chat?`);
                               </div>
                             )}
                             {isReplied && (
-                              <span className="inline-block bg-green-900/50 text-green-300 text-xs px-1.5 py-0.5 rounded mt-1">
+                              <span className="inline-block bg-green-900/30 text-green-300 text-xs px-1.5 py-0.5 rounded mt-1">
                                 Replied
                               </span>
                             )}
                             {!isReplied && isFollowUp && (
-                              <span className="inline-block bg-yellow-900/50 text-yellow-300 text-xs px-1.5 py-0.5 rounded mt-1">
+                              <span className="inline-block bg-yellow-900/30 text-yellow-300 text-xs px-1.5 py-0.5 rounded mt-1">
                                 Follow Up
                               </span>
                             )}
                           </div>
                           <div className="flex flex-col items-end space-y-1">
-                            <div className="flex space-x-1">
+                            <div className="flex flex-wrap gap-1 justify-end">
                               <button
                                 onClick={() => handleCall(link.phone)}
                                 className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
@@ -1789,8 +1794,29 @@ Would you be open to a quick chat?`);
                               <button
                                 onClick={() => handleTwilioCall(link, 'direct')}
                                 className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
+                                title="Automated message"
                               >
-                                📞 Auto
+                                📞 Auto Call
+                              </button>
+                              <button
+                                onClick={() => handleSmartCall(link)}
+                                className="text-xs bg-gradient-to-r from-blue-700 to-indigo-800 text-white px-3 py-1.5 rounded font-medium"
+                              >
+                                📞 Smart Call
+                              </button>
+                              <button
+                                onClick={() => handleTwilioCall(link, 'bridge')}
+                                className="text-xs bg-blue-700 hover:bg-blue-600 text-white px-2 py-1 rounded"
+                                title="Connect you first"
+                              >
+                                🤝 Bridge
+                              </button>
+                              <button
+                                onClick={() => handleTwilioCall(link, 'interactive')}
+                                className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-2 py-1 rounded"
+                                title="Interactive menu"
+                              >
+                                🎛️ IVR
                               </button>
                               <a
                                 href={link.url}
@@ -1803,18 +1829,21 @@ Would you be open to a quick chat?`);
                               <button
                                 onClick={() => handleOpenNativeSMS(link)}
                                 className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-2 py-1 rounded"
+                                title="Open in Messages"
                               >
                                 SMS
                               </button>
                               <button
                                 onClick={() => handleOpenInstagram(link)}
                                 className="text-xs bg-pink-700 hover:bg-pink-600 text-white px-2 py-1 rounded"
+                                title="Open Instagram"
                               >
                                 IG
                               </button>
                               <button
                                 onClick={() => handleOpenTwitter(link)}
                                 className="text-xs bg-sky-700 hover:bg-sky-600 text-white px-2 py-1 rounded"
+                                title="Open Twitter"
                               >
                                 X
                               </button>
@@ -1831,7 +1860,7 @@ Would you be open to a quick chat?`);
                               <select
                                 value={dealStage[link.email] || 'new'}
                                 onChange={(e) => updateDealStage(link.email, e.target.value)}
-                                className="text-xs bg-gray-700 border border-gray-600 text-white rounded px-1 py-0.5 mt-1 w-full"
+                                className="text-xs bg-gray-700 text-white border border-gray-600 rounded px-1 py-0.5 mt-1 w-full"
                               >
                                 <option value="new">New</option>
                                 <option value="contacted">Contacted</option>
@@ -1840,9 +1869,7 @@ Would you be open to a quick chat?`);
                                 <option value="won">Closed Won</option>
                               </select>
                             ) : (
-                              <div className="text-xs text-gray-500 mt-1 italic">
-                                No email → CRM not tracked
-                              </div>
+                              <div className="text-xs text-gray-500 mt-1 italic">No email → CRM not tracked</div>
                             )}
                           </div>
                         </div>
@@ -1850,18 +1877,29 @@ Would you be open to a quick chat?`);
                     );
                   })}
                 </div>
-              )}
-            </div>
+                <div className="mt-4">
+                  <button
+                    onClick={handleSendBulkSMS}
+                    disabled={!smsConsent || isSending}
+                    className={`w-full py-2 rounded font-bold ${
+                      !smsConsent ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-600 text-white'
+                    }`}
+                  >
+                    📲 Send SMS to All ({whatsappLinks.length})
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </main>
 
       {/* FOLLOW-UP MODAL */}
       {showFollowUpModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 text-gray-200 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
             <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-              <h2 className="text-xl font-bold">📨 Reply & Follow-Up Center</h2>
+              <h2 className="text-xl font-bold text-white">📨 Reply & Follow-Up Center</h2>
               <button
                 onClick={() => setShowFollowUpModal(false)}
                 className="text-gray-400 hover:text-white"
@@ -1891,10 +1929,11 @@ Would you be open to a quick chat?`);
               >
                 📨 Send Mass Follow-Up
               </button>
+              <div className="text-xs text-gray-400 ml-2">Auto-checks replies & updates follow-up status</div>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               {loadingSentLeads ? (
-                <div className="text-center py-6 text-gray-400">Loading sent leads...</div>
+                <div className="text-center py-6 text-gray-300">Loading sent leads...</div>
               ) : sentLeads.length === 0 ? (
                 <div className="text-center py-6 text-gray-500">No emails sent yet.</div>
               ) : (
@@ -1909,10 +1948,10 @@ Would you be open to a quick chat?`);
                         key={lead.email}
                         className={`p-4 rounded-lg border ${
                           lead.replied
-                            ? 'border-green-700 bg-green-900/30'
+                            ? 'border-green-700 bg-green-900/20'
                             : needsFollowUp
-                            ? 'border-yellow-700 bg-yellow-900/30'
-                            : 'border-gray-700 bg-gray-900/30'
+                              ? 'border-yellow-700 bg-yellow-900/20'
+                              : 'border-gray-700 bg-gray-750'
                         }`}
                       >
                         <div className="flex justify-between">
@@ -1922,15 +1961,15 @@ Would you be open to a quick chat?`);
                               Sent: {sentAt.toLocaleString()}
                             </div>
                             {lead.replied ? (
-                              <span className="inline-block mt-1 bg-green-900/50 text-green-300 text-xs px-2 py-0.5 rounded">
+                              <span className="inline-block mt-1 bg-green-900/30 text-green-300 text-xs px-2 py-0.5 rounded">
                                 ✅ Replied
                               </span>
                             ) : needsFollowUp ? (
-                              <span className="inline-block mt-1 bg-yellow-900/50 text-yellow-300 text-xs px-2 py-0.5 rounded">
+                              <span className="inline-block mt-1 bg-yellow-900/30 text-yellow-300 text-xs px-2 py-0.5 rounded">
                                 ⏳ Follow-Up Ready
                               </span>
                             ) : (
-                              <span className="inline-block mt-1 bg-gray-800 text-gray-300 text-xs px-2 py-0.5 rounded">
+                              <span className="inline-block mt-1 bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded">
                                 📤 Pending Reply
                               </span>
                             )}
@@ -1948,7 +1987,9 @@ Would you be open to a quick chat?`);
                               }}
                               disabled={!needsFollowUp}
                               className={`text-xs px-3 py-1 rounded ${
-                                needsFollowUp ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-500'
+                                needsFollowUp
+                                  ? 'bg-blue-700 hover:bg-blue-600 text-white'
+                                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                               }`}
                             >
                               {needsFollowUp ? 'Send Follow-Up' : 'Too Early'}
@@ -1961,16 +2002,24 @@ Would you be open to a quick chat?`);
                 </div>
               )}
             </div>
+            <div className="p-4 border-t border-gray-700 text-xs text-gray-500">
+              • Replied leads are auto-detected<br />
+              • Follow-ups are ready 48h after send if no reply<br />
+              • Click "Send Follow-Up" to send a polite reminder
+            </div>
           </div>
         </div>
       )}
-
+      
       {/* CALL HISTORY MODAL */}
       {showCallHistoryModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 text-gray-200 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
-            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-              <h2 className="text-xl font-bold">📞 Call History & Analytics</h2>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gradient-to-r from-green-900/20 to-blue-900/20">
+              <div>
+                <h2 className="text-xl font-bold text-white">📞 Call History & Analytics</h2>
+                <p className="text-sm text-gray-400">Track all your Twilio calls</p>
+              </div>
               <button
                 onClick={() => setShowCallHistoryModal(false)}
                 className="text-gray-400 hover:text-white text-2xl"
@@ -1978,66 +2027,181 @@ Would you be open to a quick chat?`);
                 ✕
               </button>
             </div>
+            <div className="p-4 bg-gray-850 border-b border-gray-700 grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-400">{callHistory.length}</div>
+                <div className="text-xs text-gray-400">Total Calls</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-400">
+                  {callHistory.filter(c => c.status === 'completed').length}
+                </div>
+                <div className="text-xs text-gray-400">Completed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-400">
+                  {callHistory.filter(c => c.status === 'failed').length}
+                </div>
+                <div className="text-xs text-gray-400">Failed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-400">
+                  {callHistory.filter(c => c.answeredBy === 'human').length}
+                </div>
+                <div className="text-xs text-gray-400">Human Answered</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-400">
+                  {callHistory.filter(c => c.answeredBy?.includes('machine')).length}
+                </div>
+                <div className="text-xs text-gray-400">Voicemail</div>
+              </div>
+            </div>
+            <div className="p-4 border-b border-gray-700 flex space-x-2">
+              <button
+                onClick={loadCallHistory}
+                disabled={loadingCallHistory}
+                className="text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded disabled:bg-gray-700"
+              >
+                {loadingCallHistory ? '🔄 Loading...' : '🔄 Refresh'}
+              </button>
+              <button
+                onClick={() => {
+                  const csvContent = [
+                    ['Business', 'Phone', 'Status', 'Duration', 'Answered By', 'Date', 'Call SID'].join(','),
+                    ...callHistory.map(call => [
+                      call.businessName,
+                      call.toPhone,
+                      call.status,
+                      call.duration || 0,
+                      call.answeredBy || 'unknown',
+                      new Date(call.createdAt).toLocaleString(),
+                      call.callSid
+                    ].join(','))
+                  ].join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `call-history-${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click();
+                }}
+                className="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded"
+              >
+                📥 Export CSV
+              </button>
+            </div>
             <div className="flex-1 overflow-y-auto p-4">
               {loadingCallHistory ? (
-                <div className="text-center py-12 text-gray-400">Loading call history...</div>
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">⏳</div>
+                  <div className="text-lg text-gray-300">Loading call history...</div>
+                </div>
               ) : callHistory.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">No calls yet</div>
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📞</div>
+                  <div className="text-xl font-medium mb-2 text-gray-300">No calls yet</div>
+                  <div className="text-gray-500">Start making calls to see them here</div>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {callHistory.map((call) => {
-                    const statusBadge = getStatusBadge(call.status);
+                    const isCompleted = call.status === 'completed';
+                    const hasRecording = !!call.recordingUrl;
                     return (
                       <div
                         key={call.id}
-                        className={`p-4 rounded-lg border ${
-                          call.status === 'completed'
-                            ? 'border-green-700 bg-green-900/20'
+                        className={`p-4 rounded-lg border-2 ${
+                          isCompleted
+                            ? 'border-green-700 bg-green-900/10'
                             : call.status === 'failed'
-                            ? 'border-red-700 bg-red-900/20'
-                            : 'border-gray-700 bg-gray-900/20'
+                              ? 'border-red-700 bg-red-900/10'
+                              : 'border-gray-700 bg-gray-800'
                         }`}
                       >
-                        <div className="flex justify-between">
-                          <div>
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-1">
-                              <h3 className="font-bold text-lg text-white">{call.businessName}</h3>
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge.bg} ${statusBadge.text}`}>
-                                {statusBadge.label}
+                              <h3 className="font-bold text-white">{call.businessName}</h3>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                call.status === 'completed'
+                                  ? 'bg-green-900/30 text-green-300'
+                                  : call.status === 'failed'
+                                    ? 'bg-red-900/30 text-red-300'
+                                    : 'bg-gray-700 text-gray-300'
+                              }`}>
+                                {call.status === 'completed' ? 'Completed' : call.status === 'failed' ? 'Failed' : 'In Progress'}
                               </span>
                             </div>
-                            <div className="text-sm text-gray-400">📞 {call.toPhone} | 🕒 {new Date(call.createdAt).toLocaleString()}</div>
+                            <div className="grid grid-cols-2 gap-2 text-sm text-gray-400 mt-2">
+                              <div>
+                                <span className="font-medium">📞 Phone:</span> {call.toPhone}
+                              </div>
+                              <div>
+                                <span className="font-medium">⏱️ Duration:</span> {call.duration || 0}s
+                              </div>
+                              <div>
+                                <span className="font-medium">🎤 Answered by:</span>{' '}
+                                {call.answeredBy === 'human'
+                                  ? '👤 Human'
+                                  : call.answeredBy?.includes('machine')
+                                    ? '📠 Voicemail'
+                                    : '❓ Unknown'}
+                              </div>
+                              <div>
+                                <span className="font-medium">📅 Date:</span>{' '}
+                                {new Date(call.createdAt).toLocaleDateString() + ' ' +
+                                  new Date(call.createdAt).toLocaleTimeString()}
+                              </div>
+                            </div>
+                            {call.callSid && (
+                              <div className="text-xs text-gray-500 mt-2 font-mono">
+                                SID: {call.callSid}
+                              </div>
+                            )}
+                            {call.error && (
+                              <div className="mt-2 p-2 bg-red-900/20 rounded text-xs text-red-300">
+                                <strong>Error:</strong> {call.error}
+                              </div>
+                            )}
                           </div>
-                          <div className="flex space-x-2">
-                            {call.recordingUrl && (
+                          <div className="flex flex-col space-y-2 ml-4">
+                            {hasRecording && (
                               <a
                                 href={call.recordingUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 rounded"
+                                className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 rounded text-center"
                               >
                                 🎙️ Listen
                               </a>
                             )}
-                            <button
-                              onClick={() => {
-                                const contact = whatsappLinks.find(c => c.phone === call.toPhone.replace(/\D/g, ''));
-                                if (contact) {
+                            {isCompleted && (
+                              <span className="text-xs bg-green-900/30 text-green-300 px-3 py-1.5 rounded text-center font-medium">
+                                ✅ Success
+                              </span>
+                            )}
+                            {call.toPhone && (
+                              <button
+                                onClick={() => {
+                                  let contact = whatsappLinks.find(c =>
+                                    c.phone === call.toPhone.replace(/\D/g, '')
+                                  );
+                                  if (!contact) {
+                                    contact = {
+                                      business: call.businessName || 'Unknown Business',
+                                      phone: call.toPhone,
+                                      email: null,
+                                      address: ''
+                                    };
+                                  }
                                   handleTwilioCall(contact, call.callType || 'direct');
-                                } else {
-                                  // Fallback contact
-                                  handleTwilioCall({
-                                    business: call.businessName || 'Unknown',
-                                    phone: call.toPhone,
-                                    email: null,
-                                    address: ''
-                                  }, call.callType || 'direct');
-                                }
-                              }}
-                              className="text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded"
-                            >
-                              🔄 Retry
-                            </button>
+                                }}
+                                className="text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded"
+                              >
+                                🔄 Retry
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2045,6 +2209,247 @@ Would you be open to a quick chat?`);
                   })}
                 </div>
               )}
+            </div>
+            <div className="p-4 border-t border-gray-700 bg-gray-850 text-xs text-gray-500">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div>
+                  <strong>💡 Tip:</strong> Calls are tracked in real-time
+                </div>
+                <div>
+                  <strong>🎙️ Recordings:</strong> Available for completed calls
+                </div>
+                <div>
+                  <strong>📊 Analytics:</strong> Filter and export your data
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* MULTI-CHANNEL OUTREACH MODAL */}
+      {showMultiChannelModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
+            {/* HEADER */}
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gradient-to-r from-indigo-900/20 to-blue-900/20">
+              <div>
+                <h2 className="text-2xl font-bold text-white">🌐 Multi-Channel Outreach Manager</h2>
+                <p className="text-sm text-gray-400">Manage all your communication channels ({whatsappLinks.length} contacts)</p>
+              </div>
+              <button
+                onClick={() => setShowMultiChannelModal(false)}
+                className="text-gray-400 hover:text-white text-3xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* STATS BAR */}
+            <div className="p-4 bg-gray-850 border-b border-gray-700 grid grid-cols-2 md:grid-cols-6 gap-3">
+              <div className="text-center">
+                <div className="text-xl font-bold text-blue-400">{whatsappLinks.length}</div>
+                <div className="text-xs text-gray-400">Total Contacts</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-green-400">
+                  {Object.keys(repliedLeads).filter(k => repliedLeads[k]).length}
+                </div>
+                <div className="text-xs text-gray-400">Replied</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-yellow-400">
+                  {Object.keys(followUpLeads).filter(k => followUpLeads[k]).length}
+                </div>
+                <div className="text-xs text-gray-400">Need Follow-Up</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-purple-400">
+                  {whatsappLinks.filter(l => lastSent[l.email || l.phone]).length}
+                </div>
+                <div className="text-xs text-gray-400">Recently Contacted</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-orange-400">
+                  {whatsappLinks.filter(l => !l.email).length}
+                </div>
+                <div className="text-xs text-gray-400">Phone Only</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-cyan-400">
+                  {whatsappLinks.filter(l => l.email && (leadScores[l.email] || 0) >= 70).length}
+                </div>
+                <div className="text-xs text-gray-400">High Quality</div>
+              </div>
+            </div>
+
+            {/* SEARCH & FILTER BAR */}
+            <div className="p-4 border-b border-gray-700 bg-gray-800 flex gap-2 flex-wrap">
+              <input
+                type="text"
+                placeholder="🔍 Search by business name or phone..."
+                className="flex-1 min-w-[200px] px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => {
+                  const value = e.target.value.toLowerCase();
+                  // Filter logic can be added here
+                }}
+              />
+              <select
+                defaultValue="all"
+                className="px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded text-sm"
+              >
+                <option value="all">📊 All Status</option>
+                <option value="replied">✅ Replied</option>
+                <option value="followup">⏳ Follow-Up Ready</option>
+                <option value="pending">📤 Pending Reply</option>
+              </select>
+            </div>
+
+            {/* MAIN CONTENT */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {whatsappLinks.map((link) => {
+                  const contactKey = link.email || link.phone;
+                  const last = lastSent[contactKey];
+                  const score = leadScores[link.email] || 0;
+                  const isReplied = repliedLeads[link.email];
+                  const isFollowUp = followUpLeads[link.email];
+
+                  return (
+                    <div
+                      key={link.id}
+                      className={`p-4 rounded-lg border-2 transition-all ${
+                        isReplied
+                          ? 'border-green-700 bg-green-900/15'
+                          : isFollowUp
+                            ? 'border-yellow-700 bg-yellow-900/15'
+                            : 'border-gray-700 bg-gray-750'
+                      }`}
+                    >
+                      {/* HEADER */}
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-white text-lg">{link.business}</h3>
+                          <p className="text-sm text-gray-400">📞 +{link.phone}</p>
+                          {link.email && (
+                            <p className="text-xs text-blue-400">📧 {link.email}</p>
+                          )}
+                        </div>
+                        {/* STATUS BADGES */}
+                        <div className="flex flex-col gap-1">
+                          {isReplied && (
+                            <span className="bg-green-900/40 text-green-300 text-xs px-2 py-1 rounded font-medium">
+                              ✅ Replied
+                            </span>
+                          )}
+                          {!isReplied && isFollowUp && (
+                            <span className="bg-yellow-900/40 text-yellow-300 text-xs px-2 py-1 rounded font-medium">
+                              ⏳ Follow-Up
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* INFO */}
+                      <div className="mb-3 p-2 bg-gray-800/50 rounded text-xs space-y-1">
+                        {link.email ? (
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Lead Quality Score:</span>
+                            <span className={`font-bold ${
+                              score >= 70 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-orange-400'
+                            }`}>
+                              {score}/100
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-gray-500 italic">📵 No email (phone-only lead)</div>
+                        )}
+                        {last && (
+                          <div className="flex justify-between text-gray-400">
+                            <span>Last Contacted:</span>
+                            <span className="text-green-400">{new Date(last).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ACTION BUTTONS */}
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => handleCall(link.phone)}
+                            className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1.5 rounded font-medium transition"
+                          >
+                            📞 Call
+                          </button>
+                          <button
+                            onClick={() => handleTwilioCall(link, 'direct')}
+                            className="text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1.5 rounded font-medium transition"
+                            title="Send automated message"
+                          >
+                            🤖 Auto Call
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => handleSmartCall(link)}
+                            className="text-xs bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-600 hover:to-indigo-700 text-white px-2 py-1.5 rounded font-medium transition col-span-2"
+                          >
+                            📞 Smart Call
+                          </button>
+                        </div>
+                        {link.phone && (
+                          <button
+                            onClick={() => handleTwilioCall(link, 'bridge')}
+                            className="text-xs w-full bg-blue-700 hover:bg-blue-600 text-white px-2 py-1.5 rounded font-medium transition"
+                            title="Connect and bridge call"
+                          >
+                            🌉 Bridge Call
+                          </button>
+                        )}
+                        {link.phone && (
+                          <a
+                            href={`https://wa.me/${link.phone}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs w-full block text-center bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-500 hover:to-emerald-600 text-white px-2 py-1.5 rounded font-medium transition"
+                          >
+                            💬 WhatsApp
+                          </a>
+                        )}
+                        {link.email && (
+                          <button
+                            onClick={() => window.location.href = `mailto:${link.email}`}
+                            className="text-xs w-full bg-purple-700 hover:bg-purple-600 text-white px-2 py-1.5 rounded font-medium transition"
+                          >
+                            ✉️ Email
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {whatsappLinks.length === 0 && (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">🌐</div>
+                  <div className="text-xl font-medium mb-2 text-gray-300">No contacts yet</div>
+                  <div className="text-gray-500">Generate WhatsApp links from your CSV to see them here</div>
+                </div>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="p-4 border-t border-gray-700 bg-gray-850 flex justify-between items-center">
+              <div className="text-xs text-gray-500 space-x-4">
+                <span>💡 Click "Expand" from the dashboard to manage all channels</span>
+              </div>
+              <button
+                onClick={() => setShowMultiChannelModal(false)}
+                className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-medium"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
