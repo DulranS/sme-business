@@ -76,15 +76,22 @@ function isValidEmail(email) {
   const parts = cleaned.split('@');
   const [localPart, domainPart] = parts;
   
-  // Local part (before @): at least 1 character
+  // Local part (before @): at least 1 character, no special chars at start/end
   if (!localPart || localPart.length < 1) return false;
+  if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
+  if (localPart.startsWith('-') || localPart.endsWith('-')) return false;
   
   // Domain part (after @): must have at least one dot and be reasonable
   if (!domainPart || domainPart.length < 3) return false;
   if (!domainPart.includes('.')) return false;
+  if (domainPart.startsWith('.') || domainPart.endsWith('.')) return false;
   
-  const [domain, tld] = domainPart.split('.').slice(-2);
-  if (!domain || !tld || tld.length < 2) return false;
+  const domainBits = domainPart.split('.');
+  const tld = domainBits[domainBits.length - 1];
+  
+  // TLD must be 2-6 characters and letters only
+  if (!tld || tld.length < 2 || tld.length > 6) return false;
+  if (!/^[a-z]+$/.test(tld)) return false;
   
   return true;
 }
@@ -204,6 +211,9 @@ export async function POST(req) {
       
       if (!isValidEmail(email)) {
         invalidEmailCount++;
+        if (invalidEmailCount <= 3) {
+          console.log(`  [INVALID EMAIL #${invalidEmailCount}] Raw: "${rawEmail}" | Cleaned: "${email}"`);
+        }
         continue;
       }
 
@@ -237,7 +247,17 @@ export async function POST(req) {
       console.error('  Quality filtered: ' + qualityFilterSkipped);
       console.error('  EMAIL FORMAT SAMPLES:', emailSamples);
       
-      const diagMsg = `No valid recipients. Of ${lines.length - 1} rows: ${emptyRowCount} empty, ${invalidEmailCount} invalid emails. Check console to see EMAIL FORMAT SAMPLES.`;
+      // Provide intelligent guidance based on what went wrong
+      let guidance = '';
+      if (emptyRowCount === lines.length - 1) {
+        guidance = ' ALL EMAIL FIELDS ARE EMPTY - Your CSV has no email data at all.';
+      } else if (invalidEmailCount > emptyRowCount) {
+        guidance = ` Check EMAIL FORMAT SAMPLES in console. Emails don't look right.`;
+      } else if (qualityFilterSkipped > 0 && recipients.length === 0) {
+        guidance = ` All rows were filtered by lead quality. Remove quality filter or add more data.`;
+      }
+      
+      const diagMsg = `No valid recipients.${guidance} Processed ${lines.length - 1} rows: ${invalidEmailCount} invalid, ${emptyRowCount} empty, ${qualityFilterSkipped} quality-filtered.`;
       return Response.json({ 
         error: diagMsg,
         stats: {
@@ -247,7 +267,8 @@ export async function POST(req) {
           qualityFiltered: qualityFilterSkipped
         },
         emailColumn: emailCol,
-        samples: emailSamples
+        samples: emailSamples,
+        guidance
       }, { status: 400 });
     }
 
