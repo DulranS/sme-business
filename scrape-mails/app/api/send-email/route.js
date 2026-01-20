@@ -116,15 +116,19 @@ export async function POST(req) {
     console.log('[CSV PARSE] Email column detected:', emailCol);
     
     // ✅ CRITICAL FIX: Auto-detect lead quality column
+    // ONLY use quality filter if explicitly defined in fieldMappings
     const qualityCol = fieldMappings?.lead_quality 
       ? headers.find(h => h.toLowerCase() === fieldMappings.lead_quality.toLowerCase())
       : null;
     
     const hasQualityField = qualityCol !== null;
     
-    // ⚠️ IMPORTANT: Warn if filter passed but no quality column found
+    // ⚠️ CRITICAL: Ignore quality filter if quality column wasn't explicitly mapped
+    // This prevents silently dropping all rows when filter is sent but column doesn't exist
+    const shouldApplyQualityFilter = hasQualityField && leadQualityFilter && leadQualityFilter !== 'all';
+    
     if (leadQualityFilter && leadQualityFilter !== 'all' && !hasQualityField) {
-      console.warn(`[PARSE WARNING] Quality filter "${leadQualityFilter}" requested but NO quality column found. Ignoring filter.`);
+      console.warn(`[PARSE] ⚠️ Quality filter "${leadQualityFilter}" ignored - no quality column defined in fieldMappings. Set fieldMappings.lead_quality to use this filter.`);
     }
 
     const recipients = [];
@@ -164,7 +168,7 @@ export async function POST(req) {
 
       // ✅ Apply lead quality filter ONLY if column actually exists AND filter is set
       // NEVER apply filter if quality column wasn't found - that would silently drop all rows!
-      if (hasQualityField && leadQualityFilter && leadQualityFilter !== 'all') {
+      if (shouldApplyQualityFilter) {
         const quality = (row[qualityCol] || '').trim().toUpperCase();
         // Only skip if quality column has a value AND it doesn't match filter
         if (quality && quality !== leadQualityFilter.toUpperCase()) {
