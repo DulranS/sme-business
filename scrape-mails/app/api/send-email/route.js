@@ -76,10 +76,9 @@ function isValidEmail(email) {
   const parts = cleaned.split('@');
   const [localPart, domainPart] = parts;
   
-  // Local part (before @): at least 1 character, no special chars at start/end
+  // Local part (before @): at least 1 character
   if (!localPart || localPart.length < 1) return false;
   if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
-  if (localPart.startsWith('-') || localPart.endsWith('-')) return false;
   
   // Domain part (after @): must have at least one dot and be reasonable
   if (!domainPart || domainPart.length < 3) return false;
@@ -89,9 +88,12 @@ function isValidEmail(email) {
   const domainBits = domainPart.split('.');
   const tld = domainBits[domainBits.length - 1];
   
-  // TLD must be 2-6 characters and letters only
+  // TLD must be 2-6 characters (letters, numbers, or hyphens - more permissive)
   if (!tld || tld.length < 2 || tld.length > 6) return false;
-  if (!/^[a-z]+$/.test(tld)) return false;
+  // Allow letters, numbers in TLD (even if not technically valid for some edge cases)
+  if (!/^[a-z0-9-]+$/.test(tld)) return false;
+  // But hyphens can't be at start/end of TLD
+  if (tld.startsWith('-') || tld.endsWith('-')) return false;
   
   return true;
 }
@@ -160,8 +162,11 @@ function getEmailValidationFailureReasons(email) {
       if (!tld || tld.length < 2 || tld.length > 6) {
         reasons.push(`Invalid TLD: "${tld}" (len=${tld?.length})`);
       }
-      if (tld && !/^[a-z]+$/.test(tld)) {
-        reasons.push(`TLD has non-letters: "${tld}"`);
+      if (tld && !/^[a-z0-9-]+$/.test(tld)) {
+        reasons.push(`TLD has invalid chars: "${tld}"`);
+      }
+      if (tld && (tld.startsWith('-') || tld.endsWith('-'))) {
+        reasons.push(`TLD starts/ends with hyphen: "${tld}"`);
       }
     }
   }
@@ -312,6 +317,21 @@ export async function POST(req) {
       console.error('  EMAIL FORMAT SAMPLES:', emailSamples);
       console.error('  WHY EMAILS FAILED:', invalidSamples);
       
+      // PATTERN DETECTION - Find what's common in failures
+      let failurePatterns = {};
+      emailSamples.forEach(sample => {
+        if (!sample.valid) {
+          const cleaned = sample.cleaned;
+          // Analyze what pattern might be failing
+          if (cleaned.includes('+')) failurePatterns['plus_addressing'] = (failurePatterns['plus_addressing'] || 0) + 1;
+          if (cleaned.includes('_')) failurePatterns['underscore'] = (failurePatterns['underscore'] || 0) + 1;
+          if (cleaned.match(/\d/)) failurePatterns['has_numbers'] = (failurePatterns['has_numbers'] || 0) + 1;
+          if (cleaned.includes('-')) failurePatterns['has_hyphens'] = (failurePatterns['has_hyphens'] || 0) + 1;
+          if (cleaned.split('.').length > 3) failurePatterns['multi_dot_domain'] = (failurePatterns['multi_dot_domain'] || 0) + 1;
+        }
+      });
+      console.error('  FAILURE PATTERNS:', failurePatterns);
+      
       // Provide intelligent guidance based on what went wrong
       let guidance = '';
       let detailedReasons = '';
@@ -341,6 +361,7 @@ export async function POST(req) {
         emailColumn: emailCol,
         samples: emailSamples,
         invalidDetails: invalidSamples.slice(0, 5),
+        failurePatterns: failurePatterns,
         guidance,
         detailedReasons
       };
