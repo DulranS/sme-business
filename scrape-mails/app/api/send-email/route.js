@@ -53,11 +53,13 @@ function parseCsvRow(str) {
   );
 }
 
+// ✅ IMPROVED EMAIL VALIDATION (handles real-world cases)
 function isValidEmail(email) {
   if (!email || typeof email !== 'string') return false;
   const trimmed = email.trim();
   if (trimmed.length === 0) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  // Allow common variations (Gmail dots, plus addressing, etc.)
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(trimmed);
 }
 
 export async function POST(req) {
@@ -79,6 +81,7 @@ export async function POST(req) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Normalize line endings and split
     const lines = csvContent
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
@@ -89,14 +92,29 @@ export async function POST(req) {
       return Response.json({ error: 'Invalid CSV format' }, { status: 400 });
     }
 
-    const headers = parseCsvRow(lines[0]).map(h => h.trim());
-    const emailCol = fieldMappings.email || 'email';
-    const qualityCol = fieldMappings.lead_quality || 'lead_quality';
-    const hasQualityField = headers.includes(qualityCol);
+    // Parse headers (case-insensitive normalization)
+    const rawHeaders = parseCsvRow(lines[0]);
+    const headers = rawHeaders.map(h => h.trim());
+    
+    // ✅ CRITICAL FIX: Auto-detect email column
+    const emailCol = findEmailColumn(headers, fieldMappings);
+    if (!emailCol) {
+      return Response.json({ 
+        error: `No email column found. Check your CSV headers: ${headers.join(', ')}` 
+      }, { status: 400 });
+    }
+
+    // ✅ CRITICAL FIX: Auto-detect lead quality column
+    const qualityCol = fieldMappings.lead_quality 
+      ? headers.find(h => h.toLowerCase() === fieldMappings.lead_quality.toLowerCase())
+      : 'lead_quality';
+    
+    const hasQualityField = qualityCol && headers.includes(qualityCol);
 
     const recipients = [];
     const template = templateToSend === 'B' ? templateB : templateA;
 
+    // Process data rows
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvRow(lines[i]);
       if (values.length !== headers.length) continue;
@@ -104,9 +122,11 @@ export async function POST(req) {
       const row = {};
       headers.forEach((h, idx) => row[h] = values[idx]?.trim() || '');
 
+      // ✅ Use detected email column
       const email = row[emailCol];
       if (!isValidEmail(email)) continue;
 
+      // Apply lead quality filter if column exists
       if (hasQualityField) {
         const quality = (row[qualityCol] || '').trim() || 'HOT';
         if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) continue;
@@ -115,11 +135,25 @@ export async function POST(req) {
       recipients.push({ ...row, email });
     }
 
-    // if (recipients.length === 0) {
-    //   return Response.json({ 
-    //     error: 'No valid recipients. Check email column mapping and lead quality filter.'
-    //   }, { status: 400 });
-    // }
+    if (recipients.length === 0) {
+      // ✅ IMPROVED ERROR MESSAGE WITH DEBUG INFO
+      return Response.json({ 
+        error: `No valid recipients found. 
+        • Email column used: "${emailCol}" 
+        • Quality column: ${qualityCol ? `"${qualityCol}"` : 'none'}
+        • Filter: "${leadQualityFilter}"
+        • Total rows processed: ${lines.length - 1}
+        • Sample headers: ${headers.slice(0, 5).join(', ')}
+        Check your CSV structure and field mappings.`,
+        debug: {
+          emailCol,
+          qualityCol,
+          leadQualityFilter,
+          headers,
+          sampleRow: lines[1] ? parseCsvRow(lines[1]) : null
+        }
+      }, { status: 400 });
+    }
 
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: accessToken });
@@ -158,6 +192,33 @@ export async function POST(req) {
   }
 }
 
+// ✅ AUTO-DETECT EMAIL COLUMN (critical fix)
+function findEmailColumn(headers, fieldMappings) {
+  // 1. Check field mappings first (user-defined)
+  if (fieldMappings.email) {
+    const mappedCol = headers.find(h => 
+      h.toLowerCase() === fieldMappings.email.toLowerCase()
+    );
+    if (mappedCol) return mappedCol;
+  }
+
+  // 2. Try common email column names
+  const emailCandidates = [
+    'email', 'Email', 'EMAIL', 
+    'email_address', 'Email Address', 'contact_email',
+    'primary_email', 'business_email'
+  ];
+  
+  for (const candidate of emailCandidates) {
+    const match = headers.find(h => h.toLowerCase() === candidate.toLowerCase());
+    if (match) return match;
+  }
+
+  // 3. Fallback: find any header containing "email"
+  return headers.find(h => h.toLowerCase().includes('email'));
+}
+
+// Rest of the functions remain the same (buildPlainTextEmail, buildHtmlEmail, saveSentEmailRecord)
 function buildPlainTextEmail(to, subject, body) {
   const emailLines = [
     `To: ${to}`,
@@ -177,7 +238,6 @@ function buildHtmlEmail(to, subject, body, images) {
   let htmlBody = body.replace(/\n/g, '<br>');
   const boundary = 'boundary_' + Date.now();
 
-  // Replace placeholders with image tags
   images.forEach(img => {
     const imgTag = `<img src="cid:${img.cid}" alt="Inline" style="max-width:100%;">`;
     htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
@@ -196,7 +256,6 @@ function buildHtmlEmail(to, subject, body, images) {
     ''
   ];
 
-  // Add image attachments
   images.forEach(img => {
     parts.push(`--${boundary}`);
     parts.push(`Content-Type: ${img.mimeType}`);
