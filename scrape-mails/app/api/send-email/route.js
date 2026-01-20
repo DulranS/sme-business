@@ -115,11 +115,11 @@ export async function POST(req) {
       recipients.push({ ...row, email });
     }
 
-    if (recipients.length === 0) {
-      return Response.json({ 
-        error: 'No valid recipients. Check email column mapping and lead quality filter.'
-      }, { status: 400 });
-    }
+    // if (recipients.length === 0) {
+    //   return Response.json({ 
+    //     error: 'No valid recipients. Check email column mapping and lead quality filter.'
+    //   }, { status: 400 });
+    // }
 
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: accessToken });
