@@ -53,25 +53,51 @@ function parseCsvRow(str) {
   );
 }
 
-// ✅ BULLETPROOF EMAIL VALIDATION - accepts almost anything valid
+// ✅ ULTRA-LENIENT EMAIL VALIDATION - accepts anything that looks remotely like an email
 function isValidEmail(email) {
   if (!email || typeof email !== 'string') return false;
-  const trimmed = email.trim();
-  if (trimmed.length < 3) return false;
-  if (trimmed === 'undefined' || trimmed === 'null' || trimmed === '' || trimmed === 'NA' || trimmed === 'N/A') return false;
-  if (trimmed.startsWith('[') || trimmed.includes('[MISSING')) return false;
   
-  // Must have @ symbol
-  const atIndex = trimmed.indexOf('@');
-  if (atIndex < 1 || atIndex === trimmed.length - 1) return false;
+  // Aggressive cleanup
+  let cleaned = email.trim()
+    .toLowerCase()
+    .replace(/^["'`]+/, '')  // Remove leading quotes
+    .replace(/["'`]+$/, '')  // Remove trailing quotes
+    .replace(/\s+/g, '')    // Remove all whitespace
+    .replace(/[<>]/g, '');  // Remove angle brackets
   
-  const afterAt = trimmed.substring(atIndex + 1);
-  // After @ must have at least one dot and something after it
-  const dotIndex = afterAt.indexOf('.');
-  if (dotIndex < 1 || dotIndex === afterAt.length - 1) return false;
+  if (cleaned.length < 5) return false;
+  if (cleaned === 'undefined' || cleaned === 'null' || cleaned === 'na' || cleaned === 'n/a') return false;
+  if (cleaned.startsWith('[') || cleaned.includes('missing')) return false;
   
-  // Must have at least one character for domain name, then dot, then TLD
+  // Must have exactly one @ symbol
+  const atCount = (cleaned.match(/@/g) || []).length;
+  if (atCount !== 1) return false;
+  
+  const parts = cleaned.split('@');
+  const [localPart, domainPart] = parts;
+  
+  // Local part (before @): at least 1 character
+  if (!localPart || localPart.length < 1) return false;
+  
+  // Domain part (after @): must have at least one dot and be reasonable
+  if (!domainPart || domainPart.length < 3) return false;
+  if (!domainPart.includes('.')) return false;
+  
+  const [domain, tld] = domainPart.split('.').slice(-2);
+  if (!domain || !tld || tld.length < 2) return false;
+  
   return true;
+}
+
+// Helper to clean email for actual use
+function cleanEmail(email) {
+  if (!email) return '';
+  return email.trim()
+    .toLowerCase()
+    .replace(/^["'`]+/, '')
+    .replace(/["'`]+$/, '')
+    .replace(/[<>]/g, '')
+    .trim();
 }
 
 export async function POST(req) {
@@ -139,10 +165,10 @@ export async function POST(req) {
 
     const recipients = [];
     const template = templateToSend === 'B' ? templateB : templateA;
-    let skippedCount = 0;
     let invalidEmailCount = 0;
     let emptyRowCount = 0;
     let qualityFilterSkipped = 0;
+    const emailSamples = []; // Collect first 10 emails for debugging
 
     console.log(`[PARSE START] Processing ${lines.length - 1} data rows, email column: "${emailCol}", shouldApplyQualityFilter: ${shouldApplyQualityFilter}`);
 
@@ -164,28 +190,28 @@ export async function POST(req) {
 
       // ✅ CRITICAL: Get email from the detected column
       const rawEmail = row[emailCol];
-      const email = rawEmail?.trim();
+      const email = cleanEmail(rawEmail);
       
       if (!email) {
-        invalidEmailCount++;
-        if (i <= 3) console.log(`[PARSE] Row ${i}: Empty email field`);
+        emptyRowCount++;
         continue;
+      }
+      
+      // Log first 10 raw emails to debug format issues
+      if (emailSamples.length < 10) {
+        emailSamples.push({ raw: rawEmail, cleaned: email, valid: isValidEmail(email) });
       }
       
       if (!isValidEmail(email)) {
         invalidEmailCount++;
-        if (i <= 5) console.log(`[PARSE] Row ${i}: Invalid email format: "${email}"`);
         continue;
       }
 
       // ✅ Apply lead quality filter ONLY if column actually exists AND filter is set
-      // NEVER apply filter if quality column wasn't found - that would silently drop all rows!
       if (shouldApplyQualityFilter) {
         const quality = (row[qualityCol] || '').trim().toUpperCase();
-        // Only skip if quality column has a value AND it doesn't match filter
         if (quality && quality !== leadQualityFilter.toUpperCase()) {
           qualityFilterSkipped++;
-          if (i <= 3) console.log(`[PARSE] Row ${i}: Filtered by quality - got "${quality}", wanted "${leadQualityFilter}"`);
           continue;
         }
       }
@@ -193,48 +219,35 @@ export async function POST(req) {
       recipients.push({ ...row, email });
     }
     
-    const parseLog = `[PARSE COMPLETE] Rows: ${lines.length - 1} → Recipients: ${recipients.length} (Invalid emails: ${invalidEmailCount}, Empty: ${emptyRowCount}, Quality filtered: ${qualityFilterSkipped})`;
+    const parseLog = `[PARSE COMPLETE] Rows: ${lines.length - 1} → Recipients: ${recipients.length} (Invalid: ${invalidEmailCount}, Empty: ${emptyRowCount}, Filtered: ${qualityFilterSkipped})`;
     console.log(parseLog);
+    console.log('[EMAIL SAMPLES]', emailSamples);
     
-    // ⚠️ Show sample recipients for debugging
-    if (recipients.length > 0 && recipients.length <= 10) {
-      console.log('[SAMPLE RECIPIENTS]', recipients.slice(0, 3).map(r => r.email));
+    if (recipients.length > 0) {
+      console.log('[FIRST 5 VALID EMAILS]', recipients.slice(0, 5).map(r => r.email));
     }
 
     if (recipients.length === 0) {
       // ✅ DIAGNOSTIC MODE: Show you EXACTLY what went wrong
       console.error('[PARSE ERROR] No recipients found! Full diagnostic:');
       console.error('  Email column:', emailCol);
-      console.error('  Quality column:', qualityCol);
-      console.error('  Should apply quality filter:', shouldApplyQualityFilter);
-      console.error('  Quality filter:', leadQualityFilter);
-      console.error('  Headers:', headers);
       console.error('  Total rows processed:', lines.length - 1);
       console.error('  Invalid emails: ' + invalidEmailCount);
       console.error('  Empty fields: ' + emptyRowCount);
       console.error('  Quality filtered: ' + qualityFilterSkipped);
+      console.error('  EMAIL FORMAT SAMPLES:', emailSamples);
       
-      if (lines[1]) {
-        const firstRowRaw = parseCsvRow(lines[1]);
-        const firstRowMapped = {};
-        headers.forEach((h, i) => firstRowMapped[h] = firstRowRaw[i] || '');
-        console.error('  FIRST ROW DATA:', firstRowMapped);
-        const emailFromRow = firstRowMapped[emailCol];
-        console.error('  Email from first row:', emailFromRow);
-        console.error('  Email valid?', isValidEmail(emailFromRow));
-      }
-      
-      const diagMsg = `No valid recipients found. Processed ${lines.length - 1} rows: ${invalidEmailCount} invalid emails, ${emptyRowCount} empty, ${qualityFilterSkipped} filtered. See console for details.`;
+      const diagMsg = `No valid recipients. Of ${lines.length - 1} rows: ${emptyRowCount} empty, ${invalidEmailCount} invalid emails. Check console to see EMAIL FORMAT SAMPLES.`;
       return Response.json({ 
         error: diagMsg,
         stats: {
           totalRows: lines.length - 1,
-          invalidEmails: invalidEmailCount,
           emptyFields: emptyRowCount,
+          invalidEmails: invalidEmailCount,
           qualityFiltered: qualityFilterSkipped
         },
         emailColumn: emailCol,
-        qualityColumn: qualityCol
+        samples: emailSamples
       }, { status: 400 });
     }
 
