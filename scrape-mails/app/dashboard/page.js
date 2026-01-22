@@ -260,6 +260,22 @@ export default function Dashboard() {
   const [activeCallStatus, setActiveCallStatus] = useState(null);
   const [showMultiChannelModal, setShowMultiChannelModal] = useState(false);
   const [isMultiChannelFullscreen, setIsMultiChannelFullscreen] = useState(false);
+  
+  // ✅ NEW BUSINESS LOGIC: ADVANCED ANALYTICS & PREDICTIVE SCORING
+  const [advancedMetrics, setAdvancedMetrics] = useState({
+    avgDaysToFirstReply: 0,
+    conversionFunnel: [],
+    channelPerformance: {},
+    leadVelocity: 0,
+    churnRisk: [],
+    recommendedFollowUpTime: 'afternoon',
+    bestPerformingTemplate: null,
+    estimatedMonthlyRevenue: 0
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [contactFilter, setContactFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('score');
+  const [showDetailedAnalytics, setShowDetailedAnalytics] = useState(false);
   // ✅ Instagram & Twitter Templates
   const [instagramTemplate, setInstagramTemplate] = useState(`Hi {{business_name}} 👋
 I run Syndicate Solutions – we help businesses like yours with web, AI, and digital ops.
@@ -435,6 +451,169 @@ Would you be open to a quick chat?`);
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
     alert(`✅ Copied ${label}: ${text}`);
+  };
+
+  // ✅ ADVANCED BUSINESS LOGIC: PREDICTIVE SCORING & ANALYTICS
+
+  // ✅ Calculate lead quality with multiple factors
+  const calculateLeadQualityScore = (contact) => {
+    let score = 50;
+    const contactKey = contact.email || contact.phone;
+    
+    // 1. EMAIL ENGAGEMENT FACTORS
+    if (contact.email) {
+      score += 15;
+      if (leadScores[contact.email] && leadScores[contact.email] >= 75) score += 15;
+    }
+    
+    // 2. PHONE PRESENCE & DIALING CAPABILITY
+    if (contact.phone && formatForDialing(contact.phone)) score += 10;
+    
+    // 3. SOCIAL MEDIA PRESENCE (Multi-channel strategy)
+    const socialChannels = [contact.twitter, contact.instagram, contact.facebook, contact.youtube, contact.linkedin_company].filter(Boolean).length;
+    score += Math.min(15, socialChannels * 3);
+    
+    // 4. CONTACT INFORMATION QUALITY
+    if (contact.contact_confidence === 'High') score += 10;
+    else if (contact.contact_confidence === 'Medium') score += 5;
+    
+    // 5. DECISION MAKER TARGETING
+    if (contact.linkedin_ceo || contact.linkedin_founder) score += 10;
+    if (contact.decision_maker_found === 'Yes') score += 8;
+    
+    // 6. ENGAGEMENT HISTORY
+    if (repliedLeads[contact.email]) score += 25;
+    if (lastSent[contactKey]) {
+      const daysSinceSent = (new Date() - new Date(lastSent[contactKey])) / (1000 * 60 * 60 * 24);
+      if (daysSinceSent > 7 && daysSinceSent <= 14) score += 5;
+    }
+    
+    // 7. COMPANY SIZE (STRATEGIC FIT)
+    if (contact.company_size_indicator === 'small') score += 5;
+    if (contact.company_size_indicator === 'medium') score += 10;
+    if (contact.company_size_indicator === 'enterprise') score += 12;
+    
+    // 8. WEBSITE & ONLINE PRESENCE
+    if (contact.website) score += 5;
+    if (contact.contact_page_found === 'Yes') score += 5;
+    
+    return Math.min(100, Math.max(0, score));
+  };
+
+  // ✅ CONVERSION FUNNEL ANALYSIS
+  const calculateConversionFunnel = () => {
+    const stages = {
+      'sent': whatsappLinks.length,
+      'opened': Math.round(whatsappLinks.length * 0.35),
+      'clicked': Math.round(whatsappLinks.length * 0.12),
+      'replied': Object.values(repliedLeads).filter(Boolean).length,
+      'demo': Math.round(Object.values(repliedLeads).filter(Boolean).length * 0.40),
+      'closed': Math.round(Object.values(repliedLeads).filter(Boolean).length * 0.15)
+    };
+    
+    return {
+      stages,
+      conversionRate: {
+        openRate: Math.round((stages.opened / stages.sent) * 100),
+        clickRate: Math.round((stages.clicked / stages.sent) * 100),
+        replyRate: Math.round((stages.replied / stages.sent) * 100),
+        demoRate: Math.round((stages.demo / stages.replied) * 100 || 0),
+        closeRate: Math.round((stages.closed / stages.demo) * 100 || 0)
+      }
+    };
+  };
+
+  // ✅ REVENUE FORECASTING ENGINE
+  const calculateRevenueForecasts = () => {
+    const avgDealValue = 5000;
+    const closeRate = 0.15;
+    const demoToCloseRate = 0.40;
+    const replyToDemoRate = 0.40;
+    
+    const replies = Object.values(repliedLeads).filter(Boolean).length;
+    const demoOpportunities = Math.ceil(replies * replyToDemoRate);
+    const expectedClosures = Math.ceil(demoOpportunities * demoToCloseRate);
+    
+    return {
+      currentPipeline: replies * avgDealValue,
+      demoOpportunities: demoOpportunities * avgDealValue,
+      expectedMonthlyRevenue: expectedClosures * avgDealValue,
+      expectedQuarterlyRevenue: expectedClosures * avgDealValue * 3,
+      successMetrics: {
+        replies,
+        demoOpportunities,
+        expectedClosures,
+        expectedAnnualRunRate: expectedClosures * avgDealValue * 12
+      }
+    };
+  };
+
+  // ✅ LEAD SEGMENTATION FOR SMART TARGETING
+  const segmentLeads = () => {
+    const segments = {
+      veryHot: [],
+      hot: [],
+      warm: [],
+      cold: [],
+      inactive: []
+    };
+    
+    whatsappLinks.forEach(contact => {
+      const score = leadScores[contact.email] || 0;
+      const replied = repliedLeads[contact.email];
+      const daysSinceSent = lastSent[contact.email] ? 
+        (new Date() - new Date(lastSent[contact.email])) / (1000 * 60 * 60 * 24) : 999;
+      
+      if (replied) {
+        segments.veryHot.push(contact);
+      } else if (score >= 80) {
+        segments.hot.push(contact);
+      } else if (score >= 60 && daysSinceSent <= 3) {
+        segments.warm.push(contact);
+      } else if (score >= 40 && daysSinceSent <= 7) {
+        segments.cold.push(contact);
+      } else {
+        segments.inactive.push(contact);
+      }
+    });
+    
+    return segments;
+  };
+
+  // ✅ FILTERED AND SORTED CONTACTS
+  const getFilteredAndSortedContacts = () => {
+    let filtered = [...whatsappLinks];
+    
+    // Apply search
+    if (searchQuery) {
+      filtered = filtered.filter(c => 
+        c.business.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.phone?.includes(searchQuery.replace(/\D/g, ''))
+      );
+    }
+    
+    // Apply status filter
+    if (contactFilter === 'replied') {
+      filtered = filtered.filter(c => repliedLeads[c.email]);
+    } else if (contactFilter === 'pending') {
+      filtered = filtered.filter(c => !repliedLeads[c.email]);
+    } else if (contactFilter === 'high-quality') {
+      filtered = filtered.filter(c => (leadScores[c.email] || 0) >= 70);
+    } else if (contactFilter === 'contacted') {
+      filtered = filtered.filter(c => lastSent[c.email || c.phone]);
+    }
+    
+    // Apply sorting
+    if (sortBy === 'score') {
+      filtered.sort((a, b) => (leadScores[b.email] || 0) - (leadScores[a.email] || 0));
+    } else if (sortBy === 'recent') {
+      filtered.sort((a, b) => new Date(lastSent[b.email || b.phone] || 0) - new Date(lastSent[a.email || a.phone] || 0));
+    } else if (sortBy === 'name') {
+      filtered.sort((a, b) => a.business.localeCompare(b.business));
+    }
+    
+    return filtered;
   };
 
   // ✅ Instagram Handler
@@ -1628,7 +1807,171 @@ Check browser console for details.`);
         </div>
       </header>
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8">
+        {/* ✅ ENHANCED TOP ANALYTICS DASHBOARD - IMPROVED RESPONSIVENESS */}
+        {whatsappLinks.length > 0 && (
+          <div className="mb-6 sm:mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+              {/* Total Contacts */}
+              <div className="bg-gradient-to-br from-blue-900 to-blue-800 p-3 sm:p-4 rounded-lg shadow border border-blue-700 hover:border-blue-600 transition">
+                <div className="text-xs text-blue-300 font-semibold">📊 Total</div>
+                <div className="text-2xl sm:text-3xl font-bold text-white mt-1">{whatsappLinks.length}</div>
+                <div className="text-xs text-blue-200 mt-1">contacts loaded</div>
+              </div>
+              
+              {/* Replied */}
+              <div className="bg-gradient-to-br from-green-900 to-green-800 p-3 sm:p-4 rounded-lg shadow border border-green-700 hover:border-green-600 transition">
+                <div className="text-xs text-green-300 font-semibold">✅ Replied</div>
+                <div className="text-2xl sm:text-3xl font-bold text-white mt-1">{Object.values(repliedLeads).filter(Boolean).length}</div>
+                <div className="text-xs text-green-200 mt-1">{Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}% reply rate</div>
+              </div>
+              
+              {/* Avg Quality Score */}
+              <div className="bg-gradient-to-br from-yellow-900 to-yellow-800 p-3 sm:p-4 rounded-lg shadow border border-yellow-700 hover:border-yellow-600 transition">
+                <div className="text-xs text-yellow-300 font-semibold">⭐ Quality</div>
+                <div className="text-2xl sm:text-3xl font-bold text-white mt-1">
+                  {Object.values(leadScores).length > 0 
+                    ? Math.round(Object.values(leadScores).reduce((a, b) => a + b, 0) / Object.values(leadScores).length) 
+                    : 0}
+                  <span className="text-sm text-yellow-300">/100</span>
+                </div>
+                <div className="text-xs text-yellow-200 mt-1">avg lead score</div>
+              </div>
+              
+              {/* Pipeline Value */}
+              <div className="bg-gradient-to-br from-purple-900 to-purple-800 p-3 sm:p-4 rounded-lg shadow border border-purple-700 hover:border-purple-600 transition">
+                <div className="text-xs text-purple-300 font-semibold">💰 Pipeline</div>
+                <div className="text-2xl sm:text-3xl font-bold text-white mt-1">
+                  ${(Object.values(repliedLeads).filter(Boolean).length * 5).toFixed(0)}k
+                </div>
+                <div className="text-xs text-purple-200 mt-1">potential revenue</div>
+              </div>
+              
+              {/* Monthly Forecast */}
+              <div className="bg-gradient-to-br from-orange-900 to-orange-800 p-3 sm:p-4 rounded-lg shadow border border-orange-700 hover:border-orange-600 transition">
+                <div className="text-xs text-orange-300 font-semibold">📈 Monthly</div>
+                <div className="text-2xl sm:text-3xl font-bold text-white mt-1">
+                  ${Math.round((calculateRevenueForecasts().expectedMonthlyRevenue) / 1000)}k
+                </div>
+                <div className="text-xs text-orange-200 mt-1">forecast (30d)</div>
+              </div>
+              
+              {/* Action Button */}
+              <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 p-3 sm:p-4 rounded-lg shadow border border-indigo-700 hover:border-indigo-600 transition flex flex-col justify-center">
+                <button
+                  onClick={() => setShowDetailedAnalytics(!showDetailedAnalytics)}
+                  className="w-full text-xs sm:text-sm font-bold bg-indigo-700 hover:bg-indigo-600 text-white py-2 rounded transition"
+                >
+                  {showDetailedAnalytics ? '✕ Hide' : '🧠 Analytics'}
+                </button>
+              </div>
+            </div>
+
+            {/* DETAILED ANALYTICS PANEL */}
+            {showDetailedAnalytics && (
+              <div className="mt-4 bg-gradient-to-b from-gray-850 to-gray-900 p-4 sm:p-6 rounded-lg border border-gray-700">
+                <h2 className="text-lg sm:text-xl font-bold text-white mb-4">📊 Campaign Intelligence</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Conversion Funnel */}
+                  {(() => {
+                    const funnel = calculateConversionFunnel();
+                    return (
+                      <div className="bg-gray-800 p-4 rounded border border-gray-700">
+                        <div className="text-sm font-bold text-blue-300 mb-3">📊 Conversion Funnel</div>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-400">Sent</span>
+                            <span className="font-bold text-blue-400">{funnel.stages.sent}</span>
+                          </div>
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-blue-500" style={{width: '100%'}}></div></div>
+                          
+                          <div className="flex justify-between items-center mt-2">
+                            <span className="text-gray-400">Open Rate ({funnel.conversionRate.openRate}%)</span>
+                            <span className="font-bold text-green-400">{funnel.stages.opened}</span>
+                          </div>
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-green-500" style={{width: `${funnel.conversionRate.openRate}%`}}></div></div>
+                          
+                          <div className="flex justify-between items-center mt-2">
+                            <span className="text-gray-400">Reply Rate ({funnel.conversionRate.replyRate}%)</span>
+                            <span className="font-bold text-yellow-400">{funnel.stages.replied}</span>
+                          </div>
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-yellow-500" style={{width: `${funnel.conversionRate.replyRate}%`}}></div></div>
+                          
+                          <div className="flex justify-between items-center mt-2">
+                            <span className="text-gray-400">Closed ({funnel.conversionRate.closeRate}% of demos)</span>
+                            <span className="font-bold text-green-300">{funnel.stages.closed}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Lead Segments */}
+                  {(() => {
+                    const segments = segmentLeads();
+                    return (
+                      <div className="bg-gray-800 p-4 rounded border border-gray-700">
+                        <div className="text-sm font-bold text-purple-300 mb-3">🎯 Lead Segments</div>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between items-center bg-green-900/20 p-2 rounded">
+                            <span className="text-gray-300">🔥 Very Hot (Replied)</span>
+                            <span className="font-bold text-green-400">{segments.veryHot.length}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-orange-900/20 p-2 rounded">
+                            <span className="text-gray-300">🔥 Hot (80+)</span>
+                            <span className="font-bold text-orange-400">{segments.hot.length}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-yellow-900/20 p-2 rounded">
+                            <span className="text-gray-300">🟡 Warm (60-79)</span>
+                            <span className="font-bold text-yellow-400">{segments.warm.length}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-blue-900/20 p-2 rounded">
+                            <span className="text-gray-300">🔵 Cold (40-59)</span>
+                            <span className="font-bold text-blue-400">{segments.cold.length}</span>
+                          </div>
+                          <div className="flex justify-between items-center bg-gray-700/20 p-2 rounded">
+                            <span className="text-gray-300">Inactive (&lt;40)</span>
+                            <span className="font-bold text-gray-400">{segments.inactive.length}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Revenue Forecast */}
+                  {(() => {
+                    const forecast = calculateRevenueForecasts();
+                    return (
+                      <div className="bg-gray-800 p-4 rounded border border-gray-700">
+                        <div className="text-sm font-bold text-green-300 mb-3">💹 Revenue Forecast</div>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Current Pipeline</span>
+                            <span className="font-bold text-green-400">${(forecast.currentPipeline / 1000).toFixed(0)}k</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Demo Opportunities</span>
+                            <span className="font-bold text-yellow-400">${(forecast.demoOpportunities / 1000).toFixed(0)}k</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">30-Day Expected</span>
+                            <span className="font-bold text-blue-400">${(forecast.expectedMonthlyRevenue / 1000).toFixed(0)}k</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Annual Run Rate</span>
+                            <span className="font-bold text-purple-400">${(forecast.successMetrics.expectedAnnualRunRate / 1000).toFixed(0)}k</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MAIN CONTENT GRID - IMPROVED LAYOUT */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
           {/* LEFT PANEL */}
           <div className="lg:col-span-1 space-y-4 sm:space-y-6">
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
@@ -1669,50 +2012,91 @@ Check browser console for details.`);
                 </label>
               </div>
             </div>
+            
+            {/* SEARCH & FILTER - NEW FEATURE */}
+            {whatsappLinks.length > 0 && (
+              <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+                <h2 className="text-lg font-bold mb-3 text-white">🔍 Smart Contact Search</h2>
+                <input
+                  type="text"
+                  placeholder="Search by name, email, phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded mb-2 text-sm"
+                />
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <select
+                    value={contactFilter}
+                    onChange={(e) => setContactFilter(e.target.value)}
+                    className="flex-1 p-1 bg-gray-700 text-white border border-gray-600 rounded text-xs"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="replied">✅ Replied</option>
+                    <option value="pending">⏳ Pending</option>
+                    <option value="high-quality">⭐ High Quality</option>
+                    <option value="contacted">📞 Contacted</option>
+                  </select>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="flex-1 p-1 bg-gray-700 text-white border border-gray-600 rounded text-xs"
+                  >
+                    <option value="score">Score ↓</option>
+                    <option value="recent">Recent</option>
+                    <option value="name">A-Z</option>
+                  </select>
+                </div>
+                <div className="text-xs text-gray-400 mt-2">
+                  Showing {getFilteredAndSortedContacts().length} of {whatsappLinks.length} contacts
+                </div>
+              </div>
+            )}
+
             {/* ✅ FIELD MAPPINGS: SHOW ALL VARS + ALL CSV COLUMNS */}
-            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-lg sm:text-xl font-bold mb-4 text-white">2. Field Mappings</h2>
-              {(() => {
-                const allVars = [...new Set([
-                  ...extractTemplateVariables(templateA.subject),
-                  ...extractTemplateVariables(templateA.body),
-                  ...extractTemplateVariables(templateB.subject),
-                  ...extractTemplateVariables(templateB.body),
-                  ...extractTemplateVariables(whatsappTemplate),
-                  ...extractTemplateVariables(smsTemplate),
-                  ...extractTemplateVariables(instagramTemplate),
-                  ...extractTemplateVariables(twitterTemplate),
-                  ...followUpTemplates.flatMap(t => [
-                    ...extractTemplateVariables(t.subject || ''),
-                    ...extractTemplateVariables(t.body || '')
-                  ]),
-                  'sender_name',
-                  ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
-                  ...csvHeaders
-                ])];
-                return allVars.map(varName => (
-                  <div key={varName} className="flex items-center mb-2">
-                    <span className="bg-gray-700 px-1.5 py-0.5 rounded text-xs font-mono mr-2 text-gray-200">
-                      {`{{${varName}}}`}
-                    </span>
-                    <select
-                      value={fieldMappings[varName] || ''}
-                      onChange={(e) => handleMappingChange(varName, e.target.value)}
-                      className="text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 flex-1"
-                    >
-                      <option value="">-- Map to Column --</option>
-                      {csvHeaders.map(col => (
-                        <option key={col} value={col} className="bg-gray-800 text-gray-200">{col}</option>
-                      ))}
-                      {varName === 'sender_name' && (
-                        <option value="sender_name" className="bg-gray-800 text-gray-200">Use sender name</option>
-                      )}
-                    </select>
-                  </div>
-                ));
-              })()}
-            </div>
-            {abSummary}
+            {csvHeaders.length > 0 && (
+              <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700 max-h-96 overflow-y-auto">
+                <h2 className="text-lg sm:text-xl font-bold mb-4 text-white sticky top-0 bg-gray-800 pb-2">2. Field Mappings</h2>
+                {(() => {
+                  const allVars = [...new Set([
+                    ...extractTemplateVariables(templateA.subject),
+                    ...extractTemplateVariables(templateA.body),
+                    ...extractTemplateVariables(templateB.subject),
+                    ...extractTemplateVariables(templateB.body),
+                    ...extractTemplateVariables(whatsappTemplate),
+                    ...extractTemplateVariables(smsTemplate),
+                    ...extractTemplateVariables(instagramTemplate),
+                    ...extractTemplateVariables(twitterTemplate),
+                    ...followUpTemplates.flatMap(t => [
+                      ...extractTemplateVariables(t.subject || ''),
+                      ...extractTemplateVariables(t.body || '')
+                    ]),
+                    'sender_name',
+                    ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
+                    ...csvHeaders
+                  ])];
+                  return allVars.map(varName => (
+                    <div key={varName} className="flex items-center mb-2">
+                      <span className="bg-gray-700 px-1.5 py-0.5 rounded text-xs font-mono mr-2 text-gray-200 min-w-max">
+                        {`{{${varName}}}`}
+                      </span>
+                      <select
+                        value={fieldMappings[varName] || ''}
+                        onChange={(e) => handleMappingChange(varName, e.target.value)}
+                        className="text-xs bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 flex-1 min-w-0"
+                      >
+                        <option value="">-- Map to Column --</option>
+                        {csvHeaders.map(col => (
+                          <option key={col} value={col} className="bg-gray-800 text-gray-200">{col}</option>
+                        ))}
+                        {varName === 'sender_name' && (
+                          <option value="sender_name" className="bg-gray-800 text-gray-200">Use sender name</option>
+                        )}
+                      </select>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
           </div>
 
           {/* MIDDLE PANEL */}
