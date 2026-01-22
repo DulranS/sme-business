@@ -10,37 +10,40 @@ import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import deque
+from datetime import datetime
 
 # -----------------------------
 # CONFIGURATION
 # -----------------------------
 CSV_INPUT_PATH = r"c:\Users\dulra\Downloads\google (6).csv"
-OUTPUT_BASE_NAME = "business_leads_with_email"
+OUTPUT_BASE_NAME = "enriched_leads"
 
-# Only website is mandatory
 REQUIRED_COLUMNS = ['website']
 
-# All possible output columns
 OUTPUT_COLUMNS = [
     'place_id', 'business_name', 'rating', 'reviews', 'category', 
     'address', 'whatsapp_number', 'website', 'email', 'instagram', 'twitter',
     'linkedin_company', 'linkedin_ceo', 'linkedin_founder', 'phone_primary', 
-    'email_primary', 'contact_page_found', 'social_media_score'
+    'email_primary', 'contact_page_found', 'social_media_score',
+    'lead_quality_score', 'contact_confidence', 'best_contact_method',
+    'decision_maker_found', 'tech_stack_detected', 'company_size_indicator'
 ]
 
-# Scraper settings
-EMAIL_TIMEOUT = 10
+# Optimized scraper settings
+EMAIL_TIMEOUT = 8
 MAX_RETRIES = 2
-MAX_PAGES_PER_SITE = 6  # Increased for deeper search
-MAX_WORKERS = 12  # Increased for faster processing
-REQUEST_DELAY_MIN = 0.5
-REQUEST_DELAY_MAX = 1.0
+MAX_PAGES_PER_SITE = 8
+MAX_WORKERS = 16  # Increased for faster processing
+REQUEST_DELAY_MIN = 0.3
+REQUEST_DELAY_MAX = 0.7
+
 PRIORITY_PATHS = [
     '/contact', '/contact-us', '/about', '/about-us', '/team', 
-    '/info', '/support', '/get-in-touch', '/reach-us', '/footer'
+    '/info', '/support', '/get-in-touch', '/reach-us', '/leadership',
+    '/our-team', '/meet-the-team', '/careers', '/privacy', '/impressum'
 ]
 
-# Regex patterns — compiled for performance
+# Enhanced regex patterns
 EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
 INSTAGRAM_PATTERN = re.compile(r'https?://(www\.)?instagram\.com/([A-Za-z0-9._-]{1,30})/?', re.IGNORECASE)
 TWITTER_PATTERN = re.compile(r'https?://(www\.|mobile\.)?(twitter\.com|x\.com)/([A-Za-z0-9_]{1,15})/?', re.IGNORECASE)
@@ -50,18 +53,44 @@ FACEBOOK_PATTERN = re.compile(r'https?://(www\.)?(facebook\.com|fb\.com)/([A-Za-
 YOUTUBE_PATTERN = re.compile(r'https?://(?:www\.)?youtube\.com/(?:@|channel/|user/)?([A-Za-z0-9_-]+)/?', re.IGNORECASE)
 TIKTOK_PATTERN = re.compile(r'https?://(?:www\.)?tiktok\.com/@([A-Za-z0-9._-]+)/?', re.IGNORECASE)
 
-# Enhanced phone pattern - international format aware
 PHONE_PATTERN = re.compile(
-    r'(?:(?:\+|00)\d{1,3}[\s.-]?)?'  # International prefix
-    r'(?:\(?\d{1,4}\)?[\s.-]?)?'      # Area code
-    r'\d{1,4}[\s.-]?\d{1,4}[\s.-]?\d{1,9}',  # Main number
+    r'(?:(?:\+|00)\d{1,3}[\s.-]?)?'
+    r'(?:\(?\d{1,4}\)?[\s.-]?)?'
+    r'\d{1,4}[\s.-]?\d{1,4}[\s.-]?\d{1,9}',
     re.IGNORECASE
 )
 
-# Common phone prefixes to validate
-VALID_PHONE_PREFIXES = ['+94', '+1', '+44', '+91', '+61', '+971', '+65', '+60']
+# Business intelligence keywords
+DECISION_MAKER_TITLES = [
+    'ceo', 'founder', 'co-founder', 'president', 'owner', 'director',
+    'chief executive', 'managing director', 'principal', 'partner',
+    'head of', 'vp of', 'vice president', 'executive'
+]
 
-# Logging
+TECH_STACK_INDICATORS = {
+    'shopify': ['shopify.com', 'myshopify.com'],
+    'wordpress': ['wp-content', 'wp-includes', 'wordpress'],
+    'wix': ['wix.com', 'wixsite.com'],
+    'squarespace': ['squarespace.com', 'sqsp.com'],
+    'webflow': ['webflow.io', 'webflow.com'],
+    'react': ['react', '_next', 'nextjs'],
+    'angular': ['ng-', 'angular'],
+    'vue': ['vue', 'nuxt']
+}
+
+COMPANY_SIZE_KEYWORDS = {
+    'small': ['startup', 'boutique', 'small team', 'family-owned', 'solo'],
+    'medium': ['growing', 'expanding', 'established', 'regional'],
+    'large': ['enterprise', 'global', 'multinational', 'fortune', 'leading', 'industry leader']
+}
+
+# Email quality scoring
+EMAIL_QUALITY_SCORES = {
+    'high': ['contact', 'info', 'hello', 'hi', 'sales', 'inquiries'],
+    'medium': ['support', 'help', 'service', 'admin'],
+    'low': ['noreply', 'no-reply', 'donotreply', 'mailer-daemon']
+}
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -70,14 +99,16 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 # -----------------------------
-# UTILS
+# ENHANCED UTILS
 # -----------------------------
 def get_unique_output_path(base_name, extension=".csv"):
-    if not os.path.exists(base_name + extension):
-        return base_name + extension
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    candidate = f"{base_name}_{timestamp}{extension}"
+    if not os.path.exists(candidate):
+        return candidate
     counter = 1
     while True:
-        candidate = f"{base_name} ({counter}){extension}"
+        candidate = f"{base_name}_{timestamp}_{counter}{extension}"
         if not os.path.exists(candidate):
             return candidate
         counter += 1
@@ -114,41 +145,62 @@ def is_relevant_email(email, base_domain):
         local, domain = email.rsplit('@', 1)
         domain = domain.lower()
         base_domain = base_domain.lower()
+        
+        # Exclude common spam/invalid patterns
+        spam_patterns = ['example', 'test', 'sample', 'dummy', 'fake', 'youremail']
+        if any(pattern in email.lower() for pattern in spam_patterns):
+            return False
+            
         return domain == base_domain or domain.endswith('.' + base_domain)
     except:
         return False
 
+def score_email_quality(email):
+    """Score email based on business value (0-10)"""
+    email_lower = email.lower()
+    
+    # Low quality emails
+    for low_keyword in EMAIL_QUALITY_SCORES['low']:
+        if low_keyword in email_lower:
+            return 2
+    
+    # High quality emails
+    for high_keyword in EMAIL_QUALITY_SCORES['high']:
+        if high_keyword in email_lower:
+            return 9
+    
+    # Medium quality emails
+    for med_keyword in EMAIL_QUALITY_SCORES['medium']:
+        if med_keyword in email_lower:
+            return 6
+    
+    # Generic email (firstname.lastname pattern gets higher score)
+    if '.' in email.split('@')[0]:
+        return 7
+    
+    return 5  # Default score
+
 def clean_phone_number(phone_str):
-    """Clean and validate phone number"""
     if not phone_str:
         return None
     
-    # Remove common noise
     phone = re.sub(r'[^\d+\s()-]', '', phone_str)
     phone = phone.strip()
     
-    # Must have at least 7 digits
     digits_only = re.sub(r'\D', '', phone)
     if len(digits_only) < 7 or len(digits_only) > 15:
         return None
     
-    # Skip invalid patterns
-    if re.match(r'^[01]+$', digits_only):  # All 0s or 1s
-        return None
-    if len(set(digits_only)) == 1:  # All same digit
+    if re.match(r'^[01]+$', digits_only) or len(set(digits_only)) == 1:
         return None
     
-    # Standardize format
     phone = re.sub(r'\s+', ' ', phone)
     phone = re.sub(r'[()]', '', phone)
     
     return phone
 
 def extract_phone_numbers(text):
-    """Extract and validate phone numbers from text"""
     phones = set()
-    
-    # Find all potential phone numbers
     matches = PHONE_PATTERN.findall(text)
     
     for match in matches:
@@ -156,7 +208,6 @@ def extract_phone_numbers(text):
         if cleaned:
             phones.add(cleaned)
     
-    # Also look for tel: links
     tel_pattern = re.compile(r'tel:([+\d\s()-]+)', re.IGNORECASE)
     tel_matches = tel_pattern.findall(text)
     for tel in tel_matches:
@@ -166,43 +217,53 @@ def extract_phone_numbers(text):
     
     return phones
 
-def extract_linkedin_profiles(soup, text, base_domain):
-    """Extract LinkedIn company and personal profiles"""
-    linkedin_company = ""
-    linkedin_ceo = ""
-    linkedin_founder = ""
+def detect_decision_makers(soup, text):
+    """Detect if decision maker profiles are present"""
+    decision_makers = []
+    text_lower = text.lower()
     
-    # Look for LinkedIn links in all href attributes
-    for a_tag in soup.find_all('a', href=True):
-        href = a_tag.get('href', '').lower()
-        
-        # LinkedIn company profile
-        if not linkedin_company and 'linkedin.com/company' in href:
-            company_match = LINKEDIN_COMPANY_PATTERN.search(href)
-            if company_match:
-                company_id = company_match.group(1)
-                if company_id and len(company_id) > 1 and not company_id.isdigit():
-                    linkedin_company = f"https://www.linkedin.com/company/{company_id}/"
-        
-        # LinkedIn personal profiles (CEO, founder mentions in context)
-        if 'linkedin.com/in' in href:
-            person_match = re.search(r'linkedin\.com/in/([A-Za-z0-9-]+)', href)
-            if person_match:
-                profile_id = person_match.group(1)
-                if profile_id and len(profile_id) > 2:
-                    # Try to determine if it's CEO/Founder from anchor text or surrounding text
-                    anchor_text = a_tag.get_text(strip=True).lower()
-                    if 'ceo' in anchor_text or 'chief executive' in anchor_text:
-                        if not linkedin_ceo:
-                            linkedin_ceo = f"https://www.linkedin.com/in/{profile_id}/"
-                    elif 'founder' in anchor_text or 'co-founder' in anchor_text:
-                        if not linkedin_founder:
-                            linkedin_founder = f"https://www.linkedin.com/in/{profile_id}/"
+    for title in DECISION_MAKER_TITLES:
+        if title in text_lower:
+            # Try to extract names near titles
+            context = re.findall(rf'([A-Z][a-z]+\s+[A-Z][a-z]+)[\s,]*{title}', text, re.IGNORECASE)
+            if context:
+                decision_makers.extend(context[:3])  # Max 3 names
     
-    return linkedin_company, linkedin_ceo, linkedin_founder
+    return len(decision_makers) > 0, decision_makers
+
+def detect_tech_stack(soup, text):
+    """Detect website technology stack"""
+    detected = []
+    html_text = str(soup).lower()
+    
+    for tech, indicators in TECH_STACK_INDICATORS.items():
+        if any(indicator in html_text for indicator in indicators):
+            detected.append(tech)
+    
+    return detected
+
+def estimate_company_size(text):
+    """Estimate company size from website content"""
+    text_lower = text.lower()
+    
+    for size, keywords in COMPANY_SIZE_KEYWORDS.items():
+        if any(keyword in text_lower for keyword in keywords):
+            return size
+    
+    # Check for employee counts
+    employee_match = re.search(r'(\d+)\+?\s*(employees|team members|staff)', text_lower)
+    if employee_match:
+        count = int(employee_match.group(1))
+        if count < 50:
+            return 'small'
+        elif count < 250:
+            return 'medium'
+        else:
+            return 'large'
+    
+    return 'unknown'
 
 def extract_social_profiles(soup):
-    """Extract all social media profiles for enhanced business intelligence"""
     profiles = {
         'facebook': '',
         'youtube': '',
@@ -218,7 +279,6 @@ def extract_social_profiles(soup):
         href = a_tag.get('href', '').lower()
         anchor_text = a_tag.get_text(strip=True).lower()
         
-        # Facebook
         if not profiles['facebook'] and 'facebook.com' in href:
             fb_match = FACEBOOK_PATTERN.search(href)
             if fb_match:
@@ -226,7 +286,6 @@ def extract_social_profiles(soup):
                 if fb_handle and len(fb_handle) > 2:
                     profiles['facebook'] = f"https://www.facebook.com/{fb_handle}/"
         
-        # YouTube
         if not profiles['youtube'] and 'youtube.com' in href:
             yt_match = YOUTUBE_PATTERN.search(href)
             if yt_match:
@@ -234,7 +293,6 @@ def extract_social_profiles(soup):
                 if yt_handle and len(yt_handle) > 2:
                     profiles['youtube'] = f"https://www.youtube.com/@{yt_handle}/"
         
-        # TikTok
         if not profiles['tiktok'] and 'tiktok.com' in href:
             tt_match = TIKTOK_PATTERN.search(href)
             if tt_match:
@@ -242,49 +300,24 @@ def extract_social_profiles(soup):
                 if tt_handle and len(tt_handle) > 2:
                     profiles['tiktok'] = f"https://www.tiktok.com/@{tt_handle}/"
         
-        # LinkedIn Company - look for both /company/ and /organizations/
         if not profiles['linkedin_company'] and 'linkedin.com' in href:
-            # Try company URL
             li_company_match = LINKEDIN_COMPANY_PATTERN.search(href)
             if li_company_match:
                 company_id = li_company_match.group(1)
                 if company_id and len(company_id) > 1 and not company_id.isdigit():
                     profiles['linkedin_company'] = f"https://www.linkedin.com/company/{company_id}/"
-            # Also try generic linkedin.com/company-name pattern
-            elif 'linkedin.com' in href and '/company/' in href.lower():
-                company_match = re.search(r'linkedin\.com/company/([A-Za-z0-9-]+)', href)
-                if company_match:
-                    company_id = company_match.group(1)
-                    if company_id and len(company_id) > 1:
-                        profiles['linkedin_company'] = f"https://www.linkedin.com/company/{company_id}/"
         
-        # LinkedIn Personal (CEO/Founder)
         if 'linkedin.com/in' in href:
             li_personal_match = re.search(r'linkedin\.com/in/([A-Za-z0-9-]+)', href)
             if li_personal_match:
                 profile_id = li_personal_match.group(1)
                 if profile_id and len(profile_id) > 2:
-                    if 'ceo' in anchor_text or 'chief executive' in anchor_text or 'executive officer' in anchor_text:
+                    if any(title in anchor_text for title in ['ceo', 'chief executive', 'executive officer']):
                         if not profiles['linkedin_ceo']:
                             profiles['linkedin_ceo'] = f"https://www.linkedin.com/in/{profile_id}/"
-                    elif 'founder' in anchor_text or 'co-founder' in anchor_text or 'cofounder' in anchor_text:
+                    elif any(title in anchor_text for title in ['founder', 'co-founder', 'cofounder']):
                         if not profiles['linkedin_founder']:
                             profiles['linkedin_founder'] = f"https://www.linkedin.com/in/{profile_id}/"
-    
-    # Additional search in page text for LinkedIn patterns (fallback)
-    if not profiles['linkedin_company']:
-        linkedin_urls_in_text = re.findall(r'https?://(?:www\.)?linkedin\.com/company/([A-Za-z0-9-]+)', text)
-        if linkedin_urls_in_text:
-            company_id = linkedin_urls_in_text[0]
-            if company_id and len(company_id) > 1:
-                profiles['linkedin_company'] = f"https://www.linkedin.com/company/{company_id}/"
-    
-    if not profiles['linkedin_ceo']:
-        linkedin_personal_urls = re.findall(r'https?://(?:www\.)?linkedin\.com/in/([A-Za-z0-9-]+)', text)
-        if linkedin_personal_urls:
-            profile_id = linkedin_personal_urls[0]
-            if profile_id and len(profile_id) > 2:
-                profiles['linkedin_ceo'] = f"https://www.linkedin.com/in/{profile_id}/"
     
     return profiles
 
@@ -304,44 +337,132 @@ def get_soup(url, timeout=EMAIL_TIMEOUT):
                 return BeautifulSoup(response.text, 'html.parser')
         except Exception:
             if attempt < MAX_RETRIES:
-                time.sleep(random.uniform(0.4, 0.8))
+                time.sleep(random.uniform(0.3, 0.6))
                 continue
     return None
 
+def calculate_lead_quality_score(data):
+    """Calculate comprehensive lead quality score (0-100)"""
+    score = 0
+    
+    # Email quality (35 points max)
+    if data.get('email_primary'):
+        email_quality = score_email_quality(data['email_primary'])
+        score += (email_quality / 10) * 35
+    
+    # Phone availability (20 points)
+    if data.get('phone_primary'):
+        score += 20
+    
+    # Social media presence (15 points)
+    social_score = int(data.get('social_media_score', 0))
+    score += min(social_score * 2.5, 15)
+    
+    # Decision maker found (15 points)
+    if data.get('decision_maker_found') == 'Yes':
+        score += 15
+    
+    # LinkedIn company profile (10 points)
+    if data.get('linkedin_company'):
+        score += 10
+    
+    # Contact page found (5 points)
+    if data.get('contact_page_found') == 'Yes':
+        score += 5
+    
+    return min(int(score), 100)
+
+def calculate_contact_confidence(data):
+    """Calculate confidence level in contact information (Low/Medium/High)"""
+    confidence_score = 0
+    
+    if data.get('email_primary'):
+        email_quality = score_email_quality(data['email_primary'])
+        confidence_score += email_quality
+    
+    if data.get('phone_primary'):
+        confidence_score += 8
+    
+    if data.get('contact_page_found') == 'Yes':
+        confidence_score += 5
+    
+    if data.get('linkedin_company'):
+        confidence_score += 4
+    
+    if confidence_score >= 18:
+        return 'High'
+    elif confidence_score >= 10:
+        return 'Medium'
+    else:
+        return 'Low'
+
+def determine_best_contact_method(data):
+    """Recommend the best way to contact this lead"""
+    methods = []
+    
+    if data.get('email_primary'):
+        email_quality = score_email_quality(data['email_primary'])
+        if email_quality >= 7:
+            methods.append('Email')
+    
+    if data.get('phone_primary'):
+        methods.append('Phone')
+    
+    if data.get('linkedin_company') or data.get('linkedin_ceo'):
+        methods.append('LinkedIn')
+    
+    if data.get('instagram'):
+        methods.append('Instagram DM')
+    
+    if not methods:
+        return 'Website Form'
+    
+    return ' → '.join(methods[:2])  # Top 2 methods
+
 def scrape_all_data_from_site(root_url, existing_phone=""):
-    """Scrape emails, phone numbers, and social media links"""
+    """Enhanced scraping with business intelligence"""
     root_url = normalize_url(root_url)
     if not root_url:
-        return set(), set(), "", "", "", "", "", {}, False, 0
+        return {
+            'emails': set(), 'phones': set(), 'instagram': '', 'twitter': '',
+            'linkedin_company': '', 'linkedin_ceo': '', 'linkedin_founder': '',
+            'social_profiles': {}, 'contact_page_found': False, 'social_media_score': 0,
+            'decision_maker_found': False, 'decision_makers': [], 'tech_stack': [],
+            'company_size': 'unknown'
+        }
     
     parsed = urlparse(root_url)
     base_domain = extract_base_domain(parsed.netloc)
     
-    all_emails = set()
-    all_phones = set()
-    instagram_url = ""
-    twitter_url = ""
-    linkedin_company = ""
-    linkedin_ceo = ""
-    linkedin_founder = ""
-    social_profiles = {}
-    contact_page_found = False
-    social_media_score = 0
+    result = {
+        'emails': set(),
+        'phones': set(),
+        'instagram': '',
+        'twitter': '',
+        'linkedin_company': '',
+        'linkedin_ceo': '',
+        'linkedin_founder': '',
+        'social_profiles': {},
+        'contact_page_found': False,
+        'social_media_score': 0,
+        'decision_maker_found': False,
+        'decision_makers': [],
+        'tech_stack': [],
+        'company_size': 'unknown'
+    }
     
-    # Add existing phone to search results if valid
-    if existing_phone and isinstance(existing_phone, str):
+    if existing_phone:
         cleaned = clean_phone_number(existing_phone)
         if cleaned:
-            all_phones.add(cleaned)
+            result['phones'].add(cleaned)
     
     visited = set()
-    
-    # Priority URLs to check first
     priority_urls = [urljoin(root_url, path) for path in PRIORITY_PATHS]
     urls_to_check = deque(priority_urls)
     urls_to_check.appendleft(root_url)
     
     pages_scraped = 0
+    all_text = ""
     
     while urls_to_check and pages_scraped < MAX_PAGES_PER_SITE:
         url = urls_to_check.popleft()
@@ -351,9 +472,8 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
         visited.add(url)
         pages_scraped += 1
         
-        # Check if we're on a contact page
         if any(keyword in url.lower() for keyword in ['/contact', '/contact-us', '/get-in-touch']):
-            contact_page_found = True
+            result['contact_page_found'] = True
         
         soup = get_soup(url, timeout=EMAIL_TIMEOUT)
         if not soup:
@@ -362,18 +482,17 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
         # Extract social profiles
         current_profiles = extract_social_profiles(soup)
         for key, val in current_profiles.items():
-            if val and not social_profiles.get(key):
-                social_profiles[key] = val
+            if val and not result['social_profiles'].get(key):
+                result['social_profiles'][key] = val
         
-        # Update primary LinkedIn info
-        if current_profiles.get('linkedin_company') and not linkedin_company:
-            linkedin_company = current_profiles['linkedin_company']
-        if current_profiles.get('linkedin_ceo') and not linkedin_ceo:
-            linkedin_ceo = current_profiles['linkedin_ceo']
-        if current_profiles.get('linkedin_founder') and not linkedin_founder:
-            linkedin_founder = current_profiles['linkedin_founder']
+        if current_profiles.get('linkedin_company') and not result['linkedin_company']:
+            result['linkedin_company'] = current_profiles['linkedin_company']
+        if current_profiles.get('linkedin_ceo') and not result['linkedin_ceo']:
+            result['linkedin_ceo'] = current_profiles['linkedin_ceo']
+        if current_profiles.get('linkedin_founder') and not result['linkedin_founder']:
+            result['linkedin_founder'] = current_profiles['linkedin_founder']
         
-        # Extract social links and other data
+        # Extract social links
         for a_tag in soup.find_all('a', href=True):
             href = a_tag['href'].strip()
             if not href:
@@ -384,47 +503,38 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
             if not full_url.startswith(('http://', 'https://')):
                 continue
             
-            # Instagram
-            if not instagram_url:
+            if not result['instagram']:
                 insta_match = INSTAGRAM_PATTERN.search(full_url)
                 if insta_match:
                     username = insta_match.group(2).rstrip('/')
-                    if not any(bad in username for bad in ['p', 'explore', 'accounts', 'login', 'stories', 'reels', 'direct', 'directory', 'legal', 'about']):
-                        if username and 2 <= len(username) <= 30 and not username.replace('.', '').replace('_', '').isdigit():
-                            instagram_url = f"https://www.instagram.com/{username}/"
+                    if username and 2 <= len(username) <= 30:
+                        result['instagram'] = f"https://www.instagram.com/{username}/"
             
-            # Twitter/X
-            if not twitter_url:
+            if not result['twitter']:
                 twitter_match = TWITTER_PATTERN.search(full_url)
                 if twitter_match:
                     username = twitter_match.group(3).rstrip('/')
-                    if (username and 1 <= len(username) <= 15 and 
-                        username.replace('_', '').isalnum() and 
-                        not username.isdigit() and 
-                        not username.startswith('_') and 
-                        not username.endswith('_')):
-                        twitter_url = f"https://x.com/{username}/"
+                    if username and 1 <= len(username) <= 15:
+                        result['twitter'] = f"https://x.com/{username}/"
             
-            # Add internal links to queue for deeper search
             if urlparse(full_url).netloc == parsed.netloc and len(visited) < MAX_PAGES_PER_SITE:
                 if full_url not in visited and full_url not in urls_to_check:
-                    # Prioritize contact-related pages
-                    if any(keyword in full_url.lower() for keyword in ['contact', 'about', 'team', 'support', 'linkedin']):
+                    if any(keyword in full_url.lower() for keyword in ['contact', 'about', 'team']):
                         urls_to_check.appendleft(full_url)
                     else:
                         urls_to_check.append(full_url)
         
-        # Remove unwanted tags
-        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe', 'form', 'button', 'img', 'comment']):
-            tag.decompose()
-        
-        # Get full HTML for phone extraction (before text conversion)
+        # Get HTML for phone extraction
         html_text = str(soup)
         page_phones = extract_phone_numbers(html_text)
-        all_phones.update(page_phones)
+        result['phones'].update(page_phones)
         
-        # Get text for email extraction
+        # Remove unwanted tags
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe']):
+            tag.decompose()
+        
         text = soup.get_text(separator=' ', strip=True)
+        all_text += " " + text
         
         # Extract emails
         raw_emails = set(re.findall(EMAIL_PATTERN, text))
@@ -432,74 +542,78 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
             e.lower() for e in raw_emails 
             if is_relevant_email(e, base_domain)
         }
-        all_emails.update(valid_emails)
+        result['emails'].update(valid_emails)
         
-        # Also extract phones from text
         text_phones = extract_phone_numbers(text)
-        all_phones.update(text_phones)
+        result['phones'].update(text_phones)
         
         time.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
     
-    # Calculate social media score
-    social_media_score = sum([1 for val in [instagram_url, twitter_url, linkedin_company, 
-                                            social_profiles.get('facebook'), social_profiles.get('youtube'),
-                                            social_profiles.get('tiktok')] if val])
+    # Business intelligence analysis
+    result['decision_maker_found'], result['decision_makers'] = detect_decision_makers(soup, all_text)
+    result['tech_stack'] = detect_tech_stack(soup, all_text)
+    result['company_size'] = estimate_company_size(all_text)
     
-    # Final email sanitization
+    # Calculate social media score
+    result['social_media_score'] = sum([
+        1 for val in [
+            result['instagram'], result['twitter'], result['linkedin_company'],
+            result['social_profiles'].get('facebook'),
+            result['social_profiles'].get('youtube'),
+            result['social_profiles'].get('tiktok')
+        ] if val
+    ])
+    
+    # Clean emails
     clean_emails = set()
-    for e in all_emails:
+    for e in result['emails']:
         e = e.strip()
         if 5 <= len(e) <= 254 and EMAIL_PATTERN.fullmatch(e):
             clean_emails.add(e)
+    result['emails'] = clean_emails
     
-    return clean_emails, all_phones, instagram_url, twitter_url, linkedin_company, linkedin_ceo, linkedin_founder, social_profiles, contact_page_found, social_media_score
+    return result
 
 def process_row(row):
-    """Process a single row from CSV"""
+    """Enhanced row processing with business intelligence"""
     business_name = row.get('business_name', 'Unknown')
     website = row.get('website', "")
     existing_phone = row.get('whatsapp_number', "")
     
     try:
-        emails, phones, instagram, twitter, linkedin_company, linkedin_ceo, linkedin_founder, social_profiles, contact_page_found, social_score = scrape_all_data_from_site(website, existing_phone)
+        data = scrape_all_data_from_site(website, existing_phone)
         
-        # Primary contacts (best quality)
+        # Primary contacts with quality scoring
         primary_email = ""
         primary_phone = ""
         
-        if emails:
-            sorted_emails = sorted(emails)
-            # Prefer admin, info, contact, support emails
-            priority_keywords = ['contact', 'info', 'support', 'sales', 'admin', 'hello', 'hi']
-            for priority_keyword in priority_keywords:
-                for email in sorted_emails:
-                    if priority_keyword in email:
-                        primary_email = email
-                        break
-                if primary_email:
-                    break
-            # Fallback to first email
-            if not primary_email:
-                primary_email = sorted_emails[0]
+        if data['emails']:
+            # Sort by quality score
+            scored_emails = [(email, score_email_quality(email)) for email in data['emails']]
+            scored_emails.sort(key=lambda x: x[1], reverse=True)
+            primary_email = scored_emails[0][0]
         
-        if phones:
-            sorted_phones = sorted(phones, key=lambda p: (not p.startswith('+'), len(p), p))
+        if data['phones']:
+            sorted_phones = sorted(data['phones'], key=lambda p: (not p.startswith('+'), len(p), p))
             primary_phone = sorted_phones[0]
         
         # Fill output fields
-        row['email'] = '; '.join(sorted(emails)) if emails else ""
+        row['email'] = '; '.join(sorted(data['emails'])) if data['emails'] else ""
         row['email_primary'] = primary_email
-        row['instagram'] = instagram
-        row['twitter'] = twitter
-        row['linkedin_company'] = linkedin_company
-        row['linkedin_ceo'] = linkedin_ceo
-        row['linkedin_founder'] = linkedin_founder
-        row['contact_page_found'] = "Yes" if contact_page_found else "No"
-        row['social_media_score'] = str(social_score)
+        row['instagram'] = data['instagram']
+        row['twitter'] = data['twitter']
+        row['linkedin_company'] = data['linkedin_company']
+        row['linkedin_ceo'] = data['linkedin_ceo']
+        row['linkedin_founder'] = data['linkedin_founder']
+        row['contact_page_found'] = "Yes" if data['contact_page_found'] else "No"
+        row['social_media_score'] = str(data['social_media_score'])
+        row['decision_maker_found'] = "Yes" if data['decision_maker_found'] else "No"
+        row['tech_stack_detected'] = ', '.join(data['tech_stack']) if data['tech_stack'] else ""
+        row['company_size_indicator'] = data['company_size']
         
-        # Update phone if we found new ones
-        if phones:
-            sorted_phones = sorted(phones, key=lambda p: (not p.startswith('+'), p))
+        # Update phone
+        if data['phones']:
+            sorted_phones = sorted(data['phones'], key=lambda p: (not p.startswith('+'), p))
             row['whatsapp_number'] = '; '.join(sorted_phones)
             row['phone_primary'] = primary_phone
         elif existing_phone:
@@ -507,18 +621,26 @@ def process_row(row):
         else:
             row['whatsapp_number'] = ""
             row['phone_primary'] = ""
+        
+        # Calculate business intelligence scores
+        row['lead_quality_score'] = str(calculate_lead_quality_score(row))
+        row['contact_confidence'] = calculate_contact_confidence(row)
+        row['best_contact_method'] = determine_best_contact_method(row)
             
     except Exception as e:
         logger.warning(f"Failed to scrape {business_name}: {str(e)[:100]}")
-        row['email'] = ""
-        row['email_primary'] = ""
-        row['instagram'] = ""
-        row['twitter'] = ""
-        row['linkedin_company'] = ""
-        row['linkedin_ceo'] = ""
-        row['linkedin_founder'] = ""
+        # Set default values for failed scrapes
+        for field in ['email', 'email_primary', 'instagram', 'twitter', 
+                      'linkedin_company', 'linkedin_ceo', 'linkedin_founder',
+                      'tech_stack_detected']:
+            row[field] = ""
         row['contact_page_found'] = "No"
         row['social_media_score'] = "0"
+        row['decision_maker_found'] = "No"
+        row['company_size_indicator'] = "unknown"
+        row['lead_quality_score'] = "0"
+        row['contact_confidence'] = "Low"
+        row['best_contact_method'] = "Unknown"
         if not existing_phone:
             row['whatsapp_number'] = ""
             row['phone_primary'] = ""
@@ -528,9 +650,9 @@ def process_row(row):
     return row
 
 def main():
-    logger.info("🚀 Starting business email, phone & social link enrichment...")
+    logger.info("🚀 Starting ENHANCED Business Intelligence Lead Enrichment...")
     
-    # Read input CSV
+    # Read input
     try:
         with open(CSV_INPUT_PATH, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
@@ -540,30 +662,30 @@ def main():
         logger.error(f"❌ Failed to read input file: {e}")
         sys.exit(1)
     
-    # Validate only required columns
     missing_cols = [col for col in REQUIRED_COLUMNS if col not in input_columns]
     if missing_cols:
         logger.error(f"❌ Missing required column(s): {missing_cols}")
         sys.exit(1)
     
-    # Build output columns based on what exists in input + all new enrichment fields
+    # Build output columns
     dynamic_output_cols = []
     for col in OUTPUT_COLUMNS:
         if col in input_columns:
             dynamic_output_cols.append(col)
     
-    # Always add enrichment fields regardless of whether they're in input
     enrichment_fields = [
         'email', 'email_primary', 'instagram', 'twitter', 
         'linkedin_company', 'linkedin_ceo', 'linkedin_founder',
-        'phone_primary', 'contact_page_found', 'social_media_score'
+        'phone_primary', 'contact_page_found', 'social_media_score',
+        'lead_quality_score', 'contact_confidence', 'best_contact_method',
+        'decision_maker_found', 'tech_stack_detected', 'company_size_indicator'
     ]
     for new_field in enrichment_fields:
         if new_field not in dynamic_output_cols:
             dynamic_output_cols.append(new_field)
     
     total_leads = len(rows)
-    logger.info(f"✅ Loaded {total_leads} leads. Starting deep scrape...")
+    logger.info(f"✅ Loaded {total_leads} leads. Starting intelligent enrichment...")
     
     results = []
     completed = 0
@@ -577,86 +699,38 @@ def main():
                     result = future.result()
                     results.append(result)
                     completed += 1
-                    
-                    if completed % 5 == 0 or completed == total_leads:
-                        logger.info(f"✔ Progress: {completed}/{total_leads} leads processed")
-                        
+                    if completed % 10 == 0:
+                        logger.info(f"📊 Progress: {completed}/{total_leads} leads processed")
                 except Exception as e:
-                    row = future_to_row[future]
-                    row.update({'email': '', 'instagram': '', 'twitter': ''})
-                    results.append(row)
-                    logger.error(f"Row failed: {e}")
-                    
-    except KeyboardInterrupt:
-        logger.warning("⚠️ Script interrupted by user. Saving partial results...")
+                    logger.error(f"❌ Error processing row: {str(e)[:100]}")
+    
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"❌ Threading error: {e}")
         sys.exit(1)
     
-    # Restore original order
-    key_to_result = {}
-    for r in results:
-        key = (r.get('business_name', ''), r.get('website', ''))
-        key_to_result[key] = r
+    # Write output
+    if not results:
+        logger.error("❌ No results to write")
+        sys.exit(1)
     
-    ordered_results = []
-    for row in rows:
-        key = (row.get('business_name', ''), row.get('website', ''))
-        if key in key_to_result:
-            ordered_results.append(key_to_result[key])
-        else:
-            fallback = row.copy()
-            fallback.update({'email': '', 'instagram': '', 'twitter': ''})
-            ordered_results.append(fallback)
+    output_path = get_unique_output_path(OUTPUT_BASE_NAME)
     
-    # Save output
-    OUTPUT_FILE = get_unique_output_path(OUTPUT_BASE_NAME)
     try:
-        with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=dynamic_output_cols, extrasaction='ignore')
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=dynamic_output_cols, restval='')
             writer.writeheader()
-            writer.writerows(ordered_results)
-        logger.info(f"💾 Output saved: {OUTPUT_FILE}")
-    except PermissionError:
-        logger.error(f"❌ Cannot write to {OUTPUT_FILE} — close it in Excel!")
+            
+            for row in results:
+                # Only include fields in dynamic_output_cols
+                filtered_row = {k: v for k, v in row.items() if k in dynamic_output_cols}
+                writer.writerow(filtered_row)
+        
+        logger.info(f"✅ Successfully enriched {len(results)} leads")
+        logger.info(f"📁 Output saved to: {output_path}")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to write output file: {e}")
         sys.exit(1)
-    
-    # Final stats
-    with_email = sum(1 for r in ordered_results if r.get('email', '').strip())
-    with_phone = sum(1 for r in ordered_results if r.get('whatsapp_number', '').strip())
-    with_instagram = sum(1 for r in ordered_results if r.get('instagram', '').strip())
-    with_twitter = sum(1 for r in ordered_results if r.get('twitter', '').strip())
-    with_linkedin_company = sum(1 for r in ordered_results if r.get('linkedin_company', '').strip())
-    with_linkedin_ceo = sum(1 for r in ordered_results if r.get('linkedin_ceo', '').strip())
-    with_linkedin_founder = sum(1 for r in ordered_results if r.get('linkedin_founder', '').strip())
-    with_contact_page = sum(1 for r in ordered_results if r.get('contact_page_found', '').strip() == 'Yes')
-    avg_social_score = sum(int(r.get('social_media_score', '0') or '0') for r in ordered_results) / total_leads if total_leads > 0 else 0
-    
-    pct_email = (with_email / total_leads) * 100 if total_leads > 0 else 0
-    pct_phone = (with_phone / total_leads) * 100 if total_leads > 0 else 0
-    pct_insta = (with_instagram / total_leads) * 100 if total_leads > 0 else 0
-    pct_twitter = (with_twitter / total_leads) * 100 if total_leads > 0 else 0
-    pct_linkedin = (with_linkedin_company / total_leads) * 100 if total_leads > 0 else 0
-    pct_contact = (with_contact_page / total_leads) * 100 if total_leads > 0 else 0
-    
-    logger.info("\n" + "="*60)
-    logger.info("✅ ENRICHMENT COMPLETE!")
-    logger.info(f"Total leads          : {total_leads}")
-    logger.info(f"With email           : {with_email} ({pct_email:.1f}%)")
-    logger.info(f"With phone           : {with_phone} ({pct_phone:.1f}%)")
-    logger.info(f"With LinkedIn Company: {with_linkedin_company} ({pct_linkedin:.1f}%)")
-    logger.info(f"With LinkedIn CEO    : {with_linkedin_ceo} profiles found")
-    logger.info(f"With LinkedIn Founder: {with_linkedin_founder} profiles found")
-    logger.info(f"With Instagram       : {with_instagram} ({pct_insta:.1f}%)")
-    logger.info(f"With Twitter/X       : {with_twitter} ({pct_twitter:.1f}%)")
-    logger.info(f"Contact page found   : {with_contact_page} ({pct_contact:.1f}%)")
-    logger.info(f"Avg social score     : {avg_social_score:.1f}/6")
-    logger.info(f"Output file          : {OUTPUT_FILE}")
-    logger.info("="*60)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        logger.warning("\n🛑 Process stopped by user. Partial results may have been saved.")
-        sys.exit(0)
+    main()
