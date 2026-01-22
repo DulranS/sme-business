@@ -2985,557 +2985,185 @@ Check browser console for details.`);
       </main>
 
       {/* FOLLOW-UP MODAL - REDESIGNED */}
-      {showFollowUpModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
-            {/* CLEAN HEADER */}
-            <div className="p-6 border-b border-gray-700 flex justify-between items-center bg-white/5">
-              <div>
-                <h2 className="text-2xl font-bold text-white">Reply & Follow-Up Center</h2>
-                <p className="text-sm text-gray-400 mt-1">Manage your outreach campaign</p>
-              </div>
-              <button
-                onClick={() => setShowFollowUpModal(false)}
-                className="text-gray-400 hover:text-white text-3xl transition"
-              >
-                ✕
-              </button>
+{showFollowUpModal && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col border-2 border-indigo-500/30">
+      {/* MODERN HEADER WITH GRADIENT */}
+      <div className="relative p-6 border-b border-gray-700/50 bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-pink-900/40">
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 backdrop-blur-xl"></div>
+        <div className="relative flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
+              📬 Reply & Follow-Up Center
+            </h2>
+            <p className="text-sm text-indigo-200 mt-2">Intelligent campaign management with AI-powered insights</p>
+          </div>
+          <button
+            onClick={() => setShowFollowUpModal(false)}
+            className="text-gray-400 hover:text-white hover:bg-red-500/20 transition-all duration-200 text-3xl w-12 h-12 rounded-full flex items-center justify-center"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* ENHANCED METRICS WITH GRADIENT CARDS */}
+      <div className="p-6 bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-b border-gray-700/50">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+            <div className="relative bg-gradient-to-br from-blue-900/40 to-blue-800/40 p-5 rounded-xl border border-blue-500/30 hover:border-blue-400/50 transition-all">
+              <div className="text-4xl font-bold text-blue-400">{followUpStats.totalSent}</div>
+              <div className="text-sm text-blue-200 mt-2 font-medium">Total Sent</div>
+              <div className="absolute top-3 right-3 text-2xl opacity-20">📤</div>
             </div>
+          </div>
 
-            {/* SIMPLIFIED METRICS */}
-            <div className="p-6 bg-gray-800 border-b border-gray-700 grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-400">{followUpStats.totalSent}</div>
-                <div className="text-sm text-gray-400 mt-1">Sent</div>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-emerald-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+            <div className="relative bg-gradient-to-br from-green-900/40 to-emerald-800/40 p-5 rounded-xl border border-green-500/30 hover:border-green-400/50 transition-all">
+              <div className="text-4xl font-bold text-green-400">{followUpStats.totalReplied}</div>
+              <div className="text-sm text-green-200 mt-2 font-medium">
+                Replied ({Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100)}%)
               </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-400">{followUpStats.totalReplied}</div>
-                <div className="text-sm text-gray-400 mt-1">Replied ({Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100)}%)</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-yellow-400">{getSafeFollowUpCandidates().length}</div>
-                <div className="text-sm text-gray-400 mt-1">Ready for Follow-Up</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-purple-400">${Math.round((getSafeFollowUpCandidates().length * 0.25 * 5000) / 1000)}k</div>
-                <div className="text-sm text-gray-400 mt-1">Potential Value</div>
-              </div>
+              <div className="absolute top-3 right-3 text-2xl opacity-20">✅</div>
             </div>
+          </div>
 
-            {/* MAIN ACTION BUTTONS */}
-            <div className="p-6 border-b border-gray-700 space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* PRIMARY: SMART FOLLOW-UP */}
-                <button
-                  onClick={() => {
-                    const safe = getSafeFollowUpCandidates();
-                    if (safe.length === 0) {
-                      alert('No leads ready for safe follow-up yet. Check timing.');
-                      return;
-                    }
-                    const msg = `📧 Smart Selective Mode\n\nWill send to ${safe.length} safe contacts:\n${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days)`).join('\n')}${safe.length > 3 ? `\n  ... and ${safe.length - 3} more` : ''}\n\nThese contacts won't be over-emailed.`;
-                    alert(msg);
-                  }}
-                  className="lg:col-span-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-lg"
-                >
-                  📬 Send Smart Follow-Ups ({getSafeFollowUpCandidates().length} leads)
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 text-center">Respects contact frequency rules • Prevents spam folder issues • Shows safety score per contact</p>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/20 to-orange-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+            <div className="relative bg-gradient-to-br from-yellow-900/40 to-orange-800/40 p-5 rounded-xl border border-yellow-500/30 hover:border-yellow-400/50 transition-all">
+              <div className="text-4xl font-bold text-yellow-400">{getSafeFollowUpCandidates().length}</div>
+              <div className="text-sm text-yellow-200 mt-2 font-medium">Ready for Follow-Up</div>
+              <div className="absolute top-3 right-3 text-2xl opacity-20">⏰</div>
             </div>
+          </div>
 
-            {/* CANDIDATES LIST - CLEAN & ORGANIZED */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {getSafeFollowUpCandidates().length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-4xl mb-2">✅</div>
-                  <div className="text-gray-300 font-medium">All leads are either replied or too soon to follow up</div>
-                  <div className="text-xs text-gray-500 mt-2">Follow-ups naturally become available 2+ days after initial send</div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-sm font-bold text-gray-300 mb-4">
-                    {getSafeFollowUpCandidates().length} leads ready for follow-up
-                  </div>
-                  
-                  {getSafeFollowUpCandidates().map((contact) => {
-                    const followUpCount = contact.followUpCount;
-                    
-                    return (
-                      <div
-                        key={contact.email}
-                        className="p-4 rounded-lg bg-gray-750 border border-gray-700 hover:border-blue-600 transition flex items-center justify-between"
-                      >
-                        <div className="flex-1">
-                          <div className="font-medium text-white">{contact.email}</div>
-                          <div className="flex gap-3 mt-2 text-xs text-gray-400">
-                            <span>{Math.ceil(contact.daysSinceSent)} days ago</span>
-                            <span>•</span>
-                            <span>Follow-up #{followUpCount + 1}</span>
-                            <span>•</span>
-                            <span>{Math.round(contact.safetyScore)}% safe</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={async () => {
-                            const confirmed = confirm(`Send follow-up to ${contact.email}?`);
-                            if (!confirmed) return;
-                            
-                            try {
-                              const token = await requestGmailToken();
-                              alert('✅ Follow-up queued!');
-                            } catch (err) {
-                              alert('Gmail access failed.');
-                            }
-                          }}
-                          className="ml-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium text-sm transition whitespace-nowrap"
-                        >
-                          Send
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* FOOTER - SIMPLE & CLEAR */}
-            <div className="p-6 border-t border-gray-700 bg-gray-900/30 text-center">
-              <div className="text-xs text-gray-400">
-                Follows best practices: 2-day minimum between sends • Max 3 follow-ups per contact • 30-day campaign window
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+            <div className="relative bg-gradient-to-br from-purple-900/40 to-pink-800/40 p-5 rounded-xl border border-purple-500/30 hover:border-purple-400/50 transition-all">
+              <div className="text-4xl font-bold text-purple-400">
+                ${Math.round((getSafeFollowUpCandidates().length * 0.25 * 5000) / 1000)}k
               </div>
-            </div>
-
-            {/* STATS DASHBOARD */}
-            <div className="p-4 bg-gray-800 border-b border-gray-700 grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div className="bg-gray-750 p-3 rounded border border-gray-700">
-                <div className="text-sm text-gray-400">Total Sent</div>
-                <div className="text-2xl font-bold text-blue-400">{followUpStats.totalSent}</div>
-              </div>
-              <div className="bg-green-900/20 p-3 rounded border border-green-700">
-                <div className="text-sm text-green-400">Replied</div>
-                <div className="text-2xl font-bold text-green-300">{followUpStats.totalReplied}</div>
-                <div className="text-xs text-green-400 mt-1">{Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100)}% reply rate</div>
-              </div>
-              <div className="bg-yellow-900/20 p-3 rounded border border-yellow-700">
-                <div className="text-sm text-yellow-400">Ready for FU</div>
-                <div className="text-2xl font-bold text-yellow-300">{followUpStats.readyForFollowUp}</div>
-              </div>
-              <div className="bg-orange-900/20 p-3 rounded border border-orange-700">
-                <div className="text-sm text-orange-400">Already FU'd</div>
-                <div className="text-2xl font-bold text-orange-300">{followUpStats.alreadyFollowedUp}</div>
-              </div>
-              <div className="bg-purple-900/20 p-3 rounded border border-purple-700">
-                <div className="text-sm text-purple-400">Awaiting</div>
-                <div className="text-2xl font-bold text-purple-300">{followUpStats.awaitingReply}</div>
-              </div>
-            </div>
-
-            {/* ACTION BUTTONS - ENHANCED */}
-            <div className="p-4 border-b border-gray-700 space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={checkRepliesAndLoad}
-                  className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-3 py-2 rounded font-medium"
-                  title="Check Gmail for new replies"
-                >
-                  🔄 Check for Replies
-                </button>
-                <button
-                  onClick={() => setScheduleFollowUp(!scheduleFollowUp)}
-                  className={`text-xs px-3 py-2 rounded font-medium ${
-                    scheduleFollowUp
-                      ? 'bg-orange-700 hover:bg-orange-600 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                  }`}
-                  title="Schedule follow-ups for later"
-                >
-                  {scheduleFollowUp ? '⏰ Scheduled' : '📅 Schedule'}
-                </button>
-                <button
-                  onClick={() => setFollowUpFilter(followUpFilter === 'all' ? 'ready' : followUpFilter === 'ready' ? 'replied' : 'all')}
-                  className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-2 rounded"
-                >
-                  🔍 Filter: {followUpFilter === 'all' ? 'All' : followUpFilter === 'ready' ? 'Ready for FU' : 'Replied'}
-                </button>
-                <button
-                  onClick={() => {
-                    const report = {
-                      date: new Date().toLocaleDateString(),
-                      totalSent: followUpStats.totalSent,
-                      replied: followUpStats.totalReplied,
-                      replyRate: Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100),
-                      readyForFollowUp: followUpStats.readyForFollowUp,
-                      alreadyFollowedUp: followUpStats.alreadyFollowedUp,
-                      awaitingReply: followUpStats.awaitingReply,
-                      pipelineValue: Math.round((followUpStats.totalReplied * 5000) / 1000) + 'k',
-                      projectedValue: Math.round((followUpStats.readyForFollowUp * 0.25 * 5000) / 1000) + 'k',
-                      leads: sentLeads.map(lead => ({
-                        email: lead.email,
-                        status: lead.replied ? 'Replied' : 'Pending',
-                        sentAt: new Date(lead.sentAt).toLocaleDateString(),
-                        followUps: followUpHistory[lead.email]?.count || 0
-                      }))
-                    };
-                    const csv = 'Campaign Report\n' + 
-                      'Date,' + report.date + '\n' +
-                      'Total Sent,' + report.totalSent + '\n' +
-                      'Replied,' + report.replied + '\n' +
-                      'Reply Rate,' + report.replyRate + '%\n' +
-                      'Ready for Follow-up,' + report.readyForFollowUp + '\n' +
-                      'Already Followed Up,' + report.alreadyFollowedUp + '\n' +
-                      'Awaiting Reply,' + report.awaitingReply + '\n' +
-                      'Current Pipeline Value,' + report.pipelineValue + '\n' +
-                      'Projected Value (30d),' + report.projectedValue + '\n\n' +
-                      'Email,Status,Sent Date,Follow-ups\n' +
-                      report.leads.map(l => `${l.email},${l.status},${l.sentAt},${l.followUps}`).join('\n');
-                    
-                    const element = document.createElement('a');
-                    element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv));
-                    element.setAttribute('download', `campaign-report-${Date.now()}.csv`);
-                    element.style.display = 'none';
-                    document.body.appendChild(element);
-                    element.click();
-                    document.body.removeChild(element);
-                  }}
-                  className="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded font-medium"
-                  title="Download campaign performance report"
-                >
-                  📊 Export Report
-                </button>
-              </div>
-
-              {/* FOLLOW-UP OPTIONS */}
-              <div className="bg-gray-900/40 border border-gray-700 rounded p-3 space-y-3">
-                <div className="text-xs font-semibold text-gray-300">📨 Smart Follow-Up Strategy:</div>
-                
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Template Selection with Descriptions */}
-                  <div className="col-span-2 sm:col-span-1">
-                    <label className="text-xs text-gray-400 block mb-1 font-semibold">📬 Message Type:</label>
-                    <select
-                      value={followUpTemplate}
-                      onChange={(e) => setFollowUpTemplate(e.target.value)}
-                      className="text-xs w-full bg-gray-800 text-white border border-gray-600 rounded p-1.5"
-                    >
-                      <option value="auto">🤖 Auto-Sequence (Best for conversion)</option>
-                      <option value="aggressive">🔥 Value-First (Lead with benefit)</option>
-                      <option value="soft">😊 Relationship (Warm tone)</option>
-                      <option value="urgent">⚡ Time-Limited (Create urgency)</option>
-                      <option value="question">❓ Question-Based (Ask for input)</option>
-                      <option value="social">📱 Social Proof (Social engagement)</option>
-                    </select>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {followUpTemplate === 'auto' && '→ Day 2: Gentle | Day 5: Value | Day 7: Final'}
-                      {followUpTemplate === 'aggressive' && '→ Lead with key benefit immediately'}
-                      {followUpTemplate === 'soft' && '→ Personal touch, no hard sell'}
-                      {followUpTemplate === 'urgent' && '→ Limited offer, deadline focus'}
-                      {followUpTemplate === 'question' && '→ Ask question to re-engage'}
-                      {followUpTemplate === 'social' && '→ Recent activity, social follow'}
-                    </div>
-                  </div>
-
-                  {/* Targeting Selection */}
-                  <div className="col-span-2 sm:col-span-1">
-                    <label className="text-xs text-gray-400 block mb-1 font-semibold">🎯 Target Audience:</label>
-                    <select
-                      value={followUpTargeting}
-                      onChange={(e) => setFollowUpTargeting(e.target.value)}
-                      className="text-xs w-full bg-gray-800 text-white border border-gray-600 rounded p-1.5"
-                    >
-                      <option value="ready">⏰ Ready Now ({followUpStats.readyForFollowUp})</option>
-                      <option value="hot">🔥 Hot Leads Only (~{Math.ceil(followUpStats.readyForFollowUp * 0.3)})</option>
-                      <option value="never">🆕 Never Followed Up ({Math.max(0, followUpStats.readyForFollowUp - followUpStats.alreadyFollowedUp)})</option>
-                      <option value="all">💯 All Unreplied ({whatsappLinks.length - Object.values(repliedLeads).filter(Boolean).length})</option>
-                      <option value="low-engagement">⚠️ Low Engagement (2-4 days)</option>
-                    </select>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {followUpTargeting === 'hot' && '→ Score 75+, highest priority'}
-                      {followUpTargeting === 'never' && '→ No previous follow-ups sent'}
-                      {followUpTargeting === 'low-engagement' && '→ Silent for 2-4 days'}
-                      {followUpTargeting === 'all' && '→ All non-replies, including recent'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Smart Scheduling */}
-                <div className="bg-gray-900/50 rounded p-2 border border-gray-700">
-                  <div className="flex items-center gap-2 mb-2">
-                    <input
-                      type="checkbox"
-                      id="scheduleFollowUp"
-                      checked={scheduleFollowUp}
-                      onChange={(e) => setScheduleFollowUp(e.target.checked)}
-                      className="w-4 h-4"
-                    />
-                    <label htmlFor="scheduleFollowUp" className="text-xs text-gray-300 font-semibold">
-                      ⏰ Smart Schedule
-                    </label>
-                  </div>
-                  
-                  {scheduleFollowUp && (
-                    <div className="grid grid-cols-2 gap-2 ml-5">
-                      <div>
-                        <label className="text-xs text-gray-400 block mb-1">Send Time:</label>
-                        <input
-                          type="time"
-                          value={scheduledTime?.split('T')[1]?.slice(0, 5) || '09:00'}
-                          onChange={(e) => {
-                            const date = new Date(scheduledTime || new Date());
-                            const [h, m] = e.target.value.split(':');
-                            date.setHours(h, m, 0, 0);
-                            setScheduledTime(date.toISOString());
-                          }}
-                          className="text-xs w-full bg-gray-800 text-white border border-gray-600 rounded p-1"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 block mb-1">Batch Size:</label>
-                        <input
-                          type="number"
-                          min="5"
-                          max="500"
-                          step="5"
-                          value={batchSize || 50}
-                          onChange={(e) => setBatchSize(parseInt(e.target.value))}
-                          className="text-xs w-full bg-gray-800 text-white border border-gray-600 rounded p-1"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Business Value Preview */}
-                <div className="bg-blue-900/20 border border-blue-700/50 rounded p-2">
-                  <div className="text-xs text-blue-300 space-y-1">
-                    <div className="flex justify-between">
-                      <span>📊 Expected Outcomes:</span>
-                      <span className="font-semibold">
-                        ~{Math.ceil(followUpStats.readyForFollowUp * 0.25)} new replies (~25% success)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>💰 Potential Value:</span>
-                      <span className="font-semibold">
-                        ${Math.round((followUpStats.readyForFollowUp * 0.25 * 5000) / 1000)}k
-                      </span>
-                    </div>
-                    <div className="text-xs text-blue-400">
-                      {followUpTemplate === 'aggressive' && '💡 Higher urgency = faster decisions'}
-                      {followUpTemplate === 'question' && '💡 Questions increase engagement 3x'}
-                      {followUpTemplate === 'auto' && '💡 Multi-step proven to optimize conversions'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Send Button */}
-                <button
-                  onClick={async () => {
-                    const targetCount = followUpTargeting === 'ready' ? followUpStats.readyForFollowUp :
-                                        followUpTargeting === 'hot' ? Math.ceil(followUpStats.readyForFollowUp * 0.3) :
-                                        followUpTargeting === 'never' ? followUpStats.awaitingReply : followUpStats.readyForFollowUp;
-                    
-                    const potentialValue = Math.round((targetCount * 0.25 * 5000) / 1000);
-                    
-                    const confirmMsg = `Ready to follow up with ${targetCount} leads?
-                    
-Template: ${followUpTemplate} (${followUpTemplate === 'aggressive' ? 'Best CTR' : followUpTemplate === 'question' ? 'Best engagement' : 'Proven sequence'})
-Target: ${followUpTargeting}
-Est. Replies: ~${Math.ceil(targetCount * 0.25)} leads
-Est. Value: $${potentialValue}k
-
-${scheduleFollowUp ? `⏰ Scheduled: ${new Date(scheduledTime).toLocaleString()}` : '📤 Sending now'}`;
-                    
-                    if (!confirm(confirmMsg)) return;
-                    
-                    try {
-                      const accessToken = await requestGmailToken();
-                      sendMassFollowUp(accessToken);
-                      alert(`✅ ${targetCount} follow-ups queued!\n💰 Est. value: $${potentialValue}k\n📈 Track results in the live dashboard`);
-
-                    } catch (err) {
-                      alert('Gmail access denied. Check popup blocker.');
-                      console.error(err);
-                    }
-                  }}
-                  className="w-full text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-2 rounded font-bold"
-                  disabled={isSending}
-                >
-                  {isSending ? '⏳ Sending...' : `📨 Send Follow-Ups (${followUpStats.readyForFollowUp})`}
-                </button>
-              </div>
-
-              <div className="text-xs text-gray-400 bg-gray-900/40 p-2 rounded border border-gray-700">
-                💡 <span className="font-medium">Smart Options:</span> Choose template, target audience, and optional scheduling. System prevents spam automatically.
-              </div>
-            </div>
-
-            {/* LEADS LIST */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {/* SMART INSIGHTS */}
-              {sentLeads.length > 0 && (
-                <div className="mb-4 p-3 bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-lg border border-amber-700/50">
-                  <div className="text-xs font-semibold text-amber-300 mb-2">💡 Smart Recommendations:</div>
-                  <div className="space-y-1 text-xs text-amber-200">
-                    {followUpStats.readyForFollowUp > 0 && (
-                      <div>✓ {followUpStats.readyForFollowUp} leads ready for follow-up - Send now to maintain momentum</div>
-                    )}
-                    {followUpStats.totalReplied > 0 && (
-                      <div>✓ {Math.round((followUpStats.totalReplied / followUpStats.totalSent) * 100)}% reply rate achieved - Good engagement!</div>
-                    )}
-                    {followUpStats.awaitingReply > 0 && (
-                      <div>✓ {followUpStats.awaitingReply} awaiting initial reply - Follow-up often needed by day 5</div>
-                    )}
-                    {Object.values(followUpHistory).filter(h => h?.count >= 3).length > 0 && (
-                      <div className="text-red-300">⚠️ {Object.values(followUpHistory).filter(h => h?.count >= 3).length} leads at spam risk - Consider pausing</div>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              {loadingSentLeads ? (
-                <div className="text-center py-12 text-gray-300">
-                  <div className="text-4xl mb-2">⏳</div>
-                  Loading sent leads...
-                </div>
-              ) : sentLeads.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <div className="text-4xl mb-2">📭</div>
-                  No emails sent yet. Send your first campaign to get started.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {sentLeads.filter(lead => {
-                    if (followUpFilter === 'ready') {
-                      const followUpAt = new Date(lead.followUpAt);
-                      return !lead.replied && followUpAt <= new Date();
-                    }
-                    if (followUpFilter === 'replied') {
-                      return lead.replied;
-                    }
-                    return true;
-                  }).map((lead) => {
-                    const sentAt = new Date(lead.sentAt);
-                    const followUpAt = new Date(lead.followUpAt);
-                    const now = new Date();
-                    const needsFollowUp = !lead.replied && followUpAt <= now;
-                    const history = followUpHistory[lead.email];
-                    const followUpCount = history?.count || 0;
-                    const isSpamRisk = followUpCount >= 3;
-                    
-                    return (
-                      <div
-                        key={lead.email}
-                        className={`p-4 rounded-lg border-2 transition-all ${
-                          lead.replied
-                            ? 'border-green-700 bg-green-900/15'
-                            : isSpamRisk
-                              ? 'border-red-700 bg-red-900/15'
-                              : needsFollowUp
-                                ? 'border-yellow-700 bg-yellow-900/15'
-                                : 'border-gray-700 bg-gray-750'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start gap-3">
-                          {/* LEFT - EMAIL & STATUS */}
-                          <div className="flex-1">
-                            <div className="font-medium text-white text-sm">{lead.email}</div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              📤 Sent: {sentAt.toLocaleDateString()} at {sentAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                            
-                            {/* STATUS BADGES */}
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {lead.replied && (
-                                <span className="bg-green-900/40 text-green-300 text-xs px-2 py-1 rounded border border-green-600">
-                                  ✅ Replied
-                                </span>
-                              )}
-                              
-                              {!lead.replied && needsFollowUp && (
-                                <span className="bg-yellow-900/40 text-yellow-300 text-xs px-2 py-1 rounded border border-yellow-600">
-                                  ⏳ Follow-Up Ready ({Math.ceil((now - followUpAt) / (1000 * 60 * 60))}h)
-                                </span>
-                              )}
-                              
-                              {!lead.replied && !needsFollowUp && (
-                                <span className="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded">
-                                  ⏱️ In {Math.ceil((followUpAt - now) / (1000 * 60 * 60))}h
-                                </span>
-                              )}
-                              
-                              {/* FOLLOW-UP COUNT TRACKER */}
-                              {followUpCount > 0 && (
-                                <span className={`text-xs px-2 py-1 rounded border font-medium ${
-                                  isSpamRisk
-                                    ? 'bg-red-900/40 text-red-300 border-red-600'
-                                    : 'bg-purple-900/40 text-purple-300 border-purple-600'
-                                }`}>
-                                  📨 FU #{followUpCount} {isSpamRisk ? '⚠️ SPAM RISK' : ''}
-                                </span>
-                              )}
-                            </div>
-                            
-                            {/* FOLLOW-UP HISTORY */}
-                            {history && history.dates && history.dates.length > 0 && (
-                              <div className="text-xs text-gray-400 mt-2">
-                                📋 Follow-ups: {history.dates.map((date, i) => {
-                                  const d = new Date(date);
-                                  return d.toLocaleDateString();
-                                }).join(', ')}
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* RIGHT - ACTION BUTTON */}
-                          {!lead.replied && (
-                            <div className="flex flex-col gap-2">
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    const token = await requestGmailToken();
-                                    await sendFollowUpWithToken(lead.email, token);
-                                  } catch (err) {
-                                    alert('Gmail auth failed. Check popup blocker or try again.');
-                                    console.error(err);
-                                  }
-                                }}
-                                disabled={!needsFollowUp}
-                                className={`text-xs px-3 py-1.5 rounded font-medium whitespace-nowrap transition ${
-                                  needsFollowUp
-                                    ? isSpamRisk
-                                      ? 'bg-red-700 hover:bg-red-600 text-white cursor-pointer'
-                                      : 'bg-blue-700 hover:bg-blue-600 text-white cursor-pointer'
-                                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                                }`}
-                                title={!needsFollowUp ? 'Follow-up not ready yet' : isSpamRisk ? 'Warning: High spam risk!' : 'Send follow-up now'}
-                              >
-                                {needsFollowUp ? (isSpamRisk ? '⚠️ Risk' : '📬 Send FU') : '⏳ Too Early'}
-                              </button>
-                              {needsFollowUp && (
-                                <div className="text-xs text-gray-500 text-center">Ready now</div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* FOOTER - TIPS */}
-            <div className="p-4 border-t border-gray-700 bg-gray-900/50 text-xs text-gray-400 space-y-1">
-              <div className="font-medium text-gray-300">💡 Best Practices:</div>
-              <div>• Follow-up #1: 2-3 days after initial email</div>
-              <div>• Follow-up #2: 5-7 days after #1</div>
-              <div>• Follow-up #3+: Risk of spam folder (use sparingly)</div>
-              <div>• Green badge = Replied | Yellow = Ready for follow-up | Red = Spam risk</div>
+              <div className="text-sm text-purple-200 mt-2 font-medium">Potential Revenue</div>
+              <div className="absolute top-3 right-3 text-2xl opacity-20">💰</div>
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* MAIN ACTION BUTTON - MORE PROMINENT */}
+      <div className="p-6 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30">
+        <button
+          onClick={() => {
+            const safe = getSafeFollowUpCandidates();
+            if (safe.length === 0) {
+              alert('No leads ready for safe follow-up yet. Check timing.');
+              return;
+            }
+            const msg = `📧 Smart Selective Mode\n\nWill send to ${safe.length} safe contacts:\n${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days)`).join('\n')}${safe.length > 3 ? `\n  ... and ${safe.length - 3} more` : ''}\n\nThese contacts won't be over-emailed.`;
+            alert(msg);
+          }}
+          className="w-full relative group overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-90 group-hover:opacity-100 transition-all"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 opacity-0 group-hover:opacity-20 blur-xl transition-all"></div>
+          <div className="relative px-8 py-5 text-white font-bold text-xl flex items-center justify-center gap-3">
+            <span className="text-2xl">📬</span>
+            <span>Send Smart Follow-Ups</span>
+            <span className="bg-white/20 px-3 py-1 rounded-full text-base">
+              {getSafeFollowUpCandidates().length} leads
+            </span>
+          </div>
+        </button>
+        <p className="text-xs text-gray-400 text-center mt-3">
+          ✓ Respects contact frequency • ✓ Prevents spam • ✓ Shows safety score
+        </p>
+      </div>
+
+      {/* CANDIDATES LIST - IMPROVED VISIBILITY */}
+      <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-900/30 to-gray-800/30">
+        {getSafeFollowUpCandidates().length === 0 ? (
+          <div className="text-center py-16">
+            <div className="text-6xl mb-4">✅</div>
+            <div className="text-2xl text-gray-200 font-bold mb-2">All Caught Up!</div>
+            <div className="text-gray-400">All leads are either replied or too soon to follow up</div>
+            <div className="text-sm text-gray-500 mt-3 bg-gray-800/50 inline-block px-4 py-2 rounded-lg">
+              Follow-ups become available 2+ days after initial send
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="text-lg font-bold text-indigo-300 mb-5 flex items-center gap-3">
+              <span className="text-2xl">🎯</span>
+              <span>{getSafeFollowUpCandidates().length} leads ready for intelligent follow-up</span>
+            </div>
+            
+            {getSafeFollowUpCandidates().map((contact) => {
+              const followUpCount = contact.followUpCount;
+              
+              return (
+                <div
+                  key={contact.email}
+                  className="group relative"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-all"></div>
+                  <div className="relative p-5 rounded-xl bg-gradient-to-br from-gray-800/80 to-gray-900/80 border border-gray-700 hover:border-indigo-500/50 transition-all flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-bold text-white text-lg mb-2">{contact.email}</div>
+                      <div className="flex gap-4 text-sm">
+                        <span className="text-indigo-400 font-medium">
+                          📅 {Math.ceil(contact.daysSinceSent)} days ago
+                        </span>
+                        <span className="text-purple-400 font-medium">
+                          📨 Follow-up #{followUpCount + 1}
+                        </span>
+                        <span className={`font-bold ${contact.safetyScore >= 80 ? 'text-green-400' : contact.safetyScore >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                          ✓ {Math.round(contact.safetyScore)}% safe
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const confirmed = confirm(`Send follow-up to ${contact.email}?`);
+                        if (!confirmed) return;
+                        
+                        try {
+                          const token = await requestGmailToken();
+                          alert('✅ Follow-up queued!');
+                        } catch (err) {
+                          alert('Gmail access failed.');
+                        }
+                      }}
+                      className="ml-6 relative group/btn overflow-hidden"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 group-hover/btn:from-blue-500 group-hover/btn:to-indigo-500 transition-all"></div>
+                      <div className="relative px-6 py-3 text-white font-bold text-base rounded-lg">
+                        Send Now →
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* FOOTER - CLEANER */}
+      <div className="p-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-900/80 to-gray-800/80">
+        <div className="text-sm text-gray-300 text-center space-y-1">
+          <div className="font-semibold text-indigo-300 mb-2">💡 Best Practices:</div>
+          <div className="flex justify-center gap-8 text-xs">
+            <span>✓ 2-day minimum between sends</span>
+            <span>✓ Max 3 follow-ups per contact</span>
+            <span>✓ 30-day campaign window</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
       
       {/* CALL HISTORY MODAL */}
       {showCallHistoryModal && (
