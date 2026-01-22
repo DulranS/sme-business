@@ -260,6 +260,9 @@ export default function Dashboard() {
   const [activeCallStatus, setActiveCallStatus] = useState(null);
   const [showMultiChannelModal, setShowMultiChannelModal] = useState(false);
   const [isMultiChannelFullscreen, setIsMultiChannelFullscreen] = useState(false);
+  // ✅ NEW LEAD OUTREACH STATE
+  const [dailyEmailCount, setDailyEmailCount] = useState(0);
+  const [loadingDailyCount, setLoadingDailyCount] = useState(false);
   
   // ✅ NEW BUSINESS LOGIC: ADVANCED ANALYTICS & PREDICTIVE SCORING
   const [advancedMetrics, setAdvancedMetrics] = useState({
@@ -1525,6 +1528,174 @@ Failed: ${whatsappLinks.length - successCount}`);
     await loadSentLeads();
   };
 
+  // ✅ Load daily email count
+  const loadDailyEmailCount = async () => {
+    if (!user?.uid) return;
+    setLoadingDailyCount(true);
+    try {
+      const res = await fetch('/api/get-daily-count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.uid })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDailyEmailCount(data.count || 0);
+      }
+    } catch (err) {
+      console.error('Load daily count error:', err);
+    } finally {
+      setLoadingDailyCount(false);
+    }
+  };
+
+  // ✅ Get new leads (not yet emailed)
+  const getNewLeads = () => {
+    if (!whatsappLinks || whatsappLinks.length === 0) return [];
+    
+    // Create set of already-sent emails
+    const sentEmailsSet = new Set();
+    sentLeads.forEach(lead => {
+      if (lead.email) {
+        sentEmailsSet.add(lead.email.toLowerCase().trim());
+      }
+    });
+    
+    // Filter to only new leads with valid emails
+    const newLeads = whatsappLinks
+      .filter(contact => {
+        if (!contact.email) return false;
+        const email = contact.email.toLowerCase().trim();
+        return !sentEmailsSet.has(email);
+      })
+      .map(contact => ({
+        ...contact,
+        email: contact.email.toLowerCase().trim()
+      }));
+    
+    // Sort by lead quality/score for business value (highest first)
+    return newLeads.sort((a, b) => {
+      const scoreA = leadScores[a.email] || 50;
+      const scoreB = leadScores[b.email] || 50;
+      return scoreB - scoreA;
+    });
+  };
+
+  // ✅ Send to new leads (smart outreach)
+  const handleSendToNewLeads = async () => {
+    if (!user?.uid) {
+      alert('Please sign in first.');
+      return;
+    }
+
+    const newLeads = getNewLeads();
+    if (newLeads.length === 0) {
+      alert('✅ No new leads to email. All contacts have already been reached out to.');
+      return;
+    }
+
+    // Check daily limit
+    const remainingQuota = 500 - dailyEmailCount;
+    if (remainingQuota <= 0) {
+      alert(`⚠️ Daily email limit reached (500 emails/day). ${dailyEmailCount} emails sent today. Please try again tomorrow.`);
+      return;
+    }
+
+    const leadsToSend = newLeads.slice(0, Math.min(remainingQuota, newLeads.length));
+    const potentialValue = Math.round((leadsToSend.length * 0.15 * 5000) / 1000); // 15% conversion, $5k avg deal
+
+    const confirmMsg = `🚀 Smart New Lead Outreach\n\n` +
+      `📊 ${leadsToSend.length} new leads ready (${newLeads.length} total available)\n` +
+      `📈 Prioritized by lead quality for maximum business value\n` +
+      `💰 Estimated potential value: $${potentialValue}k\n` +
+      `📧 Daily quota: ${dailyEmailCount}/500 (${remainingQuota} remaining today)\n\n` +
+      `✅ Prevents duplicates & spam automatically\n` +
+      `🎯 Only contacts never emailed before\n\n` +
+      `Send to ${leadsToSend.length} leads now?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    if (!templateA.subject?.trim()) {
+      alert('Email subject is required.');
+      return;
+    }
+
+    setIsSending(true);
+    setStatus('Getting Gmail access...');
+    
+    try {
+      const accessToken = await requestGmailToken();
+      setStatus(`Sending to ${leadsToSend.length} new leads...`);
+
+      // Prepare email images
+      const imagesWithBase64 = await Promise.all(
+        emailImages.map(async (img, index) => {
+          const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(img.file);
+          });
+          return {
+            cid: img.cid,
+            mimeType: img.file.type,
+            base64,
+            placeholder: img.placeholder
+          };
+        })
+      );
+
+      const res = await fetch('/api/send-new-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipients: leadsToSend,
+          senderName,
+          fieldMappings,
+          accessToken,
+          template: templateA,
+          userId: user.uid,
+          emailImages: imagesWithBase64
+        })
+      });
+
+      const data = await res.json();
+      
+      if (res.ok) {
+        setStatus(`✅ ${data.sent}/${data.total} emails sent to new leads!`);
+        setDailyEmailCount(data.dailyCount || dailyEmailCount + data.sent);
+        
+        const successMsg = `✅ Successfully sent ${data.sent} emails!\n\n` +
+          `📊 Stats:\n` +
+          `  • Sent: ${data.sent}\n` +
+          `  • Failed: ${data.failed || 0}\n` +
+          `  • Skipped (already sent): ${data.skipped || 0}\n` +
+          `  • Daily count: ${data.dailyCount}/500\n` +
+          `  • Remaining today: ${data.remainingToday}\n\n` +
+          `💰 Estimated value: $${Math.round((data.sent * 0.15 * 5000) / 1000)}k`;
+        
+        alert(successMsg);
+        
+        // Reload sent leads to update UI
+        await loadSentLeads();
+        await loadDailyEmailCount();
+      } else {
+        if (res.status === 429) {
+          alert(`⚠️ Daily limit reached!\n\n${data.error}\n\nDaily count: ${data.dailyCount}/${data.limit}`);
+          setDailyEmailCount(data.dailyCount || 500);
+        } else {
+          alert(`❌ Error: ${data.error || 'Failed to send emails'}`);
+        }
+        setStatus(`❌ ${data.error || 'Failed'}`);
+      }
+    } catch (err) {
+      console.error('Send new leads error:', err);
+      alert(`❌ Error: ${err.message || 'Failed to send emails'}`);
+      setStatus(`❌ ${err.message || 'Error'}`);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   // ✅ Send Emails
   const handleSendEmails = async (templateToSend = null) => {
     const lines = csvContent?.split('\n').filter(line => line.trim() !== '') || [];
@@ -1737,6 +1908,7 @@ Check browser console for details.`);
         loadDeals();
         loadAbResults();
         loadRepliedAndFollowUp();
+        loadDailyEmailCount(); // ✅ Load daily email count
       } else {
         setUser(null);
       }
@@ -2293,16 +2465,34 @@ Check browser console for details.`);
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => handleSendEmails()}
-                  className={`w-full py-2.5 rounded font-bold mt-4 ${
-                    isSending || !csvContent || !senderName.trim() || validEmails === 0
-                    ? 'bg-gray-600 cursor-not-allowed'
-                    : 'bg-green-700 hover:bg-green-600 text-white'
-                  }`}
-                >
-                  📧 Send Emails ({validEmails})
-                </button>
+                <>
+                  <button
+                    onClick={() => handleSendEmails()}
+                    className={`w-full py-2.5 rounded font-bold mt-4 ${
+                      isSending || !csvContent || !senderName.trim() || validEmails === 0
+                        ? 'bg-gray-600 cursor-not-allowed'
+                        : 'bg-green-700 hover:bg-green-600 text-white'
+                    }`}
+                  >
+                    📧 Send Emails ({validEmails})
+                  </button>
+                  {/* ✅ NEW LEAD OUTREACH BUTTON */}
+                  <button
+                    onClick={handleSendToNewLeads}
+                    disabled={isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500}
+                    className={`w-full py-2.5 rounded font-bold mt-3 ${
+                      isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500
+                        ? 'bg-gray-600 cursor-not-allowed text-gray-400'
+                        : 'bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white shadow-lg'
+                    }`}
+                    title={dailyEmailCount >= 500 ? 'Daily limit reached (500 emails/day)' : `Send to ${getNewLeads().length} new leads (${500 - dailyEmailCount} remaining today)`}
+                  >
+                    🚀 Smart New Lead Outreach ({getNewLeads().length} new leads)
+                    <div className="text-xs font-normal mt-1 opacity-90">
+                      {dailyEmailCount >= 500 ? '⚠️ Daily limit reached' : `${dailyEmailCount}/500 sent today • Prevents duplicates`}
+                    </div>
+                  </button>
+                </>
               )}
             </div>
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
