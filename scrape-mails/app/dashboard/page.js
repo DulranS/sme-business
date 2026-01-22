@@ -833,6 +833,26 @@ Failed: ${whatsappLinks.length - successCount}`);
             phone: formattedPhone,
             email: row.email || null,
             place_id: row.place_id || '',
+            website: row.website || '',
+            // ✅ ALL SOCIAL MEDIA & OUTREACH FIELDS
+            instagram: row.instagram || '',
+            twitter: row.twitter || '',
+            facebook: row.facebook || '',
+            youtube: row.youtube || '',
+            tiktok: row.tiktok || '',
+            linkedin_company: row.linkedin_company || '',
+            linkedin_ceo: row.linkedin_ceo || '',
+            linkedin_founder: row.linkedin_founder || '',
+            contact_page_found: row.contact_page_found || 'No',
+            social_media_score: row.social_media_score || '0',
+            email_primary: row.email_primary || row.email || '',
+            phone_primary: row.phone_primary || formattedPhone || '',
+            lead_quality_score: row.lead_quality_score || '0',
+            contact_confidence: row.contact_confidence || 'Low',
+            best_contact_method: row.best_contact_method || 'Email',
+            decision_maker_found: row.decision_maker_found || 'No',
+            tech_stack_detected: row.tech_stack_detected || '',
+            company_size_indicator: row.company_size_indicator || 'unknown',
             url: `https://wa.me/${formattedPhone}?text=${encodeURIComponent(
               renderPreviewText(whatsappTemplate, row, fieldMappings, senderName)
             )}`
@@ -2547,7 +2567,7 @@ Check browser console for details.`);
 
                       {/* SOCIAL MEDIA & WEB ACTIONS */}
                       <div className="mt-3 pt-3 border-t border-gray-600">
-                        <div className="text-xs font-semibold text-gray-300 mb-2">Social & Web:</div>
+                        <div className="text-xs font-semibold text-gray-300 mb-2">Social & Web Outreach:</div>
                         <div className="space-y-2">
                           {/* LINKEDIN BUTTONS - ALWAYS SHOW */}
                           <button
@@ -2555,7 +2575,7 @@ Check browser console for details.`);
                             title={link.linkedin_company ? 'Open company LinkedIn' : 'Search for company on LinkedIn'}
                             className="text-xs w-full block text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
                           >
-                            {link.linkedin_company ? '💼 LinkedIn' : '🔍 LinkedIn'}
+                            {link.linkedin_company ? '💼 LinkedIn Co.' : '🔍 LinkedIn'}
                           </button>
                           {link.linkedin_ceo && (
                             <button
@@ -2575,65 +2595,79 @@ Check browser console for details.`);
                               🚀 Founder
                             </button>
                           )}
+                          
+                          {/* SOCIAL MEDIA GRID - ALL PLATFORMS */}
                           <div className="grid grid-cols-3 gap-2">
+                            {/* INSTAGRAM */}
                             {link.instagram && (
                               <a
                                 href={link.instagram}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs w-full text-center bg-pink-900 hover:bg-pink-800 text-pink-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Instagram"
+                                title="Instagram Profile"
                               >
-                                📷
+                                📷 Insta
                               </a>
                             )}
+                            
+                            {/* TWITTER / X */}
                             {link.twitter && (
                               <a
                                 href={link.twitter}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs w-full text-center bg-sky-900 hover:bg-sky-800 text-sky-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Twitter/X"
+                                title="Twitter/X Profile"
                               >
-                                𝕏
+                                𝕏 X/Twitter
                               </a>
                             )}
+                            
+                            {/* FACEBOOK */}
                             {link.facebook && (
                               <a
                                 href={link.facebook}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs w-full text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Facebook"
+                                title="Facebook Page"
                               >
-                                f
+                                f Facebook
                               </a>
                             )}
                           </div>
+                          
+                          {/* VIDEO & CONTENT PLATFORMS */}
                           <div className="grid grid-cols-3 gap-2">
+                            {/* YOUTUBE */}
                             {link.youtube && (
                               <a
                                 href={link.youtube}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs w-full text-center bg-red-900 hover:bg-red-800 text-red-200 px-2 py-1.5 rounded font-medium transition"
-                                title="YouTube"
+                                title="YouTube Channel"
                               >
-                                📹
+                                📹 YouTube
                               </a>
                             )}
+                            
+                            {/* TIKTOK */}
                             {link.tiktok && (
                               <a
                                 href={link.tiktok}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs w-full text-center bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded font-medium transition"
-                                title="TikTok"
+                                title="TikTok Profile"
                               >
-                                🎵
+                                🎵 TikTok
                               </a>
                             )}
-                            {link.contact_page_found === 'Yes' && (
+                            
+                            {/* WEBSITE */}
+                            {link.contact_page_found === 'Yes' && link.website && (
                               <a
                                 href={link.website}
                                 target="_blank"
@@ -2641,10 +2675,33 @@ Check browser console for details.`);
                                 className="text-xs w-full text-center bg-orange-900 hover:bg-orange-800 text-orange-200 px-2 py-1.5 rounded font-medium transition"
                                 title="Website Contact Page"
                               >
-                                🌐
+                                🌐 Website
+                              </a>
+                            )}
+                            {!link.contact_page_found || link.contact_page_found === 'No' && link.website && (
+                              <a
+                                href={link.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full text-center bg-gray-700 hover:bg-gray-600 text-gray-200 px-2 py-1.5 rounded font-medium transition"
+                                title="Website (no contact page found)"
+                              >
+                                🔗 Website
                               </a>
                             )}
                           </div>
+
+                          {/* COMPANY INFO TAGS */}
+                          {link.tech_stack_detected && (
+                            <div className="text-xs bg-purple-900/30 text-purple-200 p-1.5 rounded">
+                              <span className="font-semibold">Tech:</span> {link.tech_stack_detected}
+                            </div>
+                          )}
+                          {link.company_size_indicator && link.company_size_indicator !== 'unknown' && (
+                            <div className="text-xs bg-green-900/30 text-green-200 p-1.5 rounded">
+                              <span className="font-semibold">Size:</span> {link.company_size_indicator}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
