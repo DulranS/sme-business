@@ -238,6 +238,7 @@ export default function Dashboard() {
   const [showCallHistoryModal, setShowCallHistoryModal] = useState(false);
   const [activeCallStatus, setActiveCallStatus] = useState(null);
   const [showMultiChannelModal, setShowMultiChannelModal] = useState(false);
+  const [isMultiChannelFullscreen, setIsMultiChannelFullscreen] = useState(false);
   // ✅ Instagram & Twitter Templates
   const [instagramTemplate, setInstagramTemplate] = useState(`Hi {{business_name}} 👋
 I run Syndicate Solutions – we help businesses like yours with web, AI, and digital ops.
@@ -2299,20 +2300,29 @@ Check browser console for details.`);
       
       {/* MULTI-CHANNEL OUTREACH MODAL */}
       {showMultiChannelModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
+        <div className={`${isMultiChannelFullscreen ? 'fixed inset-0' : 'fixed inset-0'} bg-black/70 flex items-center justify-center z-50 p-4`}>
+          <div className={`bg-gray-800 rounded-xl shadow-2xl ${isMultiChannelFullscreen ? 'w-screen h-screen max-h-screen' : 'w-full max-w-6xl max-h-[90vh]'} overflow-hidden flex flex-col border border-gray-700`}>
             {/* HEADER */}
             <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gradient-to-r from-indigo-900/20 to-blue-900/20">
-              <div>
+              <div className="flex-1">
                 <h2 className="text-2xl font-bold text-white">🌐 Multi-Channel Outreach Manager</h2>
                 <p className="text-sm text-gray-400">Manage all your communication channels ({whatsappLinks.length} contacts)</p>
               </div>
-              <button
-                onClick={() => setShowMultiChannelModal(false)}
-                className="text-gray-400 hover:text-white text-3xl"
-              >
-                ✕
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsMultiChannelFullscreen(!isMultiChannelFullscreen)}
+                  className="text-white hover:text-indigo-400 transition px-3 py-2 rounded hover:bg-gray-700"
+                  title={isMultiChannelFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                >
+                  {isMultiChannelFullscreen ? '⛶' : '⛶'}
+                </button>
+                <button
+                  onClick={() => setShowMultiChannelModal(false)}
+                  className="text-gray-400 hover:text-white text-3xl"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* STATS BAR */}
@@ -2440,9 +2450,15 @@ Check browser console for details.`);
                             <span className="text-green-400">{new Date(last).toLocaleDateString()}</span>
                           </div>
                         )}
+                        {link.social_media_score && (
+                          <div className="flex justify-between text-gray-400">
+                            <span>Social Score:</span>
+                            <span className="text-purple-400">{link.social_media_score}/6</span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* ACTION BUTTONS */}
+                      {/* PHONE & EMAIL ACTIONS */}
                       <div className="space-y-2">
                         <div className="grid grid-cols-2 gap-2">
                           <button
@@ -2495,6 +2511,116 @@ Check browser console for details.`);
                           </button>
                         )}
                       </div>
+
+                      {/* SOCIAL MEDIA & WEB ACTIONS */}
+                      <div className="mt-3 pt-3 border-t border-gray-600">
+                        <div className="text-xs font-semibold text-gray-300 mb-2">Social & Web:</div>
+                        <div className="space-y-2">
+                          {link.linkedin_company && (
+                            <a
+                              href={link.linkedin_company}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs w-full block text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
+                              title="Company LinkedIn"
+                            >
+                              💼 LinkedIn Company
+                            </a>
+                          )}
+                          {link.linkedin_ceo && (
+                            <a
+                              href={link.linkedin_ceo}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs w-full block text-center bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1.5 rounded font-medium transition"
+                              title="CEO LinkedIn"
+                            >
+                              👔 CEO Profile
+                            </a>
+                          )}
+                          {link.linkedin_founder && (
+                            <a
+                              href={link.linkedin_founder}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs w-full block text-center bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1.5 rounded font-medium transition"
+                              title="Founder LinkedIn"
+                            >
+                              🚀 Founder Profile
+                            </a>
+                          )}
+                          <div className="grid grid-cols-3 gap-2">
+                            {link.instagram && (
+                              <a
+                                href={link.instagram}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full text-center bg-pink-900 hover:bg-pink-800 text-pink-200 px-2 py-1.5 rounded font-medium transition"
+                                title="Instagram"
+                              >
+                                📷
+                              </a>
+                            )}
+                            {link.twitter && (
+                              <a
+                                href={link.twitter}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full text-center bg-sky-900 hover:bg-sky-800 text-sky-200 px-2 py-1.5 rounded font-medium transition"
+                                title="Twitter/X"
+                              >
+                                𝕏
+                              </a>
+                            )}
+                            {link.facebook && (
+                              <a
+                                href={link.facebook}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
+                                title="Facebook"
+                              >
+                                f
+                              </a>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {link.youtube && (
+                              <a
+                                href={link.youtube}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full text-center bg-red-900 hover:bg-red-800 text-red-200 px-2 py-1.5 rounded font-medium transition"
+                                title="YouTube"
+                              >
+                                📹
+                              </a>
+                            )}
+                            {link.tiktok && (
+                              <a
+                                href={link.tiktok}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full text-center bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded font-medium transition"
+                                title="TikTok"
+                              >
+                                🎵
+                              </a>
+                            )}
+                            {link.contact_page_found === 'Yes' && (
+                              <a
+                                href={link.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full text-center bg-orange-900 hover:bg-orange-800 text-orange-200 px-2 py-1.5 rounded font-medium transition"
+                                title="Website Contact Page"
+                              >
+                                🌐
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -2512,7 +2638,7 @@ Check browser console for details.`);
             {/* FOOTER */}
             <div className="p-4 border-t border-gray-700 bg-gray-850 flex justify-between items-center">
               <div className="text-xs text-gray-500 space-x-4">
-                <span>💡 Click "Expand" from the dashboard to manage all channels</span>
+                <span>💡 All social profiles and contact info are available for outreach</span>
               </div>
               <button
                 onClick={() => setShowMultiChannelModal(false)}
