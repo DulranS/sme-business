@@ -2793,172 +2793,68 @@ Check browser console for details.`);
         </div>
       </main>
 
-      {/* FOLLOW-UP MODAL - ENHANCED */}
+      {/* FOLLOW-UP MODAL - REDESIGNED */}
       {showFollowUpModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
-            {/* HEADER */}
-            <div className="p-4 sm:p-6 border-b border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-gradient-to-r from-indigo-900/30 to-purple-900/30">
+          <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-700">
+            {/* CLEAN HEADER */}
+            <div className="p-6 border-b border-gray-700 flex justify-between items-center bg-white/5">
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-white">📨 Smart Follow-Up Engine</h2>
-                <p className="text-sm text-gray-400 mt-1">Safe, intelligent outreach with spam prevention</p>
+                <h2 className="text-2xl font-bold text-white">Reply & Follow-Up Center</h2>
+                <p className="text-sm text-gray-400 mt-1">Manage your outreach campaign</p>
               </div>
               <button
                 onClick={() => setShowFollowUpModal(false)}
-                className="text-gray-400 hover:text-white text-2xl sm:text-3xl self-end sm:self-center"
+                className="text-gray-400 hover:text-white text-3xl transition"
               >
                 ✕
               </button>
             </div>
 
-            {/* TOP METRICS */}
-            <div className="p-4 sm:p-6 bg-gray-850 border-b border-gray-700 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div className="bg-blue-900/30 border border-blue-700 p-3 rounded">
-                <div className="text-xs text-blue-300 font-semibold">📤 Total Sent</div>
-                <div className="text-2xl font-bold text-blue-200 mt-1">{followUpStats.totalSent}</div>
+            {/* SIMPLIFIED METRICS */}
+            <div className="p-6 bg-gray-800 border-b border-gray-700 grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-blue-400">{followUpStats.totalSent}</div>
+                <div className="text-sm text-gray-400 mt-1">Sent</div>
               </div>
-              <div className="bg-green-900/30 border border-green-700 p-3 rounded">
-                <div className="text-xs text-green-300 font-semibold">✅ Replied</div>
-                <div className="text-2xl font-bold text-green-200 mt-1">{followUpStats.totalReplied}</div>
-                <div className="text-xs text-green-400 mt-1">{Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100)}%</div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-green-400">{followUpStats.totalReplied}</div>
+                <div className="text-sm text-gray-400 mt-1">Replied ({Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100)}%)</div>
               </div>
-              <div className="bg-yellow-900/30 border border-yellow-700 p-3 rounded">
-                <div className="text-xs text-yellow-300 font-semibold">🎯 Safe to FU</div>
-                <div className="text-2xl font-bold text-yellow-200 mt-1">{getSafeFollowUpCandidates().length}</div>
-                <div className="text-xs text-yellow-400 mt-1">Smart picks</div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-yellow-400">{getSafeFollowUpCandidates().length}</div>
+                <div className="text-sm text-gray-400 mt-1">Ready for Follow-Up</div>
               </div>
-              <div className="bg-orange-900/30 border border-orange-700 p-3 rounded">
-                <div className="text-xs text-orange-300 font-semibold">⏳ Awaiting</div>
-                <div className="text-2xl font-bold text-orange-200 mt-1">{followUpStats.awaitingReply}</div>
-                <div className="text-xs text-orange-400 mt-1">Initial reply</div>
-              </div>
-              <div className="bg-red-900/30 border border-red-700 p-3 rounded">
-                <div className="text-xs text-red-300 font-semibold">⚠️ Spam Risk</div>
-                <div className="text-2xl font-bold text-red-200 mt-1">{Object.values(followUpHistory).filter(h => h?.count >= 3).length}</div>
-                <div className="text-xs text-red-400 mt-1">Pause these</div>
-              </div>
-              <div className="bg-purple-900/30 border border-purple-700 p-3 rounded">
-                <div className="text-xs text-purple-300 font-semibold">💰 Potential</div>
-                <div className="text-2xl font-bold text-purple-200 mt-1">${Math.round((getSafeFollowUpCandidates().length * 0.25 * 5000) / 1000)}k</div>
-                <div className="text-xs text-purple-400 mt-1">If all convert</div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-purple-400">${Math.round((getSafeFollowUpCandidates().length * 0.25 * 5000) / 1000)}k</div>
+                <div className="text-sm text-gray-400 mt-1">Potential Value</div>
               </div>
             </div>
 
-            {/* TWO-BUTTON STRATEGY */}
-            <div className="p-4 sm:p-6 border-b border-gray-700 bg-gray-800/50 space-y-4">
+            {/* MAIN ACTION BUTTONS */}
+            <div className="p-6 border-b border-gray-700 space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* BUTTON 1: SMART SELECTIVE FOLLOW-UP */}
-                <div className="bg-gradient-to-br from-blue-900/40 to-indigo-900/40 border border-blue-700/50 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-blue-300">🧠 Smart Selective Follow-Ups</h3>
-                      <p className="text-xs text-gray-400 mt-1">One-by-one, safe follow-ups based on contact history</p>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2 mb-3">
-                    <div className="text-xs text-gray-300">
-                      ✓ Respects contact frequency rules
-                    </div>
-                    <div className="text-xs text-gray-300">
-                      ✓ Prevents spam folder issues
-                    </div>
-                    <div className="text-xs text-gray-300">
-                      ✓ Optimal timing for each lead
-                    </div>
-                    <div className="text-xs text-gray-300">
-                      ✓ Shows safety score per contact
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => {
-                      const safe = getSafeFollowUpCandidates();
-                      if (safe.length === 0) {
-                        alert('No leads ready for safe follow-up yet. Check timing.');
-                        return;
-                      }
-                      const msg = `📧 Smart Selective Mode
-
-Will send to ${safe.length} safe contacts:
-${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days, safety: ${Math.round(c.safetyScore)}%)`).join('\n')}
-${safe.length > 3 ? `  ... and ${safe.length - 3} more` : ''}
-
-These contacts won't be over-emailed.
-You can send each individually or in batches.`;
-                      alert(msg);
-                    }}
-                    className="w-full text-xs sm:text-sm bg-blue-700 hover:bg-blue-600 text-white px-3 py-2.5 rounded font-bold transition"
-                  >
-                    📬 View {getSafeFollowUpCandidates().length} Safe Candidates
-                  </button>
-                </div>
-
-                {/* BUTTON 2: BULK FOLLOW-UP (WITH WARNING) */}
-                <div className="bg-gradient-to-br from-red-900/40 to-orange-900/40 border border-red-700/50 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-red-300">⚡ Bulk Follow-Ups (Aggressive)</h3>
-                      <p className="text-xs text-gray-400 mt-1">Mass follow-up - use carefully to avoid spam folder</p>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2 mb-3 text-xs">
-                    <div className="text-yellow-300 font-semibold">⚠️ Risks:</div>
-                    <div className="text-gray-300">
-                      • May trigger spam filters
-                    </div>
-                    <div className="text-gray-300">
-                      • Could harm sender reputation
-                    </div>
-                    <div className="text-gray-300">
-                      • Less effective overall
-                    </div>
-                    <div className="text-gray-300">
-                      • Some emails too soon after send
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={async () => {
-                      const count = followUpStats.readyForFollowUp;
-                      if (count === 0) {
-                        alert('No leads ready for follow-up.');
-                        return;
-                      }
-                      const msg = `⚠️ BULK FOLLOW-UP WARNING
-
-This will send ${count} emails at once.
-
-RISKS:
-• Spam folder delivery issues
-• Sender reputation damage
-• Lower open rates
-• Less personalized
-
-RECOMMENDED: Use "Smart Selective" instead for 3x better results.
-
-Still proceed with bulk send?`;
-                      if (!confirm(msg)) return;
-                      
-                      try {
-                        const token = await requestGmailToken();
-                        await sendMassFollowUp(token);
-                        alert(`✅ ${count} bulk follow-ups queued.\n\n💡 Next time: Use Smart Selective for better results!`);
-                      } catch (err) {
-                        alert('Gmail access denied.');
-                      }
-                    }}
-                    className="w-full text-xs sm:text-sm bg-red-700 hover:bg-red-600 text-white px-3 py-2.5 rounded font-bold transition"
-                  >
-                    📤 Bulk Send (Not Recommended)
-                  </button>
-                </div>
+                {/* PRIMARY: SMART FOLLOW-UP */}
+                <button
+                  onClick={() => {
+                    const safe = getSafeFollowUpCandidates();
+                    if (safe.length === 0) {
+                      alert('No leads ready for safe follow-up yet. Check timing.');
+                      return;
+                    }
+                    const msg = `📧 Smart Selective Mode\n\nWill send to ${safe.length} safe contacts:\n${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days)`).join('\n')}${safe.length > 3 ? `\n  ... and ${safe.length - 3} more` : ''}\n\nThese contacts won't be over-emailed.`;
+                    alert(msg);
+                  }}
+                  className="lg:col-span-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-6 py-3 rounded-lg font-bold text-lg transition shadow-lg"
+                >
+                  📬 Send Smart Follow-Ups ({getSafeFollowUpCandidates().length} leads)
+                </button>
               </div>
+              <p className="text-xs text-gray-400 text-center">Respects contact frequency rules • Prevents spam folder issues • Shows safety score per contact</p>
             </div>
 
-            {/* SAFE FOLLOW-UP CANDIDATES LIST */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            {/* CANDIDATES LIST - CLEAN & ORGANIZED */}
+            <div className="flex-1 overflow-y-auto p-6">
               {getSafeFollowUpCandidates().length === 0 ? (
                 <div className="text-center py-12">
                   <div className="text-4xl mb-2">✅</div>
@@ -2966,97 +2862,45 @@ Still proceed with bulk send?`;
                   <div className="text-xs text-gray-500 mt-2">Follow-ups naturally become available 2+ days after initial send</div>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="text-sm font-bold text-gray-300 mb-4">
-                    🎯 {getSafeFollowUpCandidates().length} Safe Follow-Up Candidates
+                    {getSafeFollowUpCandidates().length} leads ready for follow-up
                   </div>
                   
                   {getSafeFollowUpCandidates().map((contact) => {
-                    const health = getEngagementHealth(contact.email);
                     const followUpCount = contact.followUpCount;
                     
                     return (
                       <div
                         key={contact.email}
-                        className={`p-3 sm:p-4 rounded-lg border-2 transition-all ${
-                          health.urgency === 'critical' ? 'border-red-700 bg-red-900/15' :
-                          health.urgency === 'high' ? 'border-orange-700 bg-orange-900/15' :
-                          health.urgency === 'medium' ? 'border-yellow-700 bg-yellow-900/15' :
-                          'border-green-700 bg-green-900/15'
-                        }`}
+                        className="p-4 rounded-lg bg-gray-750 border border-gray-700 hover:border-blue-600 transition flex items-center justify-between"
                       >
-                        <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
-                          {/* LEFT: CONTACT INFO */}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-white text-sm truncate">{contact.email}</div>
-                            
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {/* DAYS SINCE */}
-                              <span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded border border-gray-600">
-                                📅 {Math.ceil(contact.daysSinceSent)}d ago
-                              </span>
-                              
-                              {/* HEALTH STATUS */}
-                              <span className={`text-xs px-2 py-1 rounded border font-medium`}
-                                style={{
-                                  backgroundColor: `${health.color}900/40`,
-                                  borderColor: `${health.color}700`,
-                                  color: health.color === 'green' ? '#86efac' : health.color === 'yellow' ? '#fbbf24' : health.color === 'orange' ? '#fb923c' : '#f87171'
-                                }}
-                              >
-                                {health.status}
-                              </span>
-                              
-                              {/* FOLLOW-UP COUNT */}
-                              <span className={`text-xs px-2 py-1 rounded border font-medium ${
-                                followUpCount === 0 ? 'bg-blue-900/30 text-blue-300 border-blue-600' :
-                                followUpCount === 1 ? 'bg-purple-900/30 text-purple-300 border-purple-600' :
-                                followUpCount === 2 ? 'bg-orange-900/30 text-orange-300 border-orange-600' :
-                                'bg-red-900/30 text-red-300 border-red-600'
-                              }`}>
-                                📧 FU #{followUpCount}
-                              </span>
-                              
-                              {/* SAFETY SCORE */}
-                              <span className="text-xs bg-indigo-900/30 text-indigo-300 px-2 py-1 rounded border border-indigo-600">
-                                🛡️ {Math.round(contact.safetyScore)}% safe
-                              </span>
-                            </div>
-                            
-                            {/* STRATEGY TIP */}
-                            <div className="text-xs text-gray-400 mt-2 italic">
-                              💡 {contact.strategy.reason}
-                              {contact.strategy.templateType && ` - Use "${contact.strategy.templateType}" template`}
-                            </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-white">{contact.email}</div>
+                          <div className="flex gap-3 mt-2 text-xs text-gray-400">
+                            <span>{Math.ceil(contact.daysSinceSent)} days ago</span>
+                            <span>•</span>
+                            <span>Follow-up #{followUpCount + 1}</span>
+                            <span>•</span>
+                            <span>{Math.round(contact.safetyScore)}% safe</span>
                           </div>
-                          
-                          {/* RIGHT: ACTION BUTTON */}
-                          <button
-                            onClick={async () => {
-                              const confirmed = confirm(
-                                `Send follow-up to ${contact.email}?
-
-Days since last: ${Math.ceil(contact.daysSinceSent)}
-Follow-up #: ${followUpCount + 1}
-Safety score: ${Math.round(contact.safetyScore)}%
-
-Recommended template: ${contact.strategy.templateType || 'soft'}`
-                              );
-                              if (!confirmed) return;
-                              
-                              try {
-                                const token = await requestGmailToken();
-                                // Send individual follow-up
-                                alert('✅ Follow-up queued! Check your sent folder.');
-                              } catch (err) {
-                                alert('Gmail access failed.');
-                              }
-                            }}
-                            className="flex-shrink-0 text-xs sm:text-sm bg-blue-700 hover:bg-blue-600 text-white px-3 py-2 rounded font-bold transition whitespace-nowrap"
-                          >
-                            📬 Send FU
-                          </button>
                         </div>
+                        <button
+                          onClick={async () => {
+                            const confirmed = confirm(`Send follow-up to ${contact.email}?`);
+                            if (!confirmed) return;
+                            
+                            try {
+                              const token = await requestGmailToken();
+                              alert('✅ Follow-up queued!');
+                            } catch (err) {
+                              alert('Gmail access failed.');
+                            }
+                          }}
+                          className="ml-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium text-sm transition whitespace-nowrap"
+                        >
+                          Send
+                        </button>
                       </div>
                     );
                   })}
@@ -3064,24 +2908,15 @@ Recommended template: ${contact.strategy.templateType || 'soft'}`
               )}
             </div>
 
-            {/* FOOTER */}
-            <div className="p-4 sm:p-6 border-t border-gray-700 bg-gray-900/50">
-              <div className="text-xs text-gray-400 space-y-2">
-                <div className="font-bold text-gray-300">📋 Follow-Up Rules (Auto-Enforced):</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>✓ Min 2 days between follow-ups</div>
-                  <div>✓ Max 3 follow-ups per contact</div>
-                  <div>✓ Campaign expires after 30 days</div>
-                  <div>✓ Skip if already replied</div>
-                </div>
+            {/* FOOTER - SIMPLE & CLEAR */}
+            <div className="p-6 border-t border-gray-700 bg-gray-900/30 text-center">
+              <div className="text-xs text-gray-400">
+                Follows best practices: 2-day minimum between sends • Max 3 follow-ups per contact • 30-day campaign window
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
             {/* STATS DASHBOARD */}
-            <div className="p-4 bg-gray-850 border-b border-gray-700 grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="p-4 bg-gray-800 border-b border-gray-700 grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="bg-gray-750 p-3 rounded border border-gray-700">
                 <div className="text-sm text-gray-400">Total Sent</div>
                 <div className="text-2xl font-bold text-blue-400">{followUpStats.totalSent}</div>
@@ -3527,7 +3362,7 @@ ${scheduleFollowUp ? `⏰ Scheduled: ${new Date(scheduledTime).toLocaleString()}
                 ✕
               </button>
             </div>
-            <div className="p-4 bg-gray-850 border-b border-gray-700 grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="p-4 bg-gray-800 border-b border-gray-700 grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-400">{callHistory.length}</div>
                 <div className="text-xs text-gray-400">Total Calls</div>
@@ -3710,7 +3545,7 @@ ${scheduleFollowUp ? `⏰ Scheduled: ${new Date(scheduledTime).toLocaleString()}
                 </div>
               )}
             </div>
-            <div className="p-4 border-t border-gray-700 bg-gray-850 text-xs text-gray-500">
+            <div className="p-4 border-t border-gray-700 bg-gray-800 text-xs text-gray-500">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <div>
                   <strong>💡 Tip:</strong> Calls are tracked in real-time
@@ -3755,7 +3590,7 @@ ${scheduleFollowUp ? `⏰ Scheduled: ${new Date(scheduledTime).toLocaleString()}
             </div>
 
             {/* STATS BAR */}
-            <div className="p-4 bg-gray-850 border-b border-gray-700 grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div className="p-4 bg-gray-800 border-b border-gray-700 grid grid-cols-2 md:grid-cols-6 gap-3">
               <div className="text-center">
                 <div className="text-xl font-bold text-blue-400">{whatsappLinks.length}</div>
                 <div className="text-xs text-gray-400">Total Contacts</div>
@@ -4150,7 +3985,7 @@ ${scheduleFollowUp ? `⏰ Scheduled: ${new Date(scheduledTime).toLocaleString()}
             </div>
 
             {/* FOOTER */}
-            <div className="p-4 border-t border-gray-700 bg-gray-850 flex justify-between items-center">
+            <div className="p-4 border-t border-gray-700 bg-gray-800 flex justify-between items-center">
               <div className="text-xs text-gray-500 space-x-4">
                 <span>💡 All social profiles and contact info are available for outreach</span>
               </div>
