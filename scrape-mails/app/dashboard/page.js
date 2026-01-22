@@ -312,6 +312,25 @@ Would you be open to a quick chat?`);
     return handle;
   };
 
+  // ✅ LinkedIn Handler - Opens search or direct profile if available
+  const handleOpenLinkedIn = (contact, type = 'company') => {
+    if (!contact.business) return;
+    
+    let url;
+    if (type === 'company' && contact.linkedin_company) {
+      url = contact.linkedin_company;
+    } else if (type === 'ceo' && contact.linkedin_ceo) {
+      url = contact.linkedin_ceo;
+    } else if (type === 'founder' && contact.linkedin_founder) {
+      url = contact.linkedin_founder;
+    } else {
+      // Fallback: search for the business name on LinkedIn
+      const query = encodeURIComponent(contact.business);
+      url = `https://www.linkedin.com/search/results/companies/?keywords=${query}`;
+    }
+    window.open(url, '_blank');
+  };
+
   // ✅ Instagram Handler
   const handleOpenInstagram = (contact) => {
     if (!contact.business) return;
@@ -1390,15 +1409,15 @@ Check browser console for details.`);
         <title>B2B Growth Engine | Strategic Outreach</title>
       </Head>
       <header className="bg-gray-800 shadow-sm border-b border-gray-700">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-white">B2B Growth Engine</h1>
-          <div className="flex items-center space-x-2">
+        <div className="container mx-auto px-2 sm:px-4 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <h1 className="text-lg sm:text-xl font-bold text-white">B2B Growth Engine</h1>
+          <div className="flex flex-wrap items-center gap-1 sm:gap-2 w-full sm:w-auto">
             <button
               onClick={() => {
                 loadCallHistory();
                 setShowCallHistoryModal(true);
               }}
-              className="text-sm bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded"
+              className="text-xs sm:text-sm bg-green-700 hover:bg-green-600 text-white px-2 sm:px-3 py-1.5 rounded"
             >
               📞 Call History
             </button>
@@ -1407,31 +1426,31 @@ Check browser console for details.`);
                 loadSentLeads();
                 setShowFollowUpModal(true);
               }}
-              className="text-sm bg-indigo-700 hover:bg-indigo-600 text-white px-3 py-1.5 rounded"
+              className="text-xs sm:text-sm bg-indigo-700 hover:bg-indigo-600 text-white px-2 sm:px-3 py-1.5 rounded"
             >
-              📬 Reply & Follow-Up Center
+              📬 Reply Center
             </button>
             <button
               onClick={() => router.push('/format')}
-              className="text-sm bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded"
+              className="text-xs sm:text-sm bg-green-700 hover:bg-green-600 text-white px-2 sm:px-3 py-1.5 rounded"
             >
-              🔥 Scrape Mails
+              🔥 Scrape
             </button>
             <button
               onClick={() => signOut(auth)}
-              className="text-sm text-gray-300 hover:text-white"
+              className="text-xs sm:text-sm text-gray-300 hover:text-white px-2 sm:px-3 py-1.5"
             >
               Sign Out
             </button>
           </div>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8">
           {/* LEFT PANEL */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-4 text-white">1. Upload Leads CSV</h2>
+          <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-4 text-white">1. Upload Leads CSV</h2>
               <input
                 type="file"
                 accept=".csv"
@@ -1469,8 +1488,8 @@ Check browser console for details.`);
               </div>
             </div>
             {/* ✅ FIELD MAPPINGS: SHOW ALL VARS + ALL CSV COLUMNS */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-4 text-white">2. Field Mappings</h2>
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-4 text-white">2. Field Mappings</h2>
               {(() => {
                 const allVars = [...new Set([
                   ...extractTemplateVariables(templateA.subject),
@@ -1515,9 +1534,9 @@ Check browser console for details.`);
           </div>
 
           {/* MIDDLE PANEL */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">3. Your Name (Sender)</h2>
+          <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">3. Your Name (Sender)</h2>
               <input
                 type="text"
                 value={senderName}
@@ -1526,9 +1545,9 @@ Check browser console for details.`);
                 placeholder="e.g., Alex from GrowthCo"
               />
             </div>
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-xl font-bold text-white">4. Email Template</h2>
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+                <h2 className="text-lg sm:text-xl font-bold text-white">4. Email Template</h2>
                 <label className="flex items-center text-sm text-gray-200">
                   <input
                     type="checkbox"
@@ -1632,8 +1651,8 @@ Check browser console for details.`);
                 </button>
               )}
             </div>
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">5. WhatsApp Template</h2>
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">5. WhatsApp Template</h2>
               <textarea
                 value={whatsappTemplate}
                 onChange={(e) => setWhatsappTemplate(e.target.value)}
@@ -1642,8 +1661,8 @@ Check browser console for details.`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">6. SMS Template</h2>
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">6. SMS Template</h2>
               <textarea
                 value={smsTemplate}
                 onChange={(e) => setSmsTemplate(e.target.value)}
@@ -1654,8 +1673,8 @@ Check browser console for details.`);
             </div>
             
             {/* FOLLOW-UP TEMPLATES */}
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">7. Follow-Up Sequences</h2>
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">7. Follow-Up Sequences</h2>
               {followUpTemplates.map((template, index) => (
                 <div key={template.id} className="border border-gray-700 rounded p-3 mb-3 bg-gray-750">
                   <div className="flex justify-between items-start">
@@ -1749,8 +1768,8 @@ Check browser console for details.`);
               ))}
             </div>
             
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">8. Instagram Template</h2>
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">8. Instagram Template</h2>
               <textarea
                 value={instagramTemplate}
                 onChange={(e) => setInstagramTemplate(e.target.value)}
@@ -1760,8 +1779,8 @@ Check browser console for details.`);
               />
             </div>
             
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">9. Twitter Template</h2>
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">9. Twitter Template</h2>
               <textarea
                 value={twitterTemplate}
                 onChange={(e) => setTwitterTemplate(e.target.value)}
@@ -1785,9 +1804,38 @@ Check browser console for details.`);
           </div>
 
           {/* RIGHT PANEL */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
-              <h2 className="text-xl font-bold mb-3 text-white">10. Email Preview</h2>
+          <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+            {/* CAMPAIGN METRICS - BUSINESS VALUE */}
+            {whatsappLinks.length > 0 && (
+              <div className="bg-gradient-to-br from-purple-900 to-purple-800 p-4 sm:p-6 rounded-xl shadow border border-purple-700">
+                <h2 className="text-lg sm:text-xl font-bold mb-4 text-white">📊 Campaign Metrics</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-purple-800/50 p-3 rounded">
+                    <div className="text-xs text-purple-300">Contacts</div>
+                    <div className="text-xl sm:text-2xl font-bold text-white">{whatsappLinks.length}</div>
+                  </div>
+                  <div className="bg-purple-800/50 p-3 rounded">
+                    <div className="text-xs text-purple-300">Replied</div>
+                    <div className="text-xl sm:text-2xl font-bold text-green-400">{Object.values(repliedLeads).filter(Boolean).length}</div>
+                  </div>
+                  <div className="bg-purple-800/50 p-3 rounded">
+                    <div className="text-xs text-purple-300">Hot Leads</div>
+                    <div className="text-xl sm:text-2xl font-bold text-orange-400">{validEmails}</div>
+                  </div>
+                  <div className="bg-purple-800/50 p-3 rounded">
+                    <div className="text-xs text-purple-300">Avg Score</div>
+                    <div className="text-xl sm:text-2xl font-bold text-yellow-400">{Object.values(leadScores).length > 0 ? Math.round(Object.values(leadScores).reduce((a,b) => a+b, 0) / Object.values(leadScores).length) : 0}</div>
+                  </div>
+                </div>
+                <div className="mt-3 p-2 bg-purple-900/50 rounded text-xs text-purple-200">
+                  💡 Est. Reply Rate: ~{Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}% | 
+                  💰 Estimated Pipeline: ${Math.round((Object.values(repliedLeads).filter(Boolean).length * 5000) / 1000)}k
+                </div>
+              </div>
+            )}
+            
+            <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+              <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">10. Email Preview</h2>
               <div className="bg-gray-750 p-4 rounded border border-gray-600">
                 <div className="text-sm text-gray-400">
                   To: {previewRecipient?.email || 'email@example.com'}
@@ -1807,8 +1855,8 @@ Check browser console for details.`);
             </div>
             
             {whatsappLinks.length > 0 && (
-              <div className="bg-gray-800 p-4 rounded-xl shadow border border-gray-700">
-                <div className="flex justify-between items-center mb-3">
+              <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
                   <h2 className="text-lg font-bold text-white">
                     11. Multi-Channel Outreach ({whatsappLinks.length})
                   </h2>
@@ -1858,65 +1906,61 @@ Check browser console for details.`);
                             <div className="flex flex-wrap gap-1 justify-end">
                               <button
                                 onClick={() => handleCall(link.phone)}
+                                title="Direct call"
                                 className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
                               >
-                                Call
+                                📞
                               </button>
                               <button
                                 onClick={() => handleTwilioCall(link, 'direct')}
                                 className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
                                 title="Automated message"
                               >
-                                📞 Auto Call
+                                🤖
                               </button>
                               <button
                                 onClick={() => handleSmartCall(link)}
                                 className="text-xs bg-gradient-to-r from-blue-700 to-indigo-800 text-white px-3 py-1.5 rounded font-medium"
+                                title="Smart AI call"
                               >
-                                📞 Smart Call
+                                🧠
                               </button>
                               <button
-                                onClick={() => handleTwilioCall(link, 'bridge')}
-                                className="text-xs bg-blue-700 hover:bg-blue-600 text-white px-2 py-1 rounded"
-                                title="Connect you first"
+                                onClick={() => handleOpenLinkedIn(link, 'company')}
+                                className="text-xs bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1 rounded"
+                                title="LinkedIn search"
                               >
-                                🤝 Bridge
-                              </button>
-                              <button
-                                onClick={() => handleTwilioCall(link, 'interactive')}
-                                className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-2 py-1 rounded"
-                                title="Interactive menu"
-                              >
-                                🎛️ IVR
+                                💼
                               </button>
                               <a
                                 href={link.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs bg-blue-700 hover:bg-blue-600 text-white px-2 py-1 rounded"
+                                className="text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded"
+                                title="WhatsApp"
                               >
-                                WhatsApp
+                                💬
                               </a>
                               <button
                                 onClick={() => handleOpenNativeSMS(link)}
                                 className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-2 py-1 rounded"
-                                title="Open in Messages"
+                                title="SMS"
                               >
-                                SMS
+                                📱
                               </button>
                               <button
                                 onClick={() => handleOpenInstagram(link)}
                                 className="text-xs bg-pink-700 hover:bg-pink-600 text-white px-2 py-1 rounded"
-                                title="Open Instagram"
+                                title="Instagram"
                               >
-                                IG
+                                📷
                               </button>
                               <button
                                 onClick={() => handleOpenTwitter(link)}
                                 className="text-xs bg-sky-700 hover:bg-sky-600 text-white px-2 py-1 rounded"
-                                title="Open Twitter"
+                                title="Twitter"
                               >
-                                X
+                                𝕏
                               </button>
                             </div>
                             {smsConsent && (
@@ -2464,6 +2508,7 @@ Check browser console for details.`);
                           <button
                             onClick={() => handleCall(link.phone)}
                             className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1.5 rounded font-medium transition"
+                            title="Direct call to phone"
                           >
                             📞 Call
                           </button>
@@ -2472,82 +2517,63 @@ Check browser console for details.`);
                             className="text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1.5 rounded font-medium transition"
                             title="Send automated message"
                           >
-                            🤖 Auto Call
+                            🤖 Auto
                           </button>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => handleSmartCall(link)}
-                            className="text-xs bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-600 hover:to-indigo-700 text-white px-2 py-1.5 rounded font-medium transition col-span-2"
-                          >
-                            📞 Smart Call
-                          </button>
-                        </div>
-                        {link.phone && (
-                          <button
-                            onClick={() => handleTwilioCall(link, 'bridge')}
-                            className="text-xs w-full bg-blue-700 hover:bg-blue-600 text-white px-2 py-1.5 rounded font-medium transition"
-                            title="Connect and bridge call"
-                          >
-                            🌉 Bridge Call
-                          </button>
-                        )}
-                        {link.phone && (
-                          <a
-                            href={`https://wa.me/${link.phone}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs w-full block text-center bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-500 hover:to-emerald-600 text-white px-2 py-1.5 rounded font-medium transition"
-                          >
-                            💬 WhatsApp
-                          </a>
-                        )}
+                        <button
+                          onClick={() => handleSmartCall(link)}
+                          className="w-full text-xs bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-600 hover:to-indigo-700 text-white px-2 py-1.5 rounded font-medium transition"
+                          title="AI-powered call strategy based on lead quality"
+                        >
+                          📞 Smart Call (AI)
+                        </button>
                         {link.email && (
                           <button
                             onClick={() => window.location.href = `mailto:${link.email}`}
-                            className="text-xs w-full bg-purple-700 hover:bg-purple-600 text-white px-2 py-1.5 rounded font-medium transition"
+                            className="w-full text-xs bg-purple-700 hover:bg-purple-600 text-white px-2 py-1.5 rounded font-medium transition"
                           >
-                            ✉️ Email
+                            ✉️ Email Direct
                           </button>
                         )}
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full text-xs block text-center bg-green-700 hover:bg-green-600 text-white px-2 py-1.5 rounded font-medium transition"
+                        >
+                          💬 WhatsApp
+                        </a>
                       </div>
 
                       {/* SOCIAL MEDIA & WEB ACTIONS */}
                       <div className="mt-3 pt-3 border-t border-gray-600">
                         <div className="text-xs font-semibold text-gray-300 mb-2">Social & Web:</div>
                         <div className="space-y-2">
-                          {link.linkedin_company && (
-                            <a
-                              href={link.linkedin_company}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs w-full block text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
-                              title="Company LinkedIn"
-                            >
-                              💼 LinkedIn Company
-                            </a>
-                          )}
+                          {/* LINKEDIN BUTTONS - ALWAYS SHOW */}
+                          <button
+                            onClick={() => handleOpenLinkedIn(link, 'company')}
+                            title={link.linkedin_company ? 'Open company LinkedIn' : 'Search for company on LinkedIn'}
+                            className="text-xs w-full block text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
+                          >
+                            {link.linkedin_company ? '💼 LinkedIn' : '🔍 LinkedIn'}
+                          </button>
                           {link.linkedin_ceo && (
-                            <a
-                              href={link.linkedin_ceo}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              onClick={() => handleOpenLinkedIn(link, 'ceo')}
+                              title="Open CEO profile on LinkedIn"
                               className="text-xs w-full block text-center bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1.5 rounded font-medium transition"
-                              title="CEO LinkedIn"
                             >
                               👔 CEO Profile
-                            </a>
+                            </button>
                           )}
                           {link.linkedin_founder && (
-                            <a
-                              href={link.linkedin_founder}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              onClick={() => handleOpenLinkedIn(link, 'founder')}
+                              title="Open founder profile on LinkedIn"
                               className="text-xs w-full block text-center bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1.5 rounded font-medium transition"
-                              title="Founder LinkedIn"
                             >
-                              🚀 Founder Profile
-                            </a>
+                              🚀 Founder
+                            </button>
                           )}
                           <div className="grid grid-cols-3 gap-2">
                             {link.instagram && (
