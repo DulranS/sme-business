@@ -31,7 +31,12 @@ export async function POST(req) {
         email: data.to,
         sentAt: data.sentAt,
         replied: data.replied || false,
-        followUpAt: data.followUpAt
+        followUpAt: data.followUpAt,
+        // ✅ CRITICAL: Include follow-up tracking data
+        followUpCount: data.followUpSentCount || 0,
+        lastFollowUpAt: data.lastFollowUpSentAt || null,
+        followUpDates: data.followUpDates || [],
+        threadId: data.threadId || null
       });
     });
 
