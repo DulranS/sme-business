@@ -331,6 +331,91 @@ Would you be open to a quick chat?`);
     window.open(url, '_blank');
   };
 
+  // ✅ SMART SOCIAL OUTREACH STRATEGY
+  const getSocialOutreachStrategy = (link) => {
+    // Determine best engagement strategy based on available data
+    const strategies = [];
+    
+    // LinkedIn - Direct professional outreach (highest priority)
+    if (link.linkedin_company || link.linkedin_ceo) {
+      strategies.push({
+        type: 'linkedin',
+        priority: 1,
+        action: 'Connect & Engage',
+        description: 'Send connection request with personalized message'
+      });
+    }
+    
+    // Email - Most direct (priority based on confidence)
+    if (link.email_primary) {
+      const confidence = link.contact_confidence;
+      strategies.push({
+        type: 'email',
+        priority: confidence === 'High' ? 1 : confidence === 'Medium' ? 2 : 3,
+        action: 'Send Email',
+        description: `Email outreach (${confidence} confidence)`
+      });
+    }
+    
+    // Twitter/X - For thought leaders & B2B
+    if (link.twitter) {
+      strategies.push({
+        type: 'twitter',
+        priority: 2,
+        action: 'Follow & Engage',
+        description: 'Follow, like recent posts, comment with value'
+      });
+    }
+    
+    // YouTube - For content creators & channels
+    if (link.youtube) {
+      strategies.push({
+        type: 'youtube',
+        priority: 2,
+        action: 'Subscribe & Comment',
+        description: 'Subscribe, comment on recent videos'
+      });
+    }
+    
+    // Instagram - For visual/consumer brands
+    if (link.instagram) {
+      strategies.push({
+        type: 'instagram',
+        priority: 3,
+        action: 'Follow & Like',
+        description: 'Follow account, like posts, engage authentically'
+      });
+    }
+    
+    // Facebook - For established businesses
+    if (link.facebook) {
+      strategies.push({
+        type: 'facebook',
+        priority: 3,
+        action: 'Like & Follow',
+        description: 'Like page, follow, engage with recent posts'
+      });
+    }
+    
+    // TikTok - For younger/trendy brands
+    if (link.tiktok) {
+      strategies.push({
+        type: 'tiktok',
+        priority: 4,
+        action: 'Follow & Like',
+        description: 'Follow account, like trending content'
+      });
+    }
+    
+    return strategies.sort((a, b) => a.priority - b.priority);
+  };
+
+  // ✅ Copy username to clipboard helper
+  const copyToClipboard = (text, label) => {
+    navigator.clipboard.writeText(text);
+    alert(`✅ Copied ${label}: ${text}`);
+  };
+
   // ✅ Instagram Handler
   const handleOpenInstagram = (contact) => {
     if (!contact.business) return;
@@ -2565,141 +2650,207 @@ Check browser console for details.`);
                         </a>
                       </div>
 
-                      {/* SOCIAL MEDIA & WEB ACTIONS */}
+                      {/* SOCIAL MEDIA & WEB ACTIONS - SMART STRATEGY */}
                       <div className="mt-3 pt-3 border-t border-gray-600">
-                        <div className="text-xs font-semibold text-gray-300 mb-2">Social & Web Outreach:</div>
+                        <div className="text-xs font-semibold text-gray-300 mb-2">💡 Recommended Outreach Strategy:</div>
                         <div className="space-y-2">
-                          {/* LINKEDIN BUTTONS - ALWAYS SHOW */}
-                          <button
-                            onClick={() => handleOpenLinkedIn(link, 'company')}
-                            title={link.linkedin_company ? 'Open company LinkedIn' : 'Search for company on LinkedIn'}
-                            className="text-xs w-full block text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
-                          >
-                            {link.linkedin_company ? '💼 LinkedIn Co.' : '🔍 LinkedIn'}
-                          </button>
-                          {link.linkedin_ceo && (
-                            <button
-                              onClick={() => handleOpenLinkedIn(link, 'ceo')}
-                              title="Open CEO profile on LinkedIn"
-                              className="text-xs w-full block text-center bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1.5 rounded font-medium transition"
-                            >
-                              👔 CEO Profile
-                            </button>
-                          )}
-                          {link.linkedin_founder && (
-                            <button
-                              onClick={() => handleOpenLinkedIn(link, 'founder')}
-                              title="Open founder profile on LinkedIn"
-                              className="text-xs w-full block text-center bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1.5 rounded font-medium transition"
-                            >
-                              🚀 Founder
-                            </button>
-                          )}
-                          
-                          {/* SOCIAL MEDIA GRID - ALL PLATFORMS */}
-                          <div className="grid grid-cols-3 gap-2">
-                            {/* INSTAGRAM */}
-                            {link.instagram && (
-                              <a
-                                href={link.instagram}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs w-full text-center bg-pink-900 hover:bg-pink-800 text-pink-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Instagram Profile"
-                              >
-                                📷 Insta
-                              </a>
-                            )}
-                            
-                            {/* TWITTER / X */}
-                            {link.twitter && (
-                              <a
-                                href={link.twitter}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs w-full text-center bg-sky-900 hover:bg-sky-800 text-sky-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Twitter/X Profile"
-                              >
-                                𝕏 X/Twitter
-                              </a>
-                            )}
-                            
-                            {/* FACEBOOK */}
-                            {link.facebook && (
-                              <a
-                                href={link.facebook}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs w-full text-center bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Facebook Page"
-                              >
-                                f Facebook
-                              </a>
-                            )}
-                          </div>
-                          
-                          {/* VIDEO & CONTENT PLATFORMS */}
-                          <div className="grid grid-cols-3 gap-2">
-                            {/* YOUTUBE */}
-                            {link.youtube && (
-                              <a
-                                href={link.youtube}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs w-full text-center bg-red-900 hover:bg-red-800 text-red-200 px-2 py-1.5 rounded font-medium transition"
-                                title="YouTube Channel"
-                              >
-                                📹 YouTube
-                              </a>
-                            )}
-                            
-                            {/* TIKTOK */}
-                            {link.tiktok && (
-                              <a
-                                href={link.tiktok}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs w-full text-center bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded font-medium transition"
-                                title="TikTok Profile"
-                              >
-                                🎵 TikTok
-                              </a>
-                            )}
-                            
-                            {/* WEBSITE */}
-                            {link.contact_page_found === 'Yes' && link.website && (
-                              <a
-                                href={link.website}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs w-full text-center bg-orange-900 hover:bg-orange-800 text-orange-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Website Contact Page"
-                              >
-                                🌐 Website
-                              </a>
-                            )}
-                            {!link.contact_page_found || link.contact_page_found === 'No' && link.website && (
-                              <a
-                                href={link.website}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs w-full text-center bg-gray-700 hover:bg-gray-600 text-gray-200 px-2 py-1.5 rounded font-medium transition"
-                                title="Website (no contact page found)"
-                              >
-                                🔗 Website
-                              </a>
-                            )}
-                          </div>
-
-                          {/* COMPANY INFO TAGS */}
-                          {link.tech_stack_detected && (
-                            <div className="text-xs bg-purple-900/30 text-purple-200 p-1.5 rounded">
-                              <span className="font-semibold">Tech:</span> {link.tech_stack_detected}
+                          {/* PRIMARY CONTACT METHOD */}
+                          {link.best_contact_method && (
+                            <div className="bg-indigo-900/40 border border-indigo-700 rounded p-2 text-xs">
+                              <div className="text-indigo-300 font-bold mb-1">🎯 Recommended Method:</div>
+                              <div className="text-indigo-200">{link.best_contact_method}</div>
                             </div>
                           )}
-                          {link.company_size_indicator && link.company_size_indicator !== 'unknown' && (
-                            <div className="text-xs bg-green-900/30 text-green-200 p-1.5 rounded">
-                              <span className="font-semibold">Size:</span> {link.company_size_indicator}
+
+                          {/* LINKEDIN - PROFESSIONAL OUTREACH (PRIORITY #1) */}
+                          {(link.linkedin_company || link.linkedin_ceo || link.linkedin_founder) && (
+                            <div className="bg-blue-900/40 border border-blue-700 rounded p-2">
+                              <div className="text-xs font-semibold text-blue-300 mb-1">🔗 LinkedIn - Professional Engagement</div>
+                              <div className="space-y-1">
+                                {link.linkedin_company && (
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => handleOpenLinkedIn(link, 'company')}
+                                      className="flex-1 text-xs bg-blue-800 hover:bg-blue-700 text-blue-100 px-2 py-1 rounded font-medium transition"
+                                      title="View company LinkedIn profile"
+                                    >
+                                      💼 Company
+                                    </button>
+                                    <button
+                                      onClick={() => copyToClipboard(link.linkedin_company, 'Company LinkedIn')}
+                                      className="text-xs bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1 rounded"
+                                      title="Copy link"
+                                    >
+                                      📋
+                                    </button>
+                                  </div>
+                                )}
+                                {link.linkedin_ceo && (
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => handleOpenLinkedIn(link, 'ceo')}
+                                      className="flex-1 text-xs bg-indigo-800 hover:bg-indigo-700 text-indigo-100 px-2 py-1 rounded font-medium transition"
+                                      title="View CEO profile on LinkedIn"
+                                    >
+                                      👔 CEO Profile
+                                    </button>
+                                    <button
+                                      onClick={() => copyToClipboard(link.linkedin_ceo, 'CEO LinkedIn')}
+                                      className="text-xs bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1 rounded"
+                                      title="Copy link"
+                                    >
+                                      📋
+                                    </button>
+                                  </div>
+                                )}
+                                {link.linkedin_founder && (
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => handleOpenLinkedIn(link, 'founder')}
+                                      className="flex-1 text-xs bg-indigo-800 hover:bg-indigo-700 text-indigo-100 px-2 py-1 rounded font-medium transition"
+                                      title="View founder profile on LinkedIn"
+                                    >
+                                      🚀 Founder
+                                    </button>
+                                    <button
+                                      onClick={() => copyToClipboard(link.linkedin_founder, 'Founder LinkedIn')}
+                                      className="text-xs bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-2 py-1 rounded"
+                                      title="Copy link"
+                                    >
+                                      📋
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-xs text-blue-400 mt-1 italic">
+                                💡 Tip: Send personalized connection request + value-first message
+                              </div>
+                            </div>
+                          )}
+
+                          {/* SOCIAL PLATFORMS - ENGAGEMENT STRATEGY */}
+                          {(link.twitter || link.instagram || link.facebook || link.youtube || link.tiktok) && (
+                            <div className="bg-purple-900/40 border border-purple-700 rounded p-2">
+                              <div className="text-xs font-semibold text-purple-300 mb-1">📱 Social Media Engagement</div>
+                              <div className="text-xs text-purple-300 mb-2 italic">Follow, engage with recent posts, build relationship</div>
+                              <div className="grid grid-cols-2 gap-1">
+                                {link.twitter && (
+                                  <a
+                                    href={link.twitter}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs bg-sky-900 hover:bg-sky-800 text-sky-200 px-2 py-1.5 rounded font-medium text-center transition"
+                                    title="View profile, follow and engage"
+                                  >
+                                    𝕏 Follow on X
+                                  </a>
+                                )}
+                                {link.youtube && (
+                                  <a
+                                    href={link.youtube}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs bg-red-900 hover:bg-red-800 text-red-200 px-2 py-1.5 rounded font-medium text-center transition"
+                                    title="View channel, subscribe and comment"
+                                  >
+                                    📹 Subscribe
+                                  </a>
+                                )}
+                                {link.instagram && (
+                                  <a
+                                    href={link.instagram}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs bg-pink-900 hover:bg-pink-800 text-pink-200 px-2 py-1.5 rounded font-medium text-center transition"
+                                    title="View profile, follow and like posts"
+                                  >
+                                    📷 Follow
+                                  </a>
+                                )}
+                                {link.facebook && (
+                                  <a
+                                    href={link.facebook}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs bg-blue-900 hover:bg-blue-800 text-blue-200 px-2 py-1.5 rounded font-medium text-center transition"
+                                    title="Like page and follow"
+                                  >
+                                    f Like Page
+                                  </a>
+                                )}
+                                {link.tiktok && (
+                                  <a
+                                    href={link.tiktok}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded font-medium text-center transition"
+                                    title="View profile and follow"
+                                  >
+                                    🎵 Follow TikTok
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* WEBSITE */}
+                          {link.website && (
+                            <div className="bg-orange-900/40 border border-orange-700 rounded p-2">
+                              <div className="text-xs font-semibold text-orange-300 mb-1">
+                                {link.contact_page_found === 'Yes' ? '🌐 Contact Page Found' : '🔗 Visit Website'}
+                              </div>
+                              <a
+                                href={link.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs w-full block text-center bg-orange-800 hover:bg-orange-700 text-orange-100 px-2 py-1.5 rounded font-medium transition"
+                              >
+                                {link.contact_page_found === 'Yes' ? '✉️ Go to Contact Page' : '🌐 View Website'}
+                              </a>
+                            </div>
+                          )}
+
+                          {/* COMPANY INTELLIGENCE */}
+                          <div className="mt-2 pt-2 border-t border-gray-600">
+                            <div className="text-xs font-semibold text-gray-400 mb-1">📊 Company Intelligence:</div>
+                            <div className="grid grid-cols-2 gap-1 text-xs">
+                              {link.lead_quality_score && (
+                                <div className="bg-gray-750 p-1 rounded">
+                                  <div className="text-gray-400">Lead Score</div>
+                                  <div className={`font-bold ${link.lead_quality_score >= 70 ? 'text-green-400' : link.lead_quality_score >= 50 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                    {link.lead_quality_score}/100
+                                  </div>
+                                </div>
+                              )}
+                              {link.contact_confidence && (
+                                <div className="bg-gray-750 p-1 rounded">
+                                  <div className="text-gray-400">Contact Trust</div>
+                                  <div className={`font-bold ${link.contact_confidence === 'High' ? 'text-green-400' : link.contact_confidence === 'Medium' ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                    {link.contact_confidence}
+                                  </div>
+                                </div>
+                              )}
+                              {link.company_size_indicator && link.company_size_indicator !== 'unknown' && (
+                                <div className="bg-gray-750 p-1 rounded">
+                                  <div className="text-gray-400">Company Size</div>
+                                  <div className="font-bold text-blue-400 capitalize">
+                                    {link.company_size_indicator}
+                                  </div>
+                                </div>
+                              )}
+                              {link.social_media_score && (
+                                <div className="bg-gray-750 p-1 rounded">
+                                  <div className="text-gray-400">Social Presence</div>
+                                  <div className="font-bold text-purple-400">{link.social_media_score}/6</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* TECH STACK */}
+                          {link.tech_stack_detected && (
+                            <div className="text-xs bg-purple-900/30 text-purple-200 p-1.5 rounded">
+                              <span className="font-semibold">⚙️ Tech Stack:</span> {link.tech_stack_detected}
                             </div>
                           )}
                         </div>
