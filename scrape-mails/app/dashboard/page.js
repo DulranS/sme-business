@@ -1117,6 +1117,7 @@ Failed: ${whatsappLinks.length - successCount}`);
             replied++;
           }
           
+          // ✅ USE DATA FROM API RESPONSE
           if (lead.followUpCount && lead.followUpCount > 0) {
             history[lead.email] = {
               count: lead.followUpCount,
@@ -1144,6 +1145,8 @@ Failed: ${whatsappLinks.length - successCount}`);
           alreadyFollowedUp: followedUp,
           awaitingReply: awaiting
         });
+        
+        console.log('✅ Follow-up tracking loaded:', { followUpStats: { totalSent: data.leads?.length, totalReplied: replied }, history });
       } else {
         alert('Failed to load sent leads');
       }
@@ -1164,10 +1167,12 @@ Failed: ${whatsappLinks.length - successCount}`);
     // ✅ CHECK IF ALREADY FOLLOWED UP TOO MANY TIMES
     const history = followUpHistory[email];
     if (history && history.count >= 3) {
+      const lastDate = history.lastFollowUpAt ? new Date(history.lastFollowUpAt).toLocaleDateString() : 'Unknown';
       const confirmed = confirm(
-        `⚠️ This lead has already received ${history.count} follow-ups.\n\n` +
-        `Last follow-up: ${new Date(history.lastFollowUpAt).toLocaleDateString()}\n\n` +
-        `Continue? (Risk of being marked as spam)`
+        `⚠️ SPAM RISK: This lead has already received ${history.count} follow-ups.\n\n` +
+        `Last follow-up: ${lastDate}\n\n` +
+        `All follow-ups: ${history.dates.map(d => new Date(d).toLocaleDateString()).join(', ')}\n\n` +
+        `Continue anyway? (This may be marked as spam)`
       );
       if (!confirmed) return;
     }
@@ -1185,19 +1190,9 @@ Failed: ${whatsappLinks.length - successCount}`);
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`✅ Follow-up sent to ${email}`);
+        alert(`✅ Follow-up #${data.followUpCount} sent to ${email}`);
         
-        // ✅ UPDATE LOCAL FOLLOW-UP HISTORY
-        const newHistory = { ...followUpHistory };
-        if (!newHistory[email]) {
-          newHistory[email] = { count: 0, dates: [] };
-        }
-        newHistory[email].count = (newHistory[email].count || 0) + 1;
-        newHistory[email].lastFollowUpAt = new Date().toISOString();
-        if (!newHistory[email].dates) newHistory[email].dates = [];
-        newHistory[email].dates.push(new Date().toISOString());
-        setFollowUpHistory(newHistory);
-        
+        // ✅ RELOAD FROM SERVER - ENSURES PERFECT ACCURACY
         await loadSentLeads();
         await loadDeals();
       } else {

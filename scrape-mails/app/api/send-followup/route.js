@@ -124,14 +124,25 @@ export async function POST(req) {
       requestBody: { raw: rawMessage }
     });
 
-    // Update record
+    // Update record with follow-up tracking
     const followUpCount = (data.followUpSentCount || 0) + 1;
+    const existingDates = data.followUpDates || [];
+    const updatedDates = [...existingDates, now.toISOString()];
+    
     await updateDoc(docRef, {
       followUpSentCount: followUpCount,
-      lastFollowUpSentAt: now.toISOString()
+      lastFollowUpSentAt: now.toISOString(),
+      // ✅ CRITICAL: Track all follow-up dates
+      followUpDates: updatedDates,
+      // ✅ Reset follow-up window for next round
+      followUpAt: new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString()
     });
 
-    return NextResponse.json({ success: true, template: followUpCount });
+    return NextResponse.json({ 
+      success: true, 
+      followUpCount: followUpCount,
+      message: `Follow-up #${followUpCount} sent successfully`
+    });
   } catch (error) {
     console.error('Follow-up error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
