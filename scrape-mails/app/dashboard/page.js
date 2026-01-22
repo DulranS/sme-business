@@ -1293,7 +1293,8 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
   };
 
-  const loadDeals = async () => {
+  const loadDeals = useCallback(async () => {
+    if (!user?.uid) return;
     try {
       const q = query(collection(db, 'deals'), where('userId', '==', user.uid));
       const snapshot = await getDocs(q);
@@ -1309,7 +1310,7 @@ Failed: ${whatsappLinks.length - successCount}`);
     } catch (e) {
       console.warn('Deals load failed:', e);
     }
-  };
+  }, [user?.uid]);
 
   const loadRepliedAndFollowUp = async () => {
     try {
@@ -1959,7 +1960,7 @@ Check browser console for details.`);
     if (Object.keys(clickStats).length > 0) {
       updateDealsFromClicks();
     }
-  }, [clickStats]);
+  }, [clickStats, loadDeals]);
 
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files).slice(0, 3);
@@ -2816,14 +2817,14 @@ Check browser console for details.`);
                 </div>
                 <div className="mt-1 font-medium text-white">
                   {renderPreviewText(
-                    abTestMode ? templateA.subject : templateA.subject,
+                    abTestMode ? templateA.subject : templateB.subject,
                     previewRecipient,
                     fieldMappings,
                     senderName
                   )}
                 </div>
                 <div className="mt-2 whitespace-pre-wrap text-sm text-gray-200">
-                  {renderPreviewText(templateA.body, previewRecipient, fieldMappings, senderName)}
+                  {renderPreviewText(abTestMode ? templateA.body : templateB.body, previewRecipient, fieldMappings, senderName)}
                 </div>
               </div>
             </div>
