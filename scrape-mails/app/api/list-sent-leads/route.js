@@ -1,5 +1,5 @@
 // app/api/list-sent-leads/route.js
-import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 
 const firebaseConfig = {
@@ -25,20 +25,69 @@ export async function POST(req) {
     const q = query(collection(db, 'sent_emails'), where('userId', '==', userId));
     const snapshot = await getDocs(q);
     const leads = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    let deletedCount = 0;
+    
+    // ✅ CLEANUP: Delete old closed loops (>30 days)
+    const deletionPromises = [];
+    
+    snapshot.forEach(docSnapshot => {
+      const data = docSnapshot.data();
+      const email = data.to;
+      const replied = data.replied || false;
+      const followUpCount = data.followUpSentCount || 0;
+      const loopClosed = data.loopClosed || false;
+      
+      // ✅ Determine if loop is closed (replied OR 3+ follow-ups)
+      const isClosed = replied || followUpCount >= 3 || loopClosed;
+      
+      if (isClosed) {
+        // ✅ Determine the closure date
+        let closureDate = null;
+        
+        if (replied && data.repliedAt) {
+          // Use explicit replied date if available
+          closureDate = new Date(data.repliedAt);
+        } else if (followUpCount >= 3 && data.lastFollowUpSentAt) {
+          // Use last follow-up date if 3+ follow-ups sent
+          closureDate = new Date(data.lastFollowUpSentAt);
+        } else if (data.lastFollowUpSentAt) {
+          // Fallback to last follow-up date
+          closureDate = new Date(data.lastFollowUpSentAt);
+        } else if (data.sentAt) {
+          // Final fallback to sent date
+          closureDate = new Date(data.sentAt);
+        }
+        
+        // ✅ Delete if closed more than 30 days ago
+        if (closureDate && closureDate < thirtyDaysAgo) {
+          console.log(`🗑️ Deleting old closed loop: ${email} (closed ${Math.floor((now - closureDate) / (1000 * 60 * 60 * 24))} days ago)`);
+          deletionPromises.push(deleteDoc(doc(db, 'sent_emails', docSnapshot.id)));
+          deletedCount++;
+          return; // Skip adding to leads array
+        }
+      }
+      
+      // ✅ Only include non-deleted leads
       leads.push({
-        email: data.to,
+        email: email,
         sentAt: data.sentAt,
-        replied: data.replied || false,
+        replied: replied,
         followUpAt: data.followUpAt,
         // ✅ CRITICAL: Include follow-up tracking data
-        followUpCount: data.followUpSentCount || 0,
+        followUpCount: followUpCount,
         lastFollowUpAt: data.lastFollowUpSentAt || null,
         followUpDates: data.followUpDates || [],
         threadId: data.threadId || null
       });
     });
+    
+    // ✅ Execute deletions
+    if (deletionPromises.length > 0) {
+      await Promise.all(deletionPromises);
+      console.log(`✅ Deleted ${deletedCount} old closed loops (>30 days)`);
+    }
 
     leads.sort((a, b) => {
       if (a.replied && !b.replied) return -1;
@@ -50,7 +99,10 @@ export async function POST(req) {
       return new Date(b.sentAt) - new Date(a.sentAt);
     });
 
-    return Response.json({ leads });
+    return Response.json({ 
+      leads,
+      deletedCount: deletedCount > 0 ? deletedCount : undefined // Only include if deletions occurred
+    });
   } catch (error) {
     console.error('List sent leads error:', error);
     return Response.json({ error: 'Failed to load sent leads' }, { status: 500 });
