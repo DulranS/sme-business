@@ -1451,17 +1451,21 @@ Failed: ${whatsappLinks.length - successCount}`);
       return;
     }
     
-    // ✅ CHECK IF ALREADY FOLLOWED UP TOO MANY TIMES
+    // ✅ CRITICAL: HARD BLOCK if lead has replied (no override allowed)
+    if (repliedLeads[email]) {
+      alert(`❌ Cannot send follow-up: ${email} has already replied. Loop is closed.`);
+      return;
+    }
+    
+    // ✅ CRITICAL: HARD BLOCK if already sent 3+ follow-ups (closing the loop - no override)
     const history = followUpHistory[email];
-    if (history && history.count >= 3) {
-      const lastDate = history.lastFollowUpAt ? new Date(history.lastFollowUpAt).toLocaleDateString() : 'Unknown';
-      const confirmed = confirm(
-        `⚠️ SPAM RISK: This lead has already received ${history.count} follow-ups.\n\n` +
-        `Last follow-up: ${lastDate}\n\n` +
-        `All follow-ups: ${history.dates.map(d => new Date(d).toLocaleDateString()).join(', ')}\n\n` +
-        `Continue anyway? (This may be marked as spam)`
+    const followUpCount = history?.count || 0;
+    if (followUpCount >= 3) {
+      alert(
+        `❌ Cannot send follow-up: ${email} has already received ${followUpCount} follow-ups (maximum reached).\n\n` +
+        `The loop has been closed. No further emails will be sent to prevent spam complaints.`
       );
-      if (!confirmed) return;
+      return;
     }
     
     try {
@@ -1477,7 +1481,11 @@ Failed: ${whatsappLinks.length - successCount}`);
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`✅ Follow-up #${data.followUpCount} sent to ${email}`);
+        const isFinalFollowUp = data.followUpCount >= 3;
+        alert(
+          `✅ Follow-up #${data.followUpCount} sent to ${email}` +
+          (isFinalFollowUp ? '\n\n⚠️ Loop closed - no further emails will be sent to this lead.' : '')
+        );
         
         // ✅ UPDATE LOCAL STATE IMMEDIATELY for better UX
         setFollowUpHistory(prev => ({
@@ -1485,7 +1493,8 @@ Failed: ${whatsappLinks.length - successCount}`);
           [email]: {
             count: data.followUpCount || (prev[email]?.count || 0) + 1,
             lastFollowUpAt: new Date().toISOString(),
-            dates: [...(prev[email]?.dates || []), new Date().toISOString()]
+            dates: [...(prev[email]?.dates || []), new Date().toISOString()],
+            loopClosed: isFinalFollowUp
           }
         }));
         
@@ -1494,7 +1503,12 @@ Failed: ${whatsappLinks.length - successCount}`);
         await loadRepliedAndFollowUp();
         await loadDeals();
       } else {
-        alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
+        // ✅ Handle specific error codes from backend
+        if (data.code === 'ALREADY_REPLIED' || data.code === 'MAX_FOLLOWUPS_REACHED') {
+          alert(`❌ ${data.error}\n\nThis prevents duplicate emails and spam complaints.`);
+        } else {
+          alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
+        }
       }
     } catch (err) {
       console.error('Follow-up send error:', err);
@@ -1551,18 +1565,23 @@ Failed: ${whatsappLinks.length - successCount}`);
         const data = await res.json();
         if (res.ok) {
           successCount++;
+          const isFinalFollowUp = data.followUpCount >= 3;
           // ✅ Update local state immediately for better UX
           setFollowUpHistory(prev => ({
             ...prev,
             [lead.email]: {
               count: data.followUpCount || followUpCount + 1,
               lastFollowUpAt: new Date().toISOString(),
-              dates: [...(prev[lead.email]?.dates || []), new Date().toISOString()]
+              dates: [...(prev[lead.email]?.dates || []), new Date().toISOString()],
+              loopClosed: isFinalFollowUp
             }
           }));
         } else {
           errorCount++;
-          console.error(`Failed to send to ${lead.email}:`, data.error);
+          // ✅ Skip logging expected errors (already replied, max follow-ups)
+          if (data.code !== 'ALREADY_REPLIED' && data.code !== 'MAX_FOLLOWUPS_REACHED') {
+            console.error(`Failed to send to ${lead.email}:`, data.error);
+          }
         }
       } catch (err) {
         errorCount++;

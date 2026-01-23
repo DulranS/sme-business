@@ -1,5 +1,5 @@
 // app/api/send-email/route.js
-import { getFirestore, doc, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { google } from 'googleapis';
 
@@ -391,6 +391,20 @@ export async function POST(req) {
         });
 
         if (response.data?.threadId) {
+          // ✅ Check if email already exists before creating/updating record
+          const docId = `${userId}_${recipient.email}`;
+          const docRef = doc(db, 'sent_emails', docId);
+          const docSnap = await getDoc(docRef);
+          
+          // ✅ If record exists and lead has replied or has follow-ups, skip overwriting
+          if (docSnap.exists()) {
+            const existingData = docSnap.data();
+            if (existingData.replied || (existingData.followUpSentCount || 0) > 0) {
+              console.warn(`⚠️ Skipping ${recipient.email}: Already contacted (replied: ${existingData.replied}, follow-ups: ${existingData.followUpSentCount || 0})`);
+              continue; // Skip this recipient to prevent overwriting history
+            }
+          }
+          
           await saveSentEmailRecord(userId, recipient.email, response.data.threadId);
           sentCount++;
         }
