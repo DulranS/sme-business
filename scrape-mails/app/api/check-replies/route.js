@@ -74,10 +74,15 @@ export async function POST(req) {
       const email = threadToEmail[threadId];
       if (email) {
         const docId = emailToDocId[email];
-        await updateDoc(doc(db, 'sent_emails', docId), { replied: true });
+        const repliedAt = new Date().toISOString();
+        // ✅ Track when lead replied for 30-day deletion logic
+        await updateDoc(doc(db, 'sent_emails', docId), { 
+          replied: true,
+          repliedAt: repliedAt // Track reply date for cleanup
+        });
         await updateDoc(doc(db, 'deals', email), {
           stage: 'replied',
-          lastUpdate: new Date().toISOString()
+          lastUpdate: repliedAt
         });
         repliedCount++;
         delete threadToEmail[threadId];

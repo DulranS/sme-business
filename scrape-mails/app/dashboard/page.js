@@ -1433,6 +1433,11 @@ Failed: ${whatsappLinks.length - successCount}`);
           awaitingReply: awaiting
         });
         
+        // ✅ Notify if old closed loops were deleted
+        if (data.deletedCount && data.deletedCount > 0) {
+          console.log(`🗑️ Cleaned up ${data.deletedCount} old closed loops (>30 days)`);
+        }
+        
         console.log('✅ Follow-up tracking loaded:', { followUpStats: { totalSent: data.leads?.length, totalReplied: replied }, history });
       } else {
         alert('Failed to load sent leads');
