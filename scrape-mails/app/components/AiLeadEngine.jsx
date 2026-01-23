@@ -4,10 +4,9 @@
 import { useState, useCallback } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// ✅ Your API keys (set these in Vercel environment variables)
-const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
-const APOLLO_API_KEY = process.env.APOLLO_API_KEY;
-const HUNTER_API_KEY = process.env.HUNTER_API_KEY;
+// ✅ SECURITY: API keys removed from client-side - now handled server-side
+// Client-side exposure of API keys is a security vulnerability
+// All API calls now go through secure server-side routes
 
 export default function AiLeadEngine({ onLeadsGenerated, currentUser }) {
   const [isResearching, setIsResearching] = useState(false);
@@ -94,100 +93,55 @@ pain_points: [1-2 specific pain points identified]
     return customPrompt ? customPrompt.replace('{{COMPANY_CONTEXT}}', company.name) : basePrompt;
   }, [customPrompt]);
 
-  // ✅ Research recently funded companies
+  // ✅ SECURITY: Research via server-side API (prevents API key exposure)
   const findRecentlyFundedCompanies = useCallback(async () => {
     try {
-      const response = await fetch('https://api.apollo.io/v1/mixed_companies/search', {
+      const response = await fetch('/api/ai-lead-research', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-          'X-Api-Key': APOLLO_API_KEY
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          q_keywords: industryFocus,
-          funding_stage: fundingStage === 'recent' ? ['series_a', 'series_b', 'seed', 'venture'] : [fundingStage],
-          funding_date: {
-            min: fundingStage === 'recent' ? 
-              new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : 
-              undefined
-          },
-          page: 1,
-          per_page: 10
+          industryFocus,
+          fundingStage,
+          customPrompt
         })
       });
 
+      if (!response.ok) {
+        throw new Error('Failed to research companies');
+      }
+
       const data = await response.json();
-      return data.companies || [];
+      return data.leads || [];
     } catch (error) {
-      console.error('Apollo API error:', error);
+      console.error('Research API error:', error);
       setStatus(`❌ Failed to find companies: ${error.message}`);
       return [];
     }
-  }, [industryFocus, fundingStage]);
+  }, [industryFocus, fundingStage, customPrompt]);
 
-  // ✅ Find email with Hunter
+  // ✅ SECURITY: Email lookup now handled server-side (removed client-side API call)
   const findEmailWithHunter = useCallback(async (domain) => {
-    try {
-      const response = await fetch(`https://api.hunter.io/v2/domain-search?domain=${domain}&api_key=${HUNTER_API_KEY}`);
-      const data = await response.json();
-      return data.data.emails?.[0]?.value || null;
-    } catch (error) {
-      console.error('Hunter API error:', error);
-      return null;
-    }
+    // This is now handled in the server-side API route
+    return null; // Placeholder - actual lookup happens server-side
   }, []);
 
-  // ✅ Generate personalized email using Claude 3.5
+  // ✅ SECURITY: Email generation now handled server-side (removed client-side API call)
   const generatePersonalizedEmail = useCallback(async (company) => {
-    try {
-      // Build the prompt
-      const prompt = generateClaudePrompt(company);
-      
-      // Use Claude 3.5 Sonnet via Anthropic API
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20240620',
-          max_tokens: 1024,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
+    // This is now handled in the server-side API route
+    // Return basic structure - actual generation happens server-side
+    return {
+      subject: `Quick question for ${company.name}`,
+      body: `Hi ${company.name},\n\nI noticed your recent funding and wanted to reach out...`,
+      company: company.name,
+      pain_points: 'Scaling website, lead capture'
+    };
+  }, []);
 
-      const data = await response.json();
-      const content = data.content?.[0]?.text || '';
-      
-      // Parse the response
-      const subjectMatch = content.match(/subject:\s*(.+?)\n/i);
-      const bodyMatch = content.match(/body:\s*([\s\S]+)/i);
-      
-      if (subjectMatch && bodyMatch) {
-        return {
-          subject: subjectMatch[1].trim(),
-          body: bodyMatch[1].trim(),
-          company: company.name,
-          pain_points: content.match(/pain_points:\s*([\s\S]+)/i)?.[1]?.trim() || 'Scaling website, lead capture'
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Claude API error:', error);
-      return null;
-    }
-  }, [generateClaudePrompt]);
-
-  // ✅ Research and generate leads
+  // ✅ SECURITY: Research and generate leads (now using server-side API)
   const generateLeads = useCallback(async () => {
-    if (!CLAUDE_API_KEY || !APOLLO_API_KEY || !HUNTER_API_KEY) {
-      alert('Please configure API keys in your environment variables');
-      return;
-    }
+    // API keys are now handled server-side - no client-side check needed
     
     setIsResearching(true);
     setStatus('🔍 Researching recently funded companies...');

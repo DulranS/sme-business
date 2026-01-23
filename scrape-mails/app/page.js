@@ -5,7 +5,8 @@ import { auth,googleProvider } from './lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
-const SECRET_KEY = 'goofyballcornball248';
+// ✅ SECURITY: Use environment variable for secret key
+const SECRET_KEY = process.env.NEXT_PUBLIC_ACCESS_SECRET_KEY || '';
 const ACCESS_GRANTED = 'access_granted';
 
 export default function Home() {
@@ -34,13 +35,25 @@ export default function Home() {
     }
   }, [accessGranted, router]);
 
-  const handleKeySubmit = (e) => {
+  const handleKeySubmit = async (e) => {
     e.preventDefault();
-    if (inputKey === SECRET_KEY) {
-      localStorage.setItem(ACCESS_GRANTED, 'true');
-      setAccessGranted(true);
-    } else {
-      setError('Incorrect key. Please try again.');
+    // ✅ SECURITY: Verify secret key on server-side to prevent client-side bypass
+    try {
+      const res = await fetch('/api/verify-access-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: inputKey })
+      });
+      const data = await res.json();
+      if (data.valid) {
+        localStorage.setItem(ACCESS_GRANTED, 'true');
+        setAccessGranted(true);
+      } else {
+        setError('Incorrect key. Please try again.');
+        setInputKey('');
+      }
+    } catch (err) {
+      setError('Verification failed. Please try again.');
       setInputKey('');
     }
   };
