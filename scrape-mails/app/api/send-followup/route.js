@@ -76,15 +76,42 @@ function renderText(text, businessName) {
   return text.replace(/{{business_name}}/g, businessName);
 }
 
+// ✅ SECURITY: Input validation helper
+function validateEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim()) && email.length <= 254;
+}
+
+function validateUserId(userId) {
+  if (!userId || typeof userId !== 'string') return false;
+  // Firebase UIDs are typically 28 characters, alphanumeric
+  return /^[a-zA-Z0-9]{20,}$/.test(userId);
+}
+
 export async function POST(req) {
   try {
     const { email, userId, accessToken } = await req.json();
 
+    // ✅ SECURITY: Input validation
     if (!email || !userId || !accessToken) {
-      return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const docId = `${userId}_${email}`;
+    // ✅ SECURITY: Validate email format
+    if (!validateEmail(email)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    }
+
+    // ✅ SECURITY: Validate userId format
+    if (!validateUserId(userId)) {
+      return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });
+    }
+
+    // ✅ SECURITY: Sanitize email (lowercase, trim)
+    const sanitizedEmail = email.trim().toLowerCase();
+
+    const docId = `${userId}_${sanitizedEmail}`;
     const docRef = doc(db, 'sent_emails', docId);
     const docSnap = await getDoc(docRef);
 
@@ -93,6 +120,13 @@ export async function POST(req) {
     }
 
     const data = docSnap.data();
+    
+    // ✅ SECURITY: Verify userId matches the document owner
+    if (data.userId !== userId) {
+      return NextResponse.json({ 
+        error: 'Unauthorized: User ID mismatch' 
+      }, { status: 403 });
+    }
     
     // ✅ CRITICAL: BLOCK if lead has already replied (closing the loop)
     if (data.replied) {
@@ -122,7 +156,8 @@ export async function POST(req) {
     else if (days >= 2) template = FOLLOW_UP_1;
     else return NextResponse.json({ error: 'Too early' }, { status: 400 });
 
-    const businessName = email.split('@')[0].replace(/[^a-zA-Z]/g, ' ');
+    // ✅ SECURITY: Sanitize business name to prevent XSS
+    const businessName = sanitizedEmail.split('@')[0].replace(/[^a-zA-Z0-9\s]/g, ' ').substring(0, 50);
     const subject = renderText(template.subject, businessName);
     const body = renderText(template.body, businessName);
 

@@ -16,9 +16,25 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
+// ✅ SECURITY: Input validation helper
+function validateUserId(userId) {
+  if (!userId || typeof userId !== 'string') return false;
+  return /^[a-zA-Z0-9]{20,}$/.test(userId);
+}
+
 export async function POST(req) {
   try {
     const { accessToken, userId } = await req.json();
+
+    // ✅ SECURITY: Input validation
+    if (!accessToken || !userId) {
+      return Response.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // ✅ SECURITY: Validate userId format
+    if (!validateUserId(userId)) {
+      return Response.json({ error: 'Invalid user ID format' }, { status: 400 });
+    }
 
     const sentQuery = query(collection(db, 'sent_emails'), where('userId', '==', userId));
     const sentSnapshot = await getDocs(sentQuery);
