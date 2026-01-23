@@ -3,14 +3,14 @@ import { getFirestore, doc, getDoc } from 'firebase/firestore';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDE-hRmyPs02dBm_OlVfwR9ZzmmMIiKw7o",
-  authDomain: "email-marketing-c775d.firebaseapp.com",
-  projectId: "email-marketing-c775d",
-  storageBucket: "email-marketing-c775d.firebasestorage.app",
-  messagingSenderId: "178196903576",
-  appId: "1:178196903576:web:56b97d8e0b7943e3ee82ed"
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID,
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID
 };
-
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
