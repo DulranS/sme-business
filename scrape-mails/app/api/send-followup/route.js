@@ -93,6 +93,25 @@ export async function POST(req) {
     }
 
     const data = docSnap.data();
+    
+    // ✅ CRITICAL: BLOCK if lead has already replied (closing the loop)
+    if (data.replied) {
+      return NextResponse.json({ 
+        error: 'Lead has already replied. No further emails should be sent.',
+        code: 'ALREADY_REPLIED'
+      }, { status: 403 });
+    }
+    
+    // ✅ CRITICAL: BLOCK if already sent 3+ follow-ups (closing the loop)
+    const currentFollowUpCount = data.followUpSentCount || 0;
+    if (currentFollowUpCount >= 3) {
+      return NextResponse.json({ 
+        error: 'Maximum follow-ups (3) already sent. Loop is closed. No further emails should be sent.',
+        code: 'MAX_FOLLOWUPS_REACHED',
+        followUpCount: currentFollowUpCount
+      }, { status: 403 });
+    }
+    
     const sentAt = new Date(data.sentAt);
     const now = new Date();
     const days = (now - sentAt) / (1000 * 60 * 60 * 24);
@@ -129,13 +148,20 @@ export async function POST(req) {
     const existingDates = data.followUpDates || [];
     const updatedDates = [...existingDates, now.toISOString()];
     
+    // ✅ If this is follow-up 3 (closing the loop), mark as final and disable future follow-ups
+    const isFinalFollowUp = followUpCount >= 3;
+    
     await updateDoc(docRef, {
       followUpSentCount: followUpCount,
       lastFollowUpSentAt: now.toISOString(),
       // ✅ CRITICAL: Track all follow-up dates
       followUpDates: updatedDates,
-      // ✅ Reset follow-up window for next round
-      followUpAt: new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString()
+      // ✅ If closing the loop (follow-up 3), set followUpAt to far future to prevent any more sends
+      followUpAt: isFinalFollowUp 
+        ? new Date('2099-12-31').toISOString() // Far future date to effectively disable
+        : new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString(),
+      // ✅ Mark that loop is closed if this is the final follow-up
+      loopClosed: isFinalFollowUp
     });
 
     return NextResponse.json({ 
