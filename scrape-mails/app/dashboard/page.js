@@ -1400,15 +1400,19 @@ Failed: ${whatsappLinks.length - successCount}`);
             replied++;
           }
           
-          // ✅ USE DATA FROM API RESPONSE
-          if (lead.followUpCount && lead.followUpCount > 0) {
-            history[lead.email] = {
-              count: lead.followUpCount,
-              lastFollowUpAt: lead.lastFollowUpAt,
-              dates: lead.followUpDates || []
-            };
+          // ✅ TRACK ALL LEADS WITH FOLLOW-UP DATA (including 0 count for proper tracking)
+          const followUpCount = lead.followUpCount || 0;
+          if (followUpCount > 0) {
             followedUp++;
           }
+          
+          // ✅ Initialize history entry for all leads (even with 0 follow-ups)
+          // This ensures eligibility checks work correctly
+          history[lead.email] = {
+            count: followUpCount,
+            lastFollowUpAt: lead.lastFollowUpAt || null,
+            dates: lead.followUpDates || []
+          };
           
           const followUpAt = new Date(lead.followUpAt);
           const now = new Date();
@@ -1475,8 +1479,19 @@ Failed: ${whatsappLinks.length - successCount}`);
       if (res.ok) {
         alert(`✅ Follow-up #${data.followUpCount} sent to ${email}`);
         
+        // ✅ UPDATE LOCAL STATE IMMEDIATELY for better UX
+        setFollowUpHistory(prev => ({
+          ...prev,
+          [email]: {
+            count: data.followUpCount || (prev[email]?.count || 0) + 1,
+            lastFollowUpAt: new Date().toISOString(),
+            dates: [...(prev[email]?.dates || []), new Date().toISOString()]
+          }
+        }));
+        
         // ✅ RELOAD FROM SERVER - ENSURES PERFECT ACCURACY
         await loadSentLeads();
+        await loadRepliedAndFollowUp();
         await loadDeals();
       } else {
         alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
@@ -1491,18 +1506,37 @@ Failed: ${whatsappLinks.length - successCount}`);
     if (!lead || !lead.email || lead.replied) return false;
     const now = new Date();
     const followUpAt = new Date(lead.followUpAt);
-    return followUpAt <= now;
+    
+    // ✅ Check if follow-up time has passed
+    if (followUpAt > now) return false;
+    
+    // ✅ Check if already followed up too many times
+    const followUpCount = followUpHistory[lead.email]?.count || lead.followUpCount || 0;
+    if (followUpCount >= 3) return false;
+    
+    return true;
   };
 
   const sendMassFollowUp = async (accessToken) => {
     if (!user?.uid || !accessToken) return;
-    const confirmed = confirm(`Send follow-up to all eligible leads (${sentLeads.filter(isEligibleForFollowUp).length})?`);
+    const eligibleLeads = sentLeads.filter(isEligibleForFollowUp);
+    const confirmed = confirm(`Send follow-up to all eligible leads (${eligibleLeads.length})?`);
     if (!confirmed) return;
     setIsSending(true);
     setStatus('📤 Sending mass follow-ups...');
     let successCount = 0;
-    for (const lead of sentLeads) {
+    let errorCount = 0;
+    for (const lead of eligibleLeads) {
+      // ✅ Double-check eligibility before sending (state may have changed)
       if (!isEligibleForFollowUp(lead)) continue;
+      
+      // ✅ Check follow-up count one more time before sending
+      const followUpCount = followUpHistory[lead.email]?.count || lead.followUpCount || 0;
+      if (followUpCount >= 3) {
+        console.warn(`Skipping ${lead.email}: already has ${followUpCount} follow-ups`);
+        continue;
+      }
+      
       try {
         const res = await fetch('/api/send-followup', {
           method: 'POST',
@@ -1514,14 +1548,32 @@ Failed: ${whatsappLinks.length - successCount}`);
             senderName,
           })
         });
-        if (res.ok) successCount++;
+        const data = await res.json();
+        if (res.ok) {
+          successCount++;
+          // ✅ Update local state immediately for better UX
+          setFollowUpHistory(prev => ({
+            ...prev,
+            [lead.email]: {
+              count: data.followUpCount || followUpCount + 1,
+              lastFollowUpAt: new Date().toISOString(),
+              dates: [...(prev[lead.email]?.dates || []), new Date().toISOString()]
+            }
+          }));
+        } else {
+          errorCount++;
+          console.error(`Failed to send to ${lead.email}:`, data.error);
+        }
       } catch (err) {
+        errorCount++;
         console.error(`Error sending to ${lead.email}:`, err);
       }
     }
     setIsSending(false);
-    alert(`✅ Sent follow-ups to ${successCount} leads.`);
+    alert(`✅ Sent follow-ups to ${successCount} leads.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`);
+    // ✅ Reload from server to ensure accuracy
     await loadSentLeads();
+    await loadRepliedAndFollowUp();
   };
 
   const checkRepliesAndLoad = async () => {
@@ -3125,12 +3177,13 @@ Check browser console for details.`);
                     </div>
                     <button
                       onClick={async () => {
-                        const confirmed = confirm(`Send follow-up to ${contact.email}?`);
+                        const confirmed = confirm(`Send follow-up #${followUpCount + 1} to ${contact.email}?`);
                         if (!confirmed) return;
                         
                         try {
                           const token = await requestGmailToken();
-                          alert('✅ Follow-up queued!');
+                          await sendFollowUpWithToken(contact.email, token);
+                          // ✅ State will be updated by sendFollowUpWithToken via loadSentLeads()
                         } catch (err) {
                           alert('Gmail access failed.');
                         }
