@@ -45,7 +45,7 @@ function buildPlainTextEmail(to, subject, body) {
     .replace(/=+$/, '');
 }
 
-function buildHtmlEmail(to, subject, body, images) {
+function buildHtmlEmail(to, subject, body, images, trackingId) {
   let htmlBody = body.replace(/\n/g, '<br>');
   const boundary = 'boundary_' + Date.now();
 
@@ -53,6 +53,21 @@ function buildHtmlEmail(to, subject, body, images) {
     const imgTag = `<img src="cid:${img.cid}" alt="Inline" style="max-width:100%;">`;
     htmlBody = htmlBody.replace(new RegExp(img.placeholder, 'g'), imgTag);
   });
+
+  // ✅ Add click tracking to links
+  if (trackingId) {
+    htmlBody = htmlBody.replace(
+      /<a\s+href=["']([^"']+)["']/gi,
+      (match, url) => {
+        const trackingUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/track/click?clid=${trackingId}&url=${encodeURIComponent(url)}`;
+        return match.replace(url, trackingUrl);
+      }
+    );
+    
+    // ✅ Add open tracking pixel at the end
+    const trackingPixel = `<img src="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/track/open?email=${encodeURIComponent(to)}&tid=${trackingId}" width="1" height="1" style="display:none;" />`;
+    htmlBody += trackingPixel;
+  }
 
   const parts = [
     `To: ${to}`,
@@ -174,7 +189,7 @@ async function getSentEmailsSet(userId) {
   return sentSet;
 }
 
-async function saveSentEmailRecord(userId, email, threadId) {
+async function saveSentEmailRecord(userId, email, threadId, trackingId) {
   const sentAt = new Date();
   const followUpAt = new Date(sentAt.getTime() + 48 * 60 * 60 * 1000); // 48 hours
 
@@ -182,13 +197,23 @@ async function saveSentEmailRecord(userId, email, threadId) {
     userId,
     to: email,
     threadId,
+    trackingId: trackingId || null,
     sentAt: sentAt.toISOString(),
     replied: false,
     followUpAt: followUpAt.toISOString(),
     followUpSentCount: 0,
     lastFollowUpSentAt: null,
     followUpDates: [],
-    isNewLead: true // Mark as new lead outreach
+    isNewLead: true, // Mark as new lead outreach
+    // ✅ Engagement tracking
+    opened: false,
+    openedAt: null,
+    openedCount: 0,
+    clicked: false,
+    clickedAt: null,
+    clickCount: 0,
+    lastEngagementAt: null,
+    interestScore: 0
   });
 }
 
@@ -273,8 +298,11 @@ export async function POST(req) {
         const subject = renderText(template.subject, recipient, fieldMappings, senderName);
         const body = renderText(template.body, recipient, fieldMappings, senderName);
 
+        // ✅ Generate tracking ID for this email
+        const trackingId = `${userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         const rawMessage = emailImages.length > 0 
-          ? buildHtmlEmail(recipient.email, subject, body, emailImages)
+          ? buildHtmlEmail(recipient.email, subject, body, emailImages, trackingId)
           : buildPlainTextEmail(recipient.email, subject, body);
 
         const response = await gmail.users.messages.send({
@@ -283,7 +311,7 @@ export async function POST(req) {
         });
 
         if (response.data?.threadId) {
-          await saveSentEmailRecord(userId, recipient.email, response.data.threadId);
+          await saveSentEmailRecord(userId, recipient.email, response.data.threadId, trackingId);
           await incrementDailyEmailCount(userId);
           sentCount++;
         }

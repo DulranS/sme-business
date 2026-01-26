@@ -240,8 +240,21 @@ export default function Dashboard() {
     totalReplied: 0,
     readyForFollowUp: 0,
     alreadyFollowedUp: 0,
-    awaitingReply: 0
+    awaitingReply: 0,
+    interestedLeads: 0 // ✅ New: Leads showing interest (opens/clicks)
   });
+  // ✅ AI Research State
+  const [researchingCompany, setResearchingCompany] = useState(null);
+  const [researchResults, setResearchResults] = useState({});
+  const [showResearchModal, setShowResearchModal] = useState(false);
+  const [interestedLeadsList, setInterestedLeadsList] = useState([]);
+  
+  // ✅ 2026 Advanced Features State
+  const [sendTimeOptimization, setSendTimeOptimization] = useState(null);
+  const [predictiveScores, setPredictiveScores] = useState({});
+  const [sentimentAnalysis, setSentimentAnalysis] = useState({});
+  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
+  const [smartFollowUpSuggestions, setSmartFollowUpSuggestions] = useState({});
   // ✅ ENHANCED FOLLOW-UP OPTIONS
   const [followUpTemplate, setFollowUpTemplate] = useState('auto');
   const [followUpTargeting, setFollowUpTargeting] = useState('ready');
@@ -1424,13 +1437,21 @@ Failed: ${whatsappLinks.length - successCount}`);
           }
         });
         
+        // ✅ Count interested leads (opens/clicks but no reply yet)
+        const interested = (data.leads || []).filter(lead => 
+          lead.seemsInterested && !lead.replied
+        );
+        
+        setInterestedLeadsList(interested);
+        
         setFollowUpHistory(history);
         setFollowUpStats({
           totalSent: data.leads?.length || 0,
           totalReplied: replied,
           readyForFollowUp: readyForFU,
           alreadyFollowedUp: followedUp,
-          awaitingReply: awaiting
+          awaitingReply: awaiting,
+          interestedLeads: interested.length
         });
         
         // ✅ Notify if old closed loops were deleted
@@ -1518,6 +1539,153 @@ Failed: ${whatsappLinks.length - successCount}`);
     } catch (err) {
       console.error('Follow-up send error:', err);
       alert(`❌ Error: ${err.message || 'Failed to send follow-up'}`);
+    }
+  };
+
+  // ✅ 2026 Feature: Load Send Time Optimization
+  const loadSendTimeOptimization = async () => {
+    if (!user?.uid) return;
+    try {
+      const res = await fetch('/api/ai-send-time-optimizer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.uid })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSendTimeOptimization(data);
+      }
+    } catch (err) {
+      console.error('Send time optimization error:', err);
+    }
+  };
+
+  // ✅ 2026 Feature: Calculate Predictive Score for Lead
+  const calculatePredictiveScore = async (leadEmail, leadData) => {
+    if (!user?.uid || predictiveScores[leadEmail]) return; // Cache results
+    try {
+      const res = await fetch('/api/predictive-lead-scoring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userId: user.uid,
+          leadData: {
+            ...leadData,
+            email: leadEmail
+          }
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPredictiveScores(prev => ({
+          ...prev,
+          [leadEmail]: data
+        }));
+      }
+    } catch (err) {
+      console.error('Predictive scoring error:', err);
+    }
+  };
+
+  // ✅ 2026 Feature: Analyze Reply Sentiment
+  const analyzeReplySentiment = async (replyText, leadEmail) => {
+    if (!replyText) return;
+    try {
+      const res = await fetch('/api/sentiment-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replyText, leadEmail })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSentimentAnalysis(prev => ({
+          ...prev,
+          [leadEmail]: data
+        }));
+      }
+    } catch (err) {
+      console.error('Sentiment analysis error:', err);
+    }
+  };
+
+  // ✅ 2026 Feature: Generate Smart Follow-up
+  const generateSmartFollowUp = async (leadEmail, leadData, followUpNumber = 1) => {
+    if (!user?.uid) return;
+    try {
+      const lead = sentLeads.find(l => l.email === leadEmail);
+      const defaultTemplate = `${templateA.subject}\n\n${templateA.body}`;
+      
+      const res = await fetch('/api/smart-followup-generator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyName: leadData.business || leadEmail,
+          leadBehavior: {
+            opened: lead?.opened || false,
+            openedCount: lead?.openedCount || 0,
+            clicked: lead?.clicked || false,
+            clickCount: lead?.clickCount || 0,
+            replied: lead?.replied || false,
+            interestScore: lead?.interestScore || 0,
+            daysSinceSent: lead ? Math.floor((new Date() - new Date(lead.sentAt)) / (1000 * 60 * 60 * 24)) : 0
+          },
+          previousEmails: lead?.followUpCount || 0,
+          defaultTemplate,
+          followUpNumber
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSmartFollowUpSuggestions(prev => ({
+          ...prev,
+          [leadEmail]: data
+        }));
+        return data;
+      }
+    } catch (err) {
+      console.error('Smart follow-up error:', err);
+    }
+    return null;
+  };
+
+  // ✅ AI Research Function - Cost-efficient individual research
+  const researchCompany = async (companyName, companyWebsite, email) => {
+    if (!user?.uid) {
+      alert('Please sign in to use AI research');
+      return;
+    }
+    
+    setResearchingCompany(email);
+    try {
+      // Get default email template to extract general idea
+      const defaultTemplate = `${templateA.subject}\n\n${templateA.body}`;
+      
+      const res = await fetch('/api/research-company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyName,
+          companyWebsite: companyWebsite || '',
+          defaultEmailTemplate: defaultTemplate,
+          userId: user.uid
+        })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setResearchResults(prev => ({
+          ...prev,
+          [email]: data
+        }));
+        setShowResearchModal(true);
+      } else {
+        alert(`Research failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Research error:', err);
+      alert(`Error: ${err.message || 'Failed to research company'}`);
+    } finally {
+      setResearchingCompany(null);
     }
   };
 
@@ -1986,6 +2154,7 @@ Check browser console for details.`);
         loadAbResults();
         loadRepliedAndFollowUp();
         loadDailyEmailCount(); // ✅ Load daily email count
+        loadSendTimeOptimization(); // ✅ 2026 Feature: Load send time optimization
       } else {
         setUser(null);
       }
@@ -2129,6 +2298,12 @@ Check browser console for details.`);
               📬 Reply Center
             </button>
             <button
+              onClick={() => setShowAdvancedAnalytics(!showAdvancedAnalytics)}
+              className="text-xs sm:text-sm bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white px-2 sm:px-3 py-1.5 rounded font-medium"
+            >
+              🤖 AI Analytics
+            </button>
+            <button
               onClick={() => router.push('/format')}
               className="text-xs sm:text-sm bg-green-700 hover:bg-green-600 text-white px-2 sm:px-3 py-1.5 rounded"
             >
@@ -2147,7 +2322,7 @@ Check browser console for details.`);
         {/* ✅ ENHANCED TOP ANALYTICS DASHBOARD - IMPROVED RESPONSIVENESS */}
         {whatsappLinks.length > 0 && (
           <div className="mb-6 sm:mb-8">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+            <div className={`grid grid-cols-2 sm:grid-cols-3 ${followUpStats.interestedLeads > 0 ? 'lg:grid-cols-7' : 'lg:grid-cols-6'} gap-2 sm:gap-3`}>
               {/* Total Contacts */}
               <div className="bg-gradient-to-br from-blue-900 to-blue-800 p-3 sm:p-4 rounded-lg shadow border border-blue-700 hover:border-blue-600 transition">
                 <div className="text-xs text-blue-300 font-semibold">📊 Total</div>
@@ -2161,6 +2336,19 @@ Check browser console for details.`);
                 <div className="text-2xl sm:text-3xl font-bold text-white mt-1">{Object.values(repliedLeads).filter(Boolean).length}</div>
                 <div className="text-xs text-green-200 mt-1">{Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}% reply rate</div>
               </div>
+              
+              {/* ✅ Interested Leads (New) */}
+              {followUpStats.interestedLeads > 0 && (
+                <div className="bg-gradient-to-br from-pink-900 to-pink-800 p-3 sm:p-4 rounded-lg shadow border border-pink-700 hover:border-pink-600 transition cursor-pointer"
+                     onClick={() => {
+                       // Scroll to interested leads section
+                       document.getElementById('interested-leads-section')?.scrollIntoView({ behavior: 'smooth' });
+                     }}>
+                  <div className="text-xs text-pink-300 font-semibold">🔥 Interested</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-white mt-1">{followUpStats.interestedLeads}</div>
+                  <div className="text-xs text-pink-200 mt-1">opens/clicks (no reply)</div>
+                </div>
+              )}
               
               {/* Avg Quality Score */}
               <div className="bg-gradient-to-br from-yellow-900 to-yellow-800 p-3 sm:p-4 rounded-lg shadow border border-yellow-700 hover:border-yellow-600 transition">
@@ -2203,10 +2391,57 @@ Check browser console for details.`);
               </div>
             </div>
 
+            {/* ✅ 2026 FEATURE: ADVANCED ANALYTICS DASHBOARD */}
+            {showAdvancedAnalytics && (
+              <div className="mt-4 bg-gradient-to-br from-purple-900/20 via-indigo-900/20 to-blue-900/20 p-4 sm:p-6 rounded-lg border-2 border-purple-500/30">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg sm:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-indigo-400 to-blue-400">
+                    🤖 AI-Powered Analytics (2026)
+                  </h2>
+                  <button
+                    onClick={() => setShowAdvancedAnalytics(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                {/* Send Time Optimization */}
+                {sendTimeOptimization && (
+                  <div className="bg-gray-800/50 p-4 rounded-lg border border-purple-700 mb-4">
+                    <h3 className="text-sm font-bold text-purple-300 mb-2">⏰ Optimal Send Time</h3>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Next Best Time:</span>
+                        <span className="font-bold text-purple-400">{sendTimeOptimization.nextOptimalTimeFormatted}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Potential Improvement:</span>
+                        <span className="font-bold text-green-400">+{sendTimeOptimization.potentialImprovement}</span>
+                      </div>
+                      <div className="text-gray-300 mt-2">
+                        {sendTimeOptimization.insights?.map((insight, i) => (
+                          <div key={i}>• {insight}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* DETAILED ANALYTICS PANEL */}
             {showDetailedAnalytics && (
               <div className="mt-4 bg-gradient-to-b from-gray-850 to-gray-900 p-4 sm:p-6 rounded-lg border border-gray-700">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-4">📊 Campaign Intelligence</h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg sm:text-xl font-bold text-white">📊 Campaign Intelligence</h2>
+                  <button
+                    onClick={() => setShowAdvancedAnalytics(!showAdvancedAnalytics)}
+                    className="text-xs bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white px-3 py-1.5 rounded font-medium"
+                  >
+                    {showAdvancedAnalytics ? '🤖 Hide AI Analytics' : '🤖 Show AI Analytics'}
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Conversion Funnel */}
                   {(() => {
@@ -2818,6 +3053,85 @@ Check browser console for details.`);
               </div>
             )}
             
+            {/* ✅ INTERESTED LEADS CONTROL PANEL */}
+            {interestedLeadsList.length > 0 && (
+              <div id="interested-leads-section" className="bg-gradient-to-br from-pink-900/20 to-rose-900/20 p-4 sm:p-6 rounded-xl border border-pink-700/50 mb-6">
+                <h2 className="text-lg font-bold mb-4 text-pink-300 flex items-center gap-2">
+                  🔥 Interested Leads ({interestedLeadsList.length})
+                  <span className="text-xs text-pink-400 font-normal">(Opened/Clicked but no reply yet)</span>
+                </h2>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {interestedLeadsList.map((lead) => {
+                    const leadData = whatsappLinks.find(l => l.email === lead.email) || {};
+                    return (
+                      <div key={lead.email} className="bg-gray-800/50 p-4 rounded-lg border border-pink-700/30">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <div className="font-bold text-white">{leadData.business || lead.email}</div>
+                            <div className="text-sm text-gray-400">{lead.email}</div>
+                            <div className="flex gap-4 mt-2 text-xs flex-wrap">
+                              {lead.opened && (
+                                <span className="text-blue-400">📧 Opened ({lead.openedCount}x)</span>
+                              )}
+                              {lead.clicked && (
+                                <span className="text-green-400">🔗 Clicked ({lead.clickCount}x)</span>
+                              )}
+                              <span className="text-pink-400">Score: {lead.interestScore}</span>
+                              {predictiveScores[lead.email] && (
+                                <span className={`font-bold ${
+                                  predictiveScores[lead.email].predictiveScore >= 70 ? 'text-red-400' :
+                                  predictiveScores[lead.email].predictiveScore >= 50 ? 'text-yellow-400' :
+                                  'text-blue-400'
+                                }`}>
+                                  🎯 ML: {predictiveScores[lead.email].predictiveScore}/100
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => researchCompany(
+                                leadData.business || lead.email,
+                                leadData.website || '',
+                                lead.email
+                              )}
+                              disabled={researchingCompany === lead.email}
+                              className="text-xs bg-gradient-to-r from-purple-700 to-pink-700 hover:from-purple-600 hover:to-pink-600 text-white px-3 py-1.5 rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {researchingCompany === lead.email ? '⏳ Researching...' : '🤖 AI Research'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                calculatePredictiveScore(lead.email, { ...lead, ...leadData });
+                                const score = predictiveScores[lead.email];
+                                if (score) {
+                                  alert(`Predictive Score: ${score.predictiveScore}/100\nConversion Probability: ${score.conversionProbability}%\nRisk: ${score.riskLevel}\n\n${score.recommendations?.join('\n')}`);
+                                }
+                              }}
+                              className="text-xs bg-gradient-to-r from-blue-700 to-cyan-700 hover:from-blue-600 hover:to-cyan-600 text-white px-3 py-1.5 rounded font-medium"
+                            >
+                              📊 Score
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const followUp = await generateSmartFollowUp(lead.email, leadData, (lead.followUpCount || 0) + 1);
+                                if (followUp) {
+                                  alert(`Smart Follow-up Generated!\n\nSubject: ${followUp.followUpEmail.subject}\n\nStrategy: ${followUp.followUpEmail.strategy}\n\n${followUp.recommendations?.join('\n')}`);
+                                }
+                              }}
+                              className="text-xs bg-gradient-to-r from-green-700 to-emerald-700 hover:from-green-600 hover:to-emerald-600 text-white px-3 py-1.5 rounded font-medium"
+                            >
+                              ✉️ Smart FU
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* CAMPAIGN INTELLIGENCE & PREDICTIONS */}
             {whatsappLinks.length > 0 && (
               <div className="bg-gradient-to-br from-indigo-900/20 to-purple-900/20 p-4 sm:p-6 rounded-xl border border-indigo-700/50">
@@ -3888,6 +4202,99 @@ Check browser console for details.`);
               <button
                 onClick={() => setShowMultiChannelModal(false)}
                 className="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ AI RESEARCH MODAL */}
+      {showResearchModal && researchingCompany && researchResults[researchingCompany] && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col border-2 border-purple-500/30">
+            <div className="relative p-6 border-b border-gray-700/50 bg-gradient-to-r from-purple-900/40 via-pink-900/40 to-purple-900/40">
+              <div className="relative flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400">
+                    🤖 AI Research Results
+                  </h2>
+                  <p className="text-sm text-purple-200 mt-1">
+                    {researchResults[researchingCompany].companyName}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowResearchModal(false);
+                    setResearchingCompany(null);
+                  }}
+                  className="text-gray-400 hover:text-white hover:bg-red-500/20 transition-all duration-200 text-3xl w-12 h-12 rounded-full flex items-center justify-center"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-900/30 to-gray-800/30">
+              <div className="space-y-4">
+                {/* General Idea */}
+                <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                  <h3 className="text-sm font-bold text-blue-300 mb-2">📋 General Value Proposition</h3>
+                  <div className="text-sm text-gray-300 space-y-2">
+                    <div><span className="font-semibold">Service:</span> {researchResults[researchingCompany].generalIdea?.service || 'N/A'}</div>
+                    <div><span className="font-semibold">Value:</span> {researchResults[researchingCompany].generalIdea?.valueProposition || 'N/A'}</div>
+                    <div><span className="font-semibold">Target:</span> {researchResults[researchingCompany].generalIdea?.targetAudience || 'N/A'}</div>
+                  </div>
+                </div>
+
+                {/* Research Notes */}
+                {researchResults[researchingCompany].personalizedEmail?.researchNotes && (
+                  <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                    <h3 className="text-sm font-bold text-yellow-300 mb-2">🔍 Research Notes</h3>
+                    <p className="text-sm text-gray-300">{researchResults[researchingCompany].personalizedEmail.researchNotes}</p>
+                  </div>
+                )}
+
+                {/* Personalized Email */}
+                <div className="bg-gray-800/50 p-4 rounded-lg border border-purple-700">
+                  <h3 className="text-sm font-bold text-purple-300 mb-3">✉️ Personalized Email</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">Subject:</label>
+                      <div className="bg-gray-900/50 p-3 rounded border border-gray-600 text-sm text-white font-medium">
+                        {researchResults[researchingCompany].personalizedEmail?.subject || 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">Body:</label>
+                      <div className="bg-gray-900/50 p-3 rounded border border-gray-600 text-sm text-white whitespace-pre-wrap">
+                        {researchResults[researchingCompany].personalizedEmail?.body || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  // Copy email to clipboard
+                  const emailText = `Subject: ${researchResults[researchingCompany].personalizedEmail?.subject || ''}\n\n${researchResults[researchingCompany].personalizedEmail?.body || ''}`;
+                  navigator.clipboard.writeText(emailText);
+                  alert('Email copied to clipboard!');
+                }}
+                className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white rounded font-medium"
+              >
+                📋 Copy Email
+              </button>
+              <button
+                onClick={() => {
+                  setShowResearchModal(false);
+                  setResearchingCompany(null);
+                }}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-medium"
               >
                 Close
               </button>

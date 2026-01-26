@@ -82,6 +82,13 @@ export async function POST(req) {
         }
       }
       
+      // ✅ Calculate interest score based on engagement
+      let interestScore = data.interestScore || 0;
+      if (replied) interestScore += 50; // Reply = 50 points
+      
+      // ✅ Determine if lead seems interested (score >= 30 = opened + clicked, or replied)
+      const seemsInterested = interestScore >= 30 || replied;
+      
       // ✅ Only include non-deleted leads
       leads.push({
         email: email,
@@ -92,7 +99,17 @@ export async function POST(req) {
         followUpCount: followUpCount,
         lastFollowUpAt: data.lastFollowUpSentAt || null,
         followUpDates: data.followUpDates || [],
-        threadId: data.threadId || null
+        threadId: data.threadId || null,
+        // ✅ Engagement tracking
+        opened: data.opened || false,
+        openedAt: data.openedAt || null,
+        openedCount: data.openedCount || 0,
+        clicked: data.clicked || false,
+        clickedAt: data.clickedAt || null,
+        clickCount: data.clickCount || 0,
+        lastEngagementAt: data.lastEngagementAt || null,
+        interestScore: interestScore,
+        seemsInterested: seemsInterested
       });
     });
     

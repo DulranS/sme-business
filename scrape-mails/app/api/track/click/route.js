@@ -27,6 +27,32 @@ export async function GET(request) {
         count: increment(1),
         lastClick: new Date().toISOString()
       });
+      
+      // ✅ Track email clicks for engagement stats (extract email from tracking ID)
+      try {
+        const { getDocs, query, where, collection } = await import('firebase/firestore');
+        // Extract email from tracking ID format: userId_timestamp_random
+        const parts = clid.split('_');
+        if (parts.length >= 2) {
+          const userId = parts[0];
+          const q = query(collection(db, 'sent_emails'), where('trackingId', '==', clid));
+          const snapshot = await getDocs(q);
+          
+          if (!snapshot.empty) {
+            const docRef = snapshot.docs[0].ref;
+            const now = new Date().toISOString();
+            await updateDoc(docRef, {
+              clicked: true,
+              clickedAt: now,
+              clickCount: increment(1),
+              lastEngagementAt: now,
+              interestScore: increment(20) // Click = 20 points (higher than open)
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Email click tracking error:', e);
+      }
     } catch (e) {
       console.error('Click log error:', e);
     }
