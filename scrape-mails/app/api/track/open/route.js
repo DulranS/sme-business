@@ -20,6 +20,8 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const testId = searchParams.get('test');
   const version = searchParams.get('v');
+  const email = searchParams.get('email');
+  const tid = searchParams.get('tid');
 
   if (testId && version) {
     try {
@@ -29,6 +31,29 @@ export async function GET(request) {
       });
     } catch (e) {
       console.error('Track open error:', e);
+    }
+  }
+
+  // ✅ Track email opens for engagement stats
+  if (email && tid) {
+    try {
+      const { getDocs, query, where, collection } = await import('firebase/firestore');
+      const q = query(collection(db, 'sent_emails'), where('to', '==', email));
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        const docRef = snapshot.docs[0].ref;
+        const now = new Date().toISOString();
+        await updateDoc(docRef, {
+          opened: true,
+          openedAt: now,
+          openedCount: increment(1),
+          lastEngagementAt: now,
+          interestScore: increment(10) // Open = 10 points
+        });
+      }
+    } catch (e) {
+      console.error('Email open tracking error:', e);
     }
   }
 
