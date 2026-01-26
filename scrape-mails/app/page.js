@@ -6,7 +6,7 @@ import { signInWithPopup } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
 // ✅ SECURITY: Use environment variable for secret key
-const SECRET_KEY = process.env.NEXT_PUBLIC_ACCESS_SECRET_KEY || '';
+const SECRET_KEY = 'goofyballcornball248' || '';
 const ACCESS_GRANTED = 'access_granted';
 
 export default function Home() {
