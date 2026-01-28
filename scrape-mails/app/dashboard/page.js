@@ -3008,7 +3008,7 @@ This prevents duplicate emails and spam complaints.`);
                 <span>🗄️ {archivedContactsCount} archived contacts</span>
               </div>
               <p className="text-xs text-amber-200 mt-1">
-                Contacts marked as irrelevant >30 days ago. Re-engage for new campaigns?
+                Contacts marked as irrelevant over 30 days ago. Re-engage for new campaigns?
               </p>
             </div>
             <button
