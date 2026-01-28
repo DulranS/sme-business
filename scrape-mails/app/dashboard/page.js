@@ -3125,9 +3125,6 @@ This prevents duplicate emails and spam complaints.`);
   
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200">
-      <Head>
-        <title>B2B Growth Engine | Strategic Outreach</title>
-      </Head>
       
       <header className="bg-gray-800 shadow-sm border-b border-gray-700">
         <div className="container mx-auto px-2 sm:px-4 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
