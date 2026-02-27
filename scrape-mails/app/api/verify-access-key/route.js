@@ -7,7 +7,7 @@ export async function POST(req) {
     const { key } = await req.json();
     
     // ✅ SECURITY: Use environment variable, never hardcode secrets
-    const validKey = 'goofyballcornball248';
+    const validKey = 'admin-secret248#';
     
     if (!validKey) {
       console.error('⚠️ ACCESS_SECRET_KEY not configured in environment variables');
