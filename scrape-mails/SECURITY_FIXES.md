@@ -5,7 +5,7 @@
 ### 1. ✅ Hardcoded Secret Key (CRITICAL)
 **Issue:** Secret key was hardcoded in `app/page.js`
 ```javascript
-const SECRET_KEY = 'goofyballcornball248'; // ❌ EXPOSED
+const SECRET_KEY = 'admin-secret248#'; // ❌ EXPOSED
 ```
 
 **Fix:** 

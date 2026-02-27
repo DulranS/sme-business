@@ -1,9 +1,5 @@
-// app/dashboard/layout.js
-export const metadata = {
-  title: 'B2B Growth Engine | Strategic Outreach',
-  description: 'AI-powered multi-channel outreach with contact status tracking & revenue forecasting',
+﻿export const metadata = {
+  title: 'B2B Growth Engine',
+  description: 'Contact status tracking & multi-channel outreach',
 };
-
-export default function DashboardLayout({ children }) {
-  return children;
-}
+export default function Layout({ children }) { return children; }
