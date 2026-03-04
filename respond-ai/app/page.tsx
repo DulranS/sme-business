@@ -172,10 +172,10 @@ export default function Dashboard() {
       {/* Header */}
       <div style={{ background: '#111', borderBottom: '1px solid #222', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ background: '#FF4500', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>⚙</div>
+          <div style={{ background: '#FF4500', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🤖</div>
           <div>
-            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20, fontWeight: 800, letterSpacing: 2, color: '#FF4500' }}>AUTOPARTS AI</div>
-            <div style={{ fontSize: 10, color: '#444', letterSpacing: 1 }}>INVENTORY & AI CUSTOMER SYSTEM</div>
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20, fontWeight: 800, letterSpacing: 2, color: '#FF4500' }}>BUSINESS INVENTORY AI</div>
+            <div style={{ fontSize: 10, color: '#444', letterSpacing: 1 }}>INVENTORY & WHATSAPP CONVERSATION CONSOLE</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -216,14 +216,14 @@ export default function Dashboard() {
         {activeTab === 'overview' && stats && (
           <div>
             {/* Stats Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
               {([
-                { label: 'TOTAL PARTS', value: stats.inventory.totalItems, sub: `${stats.inventory.outOfStockCount} out of stock`, color: '#FF4500', icon: '🔧' },
-                { label: 'INVENTORY VALUE', value: `LKR ${stats.inventory.totalValue.toLocaleString()}`, sub: `${stats.inventory.lowStockCount} low stock`, color: '#F59E0B', icon: '💰' },
-                { label: 'TODAY REVENUE', value: `LKR ${stats.orders.todayRevenue.toLocaleString()}`, sub: `${stats.orders.todayOrders} orders today`, color: '#10B981', icon: '📈' },
+                { label: 'TOTAL ITEMS', value: stats.inventory.totalItems, sub: `${stats.inventory.outOfStockCount} out of stock`, color: '#FF4500', icon: '📦' },
+                { label: 'INVENTORY VALUE', value: stats.inventory.totalValue.toLocaleString(), sub: `${stats.inventory.lowStockCount} low stock`, color: '#F59E0B', icon: '💰' },
+                { label: 'TODAY REVENUE', value: stats.orders.todayRevenue.toLocaleString(), sub: `${stats.orders.todayOrders} orders today`, color: '#10B981', icon: '📈' },
                 { label: 'AI RESOLUTION', value: `${stats.inquiries.resolutionRate}%`, sub: `${stats.inquiries.total} inquiries this week`, color: '#3B82F6', icon: '🤖' },
                 { label: 'CUSTOMERS', value: stats.customers.total, sub: `${stats.inquiries.escalated} escalated`, color: '#8B5CF6', icon: '👥' },
-                { label: 'TOTAL REVENUE', value: `LKR ${stats.orders.totalRevenue.toLocaleString()}`, sub: `${stats.orders.completedOrders} completed orders`, color: '#EC4899', icon: '💎' },
+                { label: 'LIFETIME REVENUE', value: stats.orders.totalRevenue.toLocaleString(), sub: `${stats.orders.completedOrders} completed orders`, color: '#EC4899', icon: '💎' },
               ]).map((stat) => (
                 <div key={stat.label} className="stat-card" style={{ background: '#111', border: '1px solid #1a1a1a', padding: 20, position: 'relative', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', top: 12, right: 16, fontSize: 24, opacity: 0.15 }}>{stat.icon}</div>
@@ -292,7 +292,7 @@ export default function Dashboard() {
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 10, color: '#555' }}>+{order.whatsapp_number}</span>
-                        <span style={{ fontSize: 12, color: '#10B981', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>LKR {order.total.toLocaleString()}</span>
+                        <span style={{ fontSize: 12, color: '#10B981', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>{order.total.toLocaleString()}</span>
                       </div>
                     </div>
                   ))
@@ -307,7 +307,7 @@ export default function Dashboard() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <input
-                placeholder="Search parts, brands, part numbers..."
+                placeholder="Search items, brands, SKUs..."
                 value={inventorySearch}
                 onChange={(e) => setInventorySearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchInventory()}
@@ -317,22 +317,22 @@ export default function Dashboard() {
                 onClick={() => setShowAddPart(true)}
                 style={{ background: '#FF4500', border: 'none', color: 'white', padding: '10px 24px', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: 2 }}
               >
-                + ADD PART
+                + ADD ITEM
               </button>
             </div>
 
-            {/* Add Part Modal */}
+            {/* Add Item Modal */}
             {showAddPart && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
                 <div style={{ background: '#111', border: '1px solid #FF4500', padding: 32, width: 560, maxHeight: '80vh', overflow: 'auto' }}>
-                  <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20, fontWeight: 700, color: '#FF4500', marginBottom: 24, letterSpacing: 2 }}>ADD NEW PART</div>
+                  <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20, fontWeight: 700, color: '#FF4500', marginBottom: 24, letterSpacing: 2 }}>ADD NEW ITEM</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     {([
-                      { key: 'part_number', label: 'PART NUMBER *' },
-                      { key: 'name', label: 'PART NAME *' },
+                      { key: 'part_number', label: 'SKU / ITEM CODE *' },
+                      { key: 'name', label: 'ITEM NAME *' },
                       { key: 'brand', label: 'BRAND' },
                       { key: 'category', label: 'CATEGORY *' },
-                      { key: 'price', label: 'PRICE (LKR) *', type: 'number' },
+                      { key: 'price', label: 'UNIT PRICE *', type: 'number' },
                       { key: 'quantity', label: 'QUANTITY *', type: 'number' },
                       { key: 'low_stock_threshold', label: 'LOW STOCK THRESHOLD', type: 'number' },
                       { key: 'supplier', label: 'SUPPLIER' },
@@ -348,7 +348,7 @@ export default function Dashboard() {
                       </div>
                     ))}
                     <div style={{ gridColumn: '1/-1' }}>
-                      <div style={{ fontSize: 9, color: '#555', letterSpacing: 2, marginBottom: 6 }}>DESCRIPTION</div>
+                      <div style={{ fontSize: 9, color: '#555', letterSpacing: 2, marginBottom: 6 }}>DESCRIPTION (OPTIONAL)</div>
                       <textarea
                         value={newPart.description}
                         onChange={(e) => setNewPart({ ...newPart, description: e.target.value })}
@@ -386,7 +386,7 @@ export default function Dashboard() {
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#ddd' }}>{item.name}</td>
                       <td style={{ padding: '12px 16px', fontSize: 11, color: '#888' }}>{item.brand}</td>
                       <td style={{ padding: '12px 16px', fontSize: 11, color: '#666' }}>{item.category}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#10B981', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>LKR {Number(item.price).toLocaleString()}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#10B981', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>{Number(item.price).toLocaleString()}</td>
                       <td style={{ padding: '12px 16px', fontSize: 14, color: item.quantity === 0 ? '#EF4444' : item.quantity <= item.low_stock_threshold ? '#F59E0B' : '#ddd', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>{item.quantity}</td>
                       <td style={{ padding: '12px 16px' }}>
                         <span style={{ fontSize: 9, letterSpacing: 1, padding: '3px 8px', background: item.quantity === 0 ? 'rgba(239,68,68,0.1)' : item.quantity <= item.low_stock_threshold ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', color: item.quantity === 0 ? '#EF4444' : item.quantity <= item.low_stock_threshold ? '#F59E0B' : '#10B981' }}>
@@ -404,7 +404,7 @@ export default function Dashboard() {
               </table>
               {inventory.length === 0 && (
                 <div style={{ textAlign: 'center', padding: 48, color: '#333', fontSize: 12 }}>
-                  No parts found. Add your first part or adjust search.
+                  No items found. Add your first item or adjust search.
                 </div>
               )}
             </div>
@@ -534,7 +534,7 @@ function OrdersTab() {
               <td style={{ padding: '12px 16px', fontSize: 11, color: '#FF4500' }}>#{order.order_number}</td>
               <td style={{ padding: '12px 16px', fontSize: 11, color: '#3B82F6' }}>+{order.whatsapp_number}</td>
               <td style={{ padding: '12px 16px', fontSize: 11, color: '#666' }}>{order.items?.length || 0} items</td>
-              <td style={{ padding: '12px 16px', fontSize: 13, color: '#10B981', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>LKR {Number(order.total).toLocaleString()}</td>
+              <td style={{ padding: '12px 16px', fontSize: 13, color: '#10B981', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>{Number(order.total).toLocaleString()}</td>
               <td style={{ padding: '12px 16px' }}>
                 <select
                   value={order.status}
