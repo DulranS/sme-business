@@ -2,6 +2,7 @@
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { google } from 'googleapis';
+import { supabaseAdmin } from '../../../lib/supabaseClient';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -438,6 +439,89 @@ export async function POST(req) {
           
           await saveSentEmailRecord(userId, recipient.email, response.data.threadId, trackingId);
           sentCount++;
+
+          // 🔄 Mirror state into Supabase for AI + cron flows (non-blocking)
+          if (supabaseAdmin) {
+            try {
+              const email = recipient.email;
+              const businessName =
+                recipient.business_name ||
+                recipient.business ||
+                email.split('@')[0];
+              const address =
+                recipient.address ||
+                recipient.Address ||
+                '';
+              const phone =
+                recipient.whatsapp_number ||
+                recipient.phone_primary ||
+                recipient.phone ||
+                '';
+
+              // 1) upsert lead
+              const { data: leadRow, error: leadError } = await supabaseAdmin
+                .from('leads')
+                .upsert(
+                  {
+                    business_name: businessName,
+                    email,
+                    phone,
+                    address,
+                    source: 'csv',
+                    status: 'cold',
+                  },
+                  { onConflict: 'email' }
+                )
+                .select()
+                .single();
+
+              if (leadError) {
+                console.error('[send-email] Supabase lead upsert failed', leadError.message);
+              } else if (leadRow) {
+                const leadId = leadRow.id;
+                const sentAtIso = new Date().toISOString();
+
+                // 2) log sent email in email_threads
+                const { error: threadErr } = await supabaseAdmin
+                  .from('email_threads')
+                  .insert({
+                    lead_id: leadId,
+                    gmail_thread_id: response.data.threadId,
+                    gmail_message_id: response.data.id,
+                    subject,
+                    direction: 'sent',
+                    body,
+                    sent_at: sentAtIso,
+                  });
+                if (threadErr) {
+                  console.error('[send-email] Supabase email_threads insert failed', threadErr.message);
+                }
+
+                // 3) schedule 3 follow-ups (3, 5, 7 days)
+                const base = new Date(sentAtIso);
+                const offsets = [3, 5, 7];
+                const rows = offsets.map((days, idx) => {
+                  const d = new Date(base);
+                  d.setDate(d.getDate() + days);
+                  return {
+                    lead_id: leadId,
+                    scheduled_date: d.toISOString().slice(0, 10),
+                    follow_up_number: idx + 1,
+                    status: 'pending',
+                  };
+                });
+
+                const { error: fuErr } = await supabaseAdmin
+                  .from('follow_up_schedule')
+                  .insert(rows);
+                if (fuErr) {
+                  console.error('[send-email] Supabase follow_up_schedule insert failed', fuErr.message);
+                }
+              }
+            } catch (supabaseError) {
+              console.error('[send-email] Supabase sync error', supabaseError);
+            }
+          }
         }
       } catch (e) {
         console.warn(`Failed to send to ${recipient.email}:`, e.message);
