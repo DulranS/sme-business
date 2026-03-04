@@ -36,8 +36,8 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
 
-# AutoParts AI 🔧
-### AI-powered automotive parts inventory & WhatsApp customer inquiry system
+# Business Inventory AI 📦
+### AI-powered product inventory & WhatsApp customer conversation system
 
 Built with: **Next.js 14 · Supabase · OpenAI GPT-4o · WhatsApp Business API · Vercel**
 
@@ -178,5 +178,5 @@ Tabs:
 
 ## Adding to Your CV
 
-**Project: AutoParts AI — Agentic AI Customer System**
-Built a production-grade automotive parts inventory system with an AI agent powered by GPT-4o function calling. Integrated WhatsApp Business API for automated customer inquiry handling, with real-time inventory lookup, compatibility checking, and order tracking. Deployed on Vercel with Supabase backend. Stack: Next.js, Supabase, OpenAI GPT-4o, WhatsApp Business API.
+**Project: Business Inventory AI — Agentic AI Customer System**
+Built a production-grade product inventory and customer conversation system with an AI agent powered by GPT-4o function calling. Integrated WhatsApp Business API for automated customer inquiry handling, with real-time inventory lookup and order tracking. Deployed on Vercel with Supabase backend. Stack: Next.js, Supabase, OpenAI GPT-4o, WhatsApp Business API.

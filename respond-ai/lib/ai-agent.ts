@@ -22,7 +22,7 @@ async function searchInventory(query: string, vehicleInfo?: string): Promise<Rec
   return data || []
 }
 
-// Check specific part availability
+// Check specific item availability by item code / SKU
 async function checkPartAvailability(partNumber: string) {
   const { data } = await supabaseAdmin
     .from('inventory')
@@ -145,7 +145,7 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'search_inventory',
-      description: 'Search for auto parts in inventory by name, category, brand, or description. Use this when customer asks about a specific part or type of part.',
+      description: 'Search for inventory items by name, category, brand, or description. Use this when a customer asks about a specific item or type of item.',
       parameters: {
         type: 'object',
         properties: {
@@ -166,7 +166,7 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'check_part_availability',
-      description: 'Check availability of a specific part by part number',
+      description: 'Check availability of a specific inventory item by item code / SKU',
       parameters: {
         type: 'object',
         properties: {
@@ -204,14 +204,14 @@ async function processToolCall(toolName: string, toolArgs: Record<string, string
     case 'search_inventory': {
       const results = await searchInventory(toolArgs.query, toolArgs.vehicle_info)
       if (results.length === 0) {
-        return 'No matching parts found in inventory for this query.'
+        return 'No matching items found in inventory for this query.'
       }
       return JSON.stringify(
         results.map((item: Record<string, unknown>) => ({
           part_number: item.part_number,
           name: item.name,
           brand: item.brand,
-          price: `LKR ${(item.price as number).toLocaleString()}`,
+          price: (item.price as number)?.toLocaleString(),
           quantity: item.quantity,
           available: (item.quantity as number) > 0,
           compatible_vehicles: item.compatible_vehicles,
@@ -222,12 +222,12 @@ async function processToolCall(toolName: string, toolArgs: Record<string, string
 
     case 'check_part_availability': {
       const part = await checkPartAvailability(toolArgs.part_number)
-      if (!part) return 'Part not found in our inventory.'
+      if (!part) return 'Item not found in our inventory.'
       return JSON.stringify({
         part_number: part.part_number,
         name: part.name,
         brand: part.brand,
-        price: `LKR ${part.price.toLocaleString()}`,
+        price: part.price?.toLocaleString(),
         quantity: part.quantity,
         available: part.quantity > 0,
         location: part.location,
@@ -247,7 +247,7 @@ async function processToolCall(toolName: string, toolArgs: Record<string, string
         status: order.status,
         payment_status: order.payment_status,
         items: order.items,
-        total: `LKR ${order.total.toLocaleString()}`,
+        total: order.total?.toLocaleString(),
         created_at: new Date(order.created_at).toLocaleDateString(),
       })
     }
@@ -272,16 +272,15 @@ export async function processCustomerMessage(
   const existingMessages = conversation?.messages || []
 
   // Build messages array for OpenAI
-  const systemPrompt = `You are an expert automotive parts assistant for an auto parts business in Sri Lanka. 
-Your job is to help customers find the right parts, check availability, get prices, and track orders via WhatsApp.
+  const systemPrompt = `You are an expert AI assistant for a product-based business. 
+Your job is to help customers find the right items from inventory, check availability, get prices, and track orders via WhatsApp.
 
 IMPORTANT RULES:
 - Always be helpful, professional, and concise (WhatsApp format - no long paragraphs)
-- Use emojis appropriately for WhatsApp (🔧 for parts, ✅ for available, ❌ for unavailable, 💰 for prices)
-- When parts are found, always mention: name, brand, price, availability, and part number
-- If a customer asks about compatibility, ask for their vehicle make, model, and year
+- Use emojis appropriately for WhatsApp (📦 for items, ✅ for available, ❌ for unavailable, 💰 for prices)
+- When items are found, always mention: name, brand, price, availability, and item code / SKU
 - If you cannot help or need to escalate, say: "I'll connect you with our team member now." 
-- Always use LKR for prices
+- Always use the business’s local currency for prices (do not assume a specific country)
 - Be conversational and friendly
 - If stock is low (3 or less), mention urgency: "⚠️ Only X left in stock!"
 - Format WhatsApp messages properly - short, clear, with line breaks

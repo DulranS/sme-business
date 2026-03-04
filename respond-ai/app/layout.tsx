@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'AutoParts AI — Inventory & Customer System',
-  description: 'AI-powered automotive parts inventory management with WhatsApp integration',
+  title: 'Business Inventory AI — Inventory & WhatsApp Console',
+  description: 'AI-powered product inventory and WhatsApp customer conversation system for any business',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
