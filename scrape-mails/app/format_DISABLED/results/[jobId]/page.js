@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getJobStatus } from '../../../lib/api';
+import { getJobStatus } from '@/app/lib/api';
 
 export default function ResultsPage() {
   const { jobId } = useParams();
