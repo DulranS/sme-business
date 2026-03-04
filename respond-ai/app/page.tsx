@@ -1,37 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
-
-export type OrderItem = { name: string; quantity: number; price: number }
-export type Order = {
-  id: string
-  order_number: string
-  whatsapp_number: string
-  total: number
-  status: string
-  created_at: string
-  items: OrderItem[]
-  payment_status?: string
-}
-export type Inquiry = {
-  id: string
-  whatsapp_number: string
-  message: string
-  ai_response: string
-  intent: string
-  created_at: string
-}
-export type InventoryItem = {
-  id: string
-  part_number: string
-  name: string
-  brand: string
-  quantity: number
-  low_stock_threshold: number
-  price: number
-  category: string
-}
+import type { Order, InventoryItem, InquiryLog, Conversation } from '@/lib/supabase'
 export type Stats = {
   inventory: {
     totalItems: number
@@ -57,7 +27,7 @@ export type Stats = {
     intentBreakdown: Record<string, number>
   }
   recentOrders: Order[]
-  recentInquiries: Inquiry[]
+  recentInquiries: InquiryLog[]
   lowStockItems: InventoryItem[]
 }
 
@@ -427,7 +397,7 @@ export default function Dashboard() {
 
 // Conversations Component
 function ConversationsTab() {
-  const [conversations, setConversations] = useState<Array<{ id: string; whatsapp_number: string; status: string; messages: Array<{role: string; content: string; timestamp: string}>; updated_at: string }>>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [selected, setSelected] = useState<string | null>(null)
 
   useEffect(() => {
