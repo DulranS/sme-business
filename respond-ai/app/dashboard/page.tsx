@@ -174,7 +174,7 @@ export default function Dashboard() {
               onClick={() => setShowUserMenu(!showUserMenu)}
               style={{
                 background: 'none',
-                border: 'none',
+                border: '1px solid #333',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
@@ -183,7 +183,6 @@ export default function Dashboard() {
                 fontSize: '0.9rem',
                 padding: '0.5rem 1rem',
                 borderRadius: '4px',
-                border: '1px solid #333',
               }}
             >
               👤 {user?.name || user?.email || 'User'}
