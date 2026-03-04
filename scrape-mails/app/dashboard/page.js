@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { getJobStatus } from '../../../lib/api';
 
 const TAB_OUTREACH = 'outreach';
 const TAB_AI_CONVERSATIONS = 'ai';
