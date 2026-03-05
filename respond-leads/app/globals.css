@@ -1,2 +1,209 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'DM Mono', monospace;
+  background: #0C0C0C;
+  color: #D4D4D4;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 12px;
+  }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E8FF47;
+  border-radius: 2px;
+}
+
+/* Form Elements */
+input, button, select {
+  font-family: 'DM Mono', monospace;
+  outline: none;
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Currency Selector */
+.currency-selector {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  background: #0F0F0F;
+  border: 1px solid #1A1A1A;
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 120px;
+}
+
+.currency-selector select {
+  background: #080808;
+  border: 1px solid #1A1A1A;
+  color: #D4D4D4;
+  padding: 8px 12px;
+  font-size: 11px;
+  border-radius: 4px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.currency-selector select:hover {
+  border-color: #E8FF47;
+}
+
+.currency-selector select:focus {
+  border-color: #E8FF47;
+  box-shadow: 0 0 0 2px rgba(232, 255, 71, 0.1);
+}
+
+/* Responsive Grid Adjustments */
+@media (max-width: 1024px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-row {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  
+  .toolbar {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  
+  .search-input {
+    width: 100% !important;
+  }
+  
+  .convo-layout {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+  }
+  
+  .convo-list {
+    border-right: none !important;
+    border-bottom: 1px solid #141414;
+    max-height: 200px;
+  }
+  
+  .modal-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .modal-card {
+    width: 95% !important;
+    margin: 20px !important;
+    padding: 24px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 12px 16px !important;
+  }
+  
+  .brand-name {
+    font-size: 14px !important;
+  }
+  
+  .tabs {
+    padding: 0 16px !important;
+  }
+  
+  .tab {
+    padding: 10px 16px !important;
+    font-size: 9px !important;
+  }
+  
+  .main {
+    padding: 16px !important;
+  }
+  
+  .table {
+    font-size: 10px !important;
+  }
+  
+  .th, .td {
+    padding: 8px 12px !important;
+  }
+  
+  .action-btn {
+    padding: 3px 8px !important;
+    font-size: 8px !important;
+  }
+}
+
+/* Touch-friendly for mobile */
+@media (hover: none) and (pointer: coarse) {
+  .tab:hover,
+  .tr-hover:hover,
+  .action-btn:hover,
+  .convo-item:hover {
+    background: inherit !important;
+  }
+  
+  .tab:active,
+  .tr-hover:active,
+  .action-btn:active,
+  .convo-item:active {
+    background: rgba(232, 255, 71, 0.1) !important;
+  }
+}

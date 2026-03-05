@@ -171,11 +171,27 @@ The application includes structured logging with multiple levels:
 
 ## 🚀 Deployment
 
-### Vercel (Recommended)
+### Vercel (Recommended) - Free Tier Optimized
 
 1. Connect your repository to Vercel
 2. Add environment variables in Vercel dashboard
 3. Deploy automatically on git push
+
+**Free Tier Limitations:**
+- **Cron Jobs**: Limited to daily execution (*/15 * * * * schedule)
+- **Rate Limiting**: Built-in rate limiting for API calls
+- **Message Queuing**: Handles burst traffic with delayed processing
+- **Health Monitoring**: Automated health checks every 15 minutes
+
+**Cron Jobs Included:**
+- `/api/cron/health-check` - Health monitoring (every 15 minutes)
+- `/api/cron/cleanup` - Data cleanup and optimization (daily at 2 AM)
+
+**Rate Limiting:**
+- 50 requests per minute per phone number
+- Message queuing for burst handling
+- 5-second delays between queued messages
+- Graceful fallback responses
 
 ### Environment-Specific Considerations
 
