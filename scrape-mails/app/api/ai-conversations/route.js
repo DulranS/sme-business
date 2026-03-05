@@ -1,71 +1,106 @@
+// Fetch AI-classified conversations and hot leads
+
+import { getDocs, collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 import { supabaseAdmin } from '../../../lib/supabaseClient';
 
-export async function GET() {
-  if (!supabaseAdmin) {
-    return Response.json(
-      { error: 'Supabase not configured' },
-      { status: 500 }
-    );
-  }
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID
+};
 
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
+
+export async function GET(req) {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const userId = req.headers.get('x-user-id') || req.nextUrl.searchParams.get('userId');
 
-    const [aiRes, followups, hot] = await Promise.all([
-      supabaseAdmin
-        .from('ai_responses')
-        .select('id, intent, ai_reply, sent_at, leads(id, business_name, email, status)')
-        .order('sent_at', { ascending: false }),
-      supabaseAdmin
-        .from('follow_up_schedule')
-        .select('id, follow_up_number, status, scheduled_date, leads(id, business_name, email, status)')
-        .eq('scheduled_date', today)
-        .eq('status', 'pending'),
-      supabaseAdmin
-        .from('leads')
-        .select('id, business_name, email, status')
-        .eq('status', 'hot'),
-    ]);
+    if (!userId) {
+      return Response.json(
+        { error: 'Missing userId in header or query' },
+        { status: 400 }
+      );
+    }
 
-    if (aiRes.error) throw aiRes.error;
-    if (followups.error) throw followups.error;
-    if (hot.error) throw hot.error;
+    // ✅ Get replied emails from Firestore
+    const repliedQuery = query(
+      collection(db, 'sent_emails'),
+      where('userId', '==', userId),
+      where('replied', '==', true),
+      orderBy('repliedAt', 'desc'),
+      limit(50)
+    );
 
-    const responses = aiRes.data || [];
-    const followupToday = followups.data || [];
-    const hotLeads = hot.data || [];
+    const repliedSnapshot = await getDocs(repliedQuery);
+    const leadsWithReplies = [];
 
-    const totalReplies = responses.length;
-    const interestedCount = responses.filter(
-      (r) => r.intent === 'interested'
-    ).length;
-    const resolvedCount = responses.filter((r) =>
-      ['interested', 'not_interested', 'unsubscribe'].includes(r.intent)
-    ).length;
-    const aiResolutionRate = totalReplies
-      ? Math.round((resolvedCount / totalReplies) * 100)
-      : 0;
+    repliedSnapshot.forEach(doc => {
+      const data = doc.data();
+      leadsWithReplies.push({
+        id: doc.id,
+        email: data.to,
+        business_name: data.businessName || 'Unknown',
+        replied: true,
+        repliedAt: data.repliedAt,
+        replyPreview: data.replyPreview,
+        seemsInterested: data.seemsInterested || false
+      });
+    });
 
-    const { count: followupsSentCount } = await supabaseAdmin
-      .from('follow_up_schedule')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'sent');
+    // ✅ Get follow-ups scheduled for today
+    const today = new Date().toDateString();
+    const followupQuery = query(
+      collection(db, 'sent_emails'),
+      where('userId', '==', userId),
+      where('replied', '==', false),
+      where('followUpAt', '<=', new Date(today).getTime() + 86400000)
+    );
+
+    const followupSnapshot = await getDocs(followupQuery);
+    const followupToday = [];
+
+    followupSnapshot.forEach(doc => {
+      const data = doc.data();
+      followupToday.push({
+        id: doc.id,
+        email: data.to,
+        business_name: data.businessName,
+        followUpNumber: (data.followUpSentCount || 0) + 1,
+        lastSentAt: data.sentAt
+      });
+    });
+
+    // ✅ Identify "hot" leads (interested)
+    const hotLeads = leadsWithReplies.filter(
+      l => l.seemsInterested || (l.replyPreview && l.replyPreview.toLowerCase().includes('interested'))
+    );
 
     return Response.json({
-      leadsWithReplies: responses,
+      success: true,
+      leadsWithReplies,
       hotLeads,
       followupToday,
       stats: {
-        totalReplies,
-        interestedCount,
-        aiResolutionRate,
-        followupsSent: followupsSentCount || 0,
-      },
+        totalReplies: leadsWithReplies.length,
+        interestedCount: hotLeads.length,
+        aiResolutionRate: leadsWithReplies.length > 0 
+          ? Math.round((hotLeads.length / leadsWithReplies.length) * 100)
+          : 0,
+        followupsSentToday: followupToday.length
+      }
     });
+
   } catch (error) {
-    console.error('[api/ai-conversations] Failed', error);
+    console.error('[ai-conversations] Error:', error);
     return Response.json(
-      { error: error.message || 'Failed to load AI conversations' },
+      { error: error.message || 'Failed to fetch conversations' },
       { status: 500 }
     );
   }

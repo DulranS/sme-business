@@ -1,7 +1,12 @@
 // app/api/check-replies/route.js
-import { getFirestore, doc, getDocs, collection, query, where, updateDoc } from 'firebase/firestore';
-import { initializeApp, getApps, getApp } from 'firebase/app';
+// Check Gmail for new replies using Gmail API
+// Mirrors findings to Firestore + Supabase for AI workflows
+
 import { google } from 'googleapis';
+import { doc, setDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { supabaseAdmin } from '../../../lib/supabaseClient';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -16,98 +21,131 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-// ✅ SECURITY: Input validation helper
-function validateUserId(userId) {
-  if (!userId || typeof userId !== 'string') return false;
-  return /^[a-zA-Z0-9]{20,}$/.test(userId);
-}
-
 export async function POST(req) {
   try {
     const { accessToken, userId } = await req.json();
 
-    // ✅ SECURITY: Input validation
     if (!accessToken || !userId) {
-      return Response.json({ error: 'Missing required fields' }, { status: 400 });
+      return Response.json(
+        { error: 'Missing accessToken or userId' },
+        { status: 400 }
+      );
     }
 
-    // ✅ SECURITY: Validate userId format
-    if (!validateUserId(userId)) {
-      return Response.json({ error: 'Invalid user ID format' }, { status: 400 });
-    }
-
-    const sentQuery = query(collection(db, 'sent_emails'), where('userId', '==', userId));
-    const sentSnapshot = await getDocs(sentQuery);
-    if (sentSnapshot.empty) {
-      return Response.json({ repliedCount: 0 });
-    }
-
-    const threadToEmail = {};
-    const emailToDocId = {};
-    sentSnapshot.docs.forEach(doc => {
-      const data = doc.data();
-      if (!data.replied && data.threadId) {
-        threadToEmail[data.threadId] = data.to;
-        emailToDocId[data.to] = doc.id;
-      }
-    });
-
-    if (Object.keys(threadToEmail).length === 0) {
-      return Response.json({ repliedCount: 0 });
-    }
-
-    const oauth2Client = new google.auth.OAuth2();
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_SECRET
+    );
     oauth2Client.setCredentials({ access_token: accessToken });
+
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const afterTimestamp = Math.floor(thirtyDaysAgo.getTime() / 1000);
+    // ✅ Get sent emails from our records
+    const sentEmailsQuery = query(
+      collection(db, 'sent_emails'),
+      where('userId', '==', userId),
+      where('replied', '==', false)
+    );
 
-    const messagesRes = await gmail.users.messages.list({
-      userId: 'me',
-      q: `in:inbox after:${afterTimestamp}`,
-      maxResults: 100
-    });
-
-    const messageIds = messagesRes.data.messages?.map(m => m.id) || [];
+    const sentSnapshot = await getDocs(sentEmailsQuery);
+    const replies = [];
     let repliedCount = 0;
 
-    for (const msgId of messageIds) {
-      const msgRes = await gmail.users.messages.get({
-        userId: 'me',
-        id: msgId,
-        format: 'metadata',
-        metadataHeaders: ['References', 'In-Reply-To', 'From']
-      });
+    // ✅ Check each sent email for replies
+    for (const sentDoc of sentSnapshot.docs) {
+      const sentData = sentDoc.data();
+      const threadId = sentData.threadId;
 
-      const headers = msgRes.data.payload?.headers || [];
-      const from = headers.find(h => h.name === 'From')?.value || '';
+      if (!threadId) continue;
 
-      if (from.includes('@gmail.com')) continue;
-
-      const threadId = msgRes.data.threadId;
-      const email = threadToEmail[threadId];
-      if (email) {
-        const docId = emailToDocId[email];
-        const repliedAt = new Date().toISOString();
-        // ✅ Track when lead replied for 30-day deletion logic
-        await updateDoc(doc(db, 'sent_emails', docId), { 
-          replied: true,
-          repliedAt: repliedAt // Track reply date for cleanup
+      try {
+        // ✅ Get full thread
+        const threadRes = await gmail.users.threads.get({
+          userId: 'me',
+          id: threadId,
+          format: 'full'
         });
-        await updateDoc(doc(db, 'deals', email), {
-          stage: 'replied',
-          lastUpdate: repliedAt
-        });
-        repliedCount++;
-        delete threadToEmail[threadId];
+
+        const messages = threadRes.data.messages || [];
+        
+        // ✅ Find replies (messages after our sent message)
+        for (let i = 0; i < messages.length; i++) {
+          const msg = messages[i];
+          const headers = msg.payload.headers || [];
+          const fromHeader = headers.find(h => h.name === 'From')?.value || '';
+          const timeMs = parseInt(msg.internalDate);
+
+          // Check if this message is from someone else (a reply)
+          if (!fromHeader.includes('noreply@') && i > 0) {
+            const bodyData = msg.payload.parts?.[0]?.body?.data ||
+                           msg.payload.body?.data;
+            
+            const replyBody = bodyData
+              ? Buffer.from(bodyData, 'base64').toString('utf-8')
+              : '';
+
+            replies.push({
+              originalTo: sentData.to,
+              replyFrom: fromHeader,
+              replyBody: replyBody.slice(0, 500),
+              repliedAt: new Date(timeMs).toISOString(),
+              threadId,
+              messageId: msg.id
+            });
+
+            // ✅ Update Firestore
+            await setDoc(
+              doc(db, 'sent_emails', sentDoc.id),
+              {
+                replied: true,
+                repliedAt: new Date(timeMs).toISOString(),
+                replyPreview: replyBody.slice(0, 200)
+              },
+              { merge: true }
+            );
+
+            repliedCount++;
+
+            // ✅ Update Supabase
+            if (supabaseAdmin) {
+              try {
+                await supabaseAdmin
+                  .from('email_threads')
+                  .insert({
+                    lead_email: sentData.to,
+                    gmail_thread_id: threadId,
+                    gmail_message_id: msg.id,
+                    subject: headers.find(h => h.name === 'Subject')?.value || '',
+                    direction: 'received',
+                    body: replyBody.slice(0, 2000),
+                    received_at: new Date(timeMs).toISOString()
+                  });
+              } catch (supabaseError) {
+                console.warn('[check-replies] Supabase insert failed:', supabaseError.message);
+              }
+            }
+
+            break; // Found reply for this thread
+          }
+        }
+      } catch (threadError) {
+        console.warn(`[check-replies] Error checking thread ${threadId}:`, threadError.message);
       }
     }
 
-    return Response.json({ repliedCount });
+    return Response.json({
+      success: true,
+      repliedCount,
+      replies,
+      totalChecked: sentSnapshot.size,
+      message: `Found ${repliedCount} new replies from ${sentSnapshot.size} sent emails`
+    });
+
   } catch (error) {
-    console.error('Check replies error:', error);
-    return Response.json({ error: error.message || 'Failed to check replies' }, { status: 500 });
+    console.error('[check-replies] Error:', error);
+    return Response.json(
+      { error: error.message || 'Failed to check replies' },
+      { status: 500 }
+    );
   }
 }

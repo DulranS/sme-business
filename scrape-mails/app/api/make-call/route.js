@@ -1,10 +1,13 @@
 // app/api/make-call/route.js
-import { NextResponse } from 'next';
-import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { initializeApp, getApps } from 'firebase/app';
-import twilio from 'twilio';
+// Initiates outbound calls via Twilio with compliance tracking
+// Maintains same pattern as send-email: Firebase + Supabase sync
 
-// ✅ Initialize Firebase safely
+import twilio from 'twilio';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { supabaseAdmin } from '../../../lib/supabaseClient';
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -15,128 +18,228 @@ const firebaseConfig = {
   measurementId: process.env.FIREBASE_MEASUREMENT_ID
 };
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-// 🔐 Twilio
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
-const client = accountSid && authToken ? twilio(accountSid, authToken) : null;
+if (!accountSid || !authToken) {
+  console.error('⚠️ Twilio credentials missing - calls will not work');
+}
+
+const twilioClient = twilio(accountSid, authToken);
+
+// ✅ Format phone to E.164 standard
+function formatPhoneE164(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  
+  let cleaned = raw.replace(/[^\d+]/g, '');
+  
+  // Handle local formats (assume +1 for US if no country code)
+  if (!cleaned.startsWith('+')) {
+    if (cleaned.length === 10) cleaned = '+1' + cleaned;
+    else if (cleaned.length === 11 && cleaned.startsWith('1')) cleaned = '+' + cleaned;
+    else cleaned = '+1' + cleaned; // Default fallback
+  }
+  
+  // Validate E.164: +[1-9]\d{1,14}
+  const e164Regex = /^\+[1-9]\d{1,14}$/;
+  return e164Regex.test(cleaned) ? cleaned : null;
+}
 
 export async function POST(req) {
-  // ✅ Always return JSON
-  const sendJson = (data, status = 200) => {
-    return NextResponse.json(data, { status });
-  };
-
   try {
-    const body = await req.json();
-    const { toPhone, businessName, userId, callType = 'direct' } = body;
+    const {
+      toPhone,
+      businessName,
+      contactName,
+      userId,
+      callType = 'direct',
+      consent,
+      timezone = 'UTC'
+    } = await req.json();
 
-    // ✅ Input validation
+    // ✅ Validation
     if (!toPhone || !businessName || !userId) {
-      return sendJson(
-        { error: 'Missing required fields: toPhone, businessName, userId' },
-        400
+      return Response.json(
+        { error: 'Missing required: toPhone, businessName, userId' },
+        { status: 400 }
       );
     }
 
-    // ✅ Twilio config check
-    if (!client) {
-      console.error('Twilio not configured');
-      return sendJson({ error: 'Twilio is not configured' }, 500);
+    if (!consent) {
+      return Response.json(
+        { error: 'Call consent required' },
+        { status: 403 }
+      );
     }
 
-    // ✅ Format phone
-    let formattedPhone = toPhone.toString().replace(/\D/g, '');
-    if (!formattedPhone.startsWith('+')) {
-      formattedPhone = '+' + formattedPhone;
+    if (!twilioClient) {
+      return Response.json(
+        { error: 'Twilio not configured - contact administrator' },
+        { status: 500 }
+      );
     }
 
-    // ✅ Save initial call record
-    const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    await setDoc(doc(db, 'calls', callId), {
-      userId,
-      businessName,
-      toPhone: formattedPhone,
-      callType,
-      status: 'initiating',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    const formattedPhone = formatPhoneE164(toPhone);
+    if (!formattedPhone) {
+      return Response.json(
+        { error: `Invalid phone format: ${toPhone}. Use E.164 format (+1234567890)` },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Get user's voice script from Firestore
+    const userDocRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userDocRef);
+    const voiceScript = userSnap.data()?.voiceScript || 
+      'Hi, I wanted to reach out about how we can help your business grow.';
+
+    // ✅ Build TwiML response based on call type
+    let twiml = new twilio.twiml.VoiceResponse();
+
+    switch (callType) {
+      case 'direct':
+        // Play message and wait for response
+        twiml.gather({
+          numDigits: 1,
+          action: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/call-webhook`,
+          method: 'POST',
+          timeout: 10
+        }).say(voiceScript);
+        twiml.hangup();
+        break;
+
+      case 'bridge':
+        // Connect to human agent
+        const bridgePhone = process.env.TWILIO_BRIDGE_PHONE || '+12025551234';
+        twiml.dial(bridgePhone);
+        break;
+
+      case 'interactive':
+        // Interactive menu
+        twiml.gather({
+          numDigits: 1,
+          action: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/call-webhook`,
+          method: 'POST',
+          timeout: 10
+        }).say('Press 1 to schedule a call, press 2 to send an email, or press 3 to do nothing.');
+        break;
+
+      default:
+        return Response.json(
+          { error: 'Invalid callType. Use: direct, bridge, or interactive' },
+          { status: 400 }
+        );
+    }
+
+    // ✅ Initiate call via Twilio
+    const call = await twilioClient.calls.create({
+      to: formattedPhone,
+      from: twilioPhoneNumber,
+      twiml: twiml.toString(),
+      statusCallback: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/call-webhook`,
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      statusCallbackMethod: 'POST'
     });
 
-    // ✅ Make call
-    const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://mails2leadsfvxx.vercel.app').trim();
-    let call;
+    // ✅ Log call in Firebase
+    const callDocRef = doc(db, 'calls', call.sid);
+    await setDoc(callDocRef, {
+      callSid: call.sid,
+      toPhone: formattedPhone,
+      businessName,
+      contactName: contactName || 'Unknown',
+      callType,
+      status: 'initiated',
+      userId,
+      createdAt: new Date().toISOString(),
+      consent,
+      timezone,
+      estimatedCost: 0.015 // ~$0.015/min with Twilio
+    });
 
-    if (callType === 'direct') {
-      call = await client.calls.create({
-        from: twilioPhone,
-        to: formattedPhone,
-        url: `${baseUrl}/api/voice-response?business=${encodeURIComponent(businessName)}&callId=${callId}`,
-        statusCallback: `${baseUrl}/api/call-status`,
-        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer'],
-        record: true,
-        machineDetection: 'DetectMessageEnd'
-      });
-    } else if (callType === 'bridge') {
-      call = await client.calls.create({
-        from: twilioPhone,
-        to: process.env.YOUR_PHONE_NUMBER,
-        url: `${baseUrl}/api/bridge-voice?target=${encodeURIComponent(formattedPhone)}&business=${encodeURIComponent(businessName)}&callId=${callId}`,
-        statusCallback: `${baseUrl}/api/call-status`,
-        record: true
-      });
-    } else if (callType === 'interactive') {
-      call = await client.calls.create({
-        from: twilioPhone,
-        to: formattedPhone,
-        url: `${baseUrl}/api/interactive-voice?business=${encodeURIComponent(businessName)}&callId=${callId}`,
-        statusCallback: `${baseUrl}/api/call-status`,
-        record: true
-      });
+    // ✅ Mirror to Supabase for async workflows
+    if (supabaseAdmin) {
+      try {
+        const { data: lead, error: leadError } = await supabaseAdmin
+          .from('leads')
+          .select('id')
+          .eq('email', businessName.toLowerCase()) // Simple lookup
+          .single()
+          .catch(() => ({ data: null }));
+
+        if (lead) {
+          await supabaseAdmin
+            .from('call_logs')
+            .insert({
+              lead_id: lead.id,
+              phone: formattedPhone,
+              call_sid: call.sid,
+              status: 'initiated',
+              call_type: callType,
+              called_at: new Date().toISOString()
+            });
+        }
+      } catch (supabaseError) {
+        console.warn('[make-call] Supabase sync failed:', supabaseError.message);
+      }
     }
 
-    // ✅ Update with SID
-    await setDoc(doc(db, 'calls', callId), {
-      callSid: call.sid,
-      status: call.status,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
-
-    return sendJson({
+    return Response.json({
       success: true,
-      callId,
+      callId: call.sid,
       callSid: call.sid,
-      status: call.status,
-      to: formattedPhone,
-      from: twilioPhone,
+      status: 'initiated',
       businessName,
-      callType
+      phone: formattedPhone,
+      callType,
+      message: `Call initiated to ${businessName}`
     });
 
   } catch (error) {
-    console.error('❌ make-call API error:', error);
+    console.error('[make-call] Error:', error);
+    return Response.json(
+      { error: error.message || 'Failed to initiate call' },
+      { status: 500 }
+    );
+  }
+}
 
-    // ✅ Log error to Firestore for debugging
-    try {
-      const errorId = `error_${Date.now()}`;
-      await setDoc(doc(db, 'calls', errorId), {
-        status: 'failed',
-        error: error.message || 'Unknown error',
-        stack: error.stack?.substring(0, 1000),
-        timestamp: new Date().toISOString()
-      });
-    } catch (dbError) {
-      console.error('Failed to log error to Firestore:', dbError);
+// ✅ Handle Twilio call status callbacks
+export async function PUT(req) {
+  try {
+    const { CallSid, CallStatus, Duration, RecordingUrl } = await req.json();
+
+    if (!CallSid) {
+      return Response.json({ error: 'Missing CallSid' }, { status: 400 });
     }
 
-    // ✅ ALWAYS return JSON
-    return sendJson({
-      error: error.message || 'Internal server error',
-      code: error.code || 'INTERNAL_ERROR'
-    }, 500);
+    // ✅ Update call record
+    const callDocRef = doc(db, 'calls', CallSid);
+    const updateData = {
+      status: CallStatus,
+      duration: parseInt(Duration) || 0,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (RecordingUrl) {
+      updateData.recordingUrl = RecordingUrl;
+    }
+
+    await setDoc(callDocRef, updateData, { merge: true });
+
+    return Response.json({ 
+      success: true, 
+      message: 'Call status updated',
+      callSid: CallSid,
+      newStatus: CallStatus
+    });
+
+  } catch (error) {
+    console.error('[call-webhook] Error:', error);
+    return Response.json({ error: error.message }, { status: 500 });
   }
 }

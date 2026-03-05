@@ -1,10 +1,13 @@
 // app/api/send-followup/route.js
-import { NextResponse } from 'next/server';
-import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { google } from 'googleapis';
+// Send follow-up emails with hard stop after max follow-ups
+// Maintains conversation loop closure
 
-// Firebase
+import { google } from 'googleapis';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { supabaseAdmin } from '../../../lib/supabaseClient';
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -15,197 +18,158 @@ const firebaseConfig = {
   measurementId: process.env.FIREBASE_MEASUREMENT_ID
 };
 
-
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-// Templates (same as dashboard)
-const FOLLOW_UP_1 = {
-  subject: 'Quick question for {{business_name}}',
-  body: `Hi {{business_name}},
+const MAX_FOLLOWUPS = 3;
 
-Just circling back—did my note about outsourced dev & ops support land at a bad time?
-
-No pressure at all, but if you’re ever swamped with web, automation, or backend work and need a reliable extra hand (especially for white-label or fast-turnaround needs), we’re ready to help.
-
-Even a 1-hour task is a great way to test the waters.
-
-Either way, wishing you a productive week!
-
-Best,  
-Dulran  
-Founder — Syndicate Solutions  
-WhatsApp: 0741143323`
+const FOLLOWUP_TEMPLATES = {
+  1: {
+    subject: 'Following up – {{business_name}}',
+    body: 'Hi {{business_name}},\n\nJust circling back on my previous message. No pressure at all.\n\nBest,\nTeam'
+  },
+  2: {
+    subject: '{{business_name}} – Quick value offer',
+    body: 'Hi {{business_name}},\n\nOne final thought—I wanted to share a specific idea that could help.\n\nLet me know if you\'re open to a brief chat.\n\nBest,\nTeam'
+  },
+  3: {
+    subject: 'Closing the loop',
+    body: 'Hi {{business_name}},\n\nThis will be my last email—I respect your time.\n\nIf things change, I\'m here.\n\nBest,\nTeam'
+  }
 };
 
-const FOLLOW_UP_2 = {
-  subject: '{{business_name}}, a quick offer (no strings)',
-  body: `Hi again,
-
-I noticed you haven’t had a chance to reply—totally understand!
-
-To make this zero-risk: **I’ll audit one of your digital workflows (e.g., lead capture, client onboarding, internal tooling) for free** and send 2–3 actionable automation ideas you can implement immediately—even if you never work with us.
-
-Zero sales pitch. Just value.
-
-Interested? Hit “Yes” or reply with a workflow you’d like optimized.
-
-Cheers,  
-Dulran  
-Portfolio: https://syndicatesolutions.vercel.app/  
-Book a call: https://cal.com/syndicate-solutions/15min`
-};
-
-const FOLLOW_UP_3 = {
-  subject: 'Closing the loop',
-  body: `Hi {{business_name}},
-
-I’ll stop emailing after this one! 😅
-
-Just wanted to say: if outsourcing ever becomes a priority—whether for web dev, AI tools, or ongoing ops—we’re here. Many of our clients started with a tiny $100 task and now work with us monthly.
-
-If now’s not the time, no worries! I’ll circle back in a few months.
-
-Either way, keep crushing it!
-
-— Dulran  
-WhatsApp: 0741143323`
-};
-
-function renderText(text, businessName) {
-  return text.replace(/{{business_name}}/g, businessName);
-}
-
-// ✅ SECURITY: Input validation helper
-function validateEmail(email) {
-  if (!email || typeof email !== 'string') return false;
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email.trim()) && email.length <= 254;
-}
-
-function validateUserId(userId) {
-  if (!userId || typeof userId !== 'string') return false;
-  // Firebase UIDs are typically 28 characters, alphanumeric
-  return /^[a-zA-Z0-9]{20,}$/.test(userId);
+function renderFollowupText(template, recipient) {
+  let text = template;
+  text = text.replace(/\{\{\s*business_name\s*\}\}/g, recipient.business_name || 'there');
+  return text;
 }
 
 export async function POST(req) {
   try {
-    const { email, userId, accessToken } = await req.json();
+    const { email, accessToken, userId, senderName } = await req.json();
 
-    // ✅ SECURITY: Input validation
-    if (!email || !userId || !accessToken) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!email || !accessToken || !userId) {
+      return Response.json(
+        { error: 'Missing required: email, accessToken, userId' },
+        { status: 400 }
+      );
     }
 
-    // ✅ SECURITY: Validate email format
-    if (!validateEmail(email)) {
-      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
-    }
-
-    // ✅ SECURITY: Validate userId format
-    if (!validateUserId(userId)) {
-      return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });
-    }
-
-    // ✅ SECURITY: Sanitize email (lowercase, trim)
-    const sanitizedEmail = email.trim().toLowerCase();
-
-    const docId = `${userId}_${sanitizedEmail}`;
-    const docRef = doc(db, 'sent_emails', docId);
+    // ✅ Get sent email record
+    const docRef = doc(db, 'sent_emails', `${userId}_${email}`);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
-      return NextResponse.json({ error: 'Email record not found' }, { status: 404 });
+      return Response.json(
+        { error: `Email ${email} not found in sent records`, code: 'NOT_FOUND' },
+        { status: 404 }
+      );
     }
 
-    const data = docSnap.data();
-    
-    // ✅ SECURITY: Verify userId matches the document owner
-    if (data.userId !== userId) {
-      return NextResponse.json({ 
-        error: 'Unauthorized: User ID mismatch' 
-      }, { status: 403 });
-    }
-    
-    // ✅ CRITICAL: BLOCK if lead has already replied (closing the loop)
-    if (data.replied) {
-      return NextResponse.json({ 
-        error: 'Lead has already replied. No further emails should be sent.',
-        code: 'ALREADY_REPLIED'
-      }, { status: 403 });
-    }
-    
-    // ✅ CRITICAL: BLOCK if already sent 3+ follow-ups (closing the loop)
-    const currentFollowUpCount = data.followUpSentCount || 0;
-    if (currentFollowUpCount >= 3) {
-      return NextResponse.json({ 
-        error: 'Maximum follow-ups (3) already sent. Loop is closed. No further emails should be sent.',
-        code: 'MAX_FOLLOWUPS_REACHED',
-        followUpCount: currentFollowUpCount
-      }, { status: 403 });
-    }
-    
-    const sentAt = new Date(data.sentAt);
-    const now = new Date();
-    const days = (now - sentAt) / (1000 * 60 * 60 * 24);
+    const sentData = docSnap.data();
 
-    let template;
-    if (days >= 7) template = FOLLOW_UP_3;
-    else if (days >= 5) template = FOLLOW_UP_2;
-    else if (days >= 2) template = FOLLOW_UP_1;
-    else return NextResponse.json({ error: 'Too early' }, { status: 400 });
+    // ✅ HARD BLOCK 1: Already replied
+    if (sentData.replied) {
+      return Response.json(
+        {
+          error: `Cannot send follow-up: ${email} already replied. Conversation closed.`,
+          code: 'ALREADY_REPLIED',
+          repliedAt: sentData.repliedAt
+        },
+        { status: 409 }
+      );
+    }
 
-    // ✅ SECURITY: Sanitize business name to prevent XSS
-    const businessName = sanitizedEmail.split('@')[0].replace(/[^a-zA-Z0-9\s]/g, ' ').substring(0, 50);
-    const subject = renderText(template.subject, businessName);
-    const body = renderText(template.body, businessName);
+    // ✅ HARD BLOCK 2: Max follow-ups reached
+    const currentFollowUpCount = sentData.followUpSentCount || 0;
+    if (currentFollowUpCount >= MAX_FOLLOWUPS) {
+      return Response.json(
+        {
+          error: `Cannot send follow-up: ${email} reached max follow-ups (${MAX_FOLLOWUPS})`,
+          code: 'MAX_FOLLOWUPS_REACHED',
+          followUpCount: currentFollowUpCount,
+          maxAllowed: MAX_FOLLOWUPS
+        },
+        { status: 409 }
+      );
+    }
 
-    // Send via Gmail
-    const oauth2Client = new google.auth.OAuth2();
+    // ✅ Get Gmail client
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_SECRET
+    );
     oauth2Client.setCredentials({ access_token: accessToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const rawMessage = Buffer.from(
-      `To: ${email}\r\n` +
-      `Subject: ${subject}\r\n` +
-      `Content-Type: text/plain; charset=utf-8\r\n\r\n` +
-      body
-    ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+    // ✅ Get next follow-up template
+    const nextFollowUpNum = currentFollowUpCount + 1;
+    const template = FOLLOWUP_TEMPLATES[nextFollowUpNum] || FOLLOWUP_TEMPLATES[3];
 
-    await gmail.users.messages.send({
+    const subject = renderFollowupText(template.subject, { business_name: sentData.businessName });
+    const body = renderFollowupText(template.body, { business_name: sentData.businessName });
+
+    // ✅ Build and send email
+    const message = `To: ${email}\r\nSubject: ${subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
+    const encodedMessage = Buffer.from(message)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    const result = await gmail.users.messages.send({
       userId: 'me',
-      requestBody: { raw: rawMessage }
+      requestBody: { raw: encodedMessage }
     });
 
-    // Update record with follow-up tracking
-    const followUpCount = (data.followUpSentCount || 0) + 1;
-    const existingDates = data.followUpDates || [];
-    const updatedDates = [...existingDates, now.toISOString()];
-    
-    // ✅ If this is follow-up 3 (closing the loop), mark as final and disable future follow-ups
-    const isFinalFollowUp = followUpCount >= 3;
-    
-    await updateDoc(docRef, {
-      followUpSentCount: followUpCount,
-      lastFollowUpSentAt: now.toISOString(),
-      // ✅ CRITICAL: Track all follow-up dates
-      followUpDates: updatedDates,
-      // ✅ If closing the loop (follow-up 3), set followUpAt to far future to prevent any more sends
-      followUpAt: isFinalFollowUp 
-        ? new Date('2099-12-31').toISOString() // Far future date to effectively disable
-        : new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString(),
-      // ✅ Mark that loop is closed if this is the final follow-up
-      loopClosed: isFinalFollowUp
+    // ✅ Update Firestore
+    const isFinalFollowUp = nextFollowUpNum >= MAX_FOLLOWUPS;
+    const followUpDates = sentData.followUpDates || [];
+    followUpDates.push(new Date().toISOString());
+
+    await setDoc(
+      docRef,
+      {
+        followUpSentCount: nextFollowUpNum,
+        followUpDates,
+        lastFollowUpSentAt: new Date().toISOString(),
+        loopClosed: isFinalFollowUp,
+        status: isFinalFollowUp ? 'loop_closed' : 'awaiting_reply'
+      },
+      { merge: true }
+    );
+
+    // ✅ Update Supabase
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin
+          .from('follow_up_schedule')
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString()
+          })
+          .eq('lead_email', email)
+          .eq('follow_up_number', nextFollowUpNum);
+      } catch (supabaseError) {
+        console.warn('[send-followup] Supabase update failed:', supabaseError.message);
+      }
+    }
+
+    return Response.json({
+      success: true,
+      email,
+      followUpNumber: nextFollowUpNum,
+      maxAllowed: MAX_FOLLOWUPS,
+      loopClosed: isFinalFollowUp,
+      messageId: result.data.id,
+      message: `Follow-up #${nextFollowUpNum} sent${isFinalFollowUp ? ' (Loop closed - no more follow-ups)' : ''}`
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      followUpCount: followUpCount,
-      message: `Follow-up #${followUpCount} sent successfully`
-    });
   } catch (error) {
-    console.error('Follow-up error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[send-followup] Error:', error);
+    return Response.json(
+      { error: error.message || 'Failed to send follow-up' },
+      { status: 500 }
+    );
   }
 }
