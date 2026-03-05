@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseUrl = 'https://crqkwwmfthshpujddrpw.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNycWt3d21mdGhzaHB1amRkcnB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg0NjczMjIsImV4cCI6MjA3NDA0MzMyMn0.TEcrweyxzVXA2kT6tRikEvZiSnKrZXzXGGEvSGUFARk'
+const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNycWt3d21mdGhzaHB1amRkcnB3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODQ2NzMyMiwiZXhwIjoyMDc0MDQzMzIyfQ.8DdCZMS_I5rFf-R5WHcQnPjugGI6QX0I4Vwk4ixjD1A'
 
 // Client for frontend (respects RLS)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
