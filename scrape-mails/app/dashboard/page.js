@@ -1068,14 +1068,18 @@ function PersonalizationPreview({ bullets, company, contact, onApply, onRegenera
 // ============================================================================
 // MAIN DASHBOARD COMPONENT (Production Architecture)
 // ============================================================================
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
 export default function Dashboard() {
   // ============================================================================
   // AUTH & NAVIGATION STATE
   // ============================================================================
   const [user, setUser] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
-  const [authError, setAuthError] = useState(null);
+  const [loadingAuth, setLoadingAuth] = 'use client';
   const router = useRouter();
+  useEffect(() => { router.push('/dashboard/icp'); }, [router]);
+  const [authError, setAuthError] = useState(null);
   const pathname = usePathname();
 
   // Tab navigation
