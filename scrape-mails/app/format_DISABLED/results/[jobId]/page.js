@@ -10,6 +10,7 @@ export default function ResultsPage() {
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
 
+  console.log(`Testing something`);
   useEffect(() => {
     if (!jobId) return;
 
