@@ -15,8 +15,8 @@ const supabase = createClient(
 const rateLimiter = new Map<string, { count: number; resetTime: number }>()
 
 const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 50 // Conservative limit for free tier
-const QUEUE_RETRY_DELAY = 5000 // 5 seconds between queued requests
+const RATE_LIMIT_MAX_REQUESTS = 20 // Very conservative for hobby plan
+const QUEUE_RETRY_DELAY = 10000 // 10 seconds between queued requests (more conservative)
 
 // WhatsApp webhook verification
 export async function GET(request: NextRequest) {
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
                 if (!checkRateLimit(phoneNumber)) {
                   logger.warn('Rate limit exceeded', { phoneNumber })
                   return NextResponse.json({ 
-                    error: 'Rate limit exceeded. Please try again later.' 
+                    error: 'Vercel Hobby plan rate limit exceeded (20 req/min). Please consider upgrading to Pro for unlimited usage.' 
                   }, { status: 429 })
                 }
 
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
 
     // Start processing queue if not already running
     if (messageQueue.length === 1) {
-      setTimeout(processQueue, 100) // Small delay to batch multiple messages
+      setTimeout(processQueue, QUEUE_RETRY_DELAY) // Conservative delay for hobby plan
     }
 
     return NextResponse.json({ 
