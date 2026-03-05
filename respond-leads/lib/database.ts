@@ -180,8 +180,6 @@ export class DatabaseService {
   // Conversation operations
   async getConversations(): Promise<Conversation[]> {
     try {
-      logger.database('Fetching conversations')
-      
       const { data, error } = await this.supabase
         .from('conversations')
         .select('*')
@@ -189,7 +187,6 @@ export class DatabaseService {
 
       if (error) throw handleDatabaseError(error)
 
-      logger.database('Successfully fetched conversations', { count: data?.length })
       return data || []
     } catch (error) {
       logger.error('Failed to fetch conversations', {}, error as Error)
@@ -254,8 +251,6 @@ export class DatabaseService {
   // Statistics
   async getInventoryStats() {
     try {
-      logger.database('Fetching inventory statistics')
-      
       const { data, error } = await this.supabase
         .from('inventory_stats')
         .select('*')
@@ -263,7 +258,6 @@ export class DatabaseService {
 
       if (error) throw handleDatabaseError(error)
 
-      logger.database('Successfully fetched inventory statistics', data)
       return data
     } catch (error) {
       logger.error('Failed to fetch inventory statistics', {}, error as Error)
@@ -273,15 +267,12 @@ export class DatabaseService {
 
   async getLowStockItems() {
     try {
-      logger.database('Fetching low stock items')
-      
       const { data, error } = await this.supabase
         .from('low_inventory_items')
         .select('*')
 
       if (error) throw handleDatabaseError(error)
 
-      logger.database('Successfully fetched low stock items', { count: data?.length })
       return data || []
     } catch (error) {
       logger.error('Failed to fetch low stock items', {}, error as Error)
