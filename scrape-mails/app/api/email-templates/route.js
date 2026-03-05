@@ -246,8 +246,8 @@ function extractVariables(text) {
   return matches.map(m => m.replace(/\{\{|\}\}/g, '').trim());
 }
 
-// Personalization engine
-export async function POST(request) {
+// Personalization engine endpoint
+export async function generatePersonalization(request) {
   try {
     const { userId, companyName, decisionMaker, research, templateName } = await request.json();
     
