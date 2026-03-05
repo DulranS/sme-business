@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getJobStatus } from '../../lib/api';
+export async function getJobStatus(jobId) {
+  const res = await fetch(`/api/proxy-status/${jobId}`);
+  if (!res.ok) throw new Error('Job not found');
+  return res.json();
+}
 
 export default function ResultsPage() {
   const { jobId } = useParams();
