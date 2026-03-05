@@ -177,15 +177,15 @@ The application includes structured logging with multiple levels:
 2. Add environment variables in Vercel dashboard
 3. Deploy automatically on git push
 
-**Free Tier Limitations:**
-- **Cron Jobs**: Limited to daily execution (*/15 * * * * schedule)
+**Vercel Hobby Plan Limitations:**
+- **Cron Jobs**: Limited to ONE execution per day per cron job
 - **Rate Limiting**: Built-in rate limiting for API calls
 - **Message Queuing**: Handles burst traffic with delayed processing
-- **Health Monitoring**: Automated health checks every 15 minutes
+- **Health Monitoring**: Limited to daily scheduled checks
 
 **Cron Jobs Included:**
-- `/api/cron/health-check` - Health monitoring (every 15 minutes)
-- `/api/cron/cleanup` - Data cleanup and optimization (daily at 2 AM)
+- `/api/cron/health-check` - Health monitoring (once daily at 2 PM)
+- `/api/cron/cleanup` - Data cleanup and optimization (once daily at 3 AM)
 
 **Rate Limiting:**
 - 50 requests per minute per phone number
