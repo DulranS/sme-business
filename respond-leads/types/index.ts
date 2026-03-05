@@ -18,6 +18,26 @@ export interface Conversation {
   updated_at?: string
 }
 
+// Currency configuration
+export interface Currency {
+  code: string
+  symbol: string
+  name: string
+}
+
+export const CURRENCIES: Record<string, Currency> = {
+  USD: { code: 'USD', symbol: '$', name: 'US Dollar' },
+  EUR: { code: 'EUR', symbol: '€', name: 'Euro' },
+  GBP: { code: 'GBP', symbol: '£', name: 'British Pound' },
+  JPY: { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  CAD: { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+  AUD: { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  CHF: { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
+  CNY: { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+  INR: { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  BRL: { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' }
+}
+
 // WhatsApp API types
 export interface WhatsAppMessage {
   id: string

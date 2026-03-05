@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
+import { CurrencyService } from '@/lib/currency'
 
 type Tab = 'inventory' | 'conversations'
 type Modal = 'add' | 'edit' | null
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState('')
   const [selectedConvo, setSelectedConvo] = useState<Conversation | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+  const [currentCurrency, setCurrentCurrency] = useState(CurrencyService.getCurrentCurrency())
 
   const supabase = getSupabaseClient()
 
@@ -117,6 +119,11 @@ export default function Dashboard() {
   const outOfStock = items.filter(i => i.quantity === 0).length
   const totalValue = items.reduce((sum, i) => sum + (i.price * i.quantity), 0)
 
+  const handleCurrencyChange = (currencyCode: string) => {
+    setCurrentCurrency(currencyCode)
+    CurrencyService.setCurrentCurrency(currencyCode)
+  }
+
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -139,6 +146,20 @@ export default function Dashboard() {
           <span style={s.statusText}>LIVE</span>
         </div>
       </header>
+
+      {/* Currency Selector */}
+      <div className="currency-selector">
+        <select 
+          value={currentCurrency} 
+          onChange={(e) => handleCurrencyChange(e.target.value)}
+        >
+          {Object.entries(CurrencyService.getAvailableCurrencies()).map(([code, currency]) => (
+            <option key={code} value={code}>
+              {currency.code} ({currency.symbol})
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* Tabs */}
       <div style={s.tabs}>
@@ -163,7 +184,7 @@ export default function Dashboard() {
             <div style={s.statsRow}>
               {[
                 { label: 'TOTAL SKUs', value: totalItems, color: '#E8FF47' },
-                { label: 'INVENTORY VALUE', value: `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: '#E8FF47' },
+                { label: 'INVENTORY VALUE', value: CurrencyService.formatPrice(totalValue, currentCurrency), color: '#E8FF47' },
                 { label: 'LOW STOCK', value: lowStock, color: '#F59E0B' },
                 { label: 'OUT OF STOCK', value: outOfStock, color: '#EF4444' },
               ].map(stat => (
@@ -209,7 +230,7 @@ export default function Dashboard() {
                       <td style={{ ...s.td, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, color: item.quantity === 0 ? '#EF4444' : item.quantity <= 5 ? '#F59E0B' : '#E8FF47' }}>
                         {item.quantity}
                       </td>
-                      <td style={{ ...s.td, color: '#aaa' }}>${Number(item.price).toFixed(2)}</td>
+                      <td style={{ ...s.td, color: '#aaa' }}>{CurrencyService.formatPrice(item.price, currentCurrency)}</td>
                       <td style={s.td}>
                         <span style={{
                           ...s.badge,
@@ -322,7 +343,7 @@ export default function Dashboard() {
               {[
                 { key: 'name', label: 'PRODUCT NAME *', type: 'text', placeholder: 'Nike Air Max 90' },
                 { key: 'sku', label: 'SKU *', type: 'text', placeholder: 'SKU-4821' },
-                { key: 'price', label: 'PRICE ($)', type: 'number', placeholder: '0.00' },
+                { key: 'price', label: `PRICE (${CurrencyService.getCurrencyInfo(currentCurrency).symbol})`, type: 'number', placeholder: '0.00' },
                 { key: 'quantity', label: 'QUANTITY', type: 'number', placeholder: '0' },
               ].map(field => (
                 <div key={field.key} style={s.modalField}>
@@ -399,50 +420,50 @@ const s: Record<string, React.CSSProperties> = {
   statLabel: { fontSize: 9, color: '#333', letterSpacing: 2, marginBottom: 10 },
   statValue: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: -0.5 },
 
-  toolbar: { display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' },
-  searchInput: { background: '#0F0F0F', border: '1px solid #1A1A1A', color: '#D4D4D4', padding: '10px 16px', fontSize: 12, width: 320, transition: 'border-color 0.2s' },
-  primaryBtn: { background: '#E8FF47', border: 'none', color: '#0C0C0C', padding: '10px 20px', fontSize: 10, letterSpacing: 2, cursor: 'pointer', fontWeight: 700, transition: 'all 0.15s' },
-  ghostBtn: { background: 'none', border: '1px solid #1A1A1A', color: '#555', padding: '10px 20px', fontSize: 10, letterSpacing: 2, cursor: 'pointer', transition: 'all 0.15s' },
+  toolbar: { display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' },
+  searchInput: { background: '#0F0F0F', border: '1px solid #1A1A1A', color: '#D4D4D4', padding: '10px 16px', fontSize: 12, width: 320, transition: 'border-color 0.2s', flex: 1, minWidth: 200 },
+  primaryBtn: { background: '#E8FF47', border: 'none', color: '#0C0C0C', padding: '10px 20px', fontSize: 10, letterSpacing: 2, cursor: 'pointer', fontWeight: 700, transition: 'all 0.15s', whiteSpace: 'nowrap' },
+  ghostBtn: { background: 'none', border: '1px solid #1A1A1A', color: '#555', padding: '10px 20px', fontSize: 10, letterSpacing: 2, cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' },
 
-  tableWrap: { border: '1px solid #141414', overflow: 'hidden' },
-  table: { width: '100%', borderCollapse: 'collapse' },
-  th: { background: '#0A0A0A', padding: '11px 16px', textAlign: 'left' as const, fontSize: 9, color: '#2E2E2E', letterSpacing: 2, borderBottom: '1px solid #141414' },
+  tableWrap: { border: '1px solid #141414', overflow: 'hidden', overflowX: 'auto' },
+  table: { width: '100%', borderCollapse: 'collapse', minWidth: 600 },
+  th: { background: '#0A0A0A', padding: '11px 16px', textAlign: 'left' as const, fontSize: 9, color: '#2E2E2E', letterSpacing: 2, borderBottom: '1px solid #141414', position: 'sticky', top: 0, zIndex: 10 },
   td: { padding: '13px 16px', fontSize: 12, borderBottom: '1px solid #111', verticalAlign: 'middle' as const },
   emptyCell: { padding: '48px 16px', textAlign: 'center' as const, color: '#2A2A2A', fontSize: 12 },
-  badge: { fontSize: 9, letterSpacing: 1, padding: '3px 10px', border: '1px solid' },
-  editBtn: { background: 'none', border: '1px solid #222', color: '#555', padding: '4px 12px', fontSize: 9, letterSpacing: 1, cursor: 'pointer', transition: 'all 0.15s' },
-  deleteBtn: { background: 'none', border: '1px solid #1E1E1E', color: '#3A3A3A', padding: '4px 12px', fontSize: 9, letterSpacing: 1, cursor: 'pointer', transition: 'all 0.15s' },
-  deleteConfirmBtn: { background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444', padding: '4px 12px', fontSize: 9, cursor: 'pointer' },
-  cancelBtn: { background: 'none', border: '1px solid #1E1E1E', color: '#444', padding: '4px 8px', fontSize: 9, cursor: 'pointer' },
+  badge: { fontSize: 9, letterSpacing: 1, padding: '3px 10px', border: '1px solid', borderRadius: 4, whiteSpace: 'nowrap' },
+  editBtn: { background: 'none', border: '1px solid #222', color: '#555', padding: '4px 12px', fontSize: 9, letterSpacing: 1, cursor: 'pointer', transition: 'all 0.15s', borderRadius: 4 },
+  deleteBtn: { background: 'none', border: '1px solid #1E1E1E', color: '#3A3A3A', padding: '4px 12px', fontSize: 9, letterSpacing: 1, cursor: 'pointer', transition: 'all 0.15s', borderRadius: 4 },
+  deleteConfirmBtn: { background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444', padding: '4px 12px', fontSize: 9, cursor: 'pointer', borderRadius: 4 },
+  cancelBtn: { background: 'none', border: '1px solid #1E1E1E', color: '#444', padding: '4px 8px', fontSize: 9, cursor: 'pointer', borderRadius: 4 },
 
   convoLayout: { display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, border: '1px solid #141414', height: 'calc(100vh - 220px)', overflow: 'hidden' },
   convoList: { borderRight: '1px solid #141414', overflow: 'auto', background: '#0A0A0A' },
   convoListHeader: { padding: '14px 20px', fontSize: 9, color: '#2E2E2E', letterSpacing: 2, borderBottom: '1px solid #141414' },
   convoEmpty: { padding: 32, fontSize: 11, color: '#2A2A2A', lineHeight: 1.8 },
-  convoItem: { padding: '16px 20px', borderBottom: '1px solid #111', transition: 'background 0.1s', borderLeft: '2px solid transparent' },
+  convoItem: { padding: '16px 20px', borderBottom: '1px solid #111', transition: 'background 0.1s', borderLeft: '2px solid transparent', cursor: 'pointer' },
   convoItemActive: { background: 'rgba(232,255,71,0.03)', borderLeftColor: '#E8FF47' },
   convoName: { fontSize: 12, color: '#C4C4C4', marginBottom: 3 },
   convoPhone: { fontSize: 10, color: '#444', marginBottom: 4 },
   convoTime: { fontSize: 9, color: '#2E2E2E', letterSpacing: 0.5 },
 
   convoMessages: { display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0C0C0C' },
-  convoHeader: { padding: '16px 24px', background: '#0F0F0F', borderBottom: '1px solid #141414', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  convoHeader: { padding: '16px 24px', background: '#0F0F0F', borderBottom: '1px solid #141414', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' },
   convoHeaderName: { fontSize: 13, color: '#D4D4D4', marginBottom: 3 },
   convoHeaderPhone: { fontSize: 10, color: '#444' },
   convoHeaderTime: { fontSize: 9, color: '#2E2E2E' },
   messageList: { flex: 1, overflow: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 },
-  messageBubble: { maxWidth: '68%', padding: '14px 18px', border: '1px solid' },
+  messageBubble: { maxWidth: '68%', padding: '14px 18px', border: '1px solid', borderRadius: 8, wordBreak: 'break-word' },
   messageText: { fontSize: 12, lineHeight: 1.7, color: '#C4C4C4' },
   convoPlaceholder: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
   convoPlaceholderIcon: { fontSize: 32, color: '#1A1A1A' },
   convoPlaceholderText: { fontSize: 11, color: '#2A2A2A', letterSpacing: 2 },
 
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
-  modalCard: { background: '#0F0F0F', border: '1px solid #E8FF47', padding: 36, width: 480, animation: 'fadeUp 0.2s ease' },
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 },
+  modalCard: { background: '#0F0F0F', border: '1px solid #E8FF47', padding: 36, width: 480, maxWidth: '95vw', animation: 'fadeUp 0.2s ease', borderRadius: 8, maxHeight: '90vh', overflow: 'auto' },
   modalTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 18, fontWeight: 700, color: '#E8FF47', marginBottom: 28, letterSpacing: 2 },
   modalGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 },
   modalField: { display: 'flex', flexDirection: 'column', gap: 6 },
   modalLabel: { fontSize: 9, color: '#333', letterSpacing: 2 },
-  modalInput: { background: '#080808', border: '1px solid #1A1A1A', color: '#D4D4D4', padding: '10px 14px', fontSize: 12, width: '100%', transition: 'border-color 0.2s' },
-  modalActions: { display: 'flex', gap: 10 },
+  modalInput: { background: '#080808', border: '1px solid #1A1A1A', color: '#D4D4D4', padding: '10px 14px', fontSize: 12, width: '100%', transition: 'border-color 0.2s', borderRadius: 4 },
+  modalActions: { display: 'flex', gap: 10, flexWrap: 'wrap' },
 }

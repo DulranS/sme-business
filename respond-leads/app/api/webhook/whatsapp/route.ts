@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { logger } from '@/lib/logger'
+import { claudeService } from '@/lib/claude'
+import { whatsappService } from '@/lib/whatsapp'
+import { handleDatabaseError, handleExternalServiceError } from '@/lib/errors'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// Simple in-memory rate limiter for Vercel free tier
+const rateLimiter = new Map<string, { count: number; resetTime: number }>()
+
+const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 50 // Conservative limit for free tier
+const QUEUE_RETRY_DELAY = 5000 // 5 seconds between queued requests
 
 // WhatsApp webhook verification
 export async function GET(request: NextRequest) {
@@ -21,6 +32,51 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ error: 'Invalid verification token' }, { status: 403 })
 }
 
+// Rate limiting helper
+function checkRateLimit(identifier: string): boolean {
+  const now = Date.now()
+  const record = rateLimiter.get(identifier)
+
+  if (!record || now > record.resetTime) {
+    rateLimiter.set(identifier, { count: 1, resetTime: now + RATE_LIMIT_WINDOW })
+    return true
+  }
+
+  if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false
+  }
+
+  record.count++
+  return true
+}
+
+// Simple message queue for handling bursts
+const messageQueue = Array<{
+  message: any
+  contact: any
+  timestamp: number
+}>()
+
+// Process queued messages
+async function processQueue() {
+  if (messageQueue.length === 0) return
+
+  const message = messageQueue.shift()
+  if (!message) return
+
+  try {
+    await processMessage(message.message, message.contact)
+    logger.info('Processed queued message', { queueLength: messageQueue.length })
+  } catch (error) {
+    logger.error('Failed to process queued message', { error }, error as Error)
+  }
+
+  // Process next message after delay if queue still has items
+  if (messageQueue.length > 0) {
+    setTimeout(processQueue, QUEUE_RETRY_DELAY)
+  }
+}
+
 // Handle incoming WhatsApp messages
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +84,7 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get('x-hub-signature-256')
     
     // Verify webhook signature
-    if (!verifyWebhookSignature(body, signature)) {
+    if (!whatsappService.verifyWebhookSignature(body, signature)) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
 
@@ -39,44 +95,60 @@ export async function POST(request: NextRequest) {
       for (const entry of data.entry) {
         for (const change of entry.changes) {
           if (change.field === 'messages') {
-            await processMessage(change.value)
+            const messages = change.value.messages || []
+            
+            for (const message of messages) {
+              if (message.type === 'text') {
+                const phoneNumber = message.from
+                const contact = change.value.contacts?.[0]
+                
+                // Check rate limit per phone number
+                if (!checkRateLimit(phoneNumber)) {
+                  logger.warn('Rate limit exceeded', { phoneNumber })
+                  return NextResponse.json({ 
+                    error: 'Rate limit exceeded. Please try again later.' 
+                  }, { status: 429 })
+                }
+
+                // Add to queue for processing
+                messageQueue.push({
+                  message,
+                  contact,
+                  timestamp: Date.now()
+                })
+
+                logger.info('Message queued', { 
+                  phoneNumber, 
+                  queueLength: messageQueue.length 
+                })
+              }
+            }
           }
         }
       }
     }
 
-    return NextResponse.json({ status: 'received' })
-  } catch (error) {
-    console.error('Webhook error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-  }
-}
-
-function verifyWebhookSignature(body: string, signature: string | null): boolean {
-  if (!signature) return false
-  
-  const expectedSignature = 'sha256=' + crypto
-    .createHmac('sha256', process.env.WHATSAPP_APP_SECRET!)
-    .update(body)
-    .digest('hex')
-  
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  )
-}
-
-async function processMessage(value: any) {
-  const messages = value.messages || []
-  
-  for (const message of messages) {
-    if (message.type === 'text') {
-      await handleTextMessage(message, value.contacts?.[0])
+    // Start processing queue if not already running
+    if (messageQueue.length === 1) {
+      setTimeout(processQueue, 100) // Small delay to batch multiple messages
     }
+
+    return NextResponse.json({ 
+      status: 'received',
+      queued: messageQueue.length,
+      message: 'Messages queued for processing'
+    })
+
+  } catch (error) {
+    logger.error('Webhook error', { error }, error as Error)
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      message: 'Please try again later'
+    }, { status: 500 })
   }
 }
 
-async function handleTextMessage(message: any, contact: any) {
+async function processMessage(message: any, contact: any) {
   const phoneNumber = message.from
   const customerName = contact?.profile?.name || 'Unknown'
   const messageText = message.text.body
@@ -84,7 +156,7 @@ async function handleTextMessage(message: any, contact: any) {
 
   try {
     // Extract keyword using Claude
-    const keyword = await extractKeyword(messageText)
+    const keyword = await claudeService.extractKeyword(messageText)
     
     // Search inventory
     const inventoryResults = await searchInventory(keyword)
@@ -93,7 +165,7 @@ async function handleTextMessage(message: any, contact: any) {
     const conversationHistory = await getConversationHistory(phoneNumber)
     
     // Generate AI response
-    const aiResponse = await generateResponse(
+    const aiResponse = await claudeService.generateResponse(
       customerName,
       messageText,
       inventoryResults,
@@ -109,118 +181,66 @@ async function handleTextMessage(message: any, contact: any) {
     )
     
     // Send WhatsApp response
-    await sendWhatsAppResponse(phoneNumber, aiResponse, messageId)
+    await whatsappService.sendMessage(phoneNumber, aiResponse, messageId)
+    
+    logger.info('Message processed successfully', { 
+      phoneNumber,
+      keyword,
+      inventoryCount: inventoryResults.length 
+    })
     
   } catch (error) {
-    console.error('Error processing message:', error)
+    logger.error('Error processing message', { 
+      phoneNumber, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, error as Error)
+    
     // Send fallback response
-    await sendWhatsAppResponse(
-      phoneNumber,
-      'Sorry, I encountered an error. Please try again later.',
-      messageId
-    )
+    try {
+      await whatsappService.sendMessage(
+        phoneNumber,
+        'Sorry, I encountered an error. Please try again later.',
+        messageId
+      )
+    } catch (fallbackError) {
+      logger.error('Failed to send fallback message', { 
+        phoneNumber, 
+        error: fallbackError instanceof Error ? fallbackError.message : 'Unknown error'
+      }, fallbackError as Error)
+    }
   }
 }
 
-async function extractKeyword(messageText: string): Promise<string> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 50,
-      messages: [{
-        role: 'user',
-        content: `Extract the single most relevant inventory search keyword from the customer message below. Return ONLY the keyword or short phrase, no explanation, no punctuation, no extra text.
-
-Examples:
-- Do you have Nike Air Max in size 9? -> Nike Air Max
-- Is the iPhone 15 in stock? -> iPhone 15
-- What red dresses do you have? -> red dress
-- How many units of SKU-4821 are left? -> SKU-4821
-
-Customer message: ${messageText}`
-      }]
-    })
-  })
-
-  const data = await response.json()
-  return data.content[0]?.text?.trim() || ''
-}
-
 async function searchInventory(keyword: string) {
-  const { data, error } = await supabase
-    .from('inventory')
-    .select('*')
-    .ilike('name', `%${keyword}%`)
-    .limit(5)
+  try {
+    const { data, error } = await supabase
+      .from('inventory')
+      .select('*')
+      .ilike('name', `%${keyword}%`)
+      .limit(5)
 
-  if (error) throw error
-  return data || []
+    if (error) throw handleDatabaseError(error)
+    return data || []
+  } catch (error) {
+    logger.error('Inventory search failed', { keyword }, error as Error)
+    return []
+  }
 }
 
 async function getConversationHistory(phoneNumber: string) {
-  const { data, error } = await supabase
-    .from('conversations')
-    .select('history')
-    .eq('phone_number', phoneNumber)
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('history')
+      .eq('phone_number', phoneNumber)
+      .single()
 
-  if (error && error.code !== 'PGRST116') throw error
-  return data?.history || ''
-}
-
-async function generateResponse(
-  customerName: string,
-  messageText: string,
-  inventoryResults: any[],
-  conversationHistory: string
-): Promise<string> {
-  const inventoryText = inventoryResults
-    .map(item => `${item.name} | qty: ${item.quantity} | price: ${item.price} | sku: ${item.sku}`)
-    .join(', ')
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 500,
-      messages: [{
-        role: 'user',
-        content: `You are a friendly customer support assistant for a retail business. You reply via WhatsApp.
-
-Rules:
-- Plain text only. No markdown, asterisks, bullet points or formatting
-- Be concise and conversational
-- Only use information from the inventory records below. Never invent stock levels, prices or product details
-- If the item is not found or out of stock, say so politely
-- Keep replies under 150 words
-
-Customer name: ${customerName}
-Customer message: ${messageText}
-
-Previous conversation:
-${conversationHistory}
-
-Inventory results for ${inventoryResults.length > 0 ? 'items' : 'no items'}:
-${inventoryText || 'No items found'}
-
-Write your reply:`
-      }]
-    })
-  })
-
-  const data = await response.json()
-  return data.content[0]?.text || 'Sorry, I could not generate a response.'
+    if (error && error.code !== 'PGRST116') throw handleDatabaseError(error)
+    return data?.history || ''
+  } catch (error) {
+    logger.error('Failed to get conversation history', { phoneNumber }, error as Error)
+    return ''
+  }
 }
 
 async function updateConversationHistory(
@@ -229,54 +249,31 @@ async function updateConversationHistory(
   customerMessage: string,
   aiResponse: string
 ) {
-  const { data: existing } = await supabase
-    .from('conversations')
-    .select('history')
-    .eq('phone_number', phoneNumber)
-    .single()
+  try {
+    const { data: existing } = await supabase
+      .from('conversations')
+      .select('history')
+      .eq('phone_number', phoneNumber)
+      .single()
 
-  const newEntry = `\n[Customer]: ${customerMessage}\n[Assistant]: ${aiResponse}`
-  const updatedHistory = existing?.history 
-    ? (existing.history + newEntry).slice(-4000) // Keep last 4000 chars
-    : newEntry.slice(-4000)
+    const newEntry = `\n[Customer]: ${customerMessage}\n[Assistant]: ${aiResponse}`
+    const updatedHistory = existing?.history 
+      ? (existing.history + newEntry).slice(-4000) // Keep last 4000 chars
+      : newEntry.slice(-4000)
 
-  await supabase
-    .from('conversations')
-    .upsert({
-      phone_number: phoneNumber,
-      customer_name: customerName,
-      history: updatedHistory,
-      updated_at: new Date().toISOString()
-    })
-}
-
-async function sendWhatsAppResponse(
-  phoneNumber: string,
-  message: string,
-  replyToMessageId: string
-) {
-  const response = await fetch(
-    `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: phoneNumber,
-        text: {
-          body: message
-        },
-        context: {
-          message_id: replyToMessageId
-        }
+    const { error } = await supabase
+      .from('conversations')
+      .upsert({
+        phone_number: phoneNumber,
+        customer_name: customerName,
+        history: updatedHistory,
+        updated_at: new Date().toISOString()
       })
-    }
-  )
 
-  if (!response.ok) {
-    throw new Error(`WhatsApp API error: ${response.statusText}`)
+    if (error) throw handleDatabaseError(error)
+    
+    logger.database('Conversation updated', { phoneNumber })
+  } catch (error) {
+    logger.error('Failed to update conversation', { phoneNumber }, error as Error)
   }
 }
