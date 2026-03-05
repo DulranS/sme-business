@@ -1,12 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { getJobStatus } from '../../../lib/api';
 import { useParams, useRouter } from 'next/navigation';
-export async function getJobStatus(jobId) {
-  const res = await fetch(`/api/proxy-status/${jobId}`);
-  if (!res.ok) throw new Error('Job not found');
-  return res.json();
-}
+import { useState, useEffect } from 'react';
 
 export default function ResultsPage() {
   const { jobId } = useParams();
@@ -17,13 +13,14 @@ export default function ResultsPage() {
   useEffect(() => {
     if (!jobId) return;
 
+    let timer = null;
+    
     const poll = async () => {
       try {
         const data = await getJobStatus(jobId);
         setJob(data);
         if (data.status === 'processing') {
-          const timer = setTimeout(poll, 1500);
-          return () => clearTimeout(timer);
+          timer = setTimeout(poll, 1500);
         }
       } catch (err) {
         setError(err.message || 'Failed to fetch job status');
@@ -31,6 +28,10 @@ export default function ResultsPage() {
     };
 
     poll();
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [jobId]);
 
   // Error state
