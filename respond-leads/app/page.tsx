@@ -4,8 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { CurrencyService } from '@/lib/currency'
+import AnalyticsDashboard from '@/components/AnalyticsDashboard'
+import BulkOperations from '@/components/BulkOperations'
+import NotificationCenter from '@/components/NotificationCenter'
 
-type Tab = 'inventory' | 'conversations'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -164,14 +167,17 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className="tab"
             style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
           >
-            {t === 'inventory' ? '▣ INVENTORY' : '◎ CONVERSATIONS'}
+            {t === 'inventory' ? '▣ INVENTORY' : 
+             t === 'conversations' ? '◎ CONVERSATIONS' :
+             t === 'analytics' ? '📊 ANALYTICS' :
+             '⚙️ BULK OPS'}
           </button>
         ))}
       </div>
@@ -331,6 +337,16 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* ── ANALYTICS TAB ── */}
+        {tab === 'analytics' && (
+          <AnalyticsDashboard />
+        )}
+
+        {/* ── BULK OPERATIONS TAB ── */}
+        {tab === 'bulk-ops' && (
+          <BulkOperations onRefresh={fetchInventory} />
+        )}
       </main>
 
       {/* ── MODAL ── */}
@@ -461,6 +477,9 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      
+      {/* Notification Center */}
+      <NotificationCenter />
     </div>
   )
 }
