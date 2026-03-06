@@ -1,4 +1,5 @@
 import { Currency, CURRENCIES } from '@/types'
+import { CurrencyConverter } from '@/lib/currency-converter'
 
 export class CurrencyService {
   private static readonly STORAGE_KEY = 'preferred_currency'
@@ -25,8 +26,8 @@ export class CurrencyService {
     return CURRENCIES[currencyCode] || CURRENCIES[this.DEFAULT_CURRENCY]
   }
 
-  static formatPrice(amount: number, currencyCode?: string): string {
-    const currency = this.getCurrencyInfo(currencyCode || this.getCurrentCurrency())
+  static formatPrice(amount: number, currencyCode: string): string {
+    const currency = this.getCurrencyInfo(currencyCode)
     const formattedAmount = new Intl.NumberFormat('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -35,13 +36,46 @@ export class CurrencyService {
     return `${currency.symbol}${formattedAmount}`
   }
 
-  static formatPriceWithCode(amount: number, currencyCode?: string): string {
-    const currency = this.getCurrencyInfo(currencyCode || this.getCurrentCurrency())
+  static formatPriceWithCode(amount: number, currencyCode: string): string {
+    const currency = this.getCurrencyInfo(currencyCode)
     const formattedAmount = new Intl.NumberFormat('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(amount)
     
     return `${formattedAmount} ${currency.code}`
+  }
+
+  // New methods for multi-currency support
+  static convertPrice(amount: number, fromCurrency: string, toCurrency: string): number {
+    return CurrencyConverter.convert(amount, fromCurrency, toCurrency)
+  }
+
+  static convertToUSD(amount: number, fromCurrency: string): number {
+    return CurrencyConverter.convertToUSD(amount, fromCurrency)
+  }
+
+  static convertFromUSD(amount: number, toCurrency: string): number {
+    return CurrencyConverter.convertFromUSD(amount, toCurrency)
+  }
+
+  static getExchangeRate(fromCurrency: string, toCurrency: string): number {
+    return CurrencyConverter.getExchangeRate(fromCurrency, toCurrency)
+  }
+
+  static isValidCurrency(currency: string): boolean {
+    return CurrencyConverter.isValidCurrency(currency)
+  }
+
+  // Format price for display in user's preferred currency
+  static formatPriceInPreferredCurrency(amount: number, itemCurrency: string): string {
+    const preferredCurrency = this.getCurrentCurrency()
+    
+    if (itemCurrency === preferredCurrency) {
+      return this.formatPrice(amount, itemCurrency)
+    }
+    
+    const convertedAmount = this.convertPrice(amount, itemCurrency, preferredCurrency)
+    return this.formatPrice(convertedAmount, preferredCurrency)
   }
 }

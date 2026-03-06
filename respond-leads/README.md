@@ -169,7 +169,35 @@ The application includes structured logging with multiple levels:
 - **INFO**: General information about system operations
 - **DEBUG**: Detailed debugging information (development only)
 
-## 🚀 Deployment
+## 🌍 Multi-Currency Architecture
+
+The system supports **true multi-currency inventory management** with automatic USD conversion and real-time display formatting.
+
+### **Currency Support**
+- **10 Major Currencies**: USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, BRL
+- **Automatic Conversion**: All prices stored with USD equivalent for consistent calculations
+- **Real-time Display**: Prices shown in user's preferred currency with proper formatting
+- **Exchange Rate Management**: Built-in currency converter with update capabilities
+
+### **Database Schema**
+```sql
+inventory table:
+- price: DECIMAL(10,2) -- Original price in item's currency
+- currency: VARCHAR(3) -- Currency code (USD, EUR, etc.)
+- price_usd: DECIMAL(10,2) -- USD equivalent for calculations
+```
+
+### **Architecture Components**
+1. **CurrencyConverter**: Handles exchange rate calculations and conversions
+2. **CurrencyService**: Manages user preferences and formatting
+3. **Database Triggers**: Auto-calculate USD equivalents on insert/update
+4. **UI Components**: Currency selectors and formatted displays
+
+### **Usage**
+- **Add Items**: Select currency when creating inventory items
+- **View Prices**: See prices in your preferred currency automatically
+- **Consistent Totals**: All calculations use USD equivalents for accuracy
+- **Persistent Settings**: Currency preference saved to localStorage
 
 ### Vercel (Recommended) - Free Tier Optimized
 
