@@ -20,6 +20,13 @@ body {
   color: var(--secondary);
 }
 
+/* Responsive Design System */
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+}
+
 .card {
   background-color: var(--card-bg);
   border-radius: 12px;
@@ -27,6 +34,14 @@ body {
   border: 1px solid var(--border);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+  }
 }
 
 .btn {
@@ -39,6 +54,13 @@ body {
   transition: all 0.2s ease;
   cursor: pointer;
   border: none;
+}
+
+@media (max-width: 640px) {
+  .btn {
+    padding: 0.625rem 1.25rem;
+    font-size: 0.875rem;
+  }
 }
 
 .btn-primary {
@@ -69,6 +91,13 @@ body {
   transition: border-color 0.2s;
 }
 
+@media (max-width: 640px) {
+  .input {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+  }
+}
+
 .input:focus {
   outline: none;
   border-color: var(--primary);
@@ -82,6 +111,14 @@ body {
   font-size: 1rem;
   min-height: 150px;
   transition: border-color 0.2s;
+}
+
+@media (max-width: 640px) {
+  .textarea {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    min-height: 120px;
+  }
 }
 
 .textarea:focus {
@@ -100,6 +137,13 @@ body {
   margin-bottom: 0.5rem;
 }
 
+@media (max-width: 640px) {
+  .tag {
+    font-size: 0.75rem;
+    padding: 0.1875rem 0.625rem;
+  }
+}
+
 .file-upload {
   border: 2px dashed var(--border);
   border-radius: 8px;
@@ -107,6 +151,12 @@ body {
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+@media (max-width: 640px) {
+  .file-upload {
+    padding: 1.5rem;
+  }
 }
 
 .file-upload:hover {
@@ -125,4 +175,132 @@ body {
   height: 100%;
   background-color: var(--primary);
   transition: width 0.3s ease;
+}
+
+/* Mobile-First Responsive Utilities */
+@media (max-width: 640px) {
+  .mobile-hidden {
+    display: none;
+  }
+  
+  .mobile-full {
+    width: 100%;
+  }
+  
+  .mobile-center {
+    text-align: center;
+  }
+}
+
+@media (min-width: 641px) {
+  .sm-hidden {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .md-hidden {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg-hidden {
+    display: none;
+  }
+}
+
+/* Touch-friendly interactions */
+@media (hover: none) and (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  input, textarea, select {
+    min-height: 44px;
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Focus indicators for accessibility */
+.btn:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Loading states */
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive tables */
+.responsive-table {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 640px) {
+  .responsive-table {
+    margin: 0 -1rem;
+    padding: 0 1rem;
+  }
+}
+
+/* Modal responsiveness */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+@media (max-width: 640px) {
+  .modal {
+    padding: 0.5rem;
+  }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  .modal-content {
+    border-radius: 8px;
+    max-height: 95vh;
+  }
 }
