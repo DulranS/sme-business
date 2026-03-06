@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
 
 export interface BulkOperation {
@@ -14,10 +14,7 @@ export interface ImportResult {
 }
 
 export class BulkOperationsService {
-  private supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  private supabase = getSupabaseClient()
 
   async bulkImport(csvData: string): Promise<ImportResult> {
     try {
