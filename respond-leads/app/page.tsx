@@ -147,25 +147,41 @@ export default function Dashboard() {
             <div style={s.brandSub}>WHATSAPP AI SYSTEM</div>
           </div>
         </div>
-        <div style={s.headerStatus}>
-          <div style={s.statusDot} />
-          <span style={s.statusText}>LIVE</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          {/* Currency Selector */}
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '8px',
+            padding: '4px 8px'
+          }}>
+            <select 
+              value={currentCurrency} 
+              onChange={(e) => handleCurrencyChange(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#e5e5e5',
+                fontSize: '12px',
+                fontWeight: '600',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              {Object.entries(CurrencyService.getAvailableCurrencies()).map(([code, currency]) => (
+                <option key={code} value={code} style={{ background: '#1a1a1a' }}>
+                  {currency.code} ({currency.symbol})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={s.headerStatus}>
+            <div style={s.statusDot} />
+            <span style={s.statusText}>LIVE</span>
+          </div>
         </div>
       </header>
-
-      {/* Currency Selector */}
-      <div className="currency-selector">
-        <select 
-          value={currentCurrency} 
-          onChange={(e) => handleCurrencyChange(e.target.value)}
-        >
-          {Object.entries(CurrencyService.getAvailableCurrencies()).map(([code, currency]) => (
-            <option key={code} value={code}>
-              {currency.code} ({currency.symbol})
-            </option>
-          ))}
-        </select>
-      </div>
 
       {/* Tabs */}
       <div style={s.tabs}>
@@ -499,434 +515,81 @@ export default function Dashboard() {
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
-const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+const s: Record<string, React.CSSProperties> = {
+  root: { 
+    minHeight: '100vh', 
+    background: 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%)', 
+    color: '#e5e5e5', 
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    position: 'relative'
+  },
   
-  * { 
-    box-sizing: border-box; 
-    margin: 0; 
-    padding: 0; 
-  }
-  
-  body { 
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
-    color: #e5e5e5;
-    line-height: 1.6;
-  }
-  
-  ::-webkit-scrollbar { 
-    width: 8px; 
-    height: 8px; 
-  }
-  
-  ::-webkit-scrollbar-track { 
-    background: rgba(255, 255, 255, 0.05); 
-    border-radius: 4px;
-  }
-  
-  ::-webkit-scrollbar-thumb { 
-    background: linear-gradient(135deg, #6366f1, #8b5cf6); 
-    border-radius: 4px;
-    transition: background 0.2s;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover { 
-    background: linear-gradient(135deg, #818cf8, #a78bfa); 
-  }
-  
-  input, button, select, textarea { 
-    font-family: 'Inter', sans-serif; 
-    outline: none;
-    border: none;
-  }
-  
-  /* Animations */
-  @keyframes fadeIn { 
-    from { opacity: 0; transform: translateY(10px); } 
-    to { opacity: 1; transform: translateY(0); } 
-  }
-  
-  @keyframes slideIn { 
-    from { opacity: 0; transform: translateX(-20px); } 
-    to { opacity: 1; transform: translateX(0); } 
-  }
-  
-  @keyframes pulse { 
-    0%, 100% { opacity: 1; transform: scale(1); } 
-    50% { opacity: 0.8; transform: scale(1.05); } 
-  }
-  
-  @keyframes shimmer {
-    0% { background-position: -200% center; }
-    100% { background-position: 200% center; }
-  }
-  
-  /* Utility Classes */
-  .tab:hover { 
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-    color: #a78bfa !important;
-    transform: translateY(-1px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  
-  .tr-hover:hover { 
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
-    transform: scale(1.01);
-    transition: all 0.2s ease;
-  }
-  
-  .action-btn:hover { 
-    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; 
-    color: #ffffff !important; 
-    border-color: transparent !important;
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  
-  .convo-item:hover { 
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
-    cursor: pointer;
-    transform: translateX(4px);
-    transition: all 0.3s ease;
-  }
-  
-  .currency-selector {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    z-index: 10;
-  }
-  
-  .currency-selector select {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    color: #e5e5e5;
-    padding: 8px 16px;
-    border-radius: 12px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
-  }
-  
-  .currency-selector select:hover {
-    border-color: rgba(139, 92, 246, 0.5);
-    transform: translateY(-1px);
-  }
-  
-  .currency-selector select:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-  }
+  toast: { 
+    position: 'fixed', 
+    top: 24, 
+    right: 24, 
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
+    color: '#ffffff', 
+    padding: '12px 20px', 
+    fontSize: 12, 
+    fontWeight: 600, 
+    zIndex: 999, 
+    animation: 'slideIn 0.3s ease',
+    borderRadius: '12px',
+    boxShadow: '0 10px 25px rgba(99, 102, 241, 0.3)'
+  },
 
-  /* Responsive Design */
-  @media (max-width: 1200px) {
-    .stats-row { 
-      grid-template-columns: repeat(2, 1fr) !important; 
-      gap: 20px !important;
-    }
-    .modal-grid { 
-      grid-template-columns: 1fr !important; 
-    }
-    .modal-card { 
-      width: 90vw !important; 
-      max-height: 90vh;
-    }
-  }
+  header: { 
+    background: 'linear-gradient(135deg, rgba(15, 15, 15, 0.8), rgba(26, 26, 26, 0.8))', 
+    backdropFilter: 'blur(20px)',
+    borderBottom: '1px solid rgba(139, 92, 246, 0.2)', 
+    padding: '24px 32px', 
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    position: 'sticky',
+    top: 0,
+    zIndex: 100
+  },
+  
+  headerBrand: { display: 'flex', alignItems: 'center', gap: 16 },
+  brandMark: { fontSize: 28, color: '#8b5cf6', fontWeight: 700 },
+  brandName: { fontFamily: "'Inter', sans-serif", fontSize: 20, fontWeight: 800, color: '#ffffff', letterSpacing: 1 },
+  brandSub: { fontSize: 11, color: '#a78bfa', letterSpacing: 1, marginTop: 2, fontWeight: 500 },
+  headerStatus: { display: 'flex', alignItems: 'center', gap: 10 },
+  statusDot: { width: 8, height: 8, borderRadius: '50%', background: '#10b981', animation: 'pulse 2s infinite' },
+  statusText: { fontSize: 10, color: '#10b981', letterSpacing: 1, fontWeight: 600 },
 
-  @media (max-width: 768px) {
-    .header { 
-      padding: 20px !important; 
-      flex-direction: column; 
-      gap: 16px !important;
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
-      backdrop-filter: blur(20px);
-    }
-    .header-brand { 
-      font-size: 16px !important; 
-    }
-    .brand-name { 
-      font-size: 18px !important; 
-      font-weight: 700;
-    }
-    .brand-sub { 
-      font-size: 10px !important; 
-      opacity: 0.7;
-    }
-    .tabs { 
-      padding: 0 20px !important; 
-      overflow-x: auto; 
-      scrollbar-width: thin;
-      scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
-    }
-    .tab { 
-      padding: 12px 20px !important; 
-      font-size: 12px !important; 
-      font-weight: 600;
-      border-radius: 12px 12px 0 0;
-      margin: 0 2px;
-    }
-    .main { 
-      padding: 24px !important; 
-    }
-    .stats-row { 
-      grid-template-columns: 1fr !important; 
-      gap: 16px !important; 
-    }
-    .stat-card { 
-      padding: 20px !important; 
-      border-radius: 16px;
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
-      backdrop-filter: blur(10px);
-    }
-    .stat-value { 
-      font-size: 24px !important; 
-      font-weight: 700;
-    }
-    .toolbar { 
-      flex-direction: column !important; 
-      gap: 12px !important;
-    }
-    .search-input { 
-      width: 100% !important; 
-      margin-bottom: 0 !important;
-      padding: 12px 16px !important;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(139, 92, 246, 0.2);
-      color: #e5e5e5;
-      font-size: 14px;
-    }
-    .search-input:focus {
-      border-color: #8b5cf6;
-      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-    }
-    .table-wrap { 
-      overflow-x: auto !important; 
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    }
-    .table { 
-      min-width: 600px !important; 
-      background: rgba(255, 255, 255, 0.02);
-      backdrop-filter: blur(10px);
-    }
-    .th, .td { 
-      padding: 12px 16px !important; 
-      font-size: 12px !important;
-      border-bottom: 1px solid rgba(139, 92, 246, 0.1);
-    }
-    .th {
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-      font-weight: 600;
-      color: #a78bfa;
-    }
-    .modal-card { 
-      width: 95vw !important; 
-      padding: 32px !important; 
-      border-radius: 20px;
-      background: linear-gradient(135deg, rgba(15, 15, 15, 0.95), rgba(26, 26, 26, 0.95));
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(139, 92, 246, 0.2);
-      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-    .modal-title { 
-      font-size: 20px !important; 
-      font-weight: 700;
-      margin-bottom: 24px !important;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .modal-grid { 
-      grid-template-columns: 1fr !important; 
-      gap: 20px !important; 
-    }
-    .modal-actions { 
-      flex-direction: column !important; 
-      gap: 12px !important;
-    }
-    .primary-btn, .ghost-btn { 
-      width: 100% !important; 
-      padding: 14px 24px !important;
-      border-radius: 12px;
-      font-weight: 600;
-      transition: all 0.3s ease;
-    }
-    .primary-btn {
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: white;
-    }
-    .ghost-btn {
-      background: rgba(255, 255, 255, 0.05);
-      color: #e5e5e5;
-      border: 1px solid rgba(139, 92, 246, 0.3);
-    }
-    .convo-layout { 
-      grid-template-columns: 1fr !important; 
-      height: auto !important; 
-      border-radius: 16px;
-      overflow: hidden;
-    }
-    .convo-list { 
-      height: 250px !important; 
-      border-right: none !important; 
-      border-bottom: 1px solid rgba(139, 92, 246, 0.2) !important;
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .convo-messages { 
-      min-height: 450px !important; 
-      background: rgba(255, 255, 255, 0.01);
-    }
-    .message-bubble { 
-      max-width: 85% !important; 
-      border-radius: 16px;
-      backdrop-filter: blur(10px);
-    }
-  }
-
-  @media (max-width: 480px) {
-    .header { 
-      padding: 16px !important; 
-    }
-    .brand-name { 
-      font-size: 16px !important; 
-    }
-    .brand-sub { 
-      font-size: 9px !important; 
-    }
-    .tabs { 
-      padding: 0 16px !important; 
-    }
-    .tab { 
-      padding: 10px 16px !important; 
-      font-size: 11px !important; 
-    }
-    .main { 
-      padding: 16px !important; 
-    }
-    .stats-row { 
-      gap: 12px !important; 
-    }
-    .stat-card { 
-      padding: 16px !important; 
-      border-radius: 12px;
-    }
-    .stat-value { 
-      font-size: 20px !important; 
-    }
-    .stat-label { 
-      font-size: 10px !important; 
-    }
-    .toolbar { 
-      gap: 8px !important; 
-    }
-    .search-input { 
-      padding: 10px 14px !important; 
-      font-size: 13px !important; 
-    }
-    .primary-btn, .ghost-btn { 
-      padding: 12px 20px !important; 
-      font-size: 13px !important; 
-    }
-    .th, .td { 
-      padding: 10px 12px !important; 
-      font-size: 11px !important; 
-    }
-    .badge { 
-      font-size: 9px !important; 
-      padding: 4px 8px !important; 
-      border-radius: 8px;
-    }
-    .edit-btn, .delete-btn { 
-      padding: 6px 12px !important; 
-      font-size: 10px !important; 
-      border-radius: 8px;
-    }
-    .modal-card { 
-      width: 98vw !important; 
-      padding: 24px !important; 
-      margin: 16px !important; 
-      border-radius: 16px;
-    }
-    .modal-title { 
-      font-size: 18px !important; 
-      margin-bottom: 20px !important; 
-    }
-    .modal-grid { 
-      gap: 16px !important; 
-    }
-    .modal-field { 
-      gap: 6px !important; 
-    }
-    .modal-label { 
-      font-size: 10px !important; 
-    }
-    .modal-input { 
-      padding: 10px 14px !important; 
-      font-size: 13px !important; 
-      border-radius: 10px;
-    }
-    .convo-list { 
-      height: 200px !important; 
-    }
-    .convo-messages { 
-      min-height: 400px !important; 
-    }
-    .convo-header { 
-      padding: 16px !important; 
-    }
-    .convo-header-name { 
-      font-size: 14px !important; 
-    }
-    .convo-header-phone { 
-      font-size: 11px !important; 
-    }
-    .message-list { 
-      padding: 16px !important; 
-    }
-    .message-bubble { 
-      max-width: 90% !important; 
-      padding: 12px 16px !important; 
-    }
-    .message-text { 
-      font-size: 12px !important; 
-    }
-    .toast { 
-      top: 16px !important; 
-      right: 16px !important; 
-      padding: 12px 20px !important; 
-      font-size: 12px !important; 
-      border-radius: 12px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: white;
-    }
-  }
-
-  @media (max-width: 320px) {
-    .brand-name { 
-      font-size: 14px !important; 
-    }
-    .tab { 
-      padding: 8px 12px !important; 
-      font-size: 10px !important; 
-    }
-    .stat-value { 
-      font-size: 18px !important; 
-    }
-    .modal-card { 
-      width: 100vw !important; 
-      margin: 0 !important; 
-      border-radius: 0 !important; 
-      height: 100vh;
-    }
-    .modal-title { 
-      font-size: 16px !important; 
+  tabs: { 
+    background: 'linear-gradient(135deg, rgba(15, 15, 15, 0.6), rgba(26, 26, 26, 0.6))', 
+    backdropFilter: 'blur(10px)',
+    borderBottom: '1px solid rgba(139, 92, 246, 0.2)', 
+    padding: '0 32px', 
+    display: 'flex',
+    position: 'sticky',
+    top: 89,
+    zIndex: 90
+  },
+  
+  tab: { 
+    background: 'none', 
+    border: 'none', 
+    color: '#6b7280', 
+    fontSize: 12, 
+    fontWeight: 600, 
+    padding: '16px 24px', 
+    cursor: 'pointer', 
+    borderBottom: '3px solid transparent', 
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    borderRadius: '12px 12px 0 0',
+    margin: '0 2px'
+  },
+  
+  tabActive: { 
+    color: '#ffffff', 
+    borderBottom: '3px solid #8b5cf6',
+    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1))'
+  },
 
   main: { 
     padding: '32px', 
@@ -1341,3 +1004,459 @@ const css = `
     flexWrap: 'wrap' 
   },
 }
+
+// ─── CSS ──────────────────────────────────────────────────────────
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  
+  * { 
+    box-sizing: border-box; 
+    margin: 0; 
+    padding: 0; 
+  }
+  
+  body { 
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+    color: #e5e5e5;
+    line-height: 1.6;
+  }
+  
+  ::-webkit-scrollbar { 
+    width: 8px; 
+    height: 8px; 
+  }
+  
+  ::-webkit-scrollbar-track { 
+    background: rgba(255, 255, 255, 0.05); 
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb { 
+    background: linear-gradient(135deg, #6366f1, #8b5cf6); 
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover { 
+    background: linear-gradient(135deg, #818cf8, #a78bfa); 
+  }
+  
+  input, button, select, textarea { 
+    font-family: 'Inter', sans-serif; 
+    outline: none;
+    border: none;
+  }
+  
+  /* Animations */
+  @keyframes fadeIn { 
+    from { opacity: 0; transform: translateY(10px); } 
+    to { opacity: 1; transform: translateY(0); } 
+  }
+  
+  @keyframes slideIn { 
+    from { opacity: 0; transform: translateX(-20px); } 
+    to { opacity: 1; transform: translateX(0); } 
+  }
+  
+  @keyframes pulse { 
+    0%, 100% { opacity: 1; transform: scale(1); } 
+    50% { opacity: 0.8; transform: scale(1.05); } 
+  }
+  
+  @keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  
+  /* Utility Classes */
+  .tab:hover { 
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    color: #a78bfa !important;
+    transform: translateY(-1px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .tr-hover:hover { 
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+    transform: scale(1.01);
+    transition: all 0.2s ease;
+  }
+  
+  .action-btn:hover { 
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; 
+    color: #ffffff !important; 
+    border-color: transparent !important;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .convo-item:hover { 
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+    cursor: pointer;
+    transform: translateX(4px);
+    transition: all 0.3s ease;
+  }
+  
+  .currency-selector {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+  }
+  
+  .currency-selector select {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #e5e5e5;
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+  
+  .currency-selector select:hover {
+    border-color: rgba(139, 92, 246, 0.5);
+    transform: translateY(-1px);
+  }
+  
+  .currency-selector select:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+  }
+
+  /* Responsive Design */
+  @media (max-width: 1200px) {
+    .stats-row { 
+      grid-template-columns: repeat(2, 1fr) !important; 
+      gap: 20px !important;
+    }
+    .modal-grid { 
+      grid-template-columns: 1fr !important; 
+    }
+    .modal-card { 
+      width: 90vw !important; 
+      max-height: 90vh;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .header { 
+      padding: 20px !important; 
+      flex-direction: column; 
+      gap: 16px !important;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+      backdrop-filter: blur(20px);
+    }
+    .header-brand { 
+      font-size: 16px !important; 
+    }
+    .brand-name { 
+      font-size: 18px !important; 
+      font-weight: 700;
+    }
+    .brand-sub { 
+      font-size: 10px !important; 
+      opacity: 0.7;
+    }
+    .tabs { 
+      padding: 0 20px !important; 
+      overflow-x: auto; 
+      scrollbar-width: thin;
+      scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+    }
+    .tab { 
+      padding: 12px 20px !important; 
+      font-size: 12px !important; 
+      font-weight: 600;
+      border-radius: 12px 12px 0 0;
+      margin: 0 2px;
+    }
+    .main { 
+      padding: 24px !important; 
+    }
+    .stats-row { 
+      grid-template-columns: 1fr !important; 
+      gap: 16px !important; 
+    }
+    .stat-card { 
+      padding: 20px !important; 
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+      backdrop-filter: blur(10px);
+    }
+    .stat-value { 
+      font-size: 24px !important; 
+      font-weight: 700;
+    }
+    .toolbar { 
+      flex-direction: column !important; 
+      gap: 12px !important;
+    }
+    .search-input { 
+      width: 100% !important; 
+      margin-bottom: 0 !important;
+      padding: 12px 16px !important;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      color: #e5e5e5;
+      font-size: 14px;
+    }
+    .search-input:focus {
+      border-color: #8b5cf6;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+    }
+    .table-wrap { 
+      overflow-x: auto !important; 
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    .table { 
+      min-width: 600px !important; 
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(10px);
+    }
+    .th, .td { 
+      padding: 12px 16px !important; 
+      font-size: 12px !important;
+      border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+    }
+    .th {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+      font-weight: 600;
+      color: #a78bfa;
+    }
+    .modal-card { 
+      width: 95vw !important; 
+      padding: 32px !important; 
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(15, 15, 15, 0.95), rgba(26, 26, 26, 0.95));
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-title { 
+      font-size: 20px !important; 
+      font-weight: 700;
+      margin-bottom: 24px !important;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .modal-grid { 
+      grid-template-columns: 1fr !important; 
+      gap: 20px !important; 
+    }
+    .modal-actions { 
+      flex-direction: column !important; 
+      gap: 12px !important;
+    }
+    .primary-btn, .ghost-btn { 
+      width: 100% !important; 
+      padding: 14px 24px !important;
+      border-radius: 12px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    .primary-btn {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
+    .ghost-btn {
+      background: rgba(255, 255, 255, 0.05);
+      color: #e5e5e5;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+    .convo-layout { 
+      grid-template-columns: 1fr !important; 
+      height: auto !important; 
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .convo-list { 
+      height: 250px !important; 
+      border-right: none !important; 
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2) !important;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .convo-messages { 
+      min-height: 450px !important; 
+    }
+    .convo-header { 
+      padding: 16px !important; 
+    }
+    .convo-header-name { 
+      font-size: 14px !important; 
+    }
+    .convo-header-phone { 
+      font-size: 11px !important; 
+    }
+    .message-list { 
+      padding: 16px !important; 
+    }
+    .message-bubble { 
+      max-width: 85% !important; 
+      padding: 12px 16px !important; 
+    }
+    .message-text { 
+      font-size: 12px !important; 
+    }
+    .toast { 
+      top: 16px !important; 
+      right: 16px !important; 
+      padding: 12px 20px !important; 
+      font-size: 12px !important; 
+      border-radius: 12px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .header { 
+      padding: 16px !important; 
+    }
+    .brand-name { 
+      font-size: 16px !important; 
+    }
+    .brand-sub { 
+      font-size: 9px !important; 
+    }
+    .tabs { 
+      padding: 0 16px !important; 
+    }
+    .tab { 
+      padding: 10px 16px !important; 
+      font-size: 11px !important; 
+    }
+    .main { 
+      padding: 16px !important; 
+    }
+    .stats-row { 
+      gap: 12px !important; 
+    }
+    .stat-card { 
+      padding: 16px !important; 
+      border-radius: 12px;
+    }
+    .stat-value { 
+      font-size: 20px !important; 
+    }
+    .stat-label { 
+      font-size: 10px !important; 
+    }
+    .toolbar { 
+      gap: 8px !important; 
+    }
+    .search-input { 
+      padding: 10px 14px !important; 
+      font-size: 13px !important; 
+    }
+    .primary-btn, .ghost-btn { 
+      padding: 12px 20px !important; 
+      font-size: 13px !important; 
+    }
+    .th, .td { 
+      padding: 10px 12px !important; 
+      font-size: 11px !important; 
+    }
+    .badge { 
+      font-size: 9px !important; 
+      padding: 4px 8px !important; 
+      border-radius: 8px;
+    }
+    .edit-btn, .delete-btn { 
+      padding: 6px 12px !important; 
+      font-size: 10px !important; 
+      border-radius: 8px;
+    }
+    .modal-card { 
+      width: 98vw !important; 
+      padding: 24px !important; 
+      margin: 16px !important; 
+      border-radius: 16px;
+    }
+    .modal-title { 
+      font-size: 18px !important; 
+      margin-bottom: 20px !important; 
+    }
+    .modal-grid { 
+      gap: 16px !important; 
+    }
+    .modal-field { 
+      gap: 6px !important; 
+    }
+    .modal-label { 
+      font-size: 10px !important; 
+    }
+    .modal-input { 
+      padding: 10px 14px !important; 
+      font-size: 13px !important; 
+      border-radius: 10px;
+    }
+    .convo-list { 
+      height: 200px !important; 
+    }
+    .convo-messages { 
+      min-height: 400px !important; 
+    }
+    .convo-header { 
+      padding: 16px !important; 
+    }
+    .convo-header-name { 
+      font-size: 14px !important; 
+    }
+    .convo-header-phone { 
+      font-size: 11px !important; 
+    }
+    .message-list { 
+      padding: 16px !important; 
+    }
+    .message-bubble { 
+      max-width: 90% !important; 
+      padding: 12px 16px !important; 
+    }
+    .message-text { 
+      font-size: 12px !important; 
+    }
+    .toast { 
+      top: 16px !important; 
+      right: 16px !important; 
+      padding: 12px 20px !important; 
+      font-size: 12px !important; 
+      border-radius: 12px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
+  }
+
+  @media (max-width: 320px) {
+    .brand-name { 
+      font-size: 14px !important; 
+    }
+    .tab { 
+      padding: 8px 12px !important; 
+      font-size: 10px !important; 
+    }
+    .stat-value { 
+      font-size: 18px !important; 
+    }
+    .modal-card { 
+      width: 100vw !important; 
+      margin: 0 !important; 
+      border-radius: 0 !important; 
+      height: 100vh;
+    }
+    .modal-title { 
+      font-size: 16px !important; 
+      margin-bottom: 20px !important; 
+    }
+  }
+`
