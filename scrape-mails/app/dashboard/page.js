@@ -51,6 +51,8 @@ import {
 import Head from 'next/head';
 import { useRouter, usePathname } from 'next/navigation';
 
+console.log('🚀 B2B Growth Engine initialized with AI Agentic System');
+
 // ============================================================================
 // FIREBASE CONFIGURATION (Production-Ready)
 // ============================================================================
