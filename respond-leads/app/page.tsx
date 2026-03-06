@@ -387,7 +387,7 @@ export default function Dashboard() {
                     })}
                   </optgroup>
                   <optgroup label="Asia & Middle East">
-                    {['KRW', 'TWD', 'HKD', 'SGD', 'MYR', 'THB', 'VND', 'PHP', 'IDR', 'SAR', 'AED', 'QAR', 'KWD', 'BHD', 'OMR', 'ILS', 'JOD'].map(code => {
+                    {['KRW', 'TWD', 'HKD', 'SGD', 'MYR', 'THB', 'VND', 'PHP', 'IDR', 'SAR', 'AED', 'QAR', 'KWD', 'BHD', 'OMR', 'ILS', 'JOD', 'LKR', 'PKR', 'BDT', 'NPR', 'AFN', 'MMK', 'LAK', 'KHR', 'MVR', 'BTN', 'GEL', 'AMD', 'AZN', 'KZT', 'KGS', 'UZS', 'TJS', 'TMT', 'MNT', 'KPW'].map(code => {
                       const currency = CurrencyService.getCurrencyInfo(code)
                       return (
                         <option key={code} value={code}>
@@ -481,6 +481,84 @@ const css = `
   .tr-hover:hover { background: rgba(232,255,71,0.02) !important; }
   .action-btn:hover { background: #E8FF47 !important; color: #0C0C0C !important; border-color: #E8FF47 !important; }
   .convo-item:hover { background: rgba(232,255,71,0.03) !important; cursor: pointer; }
+
+  /* Responsive Design */
+  @media (max-width: 1200px) {
+    .stats-row { grid-template-columns: repeat(2, 1fr) !important; }
+    .modal-grid { grid-template-columns: 1fr !important; }
+    .modal-card { width: 90vw !important; }
+  }
+
+  @media (max-width: 768px) {
+    .header { padding: 12px 20px !important; flex-direction: column; gap: 12px; }
+    .header-brand { font-size: 14px !important; }
+    .brand-name { font-size: 14px !important; }
+    .brand-sub { font-size: 8px !important; }
+    .tabs { padding: 0 20px !important; overflow-x: auto; }
+    .tab { padding: 10px 16px !important; font-size: 9px !important; }
+    .main { padding: 20px !important; }
+    .stats-row { grid-template-columns: 1fr !important; gap: 12px !important; }
+    .stat-card { padding: 16px 20px !important; }
+    .stat-value { font-size: 22px !important; }
+    .toolbar { flex-direction: column !important; }
+    .search-input { width: 100% !important; margin-bottom: 10px; }
+    .table-wrap { overflow-x: auto !important; }
+    .table { min-width: 600px !important; }
+    .th, .td { padding: 8px 12px !important; font-size: 11px !important; }
+    .modal-card { width: 95vw !important; padding: 24px !important; }
+    .modal-title { font-size: 16px !important; }
+    .modal-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+    .modal-actions { flex-direction: column !important; }
+    .primary-btn, .ghost-btn { width: 100% !important; }
+    .convo-layout { grid-template-columns: 1fr !important; height: auto !important; }
+    .convo-list { height: 200px !important; border-right: none !important; border-bottom: 1px solid #141414 !important; }
+    .convo-messages { min-height: 400px !important; }
+    .message-bubble { max-width: 85% !important; }
+  }
+
+  @media (max-width: 480px) {
+    .header { padding: 10px 16px !important; }
+    .brand-name { font-size: 12px !important; letter-spacing: 2px !important; }
+    .brand-sub { font-size: 7px !important; }
+    .tabs { padding: 0 16px !important; }
+    .tab { padding: 8px 12px !important; font-size: 8px !important; letter-spacing: 1px !important; }
+    .main { padding: 16px !important; }
+    .stats-row { gap: 10px !important; }
+    .stat-card { padding: 12px 16px !important; }
+    .stat-value { font-size: 20px !important; }
+    .stat-label { font-size: 8px !important; }
+    .toolbar { gap: 8px !important; }
+    .search-input { padding: 8px 12px !important; font-size: 11px !important; }
+    .primary-btn, .ghost-btn { padding: 8px 16px !important; font-size: 9px !important; }
+    .th, .td { padding: 6px 8px !important; font-size: 10px !important; }
+    .badge { font-size: 8px !important; padding: 2px 6px !important; }
+    .edit-btn, .delete-btn { padding: 3px 8px !important; font-size: 8px !important; }
+    .modal-card { width: 98vw !important; padding: 20px !important; margin: 10px !important; }
+    .modal-title { font-size: 14px !important; margin-bottom: 20px !important; }
+    .modal-grid { gap: 12px !important; }
+    .modal-field { gap: 4px !important; }
+    .modal-label { font-size: 8px !important; }
+    .modal-input { padding: 8px 12px !important; font-size: 11px !important; }
+    .convo-list { height: 150px !important; }
+    .convo-messages { min-height: 300px !important; }
+    .convo-header { padding: 12px 16px !important; }
+    .convo-header-name { font-size: 12px !important; }
+    .convo-header-phone { font-size: 9px !important; }
+    .message-list { padding: 16px !important; }
+    .message-bubble { max-width: 90% !important; padding: 10px 14px !important; }
+    .message-text { font-size: 11px !important; }
+    .toast { top: 10px !important; right: 10px !important; padding: 8px 16px !important; font-size: 10px !important; }
+  }
+
+  @media (max-width: 320px) {
+    .brand-name { font-size: 10px !important; }
+    .tab { padding: 6px 8px !important; font-size: 7px !important; }
+    .stat-value { font-size: 18px !important; }
+    .modal-card { width: 100vw !important; margin: 0 !important; border-radius: 0 !important; }
+    .modal-title { font-size: 12px !important; }
+    .th, .td { padding: 4px 6px !important; font-size: 9px !important; }
+    .message-bubble { max-width: 95% !important; padding: 8px 10px !important; }
+  }
 `
 
 const s: Record<string, React.CSSProperties> = {

@@ -2,6 +2,8 @@
 import { google } from 'googleapis';
 import { supabaseAdmin } from './supabaseClient';
 import OpenAI from 'openai';
+import { errorHandler, ErrorSeverity, ErrorCategory } from './enterprise-error-handler';
+import { rateLimiter } from './enterprise-rate-limiter';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -62,6 +64,13 @@ export class ReplyHandler {
    */
   async pollForReplies(): Promise<ProcessedReply[]> {
     try {
+      // Rate limiting check
+      const rateLimit = await rateLimiter.checkLimit('gmail-read', 'system');
+      if (!rateLimit.allowed) {
+        console.log(`Rate limit exceeded, retrying in ${rateLimit.retryAfter} seconds`);
+        return [];
+      }
+
       // Get all threads with replies from the last 15 minutes
       const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
       const query = `after:${fifteenMinutesAgo.getTime() / 1000} -from:me`;
@@ -91,13 +100,19 @@ export class ReplyHandler {
             processedReplies.push(processedReply);
           }
         } catch (error) {
-          console.error(`Error processing message ${messageRef.id}:`, error);
+          await errorHandler.logError(error, ErrorSeverity.MEDIUM, ErrorCategory.GMAIL, {
+            messageId: messageRef.id,
+            userId: this.userId
+          });
         }
       }
 
       return processedReplies;
     } catch (error) {
-      console.error('Error polling Gmail for replies:', error);
+      await errorHandler.logError(error, ErrorSeverity.HIGH, ErrorCategory.GMAIL, {
+        userId: this.userId,
+        action: 'pollForReplies'
+      });
       throw error;
     }
   }
