@@ -4,15 +4,18 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Create inventory table
+-- Create inventory table with multi-currency support
 CREATE TABLE IF NOT EXISTS inventory (
     id SERIAL PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     sku VARCHAR(50) NOT NULL UNIQUE,
     quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
     price DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (price >= 0),
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    price_usd DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (price_usd >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CHECK (currency IN ('USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL'))
 );
 
 -- Create conversations table
@@ -49,13 +52,16 @@ CREATE TRIGGER update_inventory_updated_at BEFORE UPDATE ON inventory
 CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert sample data (optional - remove in production)
-INSERT INTO inventory (name, sku, quantity, price) VALUES
-('Nike Air Max 90', 'NIKE-AIR-MAX-90', 15, 120.00),
-('iPhone 15 Pro', 'APPLE-IPHONE-15-PRO', 8, 999.00),
-('Red Summer Dress', 'DRESS-RED-SUMMER', 12, 45.99),
-('Sony WH-1000XM5 Headphones', 'SONY-WH1000XM5', 5, 399.99),
-('MacBook Air M2', 'APPLE-MACBOOK-AIR-M2', 3, 1299.00)
+-- Insert sample data with multi-currency support (optional - remove in production)
+INSERT INTO inventory (name, sku, quantity, price, currency, price_usd) VALUES
+('Nike Air Max 90', 'NIKE-AIR-MAX-90', 15, 120.00, 'USD', 120.00),
+('iPhone 15 Pro', 'APPLE-IPHONE-15-PRO', 8, 999.00, 'USD', 999.00),
+('Red Summer Dress', 'DRESS-RED-SUMMER', 12, 45.99, 'USD', 45.99),
+('Sony WH-1000XM5 Headphones', 'SONY-WH1000XM5', 5, 399.99, 'USD', 399.99),
+('MacBook Air M2', 'APPLE-MACBOOK-AIR-M2', 3, 1299.00, 'USD', 1299.00),
+('European Watch', 'WATCH-EURO-001', 8, 450.00, 'EUR', 485.50),
+('Japanese Camera', 'CAM-JP-001', 6, 85000.00, 'JPY', 567.00),
+('British Tea Set', 'TEA-UK-001', 10, 75.00, 'GBP', 95.00)
 ON CONFLICT (sku) DO NOTHING;
 
 -- Row Level Security (RLS) policies
@@ -106,14 +112,16 @@ FROM inventory
 WHERE quantity <= 5
 ORDER BY quantity ASC, name ASC;
 
--- Create view for inventory statistics
+-- Create view for inventory statistics with multi-currency support
 CREATE OR REPLACE VIEW inventory_stats AS
 SELECT 
     COUNT(*) as total_items,
     COUNT(CASE WHEN quantity = 0 THEN 1 END) as out_of_stock,
     COUNT(CASE WHEN quantity > 0 AND quantity <= 5 THEN 1 END) as low_stock,
-    SUM(quantity * price) as total_value,
-    AVG(price) as avg_price
+    SUM(quantity * price_usd) as total_value_usd,
+    SUM(CASE WHEN currency = 'USD' THEN quantity * price ELSE 0 END) as total_value_native,
+    COUNT(DISTINCT currency) as currency_count,
+    AVG(price_usd) as avg_price_usd
 FROM inventory;
 
 -- Grant access to views

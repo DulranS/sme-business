@@ -5,6 +5,8 @@ export interface InventoryItem {
   sku: string
   quantity: number
   price: number
+  currency: string
+  price_usd: number
   created_at?: string
   updated_at?: string
 }

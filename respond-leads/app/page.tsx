@@ -8,7 +8,7 @@ import { CurrencyService } from '@/lib/currency'
 type Tab = 'inventory' | 'conversations'
 type Modal = 'add' | 'edit' | null
 
-const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0 }
+const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function Dashboard() {
@@ -55,13 +55,13 @@ export default function Dashboard() {
 
   // ─── Inventory CRUD ────────────────────────────────────────────────────────
   const openAdd = () => {
-    setForm(EMPTY_ITEM)
+    setForm({ ...EMPTY_ITEM, currency: CurrencyService.getCurrentCurrency() })
     setEditId(null)
     setModal('add')
   }
 
   const openEdit = (item: InventoryItem) => {
-    setForm({ name: item.name, sku: item.sku, quantity: item.quantity, price: item.price })
+    setForm({ name: item.name, sku: item.sku, quantity: item.quantity, price: item.price, currency: item.currency, price_usd: item.price_usd })
     setEditId(item.id!)
     setModal('edit')
   }
@@ -117,7 +117,7 @@ export default function Dashboard() {
   const totalItems = items.length
   const lowStock = items.filter(i => i.quantity <= 5 && i.quantity > 0).length
   const outOfStock = items.filter(i => i.quantity === 0).length
-  const totalValue = items.reduce((sum, i) => sum + (i.price * i.quantity), 0)
+  const totalValue = items.reduce((sum, i) => sum + (i.price_usd * i.quantity), 0)
 
   const handleCurrencyChange = (currencyCode: string) => {
     setCurrentCurrency(currencyCode)
@@ -213,16 +213,16 @@ export default function Dashboard() {
               <table style={s.table}>
                 <thead>
                   <tr>
-                    {['NAME', 'SKU', 'QUANTITY', 'PRICE', 'STATUS', ''].map(h => (
+                    {['NAME', 'SKU', 'QUANTITY', 'PRICE', 'CURRENCY', 'STATUS', ''].map(h => (
                       <th key={h} style={s.th}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={6} style={s.emptyCell}>Loading...</td></tr>
+                    <tr><td colSpan={7} style={s.emptyCell}>Loading...</td></tr>
                   ) : items.length === 0 ? (
-                    <tr><td colSpan={6} style={s.emptyCell}>No items found. Add your first item.</td></tr>
+                    <tr><td colSpan={7} style={s.emptyCell}>No items found. Add your first item.</td></tr>
                   ) : items.map(item => (
                     <tr key={item.id} className="tr-hover">
                       <td style={s.td}>{item.name}</td>
@@ -230,7 +230,8 @@ export default function Dashboard() {
                       <td style={{ ...s.td, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16, color: item.quantity === 0 ? '#EF4444' : item.quantity <= 5 ? '#F59E0B' : '#E8FF47' }}>
                         {item.quantity}
                       </td>
-                      <td style={{ ...s.td, color: '#aaa' }}>{CurrencyService.formatPrice(item.price, currentCurrency)}</td>
+                      <td style={{ ...s.td, color: '#aaa' }}>{CurrencyService.formatPrice(item.price, item.currency)}</td>
+                      <td style={{ ...s.td, color: '#888', fontSize: 11 }}>{item.currency}</td>
                       <td style={s.td}>
                         <span style={{
                           ...s.badge,
@@ -340,10 +341,24 @@ export default function Dashboard() {
             </div>
 
             <div style={s.modalGrid}>
+              <div style={s.modalField}>
+                <label style={s.modalLabel}>CURRENCY</label>
+                <select
+                  value={form.currency}
+                  onChange={e => setForm({ ...form, currency: e.target.value })}
+                  style={{ ...s.modalInput, cursor: 'pointer' }}
+                >
+                  {Object.entries(CurrencyService.getAvailableCurrencies()).map(([code, currency]) => (
+                    <option key={code} value={code}>
+                      {currency.code} ({currency.symbol})
+                    </option>
+                  ))}
+                </select>
+              </div>
               {[
                 { key: 'name', label: 'PRODUCT NAME *', type: 'text', placeholder: 'Nike Air Max 90' },
                 { key: 'sku', label: 'SKU *', type: 'text', placeholder: 'SKU-4821' },
-                { key: 'price', label: `PRICE (${CurrencyService.getCurrencyInfo(currentCurrency).symbol})`, type: 'number', placeholder: '0.00' },
+                { key: 'price', label: `PRICE (${CurrencyService.getCurrencyInfo(form.currency).symbol})`, type: 'number', placeholder: '0.00' },
                 { key: 'quantity', label: 'QUANTITY', type: 'number', placeholder: '0' },
               ].map(field => (
                 <div key={field.key} style={s.modalField}>
