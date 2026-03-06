@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
 
 export interface AnalyticsMetrics {
@@ -28,10 +28,7 @@ export interface AnalyticsMetrics {
 }
 
 export class AnalyticsService {
-  private supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  private supabase = getSupabaseClient()
 
   async getAnalyticsMetrics(timeframe: '7d' | '30d' | '90d' = '30d'): Promise<AnalyticsMetrics> {
     try {

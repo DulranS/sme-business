@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
 
 export interface RealtimeEvent {
@@ -15,10 +15,7 @@ export interface NotificationSettings {
 }
 
 export class RealtimeService {
-  private supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  private supabase = getSupabaseClient()
   
   private subscribers: Map<string, (event: RealtimeEvent) => void> = new Map()
   private notificationSettings: NotificationSettings = {
