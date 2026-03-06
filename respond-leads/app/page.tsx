@@ -7,8 +7,10 @@ import { CurrencyService } from '@/lib/currency'
 import AnalyticsDashboard from '@/components/AnalyticsDashboard'
 import BulkOperations from '@/components/BulkOperations'
 import NotificationCenter from '@/components/NotificationCenter'
+import ForecastingDashboard from '@/components/ForecastingDashboard'
+import ReportingDashboard from '@/components/ReportingDashboard'
 
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -167,7 +169,7 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -177,7 +179,9 @@ export default function Dashboard() {
             {t === 'inventory' ? '▣ INVENTORY' : 
              t === 'conversations' ? '◎ CONVERSATIONS' :
              t === 'analytics' ? '📊 ANALYTICS' :
-             '⚙️ BULK OPS'}
+             t === 'bulk-ops' ? '⚙️ BULK OPS' :
+             t === 'forecasting' ? '🔮 FORECASTING' :
+             '📋 REPORTING'}
           </button>
         ))}
       </div>
@@ -346,6 +350,16 @@ export default function Dashboard() {
         {/* ── BULK OPERATIONS TAB ── */}
         {tab === 'bulk-ops' && (
           <BulkOperations onRefresh={fetchInventory} />
+        )}
+
+        {/* ── FORECASTING TAB ── */}
+        {tab === 'forecasting' && (
+          <ForecastingDashboard />
+        )}
+
+        {/* ── REPORTING TAB ── */}
+        {tab === 'reporting' && (
+          <ReportingDashboard />
         )}
       </main>
 
