@@ -500,169 +500,844 @@ export default function Dashboard() {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'DM Mono', monospace; }
-  ::-webkit-scrollbar { width: 3px; height: 3px; }
-  ::-webkit-scrollbar-track { background: #111; }
-  ::-webkit-scrollbar-thumb { background: #E8FF47; border-radius: 2px; }
-  input, button, select { font-family: 'DM Mono', monospace; outline: none; }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-  .tab:hover { color: #E8FF47 !important; }
-  .tr-hover:hover { background: rgba(232,255,71,0.02) !important; }
-  .action-btn:hover { background: #E8FF47 !important; color: #0C0C0C !important; border-color: #E8FF47 !important; }
-  .convo-item:hover { background: rgba(232,255,71,0.03) !important; cursor: pointer; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  
+  * { 
+    box-sizing: border-box; 
+    margin: 0; 
+    padding: 0; 
+  }
+  
+  body { 
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+    color: #e5e5e5;
+    line-height: 1.6;
+  }
+  
+  ::-webkit-scrollbar { 
+    width: 8px; 
+    height: 8px; 
+  }
+  
+  ::-webkit-scrollbar-track { 
+    background: rgba(255, 255, 255, 0.05); 
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb { 
+    background: linear-gradient(135deg, #6366f1, #8b5cf6); 
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover { 
+    background: linear-gradient(135deg, #818cf8, #a78bfa); 
+  }
+  
+  input, button, select, textarea { 
+    font-family: 'Inter', sans-serif; 
+    outline: none;
+    border: none;
+  }
+  
+  /* Animations */
+  @keyframes fadeIn { 
+    from { opacity: 0; transform: translateY(10px); } 
+    to { opacity: 1; transform: translateY(0); } 
+  }
+  
+  @keyframes slideIn { 
+    from { opacity: 0; transform: translateX(-20px); } 
+    to { opacity: 1; transform: translateX(0); } 
+  }
+  
+  @keyframes pulse { 
+    0%, 100% { opacity: 1; transform: scale(1); } 
+    50% { opacity: 0.8; transform: scale(1.05); } 
+  }
+  
+  @keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  
+  /* Utility Classes */
+  .tab:hover { 
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    color: #a78bfa !important;
+    transform: translateY(-1px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .tr-hover:hover { 
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+    transform: scale(1.01);
+    transition: all 0.2s ease;
+  }
+  
+  .action-btn:hover { 
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; 
+    color: #ffffff !important; 
+    border-color: transparent !important;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .convo-item:hover { 
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+    cursor: pointer;
+    transform: translateX(4px);
+    transition: all 0.3s ease;
+  }
+  
+  .currency-selector {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+  }
+  
+  .currency-selector select {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #e5e5e5;
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+  
+  .currency-selector select:hover {
+    border-color: rgba(139, 92, 246, 0.5);
+    transform: translateY(-1px);
+  }
+  
+  .currency-selector select:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+  }
 
   /* Responsive Design */
   @media (max-width: 1200px) {
-    .stats-row { grid-template-columns: repeat(2, 1fr) !important; }
-    .modal-grid { grid-template-columns: 1fr !important; }
-    .modal-card { width: 90vw !important; }
+    .stats-row { 
+      grid-template-columns: repeat(2, 1fr) !important; 
+      gap: 20px !important;
+    }
+    .modal-grid { 
+      grid-template-columns: 1fr !important; 
+    }
+    .modal-card { 
+      width: 90vw !important; 
+      max-height: 90vh;
+    }
   }
 
   @media (max-width: 768px) {
-    .header { padding: 12px 20px !important; flex-direction: column; gap: 12px; }
-    .header-brand { font-size: 14px !important; }
-    .brand-name { font-size: 14px !important; }
-    .brand-sub { font-size: 8px !important; }
-    .tabs { padding: 0 20px !important; overflow-x: auto; }
-    .tab { padding: 10px 16px !important; font-size: 9px !important; }
-    .main { padding: 20px !important; }
-    .stats-row { grid-template-columns: 1fr !important; gap: 12px !important; }
-    .stat-card { padding: 16px 20px !important; }
-    .stat-value { font-size: 22px !important; }
-    .toolbar { flex-direction: column !important; }
-    .search-input { width: 100% !important; margin-bottom: 10px; }
-    .table-wrap { overflow-x: auto !important; }
-    .table { min-width: 600px !important; }
-    .th, .td { padding: 8px 12px !important; font-size: 11px !important; }
-    .modal-card { width: 95vw !important; padding: 24px !important; }
-    .modal-title { font-size: 16px !important; }
-    .modal-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
-    .modal-actions { flex-direction: column !important; }
-    .primary-btn, .ghost-btn { width: 100% !important; }
-    .convo-layout { grid-template-columns: 1fr !important; height: auto !important; }
-    .convo-list { height: 200px !important; border-right: none !important; border-bottom: 1px solid #141414 !important; }
-    .convo-messages { min-height: 400px !important; }
-    .message-bubble { max-width: 85% !important; }
+    .header { 
+      padding: 20px !important; 
+      flex-direction: column; 
+      gap: 16px !important;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+      backdrop-filter: blur(20px);
+    }
+    .header-brand { 
+      font-size: 16px !important; 
+    }
+    .brand-name { 
+      font-size: 18px !important; 
+      font-weight: 700;
+    }
+    .brand-sub { 
+      font-size: 10px !important; 
+      opacity: 0.7;
+    }
+    .tabs { 
+      padding: 0 20px !important; 
+      overflow-x: auto; 
+      scrollbar-width: thin;
+      scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+    }
+    .tab { 
+      padding: 12px 20px !important; 
+      font-size: 12px !important; 
+      font-weight: 600;
+      border-radius: 12px 12px 0 0;
+      margin: 0 2px;
+    }
+    .main { 
+      padding: 24px !important; 
+    }
+    .stats-row { 
+      grid-template-columns: 1fr !important; 
+      gap: 16px !important; 
+    }
+    .stat-card { 
+      padding: 20px !important; 
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+      backdrop-filter: blur(10px);
+    }
+    .stat-value { 
+      font-size: 24px !important; 
+      font-weight: 700;
+    }
+    .toolbar { 
+      flex-direction: column !important; 
+      gap: 12px !important;
+    }
+    .search-input { 
+      width: 100% !important; 
+      margin-bottom: 0 !important;
+      padding: 12px 16px !important;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      color: #e5e5e5;
+      font-size: 14px;
+    }
+    .search-input:focus {
+      border-color: #8b5cf6;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+    }
+    .table-wrap { 
+      overflow-x: auto !important; 
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    .table { 
+      min-width: 600px !important; 
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(10px);
+    }
+    .th, .td { 
+      padding: 12px 16px !important; 
+      font-size: 12px !important;
+      border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+    }
+    .th {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+      font-weight: 600;
+      color: #a78bfa;
+    }
+    .modal-card { 
+      width: 95vw !important; 
+      padding: 32px !important; 
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(15, 15, 15, 0.95), rgba(26, 26, 26, 0.95));
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-title { 
+      font-size: 20px !important; 
+      font-weight: 700;
+      margin-bottom: 24px !important;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .modal-grid { 
+      grid-template-columns: 1fr !important; 
+      gap: 20px !important; 
+    }
+    .modal-actions { 
+      flex-direction: column !important; 
+      gap: 12px !important;
+    }
+    .primary-btn, .ghost-btn { 
+      width: 100% !important; 
+      padding: 14px 24px !important;
+      border-radius: 12px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    .primary-btn {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
+    .ghost-btn {
+      background: rgba(255, 255, 255, 0.05);
+      color: #e5e5e5;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+    .convo-layout { 
+      grid-template-columns: 1fr !important; 
+      height: auto !important; 
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .convo-list { 
+      height: 250px !important; 
+      border-right: none !important; 
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2) !important;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .convo-messages { 
+      min-height: 450px !important; 
+      background: rgba(255, 255, 255, 0.01);
+    }
+    .message-bubble { 
+      max-width: 85% !important; 
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+    }
   }
 
   @media (max-width: 480px) {
-    .header { padding: 10px 16px !important; }
-    .brand-name { font-size: 12px !important; letter-spacing: 2px !important; }
-    .brand-sub { font-size: 7px !important; }
-    .tabs { padding: 0 16px !important; }
-    .tab { padding: 8px 12px !important; font-size: 8px !important; letter-spacing: 1px !important; }
-    .main { padding: 16px !important; }
-    .stats-row { gap: 10px !important; }
-    .stat-card { padding: 12px 16px !important; }
-    .stat-value { font-size: 20px !important; }
-    .stat-label { font-size: 8px !important; }
-    .toolbar { gap: 8px !important; }
-    .search-input { padding: 8px 12px !important; font-size: 11px !important; }
-    .primary-btn, .ghost-btn { padding: 8px 16px !important; font-size: 9px !important; }
-    .th, .td { padding: 6px 8px !important; font-size: 10px !important; }
-    .badge { font-size: 8px !important; padding: 2px 6px !important; }
-    .edit-btn, .delete-btn { padding: 3px 8px !important; font-size: 8px !important; }
-    .modal-card { width: 98vw !important; padding: 20px !important; margin: 10px !important; }
-    .modal-title { font-size: 14px !important; margin-bottom: 20px !important; }
-    .modal-grid { gap: 12px !important; }
-    .modal-field { gap: 4px !important; }
-    .modal-label { font-size: 8px !important; }
-    .modal-input { padding: 8px 12px !important; font-size: 11px !important; }
-    .convo-list { height: 150px !important; }
-    .convo-messages { min-height: 300px !important; }
-    .convo-header { padding: 12px 16px !important; }
-    .convo-header-name { font-size: 12px !important; }
-    .convo-header-phone { font-size: 9px !important; }
-    .message-list { padding: 16px !important; }
-    .message-bubble { max-width: 90% !important; padding: 10px 14px !important; }
-    .message-text { font-size: 11px !important; }
-    .toast { top: 10px !important; right: 10px !important; padding: 8px 16px !important; font-size: 10px !important; }
+    .header { 
+      padding: 16px !important; 
+    }
+    .brand-name { 
+      font-size: 16px !important; 
+    }
+    .brand-sub { 
+      font-size: 9px !important; 
+    }
+    .tabs { 
+      padding: 0 16px !important; 
+    }
+    .tab { 
+      padding: 10px 16px !important; 
+      font-size: 11px !important; 
+    }
+    .main { 
+      padding: 16px !important; 
+    }
+    .stats-row { 
+      gap: 12px !important; 
+    }
+    .stat-card { 
+      padding: 16px !important; 
+      border-radius: 12px;
+    }
+    .stat-value { 
+      font-size: 20px !important; 
+    }
+    .stat-label { 
+      font-size: 10px !important; 
+    }
+    .toolbar { 
+      gap: 8px !important; 
+    }
+    .search-input { 
+      padding: 10px 14px !important; 
+      font-size: 13px !important; 
+    }
+    .primary-btn, .ghost-btn { 
+      padding: 12px 20px !important; 
+      font-size: 13px !important; 
+    }
+    .th, .td { 
+      padding: 10px 12px !important; 
+      font-size: 11px !important; 
+    }
+    .badge { 
+      font-size: 9px !important; 
+      padding: 4px 8px !important; 
+      border-radius: 8px;
+    }
+    .edit-btn, .delete-btn { 
+      padding: 6px 12px !important; 
+      font-size: 10px !important; 
+      border-radius: 8px;
+    }
+    .modal-card { 
+      width: 98vw !important; 
+      padding: 24px !important; 
+      margin: 16px !important; 
+      border-radius: 16px;
+    }
+    .modal-title { 
+      font-size: 18px !important; 
+      margin-bottom: 20px !important; 
+    }
+    .modal-grid { 
+      gap: 16px !important; 
+    }
+    .modal-field { 
+      gap: 6px !important; 
+    }
+    .modal-label { 
+      font-size: 10px !important; 
+    }
+    .modal-input { 
+      padding: 10px 14px !important; 
+      font-size: 13px !important; 
+      border-radius: 10px;
+    }
+    .convo-list { 
+      height: 200px !important; 
+    }
+    .convo-messages { 
+      min-height: 400px !important; 
+    }
+    .convo-header { 
+      padding: 16px !important; 
+    }
+    .convo-header-name { 
+      font-size: 14px !important; 
+    }
+    .convo-header-phone { 
+      font-size: 11px !important; 
+    }
+    .message-list { 
+      padding: 16px !important; 
+    }
+    .message-bubble { 
+      max-width: 90% !important; 
+      padding: 12px 16px !important; 
+    }
+    .message-text { 
+      font-size: 12px !important; 
+    }
+    .toast { 
+      top: 16px !important; 
+      right: 16px !important; 
+      padding: 12px 20px !important; 
+      font-size: 12px !important; 
+      border-radius: 12px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
   }
 
   @media (max-width: 320px) {
-    .brand-name { font-size: 10px !important; }
-    .tab { padding: 6px 8px !important; font-size: 7px !important; }
-    .stat-value { font-size: 18px !important; }
-    .modal-card { width: 100vw !important; margin: 0 !important; border-radius: 0 !important; }
-    .modal-title { font-size: 12px !important; }
-    .th, .td { padding: 4px 6px !important; font-size: 9px !important; }
-    .message-bubble { max-width: 95% !important; padding: 8px 10px !important; }
-  }
-`
+    .brand-name { 
+      font-size: 14px !important; 
+    }
+    .tab { 
+      padding: 8px 12px !important; 
+      font-size: 10px !important; 
+    }
+    .stat-value { 
+      font-size: 18px !important; 
+    }
+    .modal-card { 
+      width: 100vw !important; 
+      margin: 0 !important; 
+      border-radius: 0 !important; 
+      height: 100vh;
+    }
+    .modal-title { 
+      font-size: 16px !important; 
 
-const s: Record<string, React.CSSProperties> = {
-  root: { minHeight: '100vh', background: '#0C0C0C', color: '#D4D4D4', fontFamily: "'DM Mono', monospace" },
+  main: { 
+    padding: '32px', 
+    animation: 'fadeIn 0.4s ease',
+    minHeight: 'calc(100vh - 180px)'
+  },
 
-  toast: { position: 'fixed', top: 24, right: 24, background: '#E8FF47', color: '#0C0C0C', padding: '10px 20px', fontSize: 11, letterSpacing: 1, fontWeight: 600, zIndex: 999, animation: 'toastIn 0.2s ease' },
+  statsRow: { 
+    display: 'grid', 
+    gridTemplateColumns: 'repeat(4, 1fr)', 
+    gap: 20, 
+    marginBottom: 32 
+  },
+  
+  statCard: { 
+    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08))', 
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(139, 92, 246, 0.2)', 
+    padding: '24px', 
+    borderRadius: '16px',
+    transition: 'all 0.3s ease',
+    position: 'relative',
+    overflow: 'hidden'
+  },
+  
+  statLabel: { 
+    fontSize: 11, 
+    color: '#a78bfa', 
+    fontWeight: 600, 
+    marginBottom: 8, 
+    textTransform: 'uppercase',
+    letterSpacing: 1 
+  },
+  
+  statValue: { 
+    fontFamily: "'Inter', sans-serif", 
+    fontSize: 28, 
+    fontWeight: 800, 
+    color: '#ffffff',
+    lineHeight: 1.2
+  },
 
-  header: { background: '#0F0F0F', borderBottom: '1px solid #181818', padding: '18px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  headerBrand: { display: 'flex', alignItems: 'center', gap: 14 },
-  brandMark: { fontSize: 24, color: '#E8FF47' },
-  brandName: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 700, color: '#E8FF47', letterSpacing: 3 },
-  brandSub: { fontSize: 9, color: '#2A2A2A', letterSpacing: 2, marginTop: 2 },
-  headerStatus: { display: 'flex', alignItems: 'center', gap: 8 },
-  statusDot: { width: 7, height: 7, borderRadius: '50%', background: '#22C55E', animation: 'pulse 2s infinite' },
-  statusText: { fontSize: 9, color: '#22C55E', letterSpacing: 2 },
+  toolbar: { 
+    display: 'flex', 
+    gap: 12, 
+    marginBottom: 24, 
+    alignItems: 'center', 
+    flexWrap: 'wrap' 
+  },
+  
+  searchInput: { 
+    background: 'rgba(255, 255, 255, 0.05)', 
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(139, 92, 246, 0.3)', 
+    color: '#e5e5e5', 
+    padding: '12px 16px', 
+    fontSize: 14, 
+    width: 320, 
+    transition: 'all 0.3s ease', 
+    flex: 1, 
+    minWidth: 200,
+    borderRadius: '12px'
+  },
+  
+  primaryBtn: { 
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
+    border: 'none', 
+    color: '#ffffff', 
+    padding: '12px 24px', 
+    fontSize: 12, 
+    fontWeight: 600, 
+    cursor: 'pointer', 
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', 
+    whiteSpace: 'nowrap',
+    borderRadius: '12px',
+    boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
+  },
+  
+  ghostBtn: { 
+    background: 'rgba(255, 255, 255, 0.05)', 
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(139, 92, 246, 0.3)', 
+    color: '#e5e5e5', 
+    padding: '12px 24px', 
+    fontSize: 12, 
+    fontWeight: 600, 
+    cursor: 'pointer', 
+    transition: 'all 0.3s ease', 
+    whiteSpace: 'nowrap',
+    borderRadius: '12px'
+  },
 
-  tabs: { background: '#0F0F0F', borderBottom: '1px solid #141414', padding: '0 32px', display: 'flex' },
-  tab: { background: 'none', border: 'none', color: '#3A3A3A', fontSize: 10, letterSpacing: 2, padding: '14px 24px', cursor: 'pointer', borderBottom: '2px solid transparent', transition: 'all 0.15s' },
-  tabActive: { color: '#E8FF47', borderBottom: '2px solid #E8FF47' },
-
-  main: { padding: 32, animation: 'fadeUp 0.3s ease' },
-
-  statsRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 },
-  statCard: { background: '#0F0F0F', border: '1px solid #181818', padding: '20px 24px' },
-  statLabel: { fontSize: 9, color: '#333', letterSpacing: 2, marginBottom: 10 },
-  statValue: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: -0.5 },
-
-  toolbar: { display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' },
-  searchInput: { background: '#0F0F0F', border: '1px solid #1A1A1A', color: '#D4D4D4', padding: '10px 16px', fontSize: 12, width: 320, transition: 'border-color 0.2s', flex: 1, minWidth: 200 },
-  primaryBtn: { background: '#E8FF47', border: 'none', color: '#0C0C0C', padding: '10px 20px', fontSize: 10, letterSpacing: 2, cursor: 'pointer', fontWeight: 700, transition: 'all 0.15s', whiteSpace: 'nowrap' },
-  ghostBtn: { background: 'none', border: '1px solid #1A1A1A', color: '#555', padding: '10px 20px', fontSize: 10, letterSpacing: 2, cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' },
-
-  tableWrap: { border: '1px solid #141414', overflow: 'hidden', overflowX: 'auto' },
+  tableWrap: { 
+    background: 'rgba(255, 255, 255, 0.02)', 
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(139, 92, 246, 0.2)', 
+    overflow: 'hidden', 
+    overflowX: 'auto',
+    borderRadius: '16px',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+  },
+  
   table: { width: '100%', borderCollapse: 'collapse', minWidth: 600 },
-  th: { background: '#0A0A0A', padding: '11px 16px', textAlign: 'left' as const, fontSize: 9, color: '#2E2E2E', letterSpacing: 2, borderBottom: '1px solid #141414', position: 'sticky', top: 0, zIndex: 10 },
-  td: { padding: '13px 16px', fontSize: 12, borderBottom: '1px solid #111', verticalAlign: 'middle' as const },
-  emptyCell: { padding: '48px 16px', textAlign: 'center' as const, color: '#2A2A2A', fontSize: 12 },
-  badge: { fontSize: 9, letterSpacing: 1, padding: '3px 10px', border: '1px solid', borderRadius: 4, whiteSpace: 'nowrap' },
-  editBtn: { background: 'none', border: '1px solid #222', color: '#555', padding: '4px 12px', fontSize: 9, letterSpacing: 1, cursor: 'pointer', transition: 'all 0.15s', borderRadius: 4 },
-  deleteBtn: { background: 'none', border: '1px solid #1E1E1E', color: '#3A3A3A', padding: '4px 12px', fontSize: 9, letterSpacing: 1, cursor: 'pointer', transition: 'all 0.15s', borderRadius: 4 },
-  deleteConfirmBtn: { background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444', padding: '4px 12px', fontSize: 9, cursor: 'pointer', borderRadius: 4 },
-  cancelBtn: { background: 'none', border: '1px solid #1E1E1E', color: '#444', padding: '4px 8px', fontSize: 9, cursor: 'pointer', borderRadius: 4 },
+  th: { 
+    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))', 
+    padding: '16px', 
+    textAlign: 'left' as const, 
+    fontSize: 11, 
+    color: '#a78bfa', 
+    fontWeight: 700, 
+    borderBottom: '1px solid rgba(139, 92, 246, 0.3)', 
+    position: 'sticky', 
+    top: 0, 
+    zIndex: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1
+  },
+  
+  td: { 
+    padding: '16px', 
+    fontSize: 13, 
+    borderBottom: '1px solid rgba(139, 92, 246, 0.1)', 
+    verticalAlign: 'middle' as const,
+    color: '#e5e5e5'
+  },
+  
+  emptyCell: { 
+    padding: '48px 16px', 
+    textAlign: 'center' as const, 
+    color: '#6b7280', 
+    fontSize: 13,
+    fontStyle: 'italic'
+  },
+  
+  badge: { 
+    fontSize: 10, 
+    fontWeight: 600, 
+    padding: '4px 10px', 
+    border: '1px solid', 
+    borderRadius: '8px', 
+    whiteSpace: 'nowrap',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  
+  editBtn: { 
+    background: 'rgba(99, 102, 241, 0.1)', 
+    border: '1px solid rgba(99, 102, 241, 0.3)', 
+    color: '#818cf8', 
+    padding: '6px 12px', 
+    fontSize: 10, 
+    fontWeight: 600, 
+    cursor: 'pointer', 
+    transition: 'all 0.3s ease', 
+    borderRadius: '8px'
+  },
+  
+  deleteBtn: { 
+    background: 'rgba(239, 68, 68, 0.1)', 
+    border: '1px solid rgba(239, 68, 68, 0.3)', 
+    color: '#f87171', 
+    padding: '6px 12px', 
+    fontSize: 10, 
+    fontWeight: 600, 
+    cursor: 'pointer', 
+    transition: 'all 0.3s ease', 
+    borderRadius: '8px'
+  },
+  
+  deleteConfirmBtn: { 
+    background: 'rgba(239,68,68,0.2)', 
+    border: '1px solid rgba(239,68,68,0.5)', 
+    color: '#ef4444', 
+    padding: '6px 12px', 
+    fontSize: 10, 
+    fontWeight: 600,
+    cursor: 'pointer', 
+    borderRadius: '8px'
+  },
+  
+  cancelBtn: { 
+    background: 'rgba(107, 114, 128, 0.1)', 
+    border: '1px solid rgba(107, 114, 128, 0.3)', 
+    color: '#9ca3af', 
+    padding: '6px 12px', 
+    fontSize: 10, 
+    fontWeight: 600,
+    cursor: 'pointer', 
+    borderRadius: '8px'
+  },
 
-  convoLayout: { display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, border: '1px solid #141414', height: 'calc(100vh - 220px)', overflow: 'hidden' },
-  convoList: { borderRight: '1px solid #141414', overflow: 'auto', background: '#0A0A0A' },
-  convoListHeader: { padding: '14px 20px', fontSize: 9, color: '#2E2E2E', letterSpacing: 2, borderBottom: '1px solid #141414' },
-  convoEmpty: { padding: 32, fontSize: 11, color: '#2A2A2A', lineHeight: 1.8 },
-  convoItem: { padding: '16px 20px', borderBottom: '1px solid #111', transition: 'background 0.1s', borderLeft: '2px solid transparent', cursor: 'pointer' },
-  convoItemActive: { background: 'rgba(232,255,71,0.03)', borderLeftColor: '#E8FF47' },
-  convoName: { fontSize: 12, color: '#C4C4C4', marginBottom: 3 },
-  convoPhone: { fontSize: 10, color: '#444', marginBottom: 4 },
-  convoTime: { fontSize: 9, color: '#2E2E2E', letterSpacing: 0.5 },
+  convoLayout: { 
+    display: 'grid', 
+    gridTemplateColumns: '300px 1fr', 
+    gap: 0, 
+    border: '1px solid rgba(139, 92, 246, 0.2)', 
+    height: 'calc(100vh - 220px)', 
+    overflow: 'hidden',
+    borderRadius: '16px',
+    background: 'rgba(255, 255, 255, 0.02)',
+    backdropFilter: 'blur(10px)'
+  },
+  
+  convoList: { 
+    borderRight: '1px solid rgba(139, 92, 246, 0.2)', 
+    overflow: 'auto', 
+    background: 'rgba(255, 255, 255, 0.01)'
+  },
+  
+  convoListHeader: { 
+    padding: '16px 20px', 
+    fontSize: 11, 
+    color: '#a78bfa', 
+    fontWeight: 700, 
+    borderBottom: '1px solid rgba(139, 92, 246, 0.2)',
+    textTransform: 'uppercase',
+    letterSpacing: 1
+  },
+  
+  convoEmpty: { 
+    padding: 32, 
+    fontSize: 12, 
+    color: '#6b7280', 
+    lineHeight: 1.6,
+    textAlign: 'center' as const
+  },
+  
+  convoItem: { 
+    padding: '16px 20px', 
+    borderBottom: '1px solid rgba(139, 92, 246, 0.1)', 
+    transition: 'all 0.3s ease', 
+    borderLeft: '3px solid transparent', 
+    cursor: 'pointer'
+  },
+  
+  convoItemActive: { 
+    background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1))', 
+    borderLeftColor: '#8b5cf6'
+  },
+  
+  convoName: { 
+    fontSize: 13, 
+    color: '#ffffff', 
+    marginBottom: 4, 
+    fontWeight: 600
+  },
+  
+  convoPhone: { 
+    fontSize: 11, 
+    color: '#6b7280', 
+    marginBottom: 4 
+  },
+  
+  convoTime: { 
+    fontSize: 10, 
+    color: '#9ca3af', 
+    fontWeight: 500
+  },
 
-  convoMessages: { display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0C0C0C' },
-  convoHeader: { padding: '16px 24px', background: '#0F0F0F', borderBottom: '1px solid #141414', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' },
-  convoHeaderName: { fontSize: 13, color: '#D4D4D4', marginBottom: 3 },
-  convoHeaderPhone: { fontSize: 10, color: '#444' },
-  convoHeaderTime: { fontSize: 9, color: '#2E2E2E' },
-  messageList: { flex: 1, overflow: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 },
-  messageBubble: { maxWidth: '68%', padding: '14px 18px', border: '1px solid', borderRadius: 8, wordBreak: 'break-word' },
-  messageText: { fontSize: 12, lineHeight: 1.7, color: '#C4C4C4' },
-  convoPlaceholder: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  convoPlaceholderIcon: { fontSize: 32, color: '#1A1A1A' },
-  convoPlaceholderText: { fontSize: 11, color: '#2A2A2A', letterSpacing: 2 },
+  convoMessages: { 
+    display: 'flex', 
+    flexDirection: 'column', 
+    overflow: 'hidden', 
+    background: 'rgba(255, 255, 255, 0.005)'
+  },
+  
+  convoHeader: { 
+    padding: '20px 24px', 
+    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05))', 
+    borderBottom: '1px solid rgba(139, 92, 246, 0.2)', 
+    display: 'flex', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    flexWrap: 'wrap'
+  },
+  
+  convoHeaderName: { 
+    fontSize: 15, 
+    color: '#ffffff', 
+    marginBottom: 2, 
+    fontWeight: 700
+  },
+  
+  convoHeaderPhone: { 
+    fontSize: 12, 
+    color: '#6b7280' 
+  },
+  
+  convoHeaderTime: { 
+    fontSize: 11, 
+    color: '#9ca3af',
+    fontWeight: 500
+  },
+  
+  messageList: { 
+    flex: 1, 
+    overflow: 'auto', 
+    padding: 24, 
+    display: 'flex', 
+    flexDirection: 'column', 
+    gap: 16 
+  },
+  
+  messageBubble: { 
+    maxWidth: '70%', 
+    padding: '12px 16px', 
+    border: '1px solid rgba(139, 92, 246, 0.2)', 
+    borderRadius: '16px', 
+    wordBreak: 'break-word',
+    backdropFilter: 'blur(10px)'
+  },
+  
+  messageText: { 
+    fontSize: 13, 
+    lineHeight: 1.6, 
+    color: '#e5e5e5' 
+  },
+  
+  convoPlaceholder: { 
+    flex: 1, 
+    display: 'flex', 
+    flexDirection: 'column', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 16 
+  },
+  
+  convoPlaceholderIcon: { 
+    fontSize: 48, 
+    color: '#4b5563' 
+  },
+  
+  convoPlaceholderText: { 
+    fontSize: 13, 
+    color: '#6b7280', 
+    fontWeight: 500 
+  },
 
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 },
-  modalCard: { background: '#0F0F0F', border: '1px solid #E8FF47', padding: 36, width: 480, maxWidth: '95vw', animation: 'fadeUp 0.2s ease', borderRadius: 8, maxHeight: '90vh', overflow: 'auto' },
-  modalTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 18, fontWeight: 700, color: '#E8FF47', marginBottom: 28, letterSpacing: 2 },
-  modalGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 },
-  modalField: { display: 'flex', flexDirection: 'column', gap: 6 },
-  modalLabel: { fontSize: 9, color: '#333', letterSpacing: 2 },
-  modalInput: { background: '#080808', border: '1px solid #1A1A1A', color: '#D4D4D4', padding: '10px 14px', fontSize: 12, width: '100%', transition: 'border-color 0.2s', borderRadius: 4 },
-  modalActions: { display: 'flex', gap: 10, flexWrap: 'wrap' },
+  overlay: { 
+    position: 'fixed', 
+    inset: 0, 
+    background: 'rgba(0, 0, 0, 0.8)', 
+    backdropFilter: 'blur(10px)',
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    zIndex: 200, 
+    padding: 20 
+  },
+  
+  modalCard: { 
+    background: 'linear-gradient(135deg, rgba(15, 15, 15, 0.95), rgba(26, 26, 26, 0.95))', 
+    backdropFilter: 'blur(20px)',
+    border: '1px solid rgba(139, 92, 246, 0.3)', 
+    padding: '40px', 
+    width: 520, 
+    maxWidth: '95vw', 
+    animation: 'fadeIn 0.3s ease', 
+    borderRadius: '20px', 
+    maxHeight: '90vh', 
+    overflow: 'auto',
+    boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)'
+  },
+  
+  modalTitle: { 
+    fontFamily: "'Inter', sans-serif", 
+    fontSize: 22, 
+    fontWeight: 800, 
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    marginBottom: 32, 
+    letterSpacing: -0.5
+  },
+  
+  modalGrid: { 
+    display: 'grid', 
+    gridTemplateColumns: '1fr 1fr', 
+    gap: 24, 
+    marginBottom: 32 
+  },
+  
+  modalField: { 
+    display: 'flex', 
+    flexDirection: 'column', 
+    gap: 8 
+  },
+  
+  modalLabel: { 
+    fontSize: 11, 
+    color: '#a78bfa', 
+    fontWeight: 600, 
+    textTransform: 'uppercase',
+    letterSpacing: 1 
+  },
+  
+  modalInput: { 
+    background: 'rgba(255, 255, 255, 0.05)', 
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(139, 92, 246, 0.3)', 
+    color: '#e5e5e5', 
+    padding: '12px 16px', 
+    fontSize: 14, 
+    width: '100%', 
+    transition: 'all 0.3s ease', 
+    borderRadius: '12px'
+  },
+  
+  modalActions: { 
+    display: 'flex', 
+    gap: 12, 
+    flexWrap: 'wrap' 
+  },
 }
