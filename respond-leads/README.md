@@ -174,10 +174,13 @@ The application includes structured logging with multiple levels:
 The system supports **true multi-currency inventory management** with automatic USD conversion and real-time display formatting.
 
 ### **Currency Support**
-- **10 Major Currencies**: USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, BRL
+- **100+ Currencies**: Comprehensive support for major global currencies
+- **Regional Coverage**: Americas, Europe, Asia, Middle East, Africa, Oceania, Caribbean
+- **Cryptocurrency Support**: Bitcoin, Ethereum, Tether for future expansion
 - **Automatic Conversion**: All prices stored with USD equivalent for consistent calculations
 - **Real-time Display**: Prices shown in user's preferred currency with proper formatting
 - **Exchange Rate Management**: Built-in currency converter with update capabilities
+- **Organized Selection**: Currencies grouped by region for easy navigation
 
 ### **Database Schema**
 ```sql
