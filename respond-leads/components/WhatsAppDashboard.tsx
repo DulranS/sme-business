@@ -49,7 +49,7 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitTextFillColor: 'transparent',
     margin: 0,
     letterSpacing: '-0.5px',
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "\"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
   },
   
   statsGrid: {

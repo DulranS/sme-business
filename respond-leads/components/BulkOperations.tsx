@@ -1,10 +1,9 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
-import { bulkOperationsService, ImportResult } from '../lib/bulk-operations'
+import React, { useState, useCallback } from 'react'
+import { bulkOperationsService } from '../lib/bulk-operations'
 
 interface BulkOperationsProps {
-  onRefresh: () => void
   className?: string
 }
 
@@ -19,7 +18,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   
   header: {
-    marginBottom: '32px'
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '40px',
+    flexWrap: 'wrap',
+    gap: '20px'
   },
   
   title: {
@@ -30,7 +34,7 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitTextFillColor: 'transparent',
     margin: 0,
     letterSpacing: '-0.5px',
-    fontFamily:  Inter -apple-system BlinkMacSystemFont Segoe UI sans-serif
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
   },
   
   modeSelector: {
@@ -41,36 +45,25 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '6px',
     borderRadius: '16px',
     backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(139, 92, 246, 0.2)',
-    flexWrap: 'wrap'
+    border: '1px solid rgba(139, 92, 246, 0.2)'
   },
   
   modeButton: {
-    padding: '12px 24px',
+    padding: '10px 20px',
     border: 'none',
-    borderRadius: '12px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     background: 'transparent',
     color: '#9ca3af',
-    fontFamily: Inter sans-serif
+    borderRadius: '12px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500',
+    fontFamily: "'Inter', sans-serif",
+    transition: 'all 0.3s ease'
   },
   
   modeButtonActive: {
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    color: '#ffffff',
-    boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
-  },
-  
-  contentArea: {
-    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02))',
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(139, 92, 246, 0.2)',
-    borderRadius: '20px',
-    padding: '32px',
-    marginBottom: '32px'
+    color: '#ffffff'
   },
   
   uploadArea: {
@@ -78,146 +71,123 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '16px',
     padding: '40px',
     textAlign: 'center',
+    background: 'rgba(255, 255, 255, 0.02)',
+    minHeight: '200px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '16px',
     cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    background: 'rgba(99, 102, 241, 0.02)',
-    marginBottom: '24px'
-  },
-  
-  uploadAreaHover: {
-    borderColor: 'rgba(139, 92, 246, 0.6)',
-    background: 'rgba(99, 102, 241, 0.05)'
+    transition: 'all 0.3s ease'
   },
   
   uploadIcon: {
     fontSize: '48px',
-    marginBottom: '16px',
-    color: '#8b5cf6'
+    opacity: 0.6
   },
   
   uploadText: {
     fontSize: '16px',
-    fontWeight: '600',
-    color: '#ffffff',
+    color: '#e5e5e5',
     marginBottom: '8px',
-    fontFamily: Inter sans-serif
+    fontFamily: "'Inter', sans-serif"
   },
   
   uploadSubtext: {
     fontSize: '14px',
     color: '#9ca3af',
-    fontFamily: Inter sans-serif
+    fontFamily: "'Inter', sans-serif"
   },
   
   fileInput: {
     display: 'none'
   },
   
-  textarea: {
-    width: '100%',
-    minHeight: '200px',
-    background: 'rgba(255, 255, 255, 0.08)',
-    border: '1px solid rgba(139, 92, 246, 0.2)',
-    borderRadius: '12px',
-    padding: '16px',
-    color: '#ffffff',
-    fontSize: '14px',
-    fontFamily: Inter sans-serif,
-    resize: 'vertical',
-    lineHeight: '1.6'
+  resultsSection: {
+    marginTop: '32px'
   },
   
-  buttonGroup: {
-    display: 'flex',
-    gap: '16px',
-    justifyContent: 'flex-end',
-    flexWrap: 'wrap'
-  },
-  
-  primaryButton: {
-    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    border: 'none',
-    color: '#ffffff',
-    padding: '14px 32px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    borderRadius: '12px',
-    boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)',
-    fontFamily: Inter sans-serif
-  },
-  
-  secondaryButton: {
-    background: 'rgba(255, 255, 255, 0.08)',
-    border: '1px solid rgba(139, 92, 246, 0.3)',
-    color: '#e5e5e5',
-    padding: '14px 32px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    borderRadius: '12px',
-    fontFamily: Inter sans-serif
+  resultsGrid: {
+    display: 'grid',
+    gap: '20px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))'
   },
   
   resultCard: {
-    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05))',
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02))',
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.2)',
-    borderRadius: '20px',
-    padding: '32px',
-    marginTop: '24px'
+    borderRadius: '16px',
+    padding: '24px'
   },
   
   resultTitle: {
     fontSize: '18px',
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#ffffff',
-    marginBottom: '20px',
-    fontFamily: Inter sans-serif
+    marginBottom: '16px',
+    fontFamily: "'Inter', sans-serif"
   },
   
   resultStats: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
-    marginBottom: '24px'
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '12px'
   },
   
   statItem: {
-    textAlign: 'center',
-    padding: '20px',
-    background: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: '16px',
-    border: '1px solid rgba(139, 92, 246, 0.1)'
-  },
-  
-  statValue: {
-    fontSize: '32px',
-    fontWeight: '800',
-    color: '#ffffff',
-    marginBottom: '8px',
-    fontFamily: Inter sans-serif
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 12px',
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: '8px'
   },
   
   statLabel: {
     fontSize: '12px',
-    color: '#a78bfa',
-    fontWeight: '600',
+    color: '#9ca3af',
+    fontWeight: '500',
     textTransform: 'uppercase',
-    letterSpacing: '1px',
-    fontFamily: Inter sans-serif
+    letterSpacing: '0.5px',
+    fontFamily: "'Inter', sans-serif"
   },
   
-  successStat: {
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    background: 'rgba(16, 185, 129, 0.05)'
+  statValue: {
+    fontSize: '14px',
+    color: '#ffffff',
+    fontWeight: '600',
+    fontFamily: "'Inter', sans-serif"
   },
   
-  errorStat: {
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    background: 'rgba(239, 68, 68, 0.05)'
+  actionsSection: {
+    marginTop: '32px',
+    display: 'flex',
+    gap: '16px',
+    flexWrap: 'wrap'
+  },
+  
+  actionButton: {
+    padding: '12px 24px',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  primaryButton: {
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+    color: '#ffffff'
+  },
+  
+  secondaryButton: {
+    background: 'rgba(255, 255, 255, 0.1)',
+    color: '#e5e5e5',
+    border: '1px solid rgba(139, 92, 246, 0.3)'
   },
   
   loading: {
@@ -227,86 +197,68 @@ const styles: Record<string, React.CSSProperties> = {
     height: '400px',
     color: '#6b7280',
     fontSize: '16px',
-    fontFamily: Inter sans-serif
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  emptyState: {
+    textAlign: 'center',
+    padding: '60px 20px',
+    color: '#6b7280'
+  },
+  
+  emptyIcon: {
+    fontSize: '48px',
+    marginBottom: '16px',
+    opacity: 0.5
+  },
+  
+  emptyText: {
+    fontSize: '16px',
+    fontWeight: '500',
+    color: '#9ca3af',
+    fontFamily: "'Inter', sans-serif"
   }
 }
 
-export default function BulkOperations({ onRefresh, className = '' }: BulkOperationsProps) {
-  const [importMode, setImportMode] = useState<'csv' | 'bulk-edit' | 'export'>('csv')
+export default function BulkOperations({ className = '' }: BulkOperationsProps) {
+  const [mode, setMode] = useState<'import' | 'export' | 'edit'>('import')
+  const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<ImportResult | null>(null)
-  const [selectedItems, setSelectedItems] = useState<number[]>([])
-  const [csvData, setCsvData] = useState('')
-  const [isDragOver, setIsDragOver] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [results, setResults] = useState<any>(null)
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setCsvData(e.target?.result as string)
-      }
-      reader.readAsText(file)
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0]
+    if (selectedFile) {
+      setFile(selectedFile)
     }
-  }
+  }, [])
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
-    setIsDragOver(false)
-    
-    const file = event.dataTransfer.files[0]
-    if (file && file.type === 'text/csv') {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setCsvData(e.target?.result as string)
-      }
-      reader.readAsText(file)
+    const droppedFile = event.dataTransfer.files?.[0]
+    if (droppedFile) {
+      setFile(droppedFile)
     }
-  }
+  }, [])
 
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
-    setIsDragOver(true)
-  }
+  }, [])
 
-  const handleDragLeave = () => {
-    setIsDragOver(false)
-  }
+  const processFile = async () => {
+    if (!file) return
 
-  const handleImport = async () => {
-    if (!csvData.trim()) {
-      return
-    }
-
+    setLoading(true)
     try {
-      setLoading(true)
-      const importResult = await bulkOperationsService.bulkImport(csvData)
-      setResult(importResult)
-      if (importResult.success > 0) {
-        onRefresh()
+      if (mode === 'import') {
+        const result = await bulkOperationsService.bulkImport(file)
+        setResults(result)
+      } else if (mode === 'export') {
+        const result = await bulkOperationsService.bulkExport()
+        setResults(result)
       }
     } catch (error) {
-      console.error('Import failed:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleExport = async () => {
-    try {
-      setLoading(true)
-      const blob = await bulkOperationsService.bulkExport()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'inventory_export.csv'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Export failed:', error)
+      console.error('Bulk operation failed:', error)
     } finally {
       setLoading(false)
     }
@@ -319,126 +271,126 @@ export default function BulkOperations({ onRefresh, className = '' }: BulkOperat
       </div>
 
       <div style={styles.modeSelector}>
-        {(['csv', 'bulk-edit', 'export'] as const).map(mode => (
+        {(['import', 'export', 'edit'] as const).map(m => (
           <button
-            key={mode}
-            onClick={() => setImportMode(mode)}
+            key={m}
             style={{
               ...styles.modeButton,
-              ...(importMode === mode ? styles.modeButtonActive : {})
+              ...(mode === m ? styles.modeButtonActive : {})
             }}
+            onClick={() => setMode(m)}
           >
-            {mode === 'csv' ? ' CSV Import' : mode === 'bulk-edit' ? ' Bulk Edit' : ' Export'}
+            {m === 'import' ? '📥 Import' : m === 'export' ? '📤 Export' : '✏️ Edit'}
           </button>
         ))}
       </div>
 
-      <div style={styles.contentArea}>
-        {importMode === 'csv' && (
-          <>
-            <div
-              style={{
-                ...styles.uploadArea,
-                ...(isDragOver ? styles.uploadAreaHover : {})
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-            >
-              <input
-                ref={fileInputRef}
-                type=file
-                accept=.csv
-                onChange={handleFileUpload}
-                style={styles.fileInput}
-              />
-              <div style={styles.uploadIcon}></div>
-              <div style={styles.uploadText}>
-                {csvData ? 'File uploaded successfully!' : 'Drop CSV file here or click to browse'}
-              </div>
-              <div style={styles.uploadSubtext}>
-                Supports CSV format with headers: name, sku, price, quantity, currency
-              </div>
-            </div>
-
-            {csvData && (
-              <textarea
-                value={csvData}
-                onChange={(e) => setCsvData(e.target.value)}
-                placeholder=Or paste your CSV data here...
-                style={styles.textarea}
-              />
-            )}
-
-            <div style={styles.buttonGroup}>
-              <button
-                onClick={handleImport}
-                disabled={loading || !csvData.trim()}
-                style={styles.primaryButton}
-              >
-                {loading ? 'Processing...' : ' Import Data'}
-              </button>
-              <button
-                onClick={() => setCsvData('')}
-                style={styles.secondaryButton}
-              >
-                Clear
-              </button>
-            </div>
-          </>
-        )}
-
-        {importMode === 'bulk-edit' && (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}></div>
-            <div style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', marginBottom: '12px' }}>
-              Bulk Edit Mode
-            </div>
-            <div style={{ fontSize: '14px', color: '#9ca3af', lineHeight: '1.6' }}>
-              Select multiple items from the inventory table to perform bulk operations like editing prices, updating quantities, or deleting items.
-            </div>
+      {mode === 'import' && (
+        <div
+          style={styles.uploadArea}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onClick={() => document.getElementById('file-input')?.click()}
+        >
+          <input
+            id="file-input"
+            type="file"
+            accept=".csv,.xlsx"
+            onChange={handleFileSelect}
+            style={styles.fileInput}
+          />
+          <div style={styles.uploadIcon}>📁</div>
+          <div style={styles.uploadText}>
+            {file ? file.name : 'Drop your file here or click to browse'}
           </div>
-        )}
-
-        {importMode === 'export' && (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}></div>
-            <div style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', marginBottom: '12px' }}>
-              Export Data
-            </div>
-            <div style={{ fontSize: '14px', color: '#9ca3af', lineHeight: '1.6', marginBottom: '24px' }}>
-              Export your entire inventory as a CSV file for backup or analysis.
-            </div>
-            <button
-              onClick={handleExport}
-              disabled={loading}
-              style={styles.primaryButton}
-            >
-              {loading ? 'Exporting...' : ' Export Inventory'}
-            </button>
+          <div style={styles.uploadSubtext}>
+            Supports CSV and Excel files
           </div>
+        </div>
+      )}
+
+      {mode === 'export' && (
+        <div style={styles.uploadArea}>
+          <div style={styles.uploadIcon}>📊</div>
+          <div style={styles.uploadText}>Export Data</div>
+          <div style={styles.uploadSubtext}>
+            Generate and download inventory reports
+          </div>
+        </div>
+      )}
+
+      {mode === 'edit' && (
+        <div style={styles.uploadArea}>
+          <div style={styles.uploadIcon}>✏️</div>
+          <div style={styles.uploadText}>Bulk Edit</div>
+          <div style={styles.uploadSubtext}>
+            Update multiple items at once
+          </div>
+        </div>
+      )}
+
+      <div style={styles.actionsSection}>
+        <button
+          style={{
+            ...styles.actionButton,
+            ...styles.primaryButton
+          }}
+          onClick={processFile}
+          disabled={!file && mode === 'import'}
+        >
+          {loading ? 'Processing...' : mode === 'import' ? 'Import File' : mode === 'export' ? 'Export Data' : 'Start Editing'}
+        </button>
+        
+        {mode === 'export' && (
+          <button
+            style={{
+              ...styles.actionButton,
+              ...styles.secondaryButton
+            }}
+          >
+            Schedule Export
+          </button>
         )}
       </div>
 
-      {result && (
-        <div style={styles.resultCard}>
-          <h3 style={styles.resultTitle}>Import Results</h3>
-          <div style={styles.resultStats}>
-            <div style={{ ...styles.statItem, ...styles.successStat }}>
-              <div style={styles.statValue}>{result.success}</div>
-              <div style={styles.statLabel}>Successfully Imported</div>
-            </div>
-            <div style={{ ...styles.statItem, ...styles.errorStat }}>
-              <div style={styles.statValue}>{result.errors}</div>
-              <div style={styles.statLabel}>Errors</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{result.total}</div>
-              <div style={styles.statLabel}>Total Processed</div>
+      {results && (
+        <div style={styles.resultsSection}>
+          <div style={styles.resultsGrid}>
+            <div style={styles.resultCard}>
+              <h3 style={styles.resultTitle}>Operation Results</h3>
+              <div style={styles.resultStats}>
+                <div style={styles.statItem}>
+                  <span style={styles.statLabel}>Status</span>
+                  <span style={styles.statValue}>
+                    {results.success ? '✅ Success' : '❌ Failed'}
+                  </span>
+                </div>
+                <div style={styles.statItem}>
+                  <span style={styles.statLabel}>Records</span>
+                  <span style={styles.statValue}>
+                    {results.total || results.processed || 0}
+                  </span>
+                </div>
+                <div style={styles.statItem}>
+                  <span style={styles.statLabel}>Duration</span>
+                  <span style={styles.statValue}>
+                    {results.duration || 'N/A'}
+                  </span>
+                </div>
+                <div style={styles.statItem}>
+                  <span style={styles.statLabel}>Errors</span>
+                  <span style={styles.statValue}>
+                    {results.errors || 0}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      {loading && (
+        <div style={styles.loading}>Processing bulk operation...</div>
       )}
     </div>
   )

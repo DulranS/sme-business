@@ -369,7 +369,7 @@ export default function Dashboard() {
 
         {/* ── BULK OPERATIONS TAB ── */}
         {tab === 'bulk-ops' && (
-          <BulkOperations onRefresh={fetchInventory} />
+          <BulkOperations />
         )}
 
         {/* ── FORECASTING TAB ── */}
