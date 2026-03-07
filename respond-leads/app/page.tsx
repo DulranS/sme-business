@@ -9,8 +9,10 @@ import BulkOperations from '@/components/BulkOperations'
 import NotificationCenter from '@/components/NotificationCenter'
 import ForecastingDashboard from '@/components/ForecastingDashboard'
 import ReportingDashboard from '@/components/ReportingDashboard'
+import WhatsAppDashboard from '@/components/WhatsAppDashboard'
+import WhatsAppChat from '@/components/WhatsAppChat'
 
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -185,7 +187,7 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -197,7 +199,9 @@ export default function Dashboard() {
              t === 'analytics' ? '📊 ANALYTICS' :
              t === 'bulk-ops' ? '⚙️ BULK OPS' :
              t === 'forecasting' ? '🔮 FORECASTING' :
-             '📋 REPORTING'}
+             t === 'reporting' ? '📋 REPORTING' :
+             t === 'whatsapp-dashboard' ? '📱 WHATSAPP DASHBOARD' :
+             '💬 WHATSAPP CHAT'}
           </button>
         ))}
       </div>
@@ -376,6 +380,16 @@ export default function Dashboard() {
         {/* ── REPORTING TAB ── */}
         {tab === 'reporting' && (
           <ReportingDashboard />
+        )}
+
+        {/* ── WHATSAPP DASHBOARD TAB ── */}
+        {tab === 'whatsapp-dashboard' && (
+          <WhatsAppDashboard />
+        )}
+
+        {/* ── WHATSAPP CHAT TAB ── */}
+        {tab === 'whatsapp-chat' && (
+          <WhatsAppChat />
         )}
       </main>
 
@@ -1007,7 +1021,7 @@ const s: Record<string, React.CSSProperties> = {
 
 // ─── CSS ──────────────────────────────────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&family=Geist:wght@300;400;500;600;700;800&display=swap');
   
   * { 
     box-sizing: border-box; 

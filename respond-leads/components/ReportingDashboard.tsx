@@ -7,6 +7,229 @@ interface ReportingDashboardProps {
   className?: string
 }
 
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    padding: '32px',
+    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.03), rgba(139, 92, 246, 0.03))',
+    borderRadius: '24px',
+    backdropFilter: 'blur(20px)',
+    border: '1px solid rgba(139, 92, 246, 0.15)',
+    minHeight: 'calc(100vh - 200px)'
+  },
+  
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '40px',
+    flexWrap: 'wrap',
+    gap: '20px'
+  },
+  
+  title: {
+    fontSize: '32px',
+    fontWeight: '900',
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    margin: 0,
+    letterSpacing: '-0.5px',
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+  },
+  
+  content: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '32px',
+    marginBottom: '40px'
+  },
+  
+  section: {
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02))',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(139, 92, 246, 0.2)',
+    borderRadius: '20px',
+    padding: '32px'
+  },
+  
+  sectionTitle: {
+    fontSize: '20px',
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: '24px',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  templateGrid: {
+    display: 'grid',
+    gap: '16px'
+  },
+  
+  templateCard: {
+    background: 'rgba(255, 255, 255, 0.03)',
+    border: '1px solid rgba(139, 92, 246, 0.1)',
+    borderRadius: '16px',
+    padding: '20px',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+    position: 'relative'
+  },
+  
+  templateHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: '12px'
+  },
+  
+  templateName: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#ffffff',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  templateBadge: {
+    padding: '4px 8px',
+    borderRadius: '12px',
+    fontSize: '10px',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  pdfBadge: {
+    background: 'rgba(239, 68, 68, 0.2)',
+    color: '#ef4444',
+    border: '1px solid rgba(239, 68, 68, 0.3)'
+  },
+  
+  excelBadge: {
+    background: 'rgba(34, 197, 94, 0.2)',
+    color: '#22c55e',
+    border: '1px solid rgba(34, 197, 94, 0.3)'
+  },
+  
+  csvBadge: {
+    background: 'rgba(59, 130, 246, 0.2)',
+    color: '#3b82f6',
+    border: '1px solid rgba(59, 130, 246, 0.3)'
+  },
+  
+  templateDescription: {
+    fontSize: '13px',
+    color: '#9ca3af',
+    lineHeight: '1.6',
+    marginBottom: '16px',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  templateMeta: {
+    display: 'flex',
+    gap: '16px',
+    fontSize: '12px',
+    color: '#6b7280',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  generateButton: {
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+    border: 'none',
+    color: '#ffffff',
+    padding: '8px 16px',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    borderRadius: '8px',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  reportsList: {
+    display: 'grid',
+    gap: '16px',
+    maxHeight: '400px',
+    overflow: 'auto'
+  },
+  
+  reportItem: {
+    background: 'rgba(255, 255, 255, 0.03)',
+    border: '1px solid rgba(139, 92, 246, 0.1)',
+    borderRadius: '16px',
+    padding: '20px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    transition: 'all 0.3s ease'
+  },
+  
+  reportInfo: {
+    flex: 1
+  },
+  
+  reportName: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: '4px',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  reportMeta: {
+    fontSize: '12px',
+    color: '#6b7280',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  reportActions: {
+    display: 'flex',
+    gap: '8px'
+  },
+  
+  downloadButton: {
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: '1px solid rgba(139, 92, 246, 0.3)',
+    color: '#e5e5e5',
+    padding: '6px 12px',
+    fontSize: '11px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+    borderRadius: '8px',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  emptyState: {
+    textAlign: 'center',
+    padding: '60px 20px',
+    color: '#6b7280'
+  },
+  
+  emptyIcon: {
+    fontSize: '48px',
+    marginBottom: '16px',
+    opacity: 0.5
+  },
+  
+  emptyText: {
+    fontSize: '16px',
+    fontWeight: '500',
+    color: '#9ca3af',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  loading: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '400px',
+    color: '#6b7280',
+    fontSize: '16px',
+    fontFamily: "'Inter', sans-serif"
+  }
+}
+
 export default function ReportingDashboard({ className = '' }: ReportingDashboardProps) {
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
   const [generatedReports, setGeneratedReports] = useState<Report[]>([])
@@ -55,193 +278,94 @@ export default function ReportingDashboard({ className = '' }: ReportingDashboar
     }
   }
 
-  const getTemplateIcon = (type: ReportTemplate['type']) => {
-    switch (type) {
-      case 'inventory': return '📦'
-      case 'sales': return '💰'
-      case 'forecasting': return '📊'
-      case 'customer': return '👥'
-      case 'financial': return '💳'
-      default: return '📄'
-    }
-  }
-
-  const getFormatColor = (format: ReportTemplate['format']) => {
-    switch (format) {
-      case 'pdf': return 'bg-red-500/20 text-red-400 border-red-500/30'
-      case 'excel': return 'bg-green-500/20 text-green-400 border-green-500/30'
-      case 'csv': return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+  const getFormatBadgeStyle = (format: string) => {
+    switch (format.toLowerCase()) {
+      case 'pdf': return styles.pdfBadge
+      case 'excel': return styles.excelBadge
+      case 'csv': return styles.csvBadge
+      default: return styles.pdfBadge
     }
   }
 
   return (
-    <div className={`p-6 ${className}`}>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <h2 className="text-2xl font-bold text-white">Business Reports</h2>
-        <button
-          onClick={() => setSelectedTemplate(null)}
-          className="px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium hover:bg-yellow-300 transition-colors"
-        >
-          + New Report
-        </button>
+    <div style={styles.container} className={className}>
+      <div style={styles.header}>
+        <h1 style={styles.title}>Reporting Dashboard</h1>
       </div>
 
-      {/* Report Generation Modal */}
-      {selectedTemplate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-white mb-4">Generate Report</h3>
-            <div className="mb-6">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-2xl">{getTemplateIcon(selectedTemplate.type)}</span>
-                <div>
-                  <div className="font-medium text-white">{selectedTemplate.name}</div>
-                  <div className="text-sm text-gray-400">{selectedTemplate.description}</div>
-                </div>
-              </div>
-              <div className="text-sm text-gray-300">
-                <div className="mb-2">Report Type: {selectedTemplate.type}</div>
-                <div className="mb-2">Format: {selectedTemplate.format.toUpperCase()}</div>
-                <div>Sections: {selectedTemplate.sections.length}</div>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => generateReport(selectedTemplate.id)}
-                disabled={generating}
-                className="flex-1 px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {generating ? 'Generating...' : 'Generate Report'}
-              </button>
-              <button
-                onClick={() => setSelectedTemplate(null)}
-                className="flex-1 px-4 py-2 bg-gray-700 text-gray-300 rounded-lg font-medium hover:bg-gray-600 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Report Templates */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-white mb-4">Available Reports</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {templates.map((template) => (
-            <div
-              key={template.id}
-              className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition-colors cursor-pointer"
-              onClick={() => setSelectedTemplate(template)}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{getTemplateIcon(template.type)}</span>
-                  <div>
-                    <h4 className="font-medium text-white">{template.name}</h4>
-                    <p className="text-sm text-gray-400 mt-1">{template.description}</p>
-                  </div>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full border ${getFormatColor(template.format)}`}>
-                  {template.format.toUpperCase()}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-400">
-                  {template.sections.length} sections
-                </div>
-                <button className="text-yellow-400 hover:text-yellow-300 text-sm font-medium">
-                  Generate →
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Generated Reports */}
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Recent Reports</h3>
-        {generatedReports.length === 0 ? (
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-            <div className="text-gray-400 mb-2">No reports generated yet</div>
-            <div className="text-sm text-gray-500">Select a template above to generate your first report</div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {generatedReports.map((report) => (
+      <div style={styles.content}>
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Report Templates</h2>
+          <div style={styles.templateGrid}>
+            {templates.map((template, index) => (
               <div
-                key={report.id}
-                className="bg-gray-800 border border-gray-700 rounded-xl p-6"
+                key={index}
+                style={styles.templateCard}
+                onClick={() => setSelectedTemplate(template)}
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl">{getTemplateIcon(report.type)}</span>
-                    <div>
-                      <h4 className="font-medium text-white">{report.name}</h4>
-                      <div className="flex items-center gap-4 mt-1">
-                        <span className="text-sm text-gray-400">
-                          Generated: {report.generatedAt.toLocaleString()}
-                        </span>
-                        <span className={`text-xs px-2 py-1 rounded-full border ${getFormatColor(report.format)}`}>
-                          {report.format.toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => downloadReport(report)}
-                      disabled={loading}
-                      className="px-4 py-2 bg-yellow-400 text-black rounded-lg font-medium hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {loading ? 'Downloading...' : 'Download'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setGeneratedReports(prev => prev.filter(r => r.id !== report.id))
-                      }}
-                      className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg font-medium hover:bg-gray-600 transition-colors"
-                    >
-                      Remove
-                    </button>
+                <div style={styles.templateHeader}>
+                  <div style={styles.templateName}>{template.name}</div>
+                  <div style={{
+                    ...styles.templateBadge,
+                    ...getFormatBadgeStyle(template.format)
+                  }}>
+                    {template.format}
                   </div>
                 </div>
-                
-                {/* Report Preview */}
-                <div className="mt-4 pt-4 border-t border-gray-700">
-                  <div className="text-sm text-gray-400 mb-2">Report Sections:</div>
-                  <div className="flex flex-wrap gap-2">
-                    {templates
-                      .find(t => t.type === report.type)
-                      ?.sections.map(section => (
-                        <span
-                          key={section.id}
-                          className="text-xs px-2 py-1 bg-gray-700 text-gray-300 rounded"
-                        >
-                          {section.name}
-                        </span>
-                      ))}
-                  </div>
+                <div style={styles.templateDescription}>
+                  {template.description}
                 </div>
+                <div style={styles.templateMeta}>
+                  <span>📊 {template.category}</span>
+                  <span>⏱️ {template.estimatedTime}</span>
+                </div>
+                <button
+                  style={styles.generateButton}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    generateReport(template.id)
+                  }}
+                  disabled={generating}
+                >
+                  {generating ? 'Generating...' : '🚀 Generate'}
+                </button>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Schedule Reports Section */}
-      <div className="mt-8">
-        <h3 className="text-lg font-semibold text-white mb-4">Scheduled Reports</h3>
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-          <div className="text-center text-gray-400">
-            <div className="mb-2">📅 Automated Reporting Coming Soon</div>
-            <div className="text-sm text-gray-500">
-              Schedule reports to be automatically generated and emailed to stakeholders
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Generated Reports</h2>
+          {generatedReports.length === 0 ? (
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>📄</div>
+              <div style={styles.emptyText}>No reports generated yet</div>
             </div>
-          </div>
+          ) : (
+            <div style={styles.reportsList}>
+              {generatedReports.map((report, index) => (
+                <div key={index} style={styles.reportItem}>
+                  <div style={styles.reportInfo}>
+                    <div style={styles.reportName}>{report.name}</div>
+                    <div style={styles.reportMeta}>
+                      Generated {new Date(report.generatedAt).toLocaleDateString()} • 
+                      {report.format.toUpperCase()} • 
+                      {(report.size / 1024).toFixed(1)}KB
+                    </div>
+                  </div>
+                  <div style={styles.reportActions}>
+                    <button
+                      style={styles.downloadButton}
+                      onClick={() => downloadReport(report)}
+                      disabled={loading}
+                    >
+                      📥 Download
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
