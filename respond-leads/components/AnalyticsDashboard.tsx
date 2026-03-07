@@ -1,9 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { analyticsService, AnalyticsMetrics } from '../lib/analytics'
-import { bulkOperationsService } from '../lib/bulk-operations'
-import { CurrencyService } from '../lib/currency'
+import { analyticsService } from '../lib/analytics'
+import { AnalyticsMetrics } from '../types'
 
 interface AnalyticsDashboardProps {
   className?: string
@@ -36,7 +35,7 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitTextFillColor: 'transparent',
     margin: 0,
     letterSpacing: '-0.5px',
-    fontFamily:  Inter -apple-system BlinkMacSystemFont Segoe UI sans-serif
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
   },
   
   timeframeSelector: {
@@ -50,22 +49,21 @@ const styles: Record<string, React.CSSProperties> = {
   },
   
   timeframeButton: {
-    padding: '10px 20px',
+    padding: '8px 16px',
     border: 'none',
-    borderRadius: '12px',
-    fontSize: '13px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     background: 'transparent',
     color: '#9ca3af',
-    fontFamily: Inter sans-serif
+    borderRadius: '12px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500',
+    fontFamily: "'Inter', sans-serif",
+    transition: 'all 0.3s ease'
   },
   
   timeframeButtonActive: {
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    color: '#ffffff',
-    boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
+    color: '#ffffff'
   },
   
   metricsGrid: {
@@ -81,19 +79,14 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(139, 92, 246, 0.2)',
     borderRadius: '20px',
     padding: '28px',
-    transition: 'all 0.3s ease',
     position: 'relative',
     overflow: 'hidden'
   },
   
-  metricLabel: {
-    fontSize: '12px',
-    fontWeight: '600',
-    color: '#a78bfa',
-    marginBottom: '12px',
-    textTransform: 'uppercase',
-    letterSpacing: '1px',
-    fontFamily: Inter sans-serif
+  metricIcon: {
+    fontSize: '32px',
+    marginBottom: '16px',
+    opacity: 0.8
   },
   
   metricValue: {
@@ -101,17 +94,26 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: '800',
     color: '#ffffff',
     marginBottom: '8px',
-    fontFamily: Inter sans-serif,
+    fontFamily: "'Inter', sans-serif",
     lineHeight: '1.1'
   },
   
-  metricChange: {
+  metricLabel: {
     fontSize: '14px',
+    color: '#a78bfa',
     fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: '1px',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  metricChange: {
+    fontSize: '12px',
+    marginTop: '8px',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    fontFamily: Inter sans-serif
+    gap: '4px',
+    fontFamily: "'Inter', sans-serif"
   },
   
   positiveChange: {
@@ -125,7 +127,7 @@ const styles: Record<string, React.CSSProperties> = {
   chartsSection: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-    gap: '32px',
+    gap: '24px',
     marginBottom: '40px'
   },
   
@@ -134,8 +136,7 @@ const styles: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.2)',
     borderRadius: '20px',
-    padding: '32px',
-    position: 'relative'
+    padding: '32px'
   },
   
   chartTitle: {
@@ -143,59 +144,55 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: '700',
     color: '#ffffff',
     marginBottom: '24px',
-    fontFamily: Inter sans-serif
+    fontFamily: "'Inter', sans-serif"
   },
   
   chartPlaceholder: {
-    height: '300px',
-    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05))',
-    borderRadius: '16px',
+    height: '200px',
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: '12px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     color: '#6b7280',
     fontSize: '14px',
-    fontFamily: Inter sans-serif
+    fontFamily: "'Inter', sans-serif"
   },
   
   insightsSection: {
-    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05))',
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02))',
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.2)',
     borderRadius: '20px',
     padding: '32px'
   },
   
-  insightsTitle: {
+  sectionTitle: {
     fontSize: '20px',
     fontWeight: '700',
     color: '#ffffff',
     marginBottom: '24px',
-    fontFamily: Inter sans-serif
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  insightsList: {
+    display: 'grid',
+    gap: '16px'
   },
   
   insightItem: {
     display: 'flex',
     alignItems: 'flex-start',
-    gap: '16px',
-    marginBottom: '20px',
-    padding: '20px',
-    background: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: '16px',
+    gap: '12px',
+    padding: '16px',
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: '12px',
     border: '1px solid rgba(139, 92, 246, 0.1)'
   },
   
   insightIcon: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '12px',
-    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#ffffff',
-    fontSize: '18px',
-    flexShrink: 0
+    fontSize: '20px',
+    marginTop: '2px'
   },
   
   insightContent: {
@@ -206,15 +203,34 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '14px',
     fontWeight: '600',
     color: '#ffffff',
-    marginBottom: '6px',
-    fontFamily: Inter sans-serif
+    marginBottom: '4px',
+    fontFamily: "'Inter', sans-serif"
   },
   
   insightDescription: {
     fontSize: '13px',
     color: '#9ca3af',
-    lineHeight: '1.6',
-    fontFamily: Inter sans-serif
+    lineHeight: '1.5',
+    fontFamily: "'Inter', sans-serif"
+  },
+  
+  emptyState: {
+    textAlign: 'center',
+    padding: '60px 20px',
+    color: '#6b7280'
+  },
+  
+  emptyIcon: {
+    fontSize: '48px',
+    marginBottom: '16px',
+    opacity: 0.5
+  },
+  
+  emptyText: {
+    fontSize: '16px',
+    fontWeight: '500',
+    color: '#9ca3af',
+    fontFamily: "'Inter', sans-serif"
   },
   
   loading: {
@@ -224,7 +240,7 @@ const styles: Record<string, React.CSSProperties> = {
     height: '400px',
     color: '#6b7280',
     fontSize: '16px',
-    fontFamily: Inter sans-serif
+    fontFamily: "'Inter', sans-serif"
   }
 }
 
@@ -249,12 +265,28 @@ export default function AnalyticsDashboard({ className = '' }: AnalyticsDashboar
     }
   }
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
+  }
+
+  const formatPercent = (value: number) => {
+    return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+  }
+
   if (loading) {
     return <div style={styles.loading}>Loading analytics...</div>
   }
 
   if (!metrics) {
-    return <div style={styles.loading}>No analytics data available</div>
+    return (
+      <div style={styles.emptyState}>
+        <div style={styles.emptyIcon}>📊</div>
+        <div style={styles.emptyText}>No analytics data available</div>
+      </div>
+    )
   }
 
   return (
@@ -265,11 +297,11 @@ export default function AnalyticsDashboard({ className = '' }: AnalyticsDashboar
           {(['7d', '30d', '90d'] as const).map(period => (
             <button
               key={period}
-              onClick={() => setTimeframe(period)}
               style={{
                 ...styles.timeframeButton,
                 ...(timeframe === period ? styles.timeframeButtonActive : {})
               }}
+              onClick={() => setTimeframe(period)}
             >
               {period === '7d' ? '7 Days' : period === '30d' ? '30 Days' : '90 Days'}
             </button>
@@ -279,54 +311,50 @@ export default function AnalyticsDashboard({ className = '' }: AnalyticsDashboar
 
       <div style={styles.metricsGrid}>
         <div style={styles.metricCard}>
-          <div style={styles.metricLabel}>Total Revenue</div>
-          <div style={styles.metricValue}>
-            {CurrencyService.formatPriceInPreferredCurrency(metrics.totalRevenue)}
-          </div>
+          <div style={styles.metricIcon}>💰</div>
+          <div style={styles.metricValue}>{formatCurrency(metrics.revenue)}</div>
+          <div style={styles.metricLabel}>Revenue</div>
           <div style={{
             ...styles.metricChange,
             ...(metrics.revenueChange >= 0 ? styles.positiveChange : styles.negativeChange)
           }}>
-            <span>{metrics.revenueChange >= 0 ? '' : ''}</span>
-            <span>{Math.abs(metrics.revenueChange)}%</span>
+            {metrics.revenueChange >= 0 ? '↑' : '↓'} {formatPercent(metrics.revenueChange)}
           </div>
         </div>
 
         <div style={styles.metricCard}>
-          <div style={styles.metricLabel}>Total Orders</div>
-          <div style={styles.metricValue}>{metrics.totalOrders}</div>
+          <div style={styles.metricIcon}>📦</div>
+          <div style={styles.metricValue}>{metrics.orders.toLocaleString()}</div>
+          <div style={styles.metricLabel}>Orders</div>
           <div style={{
             ...styles.metricChange,
             ...(metrics.ordersChange >= 0 ? styles.positiveChange : styles.negativeChange)
           }}>
-            <span>{metrics.ordersChange >= 0 ? '' : ''}</span>
-            <span>{Math.abs(metrics.ordersChange)}%</span>
+            {metrics.ordersChange >= 0 ? '↑' : '↓'} {formatPercent(metrics.ordersChange)}
           </div>
         </div>
 
         <div style={styles.metricCard}>
+          <div style={styles.metricIcon}>💳</div>
+          <div style={styles.metricValue}>{formatCurrency(metrics.averageOrderValue)}</div>
           <div style={styles.metricLabel}>Average Order Value</div>
-          <div style={styles.metricValue}>
-            {CurrencyService.formatPriceInPreferredCurrency(metrics.averageOrderValue)}
-          </div>
           <div style={{
             ...styles.metricChange,
             ...(metrics.aovChange >= 0 ? styles.positiveChange : styles.negativeChange)
           }}>
-            <span>{metrics.aovChange >= 0 ? '' : ''}</span>
-            <span>{Math.abs(metrics.aovChange)}%</span>
+            {metrics.aovChange >= 0 ? '↑' : '↓'} {formatPercent(metrics.aovChange)}
           </div>
         </div>
 
         <div style={styles.metricCard}>
+          <div style={styles.metricIcon}>🎯</div>
+          <div style={styles.metricValue}>{(metrics.conversionRate * 100).toFixed(1)}%</div>
           <div style={styles.metricLabel}>Conversion Rate</div>
-          <div style={styles.metricValue}>{metrics.conversionRate}%</div>
           <div style={{
             ...styles.metricChange,
             ...(metrics.conversionChange >= 0 ? styles.positiveChange : styles.negativeChange)
           }}>
-            <span>{metrics.conversionChange >= 0 ? '' : ''}</span>
-            <span>{Math.abs(metrics.conversionChange)}%</span>
+            {metrics.conversionChange >= 0 ? '↑' : '↓'} {formatPercent(metrics.conversionChange)}
           </div>
         </div>
       </div>
@@ -335,48 +363,48 @@ export default function AnalyticsDashboard({ className = '' }: AnalyticsDashboar
         <div style={styles.chartCard}>
           <h3 style={styles.chartTitle}>Revenue Trend</h3>
           <div style={styles.chartPlaceholder}>
-             Revenue chart visualization
+            📈 Revenue chart visualization
           </div>
         </div>
 
         <div style={styles.chartCard}>
-          <h3 style={styles.chartTitle}>Top Products</h3>
+          <h3 style={styles.chartTitle}>Orders by Category</h3>
           <div style={styles.chartPlaceholder}>
-             Top products chart
+            📊 Category breakdown chart
           </div>
         </div>
       </div>
 
       <div style={styles.insightsSection}>
-        <h2 style={styles.insightsTitle}>Key Insights</h2>
-        
-        <div style={styles.insightItem}>
-          <div style={styles.insightIcon}></div>
-          <div style={styles.insightContent}>
-            <div style={styles.insightTitle}>Revenue Growth</div>
-            <div style={styles.insightDescription}>
-              Your revenue has increased by {metrics.revenueChange}% compared to the previous period. 
-              Focus on maintaining this growth trajectory.
+        <h2 style={styles.sectionTitle}>Key Insights</h2>
+        <div style={styles.insightsList}>
+          <div style={styles.insightItem}>
+            <div style={styles.insightIcon}>💡</div>
+            <div style={styles.insightContent}>
+              <div style={styles.insightTitle}>Revenue Growth</div>
+              <div style={styles.insightDescription}>
+                Revenue has increased by {formatPercent(metrics.revenueChange)} compared to the previous period.
+              </div>
             </div>
           </div>
-        </div>
 
-        <div style={styles.insightItem}>
-          <div style={styles.insightIcon}></div>
-          <div style={styles.insightContent}>
-            <div style={styles.insightTitle}>Conversion Optimization</div>
-            <div style={styles.insightDescription}>
-              Consider A/B testing your checkout process to improve the {metrics.conversionRate}% conversion rate.
+          <div style={styles.insightItem}>
+            <div style={styles.insightIcon}>📈</div>
+            <div style={styles.insightContent}>
+              <div style={styles.insightTitle}>Conversion Optimization</div>
+              <div style={styles.insightDescription}>
+                Current conversion rate is {(metrics.conversionRate * 100).toFixed(1)}%. Consider A/B testing checkout flow.
+              </div>
             </div>
           </div>
-        </div>
 
-        <div style={styles.insightItem}>
-          <div style={styles.insightIcon}></div>
-          <div style={styles.insightContent}>
-            <div style={styles.insightTitle}>Inventory Insights</div>
-            <div style={styles.insightDescription}>
-              Monitor your best-selling products and ensure adequate stock levels to maximize sales opportunities.
+          <div style={styles.insightItem}>
+            <div style={styles.insightIcon}>🎯</div>
+            <div style={styles.insightContent}>
+              <div style={styles.insightTitle}>Average Order Value</div>
+              <div style={styles.insightDescription}>
+                AOV is {formatCurrency(metrics.averageOrderValue)}. Consider upselling strategies to increase this metric.
+              </div>
             </div>
           </div>
         </div>
