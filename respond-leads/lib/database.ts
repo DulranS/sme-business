@@ -1,11 +1,11 @@
-import { createSupabaseServerClient } from './supabase'
+import { getSupabaseClient } from './supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { handleDatabaseError } from './errors'
 import { Validator, Sanitizer } from './validation'
 import { logger } from './logger'
 
 export class DatabaseService {
-  private supabase = createSupabaseServerClient()
+  private supabase = getSupabaseClient()
 
   // Inventory operations
   async getInventoryItems(search?: string): Promise<InventoryItem[]> {
