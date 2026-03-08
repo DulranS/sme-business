@@ -151,7 +151,5 @@ export class Config {
   }
 }
 
-// Validate configuration on import
-if (typeof window === 'undefined') {
-  Config.validate()
-}
+// Note: Config.validate() should be called explicitly when needed, not on module evaluation
+// This allows the app to load gracefully and validate environment variables only when required

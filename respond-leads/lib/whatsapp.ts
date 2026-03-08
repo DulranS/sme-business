@@ -6,11 +6,10 @@ export class WhatsAppService {
   private appSecret: string
 
   constructor() {
-    this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!
-    this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN!
-    this.appSecret = process.env.WHATSAPP_APP_SECRET!
-
-    this.validateEnvironment()
+    // Don't validate on construction - validate when methods are called
+    this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || ''
+    this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN || ''
+    this.appSecret = process.env.WHATSAPP_APP_SECRET || ''
   }
 
   private validateEnvironment() {
@@ -27,8 +26,20 @@ export class WhatsAppService {
     }
   }
 
+  private ensureInitialized() {
+    if (!this.phoneNumberId || !this.accessToken || !this.appSecret) {
+      this.validateEnvironment()
+      // Re-assign if validation passed
+      this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!
+      this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN!
+      this.appSecret = process.env.WHATSAPP_APP_SECRET!
+    }
+  }
+
   verifyWebhookSignature(body: string, signature: string | null): boolean {
     if (!signature) return false
+    
+    this.ensureInitialized()
     
     const crypto = require('crypto')
     const expectedSignature = 'sha256=' + crypto
@@ -50,6 +61,8 @@ export class WhatsAppService {
   }
 
   async sendMessage(to: string, message: string, replyToMessageId?: string): Promise<void> {
+    this.ensureInitialized()
+    
     const url = `https://graph.facebook.com/v18.0/${this.phoneNumberId}/messages`
     
     const payload = {
