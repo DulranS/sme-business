@@ -12,8 +12,9 @@ import ReportingDashboard from '@/components/ReportingDashboard'
 import WhatsAppDashboard from '@/components/WhatsAppDashboard'
 import WhatsAppChat from '@/components/WhatsAppChat'
 import WhatsAppAnalyticsDashboard from '@/components/WhatsAppAnalyticsDashboard'
+import MarketingAutomationDashboard from '@/components/MarketingAutomationDashboard'
 
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -188,7 +189,7 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -205,6 +206,7 @@ export default function Dashboard() {
              t === 'reporting' ? '📋 REPORTING' :
              t === 'whatsapp-dashboard' ? '📱 WHATSAPP DASHBOARD' :
              t === 'whatsapp-analytics' ? '📈 WHATSAPP ANALYTICS' :
+             t === 'marketing-automation' ? '🚀 MARKETING AUTOMATION' :
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
@@ -399,6 +401,11 @@ export default function Dashboard() {
         {/* ── WHATSAPP ANALYTICS TAB ── */}
         {tab === 'whatsapp-analytics' && (
           <WhatsAppAnalyticsDashboard />
+        )}
+
+        {/* ── MARKETING AUTOMATION TAB ── */}
+        {tab === 'marketing-automation' && (
+          <MarketingAutomationDashboard />
         )}
       </main>
 
