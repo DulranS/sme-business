@@ -1,0 +1,4 @@
+place_id,business_name,rating,reviews,category,address,whatsapp_number,website,email,instagram,twitter,linkedin_company,linkedin_ceo,linkedin_founder,phone_primary,email_primary,contact_page_found,social_media_score,lead_quality_score,contact_confidence,best_contact_method,decision_maker_found,tech_stack_detected,company_size_indicator
+,Test Corporation,,,Technology,,,https://testcorp.com,,,,,,,+1-555-0123,contact@testcorp.com,,,15,Low,AI-Enhanced Research Needed,,,
+,Startup Solutions,,,Software,,,https://startup.io,,,,,,,,hello@startup.io,,,15,Low,AI-Enhanced Research Needed,,,
+,Enterprise Inc,,,Consulting,,,https://enterprise.com,,,,,,,+1-555-0456,info@enterprise.com,,,15,Low,AI-Enhanced Research Needed,,,
