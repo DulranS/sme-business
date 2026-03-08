@@ -1,0 +1,4 @@
+business_name,website,email_primary,phone_primary,category
+Test Corporation,https://testcorp.com,contact@testcorp.com,+1-555-0123,Technology
+Startup Solutions,https://startup.io,hello@startup.io,,Software
+Enterprise Inc,https://enterprise.com,info@enterprise.com,+1-555-0456,Consulting
