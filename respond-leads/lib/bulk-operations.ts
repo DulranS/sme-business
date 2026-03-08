@@ -1,26 +1,32 @@
 import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
+import { ImportResult, ExportResult } from '../types'
 
 export interface BulkOperation {
   type: 'create' | 'update' | 'delete'
   items: any[]
 }
 
-export interface ImportResult {
-  success: number
-  failed: number
-  errors: string[]
-  items: any[]
-}
-
 export class BulkOperationsService {
   private supabase = getSupabaseClient()
 
-  async bulkImport(csvData: string): Promise<ImportResult> {
+  async bulkImport(file: File): Promise<ImportResult> {
     try {
-      const lines = csvData.split('\n').filter(line => line.trim())
-      const headers = lines[0].split(',').map(h => h.trim())
+      const text = await file.text()
+      const lines = text.split('\n').filter(line => line.trim())
       
+      if (lines.length === 0) {
+        return {
+          success: false,
+          total: 0,
+          processed: 0,
+          errors: 1,
+          duration: '0s',
+          errorDetails: ['File is empty']
+        }
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim())
       const items = []
       const errors = []
       
@@ -31,7 +37,7 @@ export class BulkOperationsService {
           
           headers.forEach((header, index) => {
             const value = values[index]
-            if (header === 'quantity' || header === 'price') {
+            if (header === 'quantity' || header === 'price' || header === 'price_usd') {
               item[header] = parseFloat(value) || 0
             } else {
               item[header] = value
@@ -49,6 +55,11 @@ export class BulkOperationsService {
             item.currency = 'USD'
           }
           
+          // Calculate price_usd if not provided
+          if (!item.price_usd && item.price) {
+            item.price_usd = item.price
+          }
+          
           items.push(item)
         } catch (error) {
           errors.push(`Row ${i + 1}: ${error}`)
@@ -58,6 +69,7 @@ export class BulkOperationsService {
       // Insert items in batches
       const batchSize = 50
       let successCount = 0
+      const startTime = Date.now()
       
       for (let i = 0; i < items.length; i += batchSize) {
         const batch = items.slice(i, i + batchSize)
@@ -73,11 +85,15 @@ export class BulkOperationsService {
         }
       }
       
+      const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
+      
       const result: ImportResult = {
-        success: successCount,
-        failed: errors.length,
-        errors,
-        items
+        success: errors.length === 0,
+        total: lines.length - 1,
+        processed: successCount,
+        errors: errors.length,
+        duration,
+        errorDetails: errors
       }
       
       logger.database('Bulk import completed', { successCount, failedCount: errors.length })
@@ -85,7 +101,61 @@ export class BulkOperationsService {
       
     } catch (error) {
       logger.error('Bulk import failed', error as Error)
-      throw error
+      return {
+        success: false,
+        total: 0,
+        processed: 0,
+        errors: 1,
+        duration: '0s',
+        errorDetails: [error instanceof Error ? error.message : 'Unknown error']
+      }
+    }
+  }
+
+  async bulkExport(): Promise<ExportResult> {
+    try {
+      const startTime = Date.now()
+      
+      const { data: inventory, error } = await this.supabase
+        .from('inventory')
+        .select('*')
+      
+      if (error) throw error
+      
+      if (!inventory || inventory.length === 0) {
+        return {
+          success: false,
+          total: 0,
+          filename: 'inventory-export.csv',
+          duration: '0s'
+        }
+      }
+
+      const csvContent = this.exportToCSV(inventory)
+      const filename = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`
+      const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
+      
+      // In a real implementation, you'd upload this to a storage service
+      // For now, we'll just return the data
+      const result: ExportResult = {
+        success: true,
+        total: inventory.length,
+        filename,
+        downloadUrl: `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`,
+        duration
+      }
+      
+      logger.database('Bulk export completed', { total: inventory.length })
+      return result
+      
+    } catch (error) {
+      logger.error('Bulk export failed', error as Error)
+      return {
+        success: false,
+        total: 0,
+        filename: 'inventory-export.csv',
+        duration: '0s'
+      }
     }
   }
 
@@ -93,6 +163,7 @@ export class BulkOperationsService {
     try {
       const errors = []
       let successCount = 0
+      const startTime = Date.now()
       
       for (const update of updates) {
         try {
@@ -111,11 +182,15 @@ export class BulkOperationsService {
         }
       }
       
+      const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
+      
       const result: ImportResult = {
-        success: successCount,
-        failed: errors.length,
-        errors,
-        items: updates
+        success: errors.length === 0,
+        total: updates.length,
+        processed: successCount,
+        errors: errors.length,
+        duration,
+        errorDetails: errors
       }
       
       logger.database('Bulk update completed', { successCount, failedCount: errors.length })
@@ -123,7 +198,14 @@ export class BulkOperationsService {
       
     } catch (error) {
       logger.error('Bulk update failed', error as Error)
-      throw error
+      return {
+        success: false,
+        total: 0,
+        processed: 0,
+        errors: 1,
+        duration: '0s',
+        errorDetails: [error instanceof Error ? error.message : 'Unknown error']
+      }
     }
   }
 
@@ -131,6 +213,7 @@ export class BulkOperationsService {
     try {
       const errors = []
       let successCount = 0
+      const startTime = Date.now()
       
       for (const id of ids) {
         try {
@@ -149,11 +232,15 @@ export class BulkOperationsService {
         }
       }
       
+      const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
+      
       const result: ImportResult = {
-        success: successCount,
-        failed: errors.length,
-        errors,
-        items: ids
+        success: errors.length === 0,
+        total: ids.length,
+        processed: successCount,
+        errors: errors.length,
+        duration,
+        errorDetails: errors
       }
       
       logger.database('Bulk delete completed', { successCount, failedCount: errors.length })
@@ -161,7 +248,14 @@ export class BulkOperationsService {
       
     } catch (error) {
       logger.error('Bulk delete failed', error as Error)
-      throw error
+      return {
+        success: false,
+        total: 0,
+        processed: 0,
+        errors: 1,
+        duration: '0s',
+        errorDetails: [error instanceof Error ? error.message : 'Unknown error']
+      }
     }
   }
 

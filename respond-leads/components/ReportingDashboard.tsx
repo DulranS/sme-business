@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { reportingService, Report, ReportTemplate } from '../lib/reporting'
+import { reportingService } from '../lib/reporting'
+import { Report, ReportTemplate } from '../types'
 
 interface ReportingDashboardProps {
   className?: string
@@ -262,15 +263,15 @@ export default function ReportingDashboard({ className = '' }: ReportingDashboar
   const downloadReport = async (report: Report) => {
     try {
       setLoading(true)
-      const blob = await reportingService.exportReport(report)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${report.name.replace(/\s+/g, '_').toLowerCase()}.${report.format}`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      // Use the downloadUrl from the report object
+      if (report.downloadUrl) {
+        const a = document.createElement('a')
+        a.href = report.downloadUrl
+        a.download = `${report.name}.${report.format}`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      }
     } catch (error) {
       console.error('Failed to download report:', error)
     } finally {
@@ -348,9 +349,9 @@ export default function ReportingDashboard({ className = '' }: ReportingDashboar
                   <div style={styles.reportInfo}>
                     <div style={styles.reportName}>{report.name}</div>
                     <div style={styles.reportMeta}>
-                      Generated {new Date(report.generatedAt).toLocaleDateString()} • 
+                      Generated {new Date(report.createdAt).toLocaleDateString()} • 
                       {report.format.toUpperCase()} • 
-                      {(report.size / 1024).toFixed(1)}KB
+                      {report.size}
                     </div>
                   </div>
                   <div style={styles.reportActions}>
