@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { forecastingService, ForecastData, CustomerSegment, InventoryOptimization } from '../lib/forecasting'
+import { forecastingService } from '../lib/forecasting'
+import { ForecastData, CustomerSegment, InventoryOptimization } from '../types'
 import { CurrencyService } from '../lib/currency'
 
 interface ForecastingDashboardProps {
@@ -283,7 +284,7 @@ const styles: Record<string, React.CSSProperties> = {
 
 export default function ForecastingDashboard({ className = '' }: ForecastingDashboardProps) {
   const [forecastData, setForecastData] = useState<ForecastData[]>([])
-  const [optimization, setOptimization] = useState<InventoryOptimization | null>(null)
+  const [optimization, setOptimization] = useState<InventoryOptimization[]>([])
   const [segments, setSegments] = useState<CustomerSegment[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedForecast, setSelectedForecast] = useState<ForecastData | null>(null)
@@ -352,7 +353,7 @@ export default function ForecastingDashboard({ className = '' }: ForecastingDash
               <h3 style={styles.forecastTitle}>{forecast.productName}</h3>
             </div>
             <div style={styles.forecastValue}>
-              {CurrencyService.formatPriceInPreferredCurrency(forecast.predictedRevenue)}
+              {CurrencyService.formatPrice(forecast.predictedRevenue, 'USD')}
             </div>
             <div style={{
               ...styles.forecastChange,
@@ -371,33 +372,27 @@ export default function ForecastingDashboard({ className = '' }: ForecastingDash
         <div style={styles.optimizationSection}>
           <h2 style={styles.sectionTitle}>Inventory Optimization</h2>
           <div style={styles.optimizationGrid}>
-            {optimization.recommendations.slice(0, 6).map((item, index) => (
+            {optimization.slice(0, 4).map((item: InventoryOptimization, index: number) => (
               <div key={index} style={styles.optimizationItem}>
                 <div style={styles.optimizationHeader}>
-                  <div style={styles.optimizationName}>{item.productName}</div>
-                  <div style={{
+                  <h3 style={styles.optimizationName}>{item.productName}</h3>
+                  <span style={{
                     ...styles.optimizationBadge,
-                    ...getRecommendationBadgeStyle(item.recommendation)
+                    ...(item.status === 'order-now' ? styles.orderNowBadge :
+                       item.status === 'monitor' ? styles.monitorBadge :
+                       styles.overstockedBadge)
                   }}>
-                    {item.recommendation.replace('_', ' ')}
-                  </div>
+                    {item.status}
+                  </span>
                 </div>
                 <div style={styles.optimizationMetrics}>
                   <div style={styles.metric}>
                     <div style={styles.metricValue}>{item.currentStock}</div>
-                    <div style={styles.metricLabel}>Current Stock</div>
+                    <div style={styles.metricLabel}>Current</div>
                   </div>
                   <div style={styles.metric}>
-                    <div style={styles.metricValue}>{item.recommendedStock}</div>
-                    <div style={styles.metricLabel}>Recommended</div>
-                  </div>
-                  <div style={styles.metric}>
-                    <div style={styles.metricValue}>{item.predictedDemand}</div>
-                    <div style={styles.metricLabel}>Predicted Demand</div>
-                  </div>
-                  <div style={styles.metric}>
-                    <div style={styles.metricValue}>{Math.round(item.costSavings)}</div>
-                    <div style={styles.metricLabel}>Potential Savings</div>
+                    <div style={styles.metricValue}>{item.recommendedOrder}</div>
+                    <div style={styles.metricLabel}>Order Qty</div>
                   </div>
                 </div>
               </div>
@@ -409,27 +404,29 @@ export default function ForecastingDashboard({ className = '' }: ForecastingDash
       <div style={styles.segmentsSection}>
         <h2 style={styles.sectionTitle}>Customer Segments</h2>
         <div style={styles.segmentsGrid}>
-          {segments.map((segment, index) => (
-            <div key={index} style={styles.segmentCard}>
-              <h3 style={styles.segmentName}>{segment.name}</h3>
-              <div style={styles.segmentStats}>
+          {segments.map((segment: CustomerSegment, index: number) => (
+            <div key={index} style={styles.optimizationItem}>
+              <div style={styles.optimizationHeader}>
+                <h3 style={styles.optimizationName}>{segment.name}</h3>
+              </div>
+              <div style={styles.optimizationMetrics}>
                 <div style={styles.metric}>
                   <div style={styles.metricValue}>{segment.size}</div>
                   <div style={styles.metricLabel}>Customers</div>
                 </div>
                 <div style={styles.metric}>
-                  <div style={styles.metricValue}>
-                    {CurrencyService.formatPriceInPreferredCurrency(segment.avgOrderValue)}
-                  </div>
-                  <div style={styles.metricLabel}>Avg Order Value</div>
-                </div>
-                <div style={styles.metric}>
                   <div style={styles.metricValue}>{segment.growthRate}%</div>
-                  <div style={styles.metricLabel}>Growth Rate</div>
+                  <div style={styles.metricLabel}>Growth</div>
                 </div>
                 <div style={styles.metric}>
                   <div style={styles.metricValue}>{segment.retentionRate}%</div>
-                  <div style={styles.metricLabel}>Retention Rate</div>
+                  <div style={styles.metricLabel}>Retention</div>
+                </div>
+                <div style={styles.metric}>
+                  <div style={styles.metricValue}>
+                    {CurrencyService.formatPrice(segment.averageOrderValue, 'USD')}
+                  </div>
+                  <div style={styles.metricLabel}>AOV</div>
                 </div>
               </div>
             </div>

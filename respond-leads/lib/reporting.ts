@@ -1,30 +1,7 @@
 import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
-import { forecastingService, ForecastData } from './forecasting'
-
-export interface Report {
-  id: string
-  name: string
-  type: 'inventory' | 'sales' | 'forecasting' | 'customer' | 'financial'
-  format: 'pdf' | 'excel' | 'csv'
-  generatedAt: Date
-  data: any
-  scheduled?: boolean
-  schedule?: {
-    frequency: 'daily' | 'weekly' | 'monthly'
-    recipients: string[]
-    nextRun: Date
-  }
-}
-
-export interface ReportTemplate {
-  id: string
-  name: string
-  description: string
-  type: Report['type']
-  format: Report['format']
-  sections: ReportSection[]
-}
+import { forecastingService } from './forecasting'
+import { ReportTemplate, Report, ForecastData } from '../types'
 
 export interface ReportSection {
   id: string
@@ -42,93 +19,41 @@ export class ReportingService {
       id: 'inventory-summary',
       name: 'Inventory Summary Report',
       description: 'Complete overview of inventory status and metrics',
-      type: 'inventory',
+      category: 'Inventory',
       format: 'pdf',
-      sections: [
-        {
-          id: 'kpi-overview',
-          name: 'Key Performance Indicators',
-          type: 'kpi',
-          dataSource: 'inventory_stats',
-          config: {
-            metrics: ['total_items', 'total_value', 'low_stock', 'out_of_stock']
-          }
-        },
-        {
-          id: 'inventory-table',
-          name: 'Inventory Details',
-          type: 'table',
-          dataSource: 'inventory',
-          config: {
-            columns: ['name', 'sku', 'quantity', 'price', 'currency', 'status']
-          }
-        },
-        {
-          id: 'stock-alerts',
-          name: 'Stock Alerts',
-          type: 'table',
-          dataSource: 'low_stock_items',
-          config: {
-            columns: ['name', 'current_stock', 'reorder_point', 'urgency']
-          }
-        }
-      ]
+      estimatedTime: '2-3 minutes'
     },
     {
       id: 'sales-analysis',
       name: 'Sales Analysis Report',
       description: 'Detailed sales performance and trends',
-      type: 'sales',
+      category: 'Sales',
       format: 'excel',
-      sections: [
-        {
-          id: 'sales-trend',
-          name: 'Sales Trend',
-          type: 'chart',
-          dataSource: 'sales_data',
-          config: {
-            chartType: 'line',
-            timeRange: '30d'
-          }
-        },
-        {
-          id: 'top-products',
-          name: 'Top Selling Products',
-          type: 'table',
-          dataSource: 'product_performance',
-          config: {
-            sortBy: 'revenue',
-            limit: 10
-          }
-        }
-      ]
+      estimatedTime: '1-2 minutes'
     },
     {
       id: 'forecast-report',
       name: 'Demand Forecast Report',
       description: 'AI-powered demand forecasting and recommendations',
-      type: 'forecasting',
+      category: 'Forecasting',
       format: 'pdf',
-      sections: [
-        {
-          id: 'forecast-summary',
-          name: 'Forecast Summary',
-          type: 'kpi',
-          dataSource: 'forecast_data',
-          config: {
-            metrics: ['total_predicted_demand', 'high_risk_items', 'recommended_orders']
-          }
-        },
-        {
-          id: 'forecast-table',
-          name: 'Detailed Forecasts',
-          type: 'table',
-          dataSource: 'forecast_data',
-          config: {
-            columns: ['item_name', 'current_stock', 'predicted_demand', 'reorder_point', 'recommendation']
-          }
-        }
-      ]
+      estimatedTime: '3-4 minutes'
+    },
+    {
+      id: 'customer-segments',
+      name: 'Customer Segments Report',
+      description: 'Customer behavior and segmentation analysis',
+      category: 'Customer',
+      format: 'csv',
+      estimatedTime: '1-2 minutes'
+    },
+    {
+      id: 'financial-summary',
+      name: 'Financial Summary Report',
+      description: 'Financial performance and metrics',
+      category: 'Financial',
+      format: 'excel',
+      estimatedTime: '2-3 minutes'
     }
   ]
 
@@ -142,10 +67,12 @@ export class ReportingService {
       const report: Report = {
         id: this.generateReportId(),
         name: template.name,
-        type: template.type,
+        templateId: templateId,
         format: template.format,
-        generatedAt: new Date(),
-        data: reportData
+        size: this.estimateReportSize(reportData),
+        createdAt: new Date().toISOString(),
+        status: 'completed',
+        downloadUrl: this.generateDownloadUrl(templateId, reportData)
       }
 
       logger.info('Report generated successfully', { reportId: report.id, templateId })
@@ -158,31 +85,30 @@ export class ReportingService {
   }
 
   private async collectReportData(template: ReportTemplate, customConfig?: any): Promise<any> {
-    const data: any = {}
+    let data: any = {}
 
-    for (const section of template.sections) {
-      switch (section.dataSource) {
-        case 'inventory':
-          data[section.id] = await this.getInventoryData()
-          break
-        case 'inventory_stats':
-          data[section.id] = await this.getInventoryStats()
-          break
-        case 'low_stock_items':
-          data[section.id] = await this.getLowStockItems()
-          break
-        case 'sales_data':
-          data[section.id] = await this.getSalesData(section.config?.timeRange || '30d')
-          break
-        case 'product_performance':
-          data[section.id] = await this.getProductPerformance(section.config?.limit || 10)
-          break
-        case 'forecast_data':
-          data[section.id] = await this.getForecastData()
-          break
-        default:
-          data[section.id] = []
-      }
+    switch (template.id) {
+      case 'inventory-summary':
+        data.inventory = await this.getInventoryData()
+        data.stats = await this.getInventoryStats()
+        data.lowStock = await this.getLowStockItems()
+        break
+      case 'sales-analysis':
+        data.sales = await this.getSalesData('30d')
+        data.performance = await this.getProductPerformance(10)
+        break
+      case 'forecast-report':
+        data.forecasts = await this.getForecastData()
+        data.optimizations = await this.getInventoryOptimization()
+        break
+      case 'customer-segments':
+        data.segments = await this.getCustomerSegments()
+        break
+      case 'financial-summary':
+        data.financial = await this.getFinancialData()
+        break
+      default:
+        data = {}
     }
 
     return data
@@ -200,12 +126,18 @@ export class ReportingService {
 
   private async getInventoryStats() {
     const { data, error } = await this.supabase
-      .from('inventory_stats')
+      .from('inventory')
       .select('*')
-      .single()
     
     if (error) throw error
-    return data
+    
+    const inventory = data || []
+    return {
+      totalItems: inventory.length,
+      totalValue: inventory.reduce((sum, item) => sum + (item.price_usd * item.quantity), 0),
+      lowStockItems: inventory.filter(item => item.quantity > 0 && item.quantity <= 5).length,
+      outOfStockItems: inventory.filter(item => item.quantity === 0).length
+    }
   }
 
   private async getLowStockItems() {
@@ -261,90 +193,40 @@ export class ReportingService {
     return await forecastingService.generateInventoryForecast(30)
   }
 
-  async exportReport(report: Report): Promise<Blob> {
-    try {
-      let blob: Blob
+  private async getInventoryOptimization() {
+    return await forecastingService.getInventoryOptimization()
+  }
 
-      switch (report.format) {
-        case 'csv':
-          blob = await this.generateCSV(report)
-          break
-        case 'excel':
-          blob = await this.generateExcel(report)
-          break
-        case 'pdf':
-          blob = await this.generatePDF(report)
-          break
-        default:
-          throw new Error(`Unsupported format: ${report.format}`)
-      }
+  private async getCustomerSegments() {
+    return await forecastingService.getCustomerSegments()
+  }
 
-      logger.info('Report exported successfully', { reportId: report.id, format: report.format })
-      return blob
-
-    } catch (error) {
-      logger.error('Failed to export report', error as Error)
-      throw error
+  private async getFinancialData() {
+    const inventory = await this.getInventoryData()
+    const totalValue = inventory.reduce((sum, item) => sum + (item.price_usd * item.quantity), 0)
+    
+    return {
+      totalInventoryValue: totalValue,
+      averageItemPrice: inventory.length > 0 ? totalValue / inventory.length : 0,
+      currencyDistribution: inventory.reduce((acc, item) => {
+        acc[item.currency] = (acc[item.currency] || 0) + (item.price_usd * item.quantity)
+        return acc
+      }, {}),
+      projectedMonthlyRevenue: totalValue * 0.15 // Simulated 15% monthly turnover
     }
   }
 
-  private async generateCSV(report: Report): Promise<Blob> {
-    const csvData = this.convertToCSV(report.data)
-    return new Blob([csvData], { type: 'text/csv' })
+  private estimateReportSize(data: any): string {
+    const dataSize = JSON.stringify(data).length
+    if (dataSize < 1000) return '~100KB'
+    if (dataSize < 5000) return '~500KB'
+    if (dataSize < 20000) return '~1MB'
+    return '~2MB'
   }
 
-  private async generateExcel(report: Report): Promise<Blob> {
-    // Simplified Excel generation (would use a library like xlsx in production)
-    const csvData = this.convertToCSV(report.data)
-    return new Blob([csvData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  }
-
-  private async generatePDF(report: Report): Promise<Blob> {
-    // Simplified PDF generation (would use a library like jsPDF in production)
-    const htmlContent = this.convertToHTML(report)
-    return new Blob([htmlContent], { type: 'application/pdf' })
-  }
-
-  private convertToCSV(data: any): string {
-    if (!Array.isArray(data)) return ''
-    
-    const headers = Object.keys(data[0] || {})
-    const csvRows = [headers.join(',')]
-    
-    for (const row of data) {
-      const values = headers.map(header => {
-        const value = row[header]
-        return typeof value === 'string' && value.includes(',') 
-          ? `"${value}"` 
-          : value
-      })
-      csvRows.push(values.join(','))
-    }
-    
-    return csvRows.join('\n')
-  }
-
-  private convertToHTML(report: Report): string {
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${report.name}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          h1 { color: #333; }
-          table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background-color: #f2f2f2; }
-        </style>
-      </head>
-      <body>
-        <h1>${report.name}</h1>
-        <p>Generated on: ${report.generatedAt.toLocaleString()}</p>
-        <pre>${JSON.stringify(report.data, null, 2)}</pre>
-      </body>
-      </html>
-    `
+  private generateDownloadUrl(templateId: string, data: any): string {
+    // In a real implementation, this would generate a real download URL
+    return `data:application/json;base64,${btoa(JSON.stringify(data, null, 2))}`
   }
 
   private generateReportId(): string {
@@ -355,7 +237,39 @@ export class ReportingService {
     return this.templates
   }
 
-  async scheduleReport(templateId: string, schedule: Report['schedule']): Promise<void> {
+  async getGeneratedReports(): Promise<Report[]> {
+    try {
+      // In a real implementation, this would fetch from a database
+      // For now, return mock data
+      return [
+        {
+          id: 'report_123',
+          name: 'Inventory Summary - March 2026',
+          templateId: 'inventory-summary',
+          format: 'pdf',
+          size: '~1.2MB',
+          createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+          status: 'completed',
+          downloadUrl: '#'
+        },
+        {
+          id: 'report_124',
+          name: 'Sales Analysis - March 2026',
+          templateId: 'sales-analysis',
+          format: 'excel',
+          size: '~850KB',
+          createdAt: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+          status: 'completed',
+          downloadUrl: '#'
+        }
+      ]
+    } catch (error) {
+      logger.error('Failed to get generated reports', error as Error)
+      return []
+    }
+  }
+
+  async scheduleReport(templateId: string, schedule: any): Promise<void> {
     try {
       // In a real implementation, this would set up a cron job or use a scheduling service
       logger.info('Report scheduled', { templateId, schedule })

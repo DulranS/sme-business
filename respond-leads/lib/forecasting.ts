@@ -1,39 +1,6 @@
 import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
-
-export interface ForecastData {
-  itemId: number
-  itemName: string
-  currentStock: number
-  avgDailyDemand: number
-  predictedDemand: number[]
-  reorderPoint: number
-  optimalOrderQuantity: number
-  safetyStock: number
-  leadTime: number
-  stockoutRisk: number
-  recommendation: 'order_now' | 'monitor' | 'overstocked'
-}
-
-export interface CustomerSegment {
-  id: string
-  name: string
-  customerCount: number
-  avgOrderValue: number
-  totalRevenue: number
-  preferredProducts: number[]
-  characteristics: string[]
-}
-
-export interface InventoryOptimization {
-  totalValue: number
-  turnoverRate: number
-  deadStockItems: number[]
-  fastMovingItems: number[]
-  slowMovingItems: number[]
-  optimalStockLevels: Record<number, number>
-  potentialSavings: number
-}
+import { ForecastData, CustomerSegment, InventoryOptimization } from '../types'
 
 export class ForecastingService {
   private supabase = getSupabaseClient()
@@ -69,51 +36,17 @@ export class ForecastingService {
     const trendFactor = this.getTrendFactor(item.name)
     
     // Generate predicted demand for next days
-    const predictedDemand = []
-    for (let i = 1; i <= days; i++) {
-      const demand = avgDailyDemand * seasonalFactor * trendFactor * (1 + (Math.random() - 0.5) * 0.2)
-      predictedDemand.push(Math.max(0, Math.round(demand)))
-    }
-
-    // Calculate safety stock (standard deviation * service level)
-    const demandVariability = this.calculateDemandVariability(avgDailyDemand)
-    const safetyStock = Math.ceil(demandVariability * 1.65) // 95% service level
-
-    // Calculate reorder point (daily demand * lead time + safety stock)
-    const leadTime = 7 // Default 7 days lead time
-    const reorderPoint = Math.ceil(avgDailyDemand * leadTime + safetyStock)
-
-    // Calculate optimal order quantity (EOQ formula)
-    const holdingCost = 0.25 // 25% annual holding cost
-    const orderingCost = 50 // Fixed ordering cost
-    const optimalOrderQuantity = Math.ceil(Math.sqrt((2 * orderingCost * avgDailyDemand * 365) / (item.price_usd * holdingCost)))
-
-    // Calculate stockout risk
-    const totalPredictedDemand = predictedDemand.reduce((sum, demand) => sum + demand, 0)
-    const stockoutRisk = item.quantity < reorderPoint ? 1 : Math.max(0, (reorderPoint - item.quantity) / reorderPoint)
-
-    // Generate recommendation
-    let recommendation: 'order_now' | 'monitor' | 'overstocked'
-    if (item.quantity <= reorderPoint) {
-      recommendation = 'order_now'
-    } else if (item.quantity > reorderPoint * 2) {
-      recommendation = 'overstocked'
-    } else {
-      recommendation = 'monitor'
-    }
+    const totalPredictedDemand = avgDailyDemand * seasonalFactor * trendFactor * days
+    const predictedRevenue = totalPredictedDemand * item.price_usd
+    const confidence = 0.85 + (Math.random() * 0.1) // 85-95% confidence
 
     return {
-      itemId: item.id,
-      itemName: item.name,
-      currentStock: item.quantity,
-      avgDailyDemand,
-      predictedDemand,
-      reorderPoint,
-      optimalOrderQuantity,
-      safetyStock,
-      leadTime,
-      stockoutRisk,
-      recommendation
+      id: item.id.toString(),
+      productName: item.name,
+      predictedDemand: Math.round(totalPredictedDemand),
+      predictedRevenue: Math.round(predictedRevenue * 100) / 100,
+      confidence: Math.round(confidence * 100) / 100,
+      timeRange: `${days} days`
     }
   }
 
@@ -157,12 +90,7 @@ export class ForecastingService {
     return 1.0
   }
 
-  private calculateDemandVariability(avgDemand: number): number {
-    // Simulate demand variability (coefficient of variation)
-    return avgDemand * 0.3 // 30% variability
-  }
-
-  async getInventoryOptimization(): Promise<InventoryOptimization> {
+  async getInventoryOptimization(): Promise<InventoryOptimization[]> {
     try {
       const { data: inventory, error } = await this.supabase
         .from('inventory')
@@ -170,42 +98,50 @@ export class ForecastingService {
       
       if (error) throw error
 
-      const totalValue = inventory?.reduce((sum, item) => sum + (item.price_usd * item.quantity), 0) || 0
-      const totalCost = inventory?.reduce((sum, item) => sum + (item.price_usd * item.quantity * 0.5), 0) || 0
-      const turnoverRate = totalCost > 0 ? totalValue / totalCost : 0
-
-      // Categorize items by movement
-      const deadStockItems = inventory?.filter(item => item.quantity === 0).map(item => item.id) || []
-      const fastMovingItems = inventory?.filter(item => item.quantity > 50).map(item => item.id) || []
-      const slowMovingItems = inventory?.filter(item => item.quantity > 0 && item.quantity <= 10).map(item => item.id) || []
-
-      // Calculate optimal stock levels
-      const optimalStockLevels: Record<number, number> = {}
-      let potentialSavings = 0
+      const optimizations: InventoryOptimization[] = []
 
       inventory?.forEach(item => {
         const avgDemand = this.calculateAverageDemand(item)
         const optimalLevel = Math.ceil(avgDemand * 30) // 30 days supply
-        optimalStockLevels[item.id] = optimalLevel
         
-        if (item.quantity > optimalLevel) {
-          const excessValue = (item.quantity - optimalLevel) * item.price_usd
-          potentialSavings += excessValue * 0.2 // 20% holding cost reduction
+        let status: 'order-now' | 'monitor' | 'overstocked'
+        let priority: 'high' | 'medium' | 'low'
+        let recommendedOrder = 0
+        const recommendations: string[] = []
+
+        if (item.quantity === 0) {
+          status = 'order-now'
+          priority = 'high'
+          recommendedOrder = optimalLevel
+          recommendations.push('Item out of stock - immediate reorder required')
+        } else if (item.quantity <= optimalLevel * 0.3) {
+          status = 'order-now'
+          priority = 'high'
+          recommendedOrder = optimalLevel - item.quantity
+          recommendations.push('Low stock - reorder recommended')
+        } else if (item.quantity > optimalLevel * 2) {
+          status = 'overstocked'
+          priority = 'medium'
+          recommendations.push('Overstocked - consider promotion or discount')
+        } else {
+          status = 'monitor'
+          priority = 'low'
+          recommendations.push('Stock level adequate - continue monitoring')
         }
+
+        optimizations.push({
+          id: item.id.toString(),
+          productName: item.name,
+          currentStock: item.quantity,
+          recommendedOrder,
+          priority,
+          status,
+          recommendations
+        })
       })
 
-      const optimization: InventoryOptimization = {
-        totalValue,
-        turnoverRate,
-        deadStockItems,
-        fastMovingItems,
-        slowMovingItems,
-        optimalStockLevels,
-        potentialSavings
-      }
-
-      logger.info('Inventory optimization analysis completed', optimization)
-      return optimization
+      logger.info('Inventory optimization analysis completed', { itemCount: optimizations.length })
+      return optimizations
 
     } catch (error) {
       logger.error('Failed to analyze inventory optimization', error as Error)
@@ -220,29 +156,26 @@ export class ForecastingService {
         {
           id: 'high-value',
           name: 'High Value Customers',
-          customerCount: 45,
-          avgOrderValue: 250,
-          totalRevenue: 11250,
-          preferredProducts: [1, 2, 3],
-          characteristics: ['Frequent buyers', 'High average order value', 'Premium product preference']
+          size: 45,
+          growthRate: 15.2,
+          retentionRate: 87.5,
+          averageOrderValue: 250
         },
         {
           id: 'regular',
           name: 'Regular Customers',
-          customerCount: 120,
-          avgOrderValue: 85,
-          totalRevenue: 10200,
-          preferredProducts: [4, 5, 6],
-          characteristics: ['Consistent purchasing', 'Mid-range spending', 'Product variety']
+          size: 120,
+          growthRate: 8.7,
+          retentionRate: 72.3,
+          averageOrderValue: 85
         },
         {
           id: 'new',
           name: 'New Customers',
-          customerCount: 67,
-          avgOrderValue: 45,
-          totalRevenue: 3015,
-          preferredProducts: [7, 8],
-          characteristics: ['First-time buyers', 'Lower average order value', 'Price sensitive']
+          size: 67,
+          growthRate: 23.4,
+          retentionRate: 45.8,
+          averageOrderValue: 45
         }
       ]
 

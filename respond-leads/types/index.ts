@@ -208,3 +208,83 @@ export interface ParsedMessage {
   role: 'customer' | 'assistant'
   text: string
 }
+
+// Analytics types
+export interface AnalyticsMetrics {
+  revenue: number
+  revenueChange: number
+  orders: number
+  ordersChange: number
+  averageOrderValue: number
+  aovChange: number
+  conversionRate: number
+  conversionChange: number
+}
+
+// Bulk Operations types
+export interface ImportResult {
+  success: boolean
+  total: number
+  processed: number
+  errors: number
+  duration?: string
+  errorDetails?: string[]
+}
+
+export interface ExportResult {
+  success: boolean
+  total: number
+  filename: string
+  downloadUrl?: string
+  duration?: string
+}
+
+// Forecasting types
+export interface ForecastData {
+  id: string
+  productName: string
+  predictedDemand: number
+  predictedRevenue: number
+  confidence: number
+  timeRange: string
+}
+
+export interface InventoryOptimization {
+  id: string
+  productName: string
+  currentStock: number
+  recommendedOrder: number
+  priority: 'high' | 'medium' | 'low'
+  status: 'order-now' | 'monitor' | 'overstocked'
+  recommendations: string[]
+}
+
+export interface CustomerSegment {
+  id: string
+  name: string
+  size: number
+  growthRate: number
+  retentionRate: number
+  averageOrderValue: number
+}
+
+// Reporting types
+export interface ReportTemplate {
+  id: string
+  name: string
+  description: string
+  category: string
+  format: 'pdf' | 'excel' | 'csv'
+  estimatedTime: string
+}
+
+export interface Report {
+  id: string
+  name: string
+  templateId: string
+  format: string
+  size: string
+  createdAt: string
+  status: 'generating' | 'completed' | 'failed'
+  downloadUrl?: string
+}

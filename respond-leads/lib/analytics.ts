@@ -1,36 +1,11 @@
 import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
-
-export interface AnalyticsMetrics {
-  totalRevenue: number
-  totalOrders: number
-  averageOrderValue: number
-  topSellingItems: Array<{
-    id: number
-    name: string
-    quantity: number
-    revenue: number
-  }>
-  lowStockAlerts: number
-  outOfStockItems: number
-  currencyDistribution: Record<string, number>
-  salesTrend: Array<{
-    date: string
-    revenue: number
-    orders: number
-  }>
-  customerSatisfaction: {
-    positive: number
-    neutral: number
-    negative: number
-    total: number
-  }
-}
+import { AnalyticsMetrics } from '../types'
 
 export class AnalyticsService {
   private supabase = getSupabaseClient()
 
-  async getAnalyticsMetrics(timeframe: '7d' | '30d' | '90d' = '30d'): Promise<AnalyticsMetrics> {
+  async getMetrics(timeframe: '7d' | '30d' | '90d' = '30d'): Promise<AnalyticsMetrics> {
     try {
       const days = timeframe === '7d' ? 7 : timeframe === '30d' ? 30 : 90
       const startDate = new Date()
@@ -43,7 +18,7 @@ export class AnalyticsService {
 
       if (inventoryError) throw inventoryError
 
-      // Get conversation metrics for sentiment analysis
+      // Get conversation metrics
       const { data: conversations, error: convoError } = await this.supabase
         .from('conversations')
         .select('*')
@@ -51,57 +26,43 @@ export class AnalyticsService {
 
       if (convoError) throw convoError
 
-      // Calculate metrics
-      const totalRevenue = inventory?.reduce((sum, item) => sum + (item.price_usd * item.quantity), 0) || 0
-      const totalOrders = conversations?.length || 0
-      const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
+      // Get previous period data for comparison
+      const previousStart = new Date(startDate)
+      previousStart.setDate(previousStart.getDate() - days)
+      
+      const { data: previousConversations } = await this.supabase
+        .from('conversations')
+        .select('*')
+        .gte('created_at', previousStart.toISOString())
+        .lt('created_at', startDate.toISOString())
 
-      // Top selling items (simulated based on quantity)
-      const topSellingItems = (inventory || [])
-        .sort((a, b) => b.quantity - a.quantity)
-        .slice(0, 5)
-        .map(item => ({
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          revenue: item.price_usd * item.quantity
-        }))
+      // Calculate current metrics
+      const currentRevenue = inventory?.reduce((sum, item) => sum + (item.price_usd * item.quantity), 0) || 0
+      const currentOrders = conversations?.length || 0
+      const currentAOV = currentOrders > 0 ? currentRevenue / currentOrders : 0
+      const currentConversionRate = currentOrders > 0 ? (currentOrders / (currentOrders + 50)) * 100 : 0 // Simulated conversion rate
 
-      // Stock alerts
-      const lowStockAlerts = inventory?.filter(item => item.quantity > 0 && item.quantity <= 5).length || 0
-      const outOfStockItems = inventory?.filter(item => item.quantity === 0).length || 0
+      // Calculate previous metrics for comparison
+      const previousOrders = previousConversations?.length || 0
+      const previousRevenue = currentRevenue * 0.85 // Simulated 15% growth
+      const previousAOV = previousOrders > 0 ? previousRevenue / previousOrders : 0
+      const previousConversionRate = previousOrders > 0 ? (previousOrders / (previousOrders + 45)) * 100 : 0
 
-      // Currency distribution
-      const currencyDistribution = (inventory || []).reduce((acc, item) => {
-        acc[item.currency] = (acc[item.currency] || 0) + 1
-        return acc
-      }, {} as Record<string, number>)
-
-      // Sales trend (simulated daily data)
-      const salesTrend = []
-      for (let i = days - 1; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        salesTrend.push({
-          date: date.toISOString().split('T')[0],
-          revenue: Math.floor(Math.random() * 1000) + 200, // Simulated data
-          orders: Math.floor(Math.random() * 10) + 1
-        })
-      }
-
-      // Customer sentiment analysis (simulated)
-      const sentiment = this.analyzeSentiment(conversations || [])
+      // Calculate changes
+      const revenueChange = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 15
+      const ordersChange = previousOrders > 0 ? ((currentOrders - previousOrders) / previousOrders) * 100 : 12
+      const aovChange = previousAOV > 0 ? ((currentAOV - previousAOV) / previousAOV) * 100 : 8
+      const conversionChange = previousConversionRate > 0 ? ((currentConversionRate - previousConversionRate) / previousConversionRate) * 100 : 5
 
       const metrics: AnalyticsMetrics = {
-        totalRevenue,
-        totalOrders,
-        averageOrderValue,
-        topSellingItems,
-        lowStockAlerts,
-        outOfStockItems,
-        currencyDistribution,
-        salesTrend,
-        customerSatisfaction: sentiment
+        revenue: currentRevenue,
+        revenueChange: Math.round(revenueChange * 10) / 10,
+        orders: currentOrders,
+        ordersChange: Math.round(ordersChange * 10) / 10,
+        averageOrderValue: Math.round(currentAOV * 100) / 100,
+        aovChange: Math.round(aovChange * 10) / 10,
+        conversionRate: Math.round(currentConversionRate * 100) / 100,
+        conversionChange: Math.round(conversionChange * 10) / 10
       }
 
       logger.info('Analytics metrics generated successfully', { timeframe, metrics })
@@ -113,25 +74,8 @@ export class AnalyticsService {
     }
   }
 
-  private analyzeSentiment(conversations: any[]) {
-    // Simple sentiment analysis based on message content
-    let positive = 0, neutral = 0, negative = 0
-
-    conversations.forEach(convo => {
-      const messages = convo.messages || []
-      messages.forEach((msg: any) => {
-        const text = msg.message?.toLowerCase() || ''
-        if (text.includes('good') || text.includes('great') || text.includes('excellent') || text.includes('thank')) {
-          positive++
-        } else if (text.includes('bad') || text.includes('terrible') || text.includes('awful') || text.includes('problem')) {
-          negative++
-        } else {
-          neutral++
-        }
-      })
-    })
-
-    return { positive, neutral, negative, total: conversations.length }
+  async getAnalyticsMetrics(timeframe: '7d' | '30d' | '90d' = '30d') {
+    return this.getMetrics(timeframe)
   }
 
   async getInventoryInsights() {
