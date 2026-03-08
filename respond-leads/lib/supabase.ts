@@ -12,7 +12,7 @@ export const createSupabaseClient = () => {
   return createClient(supabaseUrl, supabaseAnonKey)
 }
 
-// Client for server-side usage (with service role key)
+// Client for server-side usage (with service role key, fallback to anon key)
 export const createSupabaseServerClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -21,7 +21,7 @@ export const createSupabaseServerClient = () => {
     throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
   }
   
-  // Fall back to anon key if service role key is not available
+  // Use service role key if available, otherwise fall back to anon key
   const key = supabaseServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   
   if (!key) {
