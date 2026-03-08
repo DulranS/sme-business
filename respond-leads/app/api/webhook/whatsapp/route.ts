@@ -4,12 +4,10 @@ import crypto from 'crypto'
 import { logger } from '@/lib/logger'
 import { claudeService } from '@/lib/claude'
 import { whatsappService } from '@/lib/whatsapp'
+import { getSupabaseClient } from '@/lib/supabase'
 import { handleDatabaseError, handleExternalServiceError } from '@/lib/errors'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabase = getSupabaseClient()
 
 // Simple in-memory rate limiter for Vercel free tier
 const rateLimiter = new Map<string, { count: number; resetTime: number }>()

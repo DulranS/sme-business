@@ -13,10 +13,8 @@ export class Config {
     return key
   }
 
-  static get supabaseServiceRoleKey(): string {
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is required')
-    return key
+  static get supabaseServiceRoleKey(): string | undefined {
+    return process.env.SUPABASE_SERVICE_ROLE_KEY
   }
 
   // WhatsApp
@@ -44,11 +42,9 @@ export class Config {
     return token
   }
 
-  // Anthropic Claude
-  static get anthropicApiKey(): string {
-    const key = process.env.ANTHROPIC_API_KEY
-    if (!key) throw new Error('ANTHROPIC_API_KEY is required')
-    return key
+  // Anthropic Claude (optional - for AI features)
+  static get anthropicApiKey(): string | undefined {
+    return process.env.ANTHROPIC_API_KEY
   }
 
   // Application
@@ -68,17 +64,15 @@ export class Config {
     return this.nodeEnv === 'production'
   }
 
-  // Validate all required environment variables
+  // Validate only essential environment variables
   static validate(): void {
     const required = [
       'NEXT_PUBLIC_SUPABASE_URL',
       'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-      'SUPABASE_SERVICE_ROLE_KEY',
       'WHATSAPP_PHONE_NUMBER_ID',
       'WHATSAPP_ACCESS_TOKEN',
       'WHATSAPP_APP_SECRET',
-      'WHATSAPP_VERIFY_TOKEN',
-      'ANTHROPIC_API_KEY'
+      'WHATSAPP_VERIFY_TOKEN'
     ]
 
     const missing = required.filter(key => !process.env[key])
@@ -95,13 +89,13 @@ export class Config {
       throw new Error('Invalid URL format in environment variables')
     }
 
-    // Validate API key formats (basic checks)
-    if (this.anthropicApiKey.length < 20) {
-      throw new Error('ANTHROPIC_API_KEY appears to be invalid')
+    // Optional validations
+    if (this.anthropicApiKey && this.anthropicApiKey.length < 20) {
+      console.warn('ANTHROPIC_API_KEY appears to be invalid, AI features will be disabled')
     }
 
     if (this.whatsappAccessToken.length < 50) {
-      throw new Error('WHATSAPP_ACCESS_TOKEN appears to be invalid')
+      console.warn('WHATSAPP_ACCESS_TOKEN appears to be invalid')
     }
   }
 
@@ -125,7 +119,7 @@ export class Config {
     }
   }
 
-  // Get AI configuration
+  // Get AI configuration (optional)
   static get ai() {
     return {
       anthropicApiKey: this.anthropicApiKey,
@@ -134,7 +128,8 @@ export class Config {
       maxTokens: {
         keyword: 50,
         response: 500
-      }
+      },
+      enabled: !!this.anthropicApiKey
     }
   }
 
