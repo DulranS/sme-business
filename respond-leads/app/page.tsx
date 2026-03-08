@@ -11,8 +11,9 @@ import ForecastingDashboard from '@/components/ForecastingDashboard'
 import ReportingDashboard from '@/components/ReportingDashboard'
 import WhatsAppDashboard from '@/components/WhatsAppDashboard'
 import WhatsAppChat from '@/components/WhatsAppChat'
+import WhatsAppAnalyticsDashboard from '@/components/WhatsAppAnalyticsDashboard'
 
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -187,20 +188,23 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="tab"
-            style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
+            style={{
+              ...s.tab,
+              ...(tab === t ? s.tabActive : {})
+            }}
           >
-            {t === 'inventory' ? '▣ INVENTORY' : 
-             t === 'conversations' ? '◎ CONVERSATIONS' :
+            {t === 'inventory' ? '📦 INVENTORY' :
+             t === 'conversations' ? '💬 CONVERSATIONS' :
              t === 'analytics' ? '📊 ANALYTICS' :
              t === 'bulk-ops' ? '⚙️ BULK OPS' :
              t === 'forecasting' ? '🔮 FORECASTING' :
              t === 'reporting' ? '📋 REPORTING' :
              t === 'whatsapp-dashboard' ? '📱 WHATSAPP DASHBOARD' :
+             t === 'whatsapp-analytics' ? '📈 WHATSAPP ANALYTICS' :
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
@@ -390,6 +394,11 @@ export default function Dashboard() {
         {/* ── WHATSAPP CHAT TAB ── */}
         {tab === 'whatsapp-chat' && (
           <WhatsAppChat />
+        )}
+
+        {/* ── WHATSAPP ANALYTICS TAB ── */}
+        {tab === 'whatsapp-analytics' && (
+          <WhatsAppAnalyticsDashboard />
         )}
       </main>
 

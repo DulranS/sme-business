@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
 async function processMessage(message: any, contact: any) {
   const phoneNumber = message.from
-  const customerName = contact?.profile?.name || 'Unknown'
+  const customerName = contact?.profile?.name || message?.contact?.name || 'Unknown'
   const messageText = message.text.body
   const messageId = message.id
 
@@ -183,6 +183,9 @@ async function processMessage(message: any, contact: any) {
     // Send WhatsApp response
     await whatsappService.sendMessage(phoneNumber, aiResponse, messageId)
     
+    // Track analytics for business intelligence
+    await trackConversationAnalytics(phoneNumber, keyword, inventoryResults.length)
+    
     logger.info('Message processed successfully', { 
       phoneNumber,
       keyword,
@@ -208,6 +211,25 @@ async function processMessage(message: any, contact: any) {
         error: fallbackError instanceof Error ? fallbackError.message : 'Unknown error'
       }, fallbackError as Error)
     }
+  }
+}
+
+// NEW: Business Intelligence Tracking
+async function trackConversationAnalytics(phoneNumber: string, keyword: string, resultCount: number) {
+  try {
+    const { error } = await supabase
+      .from('conversation_analytics')
+      .insert({
+        phone_number: phoneNumber,
+        search_keyword: keyword,
+        result_count: resultCount,
+        timestamp: new Date().toISOString(),
+        converted: resultCount > 0 // Simple conversion tracking
+      })
+    
+    if (error) throw error
+  } catch (error) {
+    logger.error('Failed to track analytics', { phoneNumber, keyword }, error as Error)
   }
 }
 
