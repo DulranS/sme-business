@@ -720,27 +720,18 @@ Would you be open to a quick chat?`);
           if (status === 'ringing') {
             setStatus(`📞 Ringing ${businessName}...`);
           } else if (status === 'in-progress' || status === 'answered') {
-            setStatus(`✅ Call connected to ${businessName}!
-Duration: ${callData.duration || 0}s
-Answered by: ${callData.answeredBy || 'unknown'}`);
+            setStatus(`✅ Call connected to ${businessName}!\nDuration: ${callData.duration || 0}s\nAnswered by: ${callData.answeredBy || 'unknown'}`);
           } else if (status === 'completed') {
-            setStatus(`✅ Call Completed!
-Business: ${businessName}
-Duration: ${callData.duration || 0}s
-Answered by: ${callData.answeredBy || 'unknown'}
-${callData.recordingUrl ? '\n🎙️ Recording available' : ''}`);
+            setStatus(`✅ Call Completed!\nBusiness: ${businessName}\nDuration: ${callData.duration || 0}s\nAnswered by: ${callData.answeredBy || 'unknown'}${callData.recordingUrl ? '\n🎙️ Recording available' : ''}`);
             clearInterval(interval);
           } else if (status === 'failed' || status === 'busy' || status === 'no-answer') {
-            setStatus(`❌ Call ${status}
-Business: ${businessName}
-Reason: ${status.toUpperCase()}`);
+            setStatus(`❌ Call ${status}\nBusiness: ${businessName}\nReason: ${status.toUpperCase()}`);
             clearInterval(interval);
           }
         }
         if (attempts >= maxAttempts) {
           clearInterval(interval);
-          setStatus(`⏱️ Status polling stopped after 2 minutes.
-Check call history for final status.`);
+          setStatus(`⏱️ Status polling stopped after 2 minutes.\nCheck call history for final status.`);
         }
       } catch (error) {
         console.error('Poll error:', error);
@@ -764,9 +755,7 @@ Check call history for final status.`);
       interactive: 'Interactive Menu (They can press buttons)'
     };
     const confirmed = confirm(
-      `📞 Call ${contact.business} at +${contact.phone}?
-Type: ${callTypeLabels[callType]}
-Click OK to proceed.`
+      `📞 Call ${contact.business} at +${contact.phone}?\nType: ${callTypeLabels[callType]}\nClick OK to proceed.`
     );
     if (!confirmed) return;
     try {
@@ -795,9 +784,7 @@ Click OK to proceed.`
         throw new Error('Server returned an invalid response. Check Vercel logs.');
       }
       if (response.ok) {
-        setStatus(`✅ Call initiated to ${contact.business}!
-Call ID: ${data.callId}
-Status: ${data.status}`);
+        setStatus(`✅ Call initiated to ${contact.business}!\nCall ID: ${data.callId}\nStatus: ${data.status}`);
         setActiveCallStatus({
           business: contact.business,
           phone: contact.phone,
@@ -807,16 +794,11 @@ Status: ${data.status}`);
           timestamp: new Date().toISOString()
         });
         alert(
-          `✅ Call Successfully Initiated!
-` +
-          `Business: ${contact.business}
-` +
-          `Phone: +${contact.phone}
-` +
-          `Type: ${callType}
-` +
-          `Status: ${data.status}
-` +
+          `✅ Call Successfully Initiated!\n` +
+          `Business: ${contact.business}\n` +
+          `Phone: +${contact.phone}\n` +
+          `Type: ${callType}\n` +
+          `Status: ${data.status}\n` +
           `Call ID: ${data.callId}`
         );
         const contactKey = contact.email || contact.phone;
@@ -827,8 +809,7 @@ Status: ${data.status}`);
         pollCallStatus(data.callId, contact.business);
       } else {
         const errorMsg = data.error || 'Unknown error';
-        setStatus(`❌ Call Failed
-Error: ${errorMsg}`);
+        setStatus(`❌ Call Failed\nError: ${errorMsg}`);
         setActiveCallStatus({
           business: contact.business,
           phone: contact.phone,
@@ -836,9 +817,7 @@ Error: ${errorMsg}`);
           error: errorMsg,
           timestamp: new Date().toISOString()
         });
-        alert(`❌ Call Failed!
-Business: ${contact.business}
-Error: ${errorMsg}`);
+        alert(`❌ Call Failed!\nBusiness: ${contact.business}\nError: ${errorMsg}`);
       }
     } catch (error) {
       console.error('Twilio call error:', error);
@@ -851,8 +830,7 @@ Error: ${errorMsg}`);
         error: userMessage,
         timestamp: new Date().toISOString()
       });
-      alert(`❌ ${userMessage}
-Check browser console and Vercel function logs.`);
+      alert(`❌ ${userMessage}\nCheck browser console and Vercel function logs.`);
     }
   };
 
@@ -1001,9 +979,7 @@ Check browser console and Vercel function logs.`);
       }
     }
     setStatus(`✅ SMS batch complete: ${successCount}/${whatsappLinks.length} sent.`);
-    alert(`✅ SMS batch complete!
-Sent: ${successCount}
-Failed: ${whatsappLinks.length - successCount}`);
+    alert(`✅ SMS batch complete!\nSent: ${successCount}\nFailed: ${whatsappLinks.length - successCount}`);
   };
 
   const loadSettings = async (userId) => {
@@ -1390,8 +1366,7 @@ Failed: ${whatsappLinks.length - successCount}`);
     const followUpCount = history?.count || 0;
     if (followUpCount >= 3) {
       alert(
-        `❌ Cannot send follow-up: ${email} has already received ${followUpCount} follow-ups (maximum reached).
-` +
+        `❌ Cannot send follow-up: ${email} has already received ${followUpCount} follow-ups (maximum reached).\n` +
         `The loop has been closed. No further emails will be sent to prevent spam complaints.`
       );
       return;
@@ -1428,8 +1403,7 @@ Failed: ${whatsappLinks.length - successCount}`);
         await loadDeals();
       } else {
         if (data.code === 'ALREADY_REPLIED' || data.code === 'MAX_FOLLOWUPS_REACHED') {
-          alert(`❌ ${data.error}
-This prevents duplicate emails and spam complaints.`);
+          alert(`❌ ${data.error}\nThis prevents duplicate emails and spam complaints.`);
         } else {
           alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
         }
@@ -1711,20 +1685,13 @@ This prevents duplicate emails and spam complaints.`);
     }
     const leadsToSend = newLeads.slice(0, Math.min(remainingQuota, newLeads.length));
     const potentialValue = Math.round((leadsToSend.length * 0.15 * 5000) / 1000);
-    const confirmMsg = `🚀 Smart New Lead Outreach
-` +
-      `📊 ${leadsToSend.length} new leads ready (${newLeads.length} total available)
-` +
-      `📈 Prioritized by lead quality for maximum business value
-` +
-      `💰 Estimated potential value: $${potentialValue}k
-` +
-      `📧 Daily quota: ${dailyEmailCount}/500 (${remainingQuota} remaining today)
-` +
-      `✅ Prevents duplicates & spam automatically
-` +
-      `🎯 Only contacts never emailed before
-` +
+    const confirmMsg = `🚀 Smart New Lead Outreach\n` +
+      `📊 ${leadsToSend.length} new leads ready (${newLeads.length} total available)\n` +
+      `📈 Prioritized by lead quality for maximum business value\n` +
+      `💰 Estimated potential value: $${potentialValue}k\n` +
+      `📧 Daily quota: ${dailyEmailCount}/500 (${remainingQuota} remaining today)\n` +
+      `✅ Prevents duplicates & spam automatically\n` +
+      `🎯 Only contacts never emailed before\n` +
       `Send to ${leadsToSend.length} leads now?`;
     if (!confirm(confirmMsg)) return;
     if (!templateA.subject?.trim()) {
@@ -1768,29 +1735,20 @@ This prevents duplicate emails and spam complaints.`);
       if (res.ok) {
         setStatus(`✅ ${data.sent}/${data.total} emails sent to new leads!`);
         setDailyEmailCount(data.dailyCount || dailyEmailCount + data.sent);
-        const successMsg = `✅ Successfully sent ${data.sent} emails!
-` +
-          `📊 Stats:
-` +
-          `  • Sent: ${data.sent}
-` +
-          `  • Failed: ${data.failed || 0}
-` +
-          `  • Skipped (already sent): ${data.skipped || 0}
-` +
-          `  • Daily count: ${data.dailyCount}/500
-` +
-          `  • Remaining today: ${data.remainingToday}
-` +
+        const successMsg = `✅ Successfully sent ${data.sent} emails!\n` +
+          `📊 Stats:\n` +
+          `  • Sent: ${data.sent}\n` +
+          `  • Failed: ${data.failed || 0}\n` +
+          `  • Skipped (already sent): ${data.skipped || 0}\n` +
+          `  • Daily count: ${data.dailyCount}/500\n` +
+          `  • Remaining today: ${data.remainingToday}\n` +
           `💰 Estimated value: $${Math.round((data.sent * 0.15 * 5000) / 1000)}k`;
         alert(successMsg);
         await loadSentLeads();
         await loadDailyEmailCount();
       } else {
         if (res.status === 429) {
-          alert(`⚠️ Daily limit reached!
-${data.error}
-Daily count: ${data.dailyCount}/${data.limit}`);
+          alert(`⚠️ Daily limit reached!\n${data.error}\nDaily count: ${data.dailyCount}/${data.limit}`);
           setDailyEmailCount(data.dailyCount || 500);
         } else {
           alert(`❌ Error: ${data.error || 'Failed to send emails'}`);
@@ -1897,11 +1855,7 @@ Daily count: ${data.dailyCount}/${data.limit}`);
       if (recipientsToSend.length === 0) {
         setStatus('❌ No valid leads for selected criteria.');
         setIsSending(false);
-        alert(`❌ No valid recipients found!
-Email column: ${emailColumnName}
-Quality column: ${qualityColumnName}
-Filter: ${leadQualityFilter}
-Check browser console for details.`);
+        alert(`❌ No valid recipients found!\nEmail column: ${emailColumnName}\nQuality column: ${qualityColumnName}\nFilter: ${leadQualityFilter}\nCheck browser console for details.`);
         return;
       }
       setStatus(`Sending to ${recipientsToSend.length} leads...`);
@@ -1971,8 +1925,7 @@ Check browser console for details.`);
         console.error('');
         console.error('📋 COPY THE SECTION ABOVE AND SEND IT TO DEVELOPER');
         console.error('╔════════════════════════════════════════════════════════════╗');
-        alert(`❌ Error: ${data.error}
-Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAILS"`);
+        alert(`❌ Error: ${data.error}\nCheck Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAILS"`);
       }
     } catch (err) {
       console.error('Send error:', err);
@@ -2270,17 +2223,17 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                             <span className="text-gray-400">Sent</span>
                             <span className="font-bold text-blue-400">{funnel.stages.sent}</span>
                           </div>
-                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-blue-500" style={{ width: '100%' }}></div></div>
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-blue-500" style={{width: '100%'}}></div></div>
                           <div className="flex justify-between items-center mt-2">
                             <span className="text-gray-400">Open Rate ({funnel.conversionRate.openRate}%)</span>
                             <span className="font-bold text-green-400">{funnel.stages.opened}</span>
                           </div>
-                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-green-500" style={{ width: `${funnel.conversionRate.openRate}%` }}></div></div>
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-green-500" style={{width: `${funnel.conversionRate.openRate}%`}}></div></div>
                           <div className="flex justify-between items-center mt-2">
                             <span className="text-gray-400">Reply Rate ({funnel.conversionRate.replyRate}%)</span>
                             <span className="font-bold text-yellow-400">{funnel.stages.replied}</span>
                           </div>
-                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-yellow-500" style={{ width: `${funnel.conversionRate.replyRate}%` }}></div></div>
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-yellow-500" style={{width: `${funnel.conversionRate.replyRate}%`}}></div></div>
                           <div className="flex justify-between items-center mt-2">
                             <span className="text-gray-400">Closed ({funnel.conversionRate.closeRate}% of demos)</span>
                             <span className="font-bold text-green-300">{funnel.stages.closed}</span>
@@ -2556,20 +2509,22 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                   <button
                     onClick={() => handleSendEmails('A')}
                     disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-                    className={`w-full py-2.5 rounded font-bold ${isSending || !csvContent || !senderName.trim() || validEmails === 0
+                    className={`w-full py-2.5 rounded font-bold ${
+                      isSending || !csvContent || !senderName.trim() || validEmails === 0
                         ? 'bg-gray-600 cursor-not-allowed'
                         : 'bg-green-700 hover:bg-green-600 text-white'
-                      }`}
+                    }`}
                   >
                     📧 Send Template A (First {Math.ceil(validEmails / 2)} leads)
                   </button>
                   <button
                     onClick={() => handleSendEmails('B')}
                     disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-                    className={`w-full py-2.5 rounded font-bold ${isSending || !csvContent || !senderName.trim() || validEmails === 0
+                    className={`w-full py-2.5 rounded font-bold ${
+                      isSending || !csvContent || !senderName.trim() || validEmails === 0
                         ? 'bg-gray-600 cursor-not-allowed'
                         : 'bg-blue-700 hover:bg-blue-600 text-white'
-                      }`}
+                    }`}
                   >
                     📧 Send Template B (Last {Math.floor(validEmails / 2)} leads)
                   </button>
@@ -2578,20 +2533,22 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                 <>
                   <button
                     onClick={() => handleSendEmails()}
-                    className={`w-full py-2.5 rounded font-bold mt-4 ${isSending || !csvContent || !senderName.trim() || validEmails === 0
+                    className={`w-full py-2.5 rounded font-bold mt-4 ${
+                      isSending || !csvContent || !senderName.trim() || validEmails === 0
                         ? 'bg-gray-600 cursor-not-allowed'
                         : 'bg-green-700 hover:bg-green-600 text-white'
-                      }`}
+                    }`}
                   >
                     📧 Send Emails ({validEmails})
                   </button>
                   <button
                     onClick={handleSendToNewLeads}
                     disabled={isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500}
-                    className={`w-full py-2.5 rounded font-bold mt-3 ${isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500
+                    className={`w-full py-2.5 rounded font-bold mt-3 ${
+                      isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500
                         ? 'bg-gray-600 cursor-not-allowed text-gray-400'
                         : 'bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white shadow-lg'
-                      }`}
+                    }`}
                     title={dailyEmailCount >= 500 ? 'Daily limit reached (500 emails/day)' : `Send to ${getNewLeads().length} new leads (${500 - dailyEmailCount} remaining today)`}
                   >
                     🚀 Smart New Lead Outreach ({getNewLeads().length} new leads)
@@ -2738,10 +2695,11 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
             </div>
             {status && (
               <div
-                className={`p-3 rounded text-center whitespace-pre-line ${status.includes('✅')
+                className={`p-3 rounded text-center whitespace-pre-line ${
+                  status.includes('✅')
                     ? 'bg-green-900/50 text-green-300 border border-green-700'
                     : 'bg-red-900/50 text-red-300 border border-red-700'
-                  }`}
+                }`}
               >
                 {status}
               </div>
@@ -2767,7 +2725,7 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                       <div className="text-xs text-purple-300">Quality Score</div>
                       <div className="text-xl sm:text-2xl font-bold text-yellow-400">
                         {Object.values(leadScores).length > 0
-                          ? Math.round(Object.values(leadScores).reduce((a, b) => a + b, 0) / Object.values(leadScores).length)
+                          ? Math.round(Object.values(leadScores).reduce((a,b) => a+b, 0) / Object.values(leadScores).length)
                           : 0}
                         <span className="text-sm text-yellow-300">/100</span>
                       </div>
@@ -2806,7 +2764,7 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                       <span className="text-blue-200">📤 Sent</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-blue-900 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500" style={{ width: '100%' }}></div>
+                          <div className="h-full bg-blue-500" style={{width: '100%'}}></div>
                         </div>
                         <span className="font-bold text-blue-300 w-12">{whatsappLinks.length}</span>
                       </div>
@@ -2815,7 +2773,7 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                       <span className="text-green-200">✉️ No Reply Yet</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-blue-900 rounded-full overflow-hidden">
-                          <div className="h-full bg-yellow-500" style={{ width: `${Math.round((Math.max(0, whatsappLinks.length - Object.values(repliedLeads).filter(Boolean).length) / whatsappLinks.length) * 100)}%` }}></div>
+                          <div className="h-full bg-yellow-500" style={{width: `${Math.round((Math.max(0, whatsappLinks.length - Object.values(repliedLeads).filter(Boolean).length) / whatsappLinks.length) * 100)}%`}}></div>
                         </div>
                         <span className="font-bold text-yellow-300 w-12">{whatsappLinks.length - Object.values(repliedLeads).filter(Boolean).length}</span>
                       </div>
@@ -2824,7 +2782,7 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                       <span className="text-green-200">✅ Replied</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-blue-900 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-500" style={{ width: `${Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}%` }}></div>
+                          <div className="h-full bg-green-500" style={{width: `${Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}%`}}></div>
                         </div>
                         <span className="font-bold text-green-300 w-12">{Object.values(repliedLeads).filter(Boolean).length}</span>
                       </div>
@@ -2857,10 +2815,11 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                               )}
                               <span className="text-pink-400">Score: {lead.interestScore}</span>
                               {predictiveScores[lead.email] && (
-                                <span className={`font-bold ${predictiveScores[lead.email].predictiveScore >= 70 ? 'text-red-400' :
-                                    predictiveScores[lead.email].predictiveScore >= 50 ? 'text-yellow-400' :
-                                      'text-blue-400'
-                                  }`}>
+                                <span className={`font-bold ${
+                                  predictiveScores[lead.email].predictiveScore >= 70 ? 'text-red-400' :
+                                  predictiveScores[lead.email].predictiveScore >= 50 ? 'text-yellow-400' :
+                                  'text-blue-400'
+                                }`}>
                                   🎯 ML: {predictiveScores[lead.email].predictiveScore}/100
                                 </span>
                               )}
@@ -2883,10 +2842,7 @@ Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAIL
                                 calculatePredictiveScore(lead.email, { ...lead, ...leadData });
                                 const score = predictiveScores[lead.email];
                                 if (score) {
-                                  alert(`Predictive Score: ${score.predictiveScore}/100
-Conversion Probability: ${score.conversionProbability}%
-Risk: ${score.riskLevel}
-${score.recommendations?.join('\n')}`);
+                                  alert(`Predictive Score: ${score.predictiveScore}/100\nConversion Probability: ${score.conversionProbability}%\nRisk: ${score.riskLevel}\n${score.recommendations?.join('\n')}`);
                                 }
                               }}
                               className="text-xs bg-gradient-to-r from-blue-700 to-cyan-700 hover:from-blue-600 hover:to-cyan-600 text-white px-3 py-1.5 rounded font-medium"
@@ -2897,10 +2853,7 @@ ${score.recommendations?.join('\n')}`);
                               onClick={async () => {
                                 const followUp = await generateSmartFollowUp(lead.email, leadData, (lead.followUpCount || 0) + 1);
                                 if (followUp) {
-                                  alert(`Smart Follow-up Generated!
-Subject: ${followUp.followUpEmail.subject}
-Strategy: ${followUp.followUpEmail.strategy}
-${followUp.recommendations?.join('\n')}`);
+                                  alert(`Smart Follow-up Generated!\nSubject: ${followUp.followUpEmail.subject}\nStrategy: ${followUp.followUpEmail.strategy}\n${followUp.recommendations?.join('\n')}`);
                                 }
                               }}
                               className="text-xs bg-gradient-to-r from-green-700 to-emerald-700 hover:from-green-600 hover:to-emerald-600 text-white px-3 py-1.5 rounded font-medium"
@@ -3137,8 +3090,9 @@ ${followUp.recommendations?.join('\n')}`);
                   <button
                     onClick={handleSendBulkSMS}
                     disabled={!smsConsent || isSending}
-                    className={`w-full py-2 rounded font-bold ${!smsConsent ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-600 text-white'
-                      }`}
+                    className={`w-full py-2 rounded font-bold ${
+                      !smsConsent ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-600 text-white'
+                    }`}
                   >
                     📲 Send SMS to All ({whatsappLinks.length})
                   </button>
@@ -3217,11 +3171,7 @@ ${followUp.recommendations?.join('\n')}`);
                     alert('No leads ready for safe follow-up yet. Check timing.');
                     return;
                   }
-                  const msg = `📧 Smart Selective Mode
-Will send to ${safe.length} safe contacts:
-${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days)`).join('\n')}${safe.length > 3 ? `
-... and ${safe.length - 3} more` : ''}
-These contacts won't be over-emailed.`;
+                  const msg = `📧 Smart Selective Mode\nWill send to ${safe.length} safe contacts:\n${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days)`).join('\n')}${safe.length > 3 ? `\n... and ${safe.length - 3} more` : ''}\nThese contacts won't be over-emailed.`;
                   alert(msg);
                 }}
                 className="w-full relative group overflow-hidden"
@@ -3417,23 +3367,25 @@ These contacts won't be over-emailed.`;
                     return (
                       <div
                         key={call.id}
-                        className={`p-4 rounded-lg border-2 ${isCompleted
+                        className={`p-4 rounded-lg border-2 ${
+                          isCompleted
                             ? 'border-green-700 bg-green-900/10'
                             : call.status === 'failed'
                               ? 'border-red-700 bg-red-900/10'
                               : 'border-gray-700 bg-gray-800'
-                          }`}
+                        }`}
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-1">
                               <h3 className="font-bold text-white">{call.businessName}</h3>
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${call.status === 'completed'
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                call.status === 'completed'
                                   ? 'bg-green-900/30 text-green-300'
                                   : call.status === 'failed'
                                     ? 'bg-red-900/30 text-red-300'
                                     : 'bg-gray-700 text-gray-300'
-                                }`}>
+                              }`}>
                                 {call.status === 'completed' ? 'Completed' : call.status === 'failed' ? 'Failed' : 'In Progress'}
                               </span>
                             </div>
@@ -3622,12 +3574,13 @@ These contacts won't be over-emailed.`;
                   return (
                     <div
                       key={link.id}
-                      className={`p-4 rounded-lg border-2 transition-all ${isReplied
+                      className={`p-4 rounded-lg border-2 transition-all ${
+                        isReplied
                           ? 'border-green-700 bg-green-900/15'
                           : isFollowUp
                             ? 'border-yellow-700 bg-yellow-900/15'
                             : 'border-gray-700 bg-gray-750'
-                        }`}
+                      }`}
                     >
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
@@ -3654,8 +3607,9 @@ These contacts won't be over-emailed.`;
                         {link.email ? (
                           <div className="flex justify-between">
                             <span className="text-gray-400">Lead Quality Score:</span>
-                            <span className={`font-bold ${score >= 70 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-orange-400'
-                              }`}>
+                            <span className={`font-bold ${
+                              score >= 70 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-orange-400'
+                            }`}>
                               {score}/100
                             </span>
                           </div>
@@ -3873,8 +3827,7 @@ These contacts won't be over-emailed.`;
                               {link.lead_quality_score && (
                                 <div className="bg-gray-750 p-1 rounded">
                                   <div className="text-gray-400">Lead Score</div>
-                                  <div className={`font-bold ${link.lead_quality_score >= 70 ? 'text-green-400' : link.lead_quality_score >= 50 ? 'text-yellow-400' : 'text-orange-400'
-                                    }`}>
+                                  <div className={`font-bold ${link.lead_quality_score >= 70 ? 'text-green-400' : link.lead_quality_score >= 50 ? 'text-yellow-400' : 'text-orange-400'}`}>
                                     {link.lead_quality_score}/100
                                   </div>
                                 </div>
@@ -3882,8 +3835,7 @@ These contacts won't be over-emailed.`;
                               {link.contact_confidence && (
                                 <div className="bg-gray-750 p-1 rounded">
                                   <div className="text-gray-400">Contact Trust</div>
-                                  <div className={`font-bold ${link.contact_confidence === 'High' ? 'text-green-400' : link.contact_confidence === 'Medium' ? 'text-yellow-400' : 'text-orange-400'
-                                    }`}>
+                                  <div className={`font-bold ${link.contact_confidence === 'High' ? 'text-green-400' : link.contact_confidence === 'Medium' ? 'text-yellow-400' : 'text-orange-400'}`}>
                                     {link.contact_confidence}
                                   </div>
                                 </div>
@@ -4000,8 +3952,7 @@ These contacts won't be over-emailed.`;
             <div className="p-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30 flex justify-end gap-3">
               <button
                 onClick={() => {
-                  const emailText = `Subject: ${researchResults[researchingCompany].personalizedEmail?.subject || ''}
-${researchResults[researchingCompany].personalizedEmail?.body || ''}`;
+                  const emailText = `Subject: ${researchResults[researchingCompany].personalizedEmail?.subject || ''}\n${researchResults[researchingCompany].personalizedEmail?.body || ''}`;
                   navigator.clipboard.writeText(emailText);
                   alert('Email copied to clipboard!');
                 }}
