@@ -89,12 +89,14 @@ WhatsApp: 0741143323`
 
 // Keep B as fallback (or repurpose)
 const DEFAULT_TEMPLATE_B = FOLLOW_UP_1;
+
 const DEFAULT_WHATSAPP_TEMPLATE = `Hi {{business_name}} 👋😊
 Hope you're doing well.
 I'm {{sender_name}} from Sri Lanka – I run a small digital mini-agency supporting businesses with websites, content, and AI automation.
 Quick question:
 Are you currently working on anything digital that's taking too much time or not delivering the results you want?
 If yes, I'd be happy to share a quick idea – no pressure at all.`;
+
 const DEFAULT_SMS_TEMPLATE = `Hi {{business_name}} 👋
 This is {{sender_name}} from Syndicate Solutions.
 Quick question – are you currently working on any digital work that's delayed or not giving results?
@@ -119,38 +121,29 @@ const extractTemplateVariables = (text) => {
 // ✅ SYNC WITH API: Use the EXACT same validation rules
 const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
-  
   let cleaned = email.trim()
     .toLowerCase()
     .replace(/^["'`]+/, '')
     .replace(/["'`]+$/, '')
     .replace(/\s+/g, '')
     .replace(/[<>]/g, '');
-  
   if (cleaned.length < 5) return false;
   if (cleaned === 'undefined' || cleaned === 'null' || cleaned === 'na' || cleaned === 'n/a') return false;
   if (cleaned.startsWith('[') || cleaned.includes('missing')) return false;
-  
   const atCount = (cleaned.match(/@/g) || []).length;
   if (atCount !== 1) return false;
-  
   const parts = cleaned.split('@');
   const [localPart, domainPart] = parts;
-  
   if (!localPart || localPart.length < 1) return false;
   if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
-  
   if (!domainPart || domainPart.length < 3) return false;
   if (!domainPart.includes('.')) return false;
   if (domainPart.startsWith('.') || domainPart.endsWith('.')) return false;
-  
   const domainBits = domainPart.split('.');
   const tld = domainBits[domainBits.length - 1];
-  
   if (!tld || tld.length < 2 || tld.length > 6) return false;
   if (!/^[a-z0-9-]+$/.test(tld)) return false;
   if (tld.startsWith('-') || tld.endsWith('-')) return false;
-  
   return true;
 };
 
@@ -241,21 +234,17 @@ export default function Dashboard() {
     readyForFollowUp: 0,
     alreadyFollowedUp: 0,
     awaitingReply: 0,
-    interestedLeads: 0 // ✅ New: Leads showing interest (opens/clicks)
+    interestedLeads: 0
   });
-  // ✅ AI Research State
   const [researchingCompany, setResearchingCompany] = useState(null);
   const [researchResults, setResearchResults] = useState({});
   const [showResearchModal, setShowResearchModal] = useState(false);
   const [interestedLeadsList, setInterestedLeadsList] = useState([]);
-  
-  // ✅ 2026 Advanced Features State
   const [sendTimeOptimization, setSendTimeOptimization] = useState(null);
   const [predictiveScores, setPredictiveScores] = useState({});
   const [sentimentAnalysis, setSentimentAnalysis] = useState({});
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [smartFollowUpSuggestions, setSmartFollowUpSuggestions] = useState({});
-  // ✅ ENHANCED FOLLOW-UP OPTIONS
   const [followUpTemplate, setFollowUpTemplate] = useState('auto');
   const [followUpTargeting, setFollowUpTargeting] = useState('ready');
   const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
@@ -273,11 +262,8 @@ export default function Dashboard() {
   const [activeCallStatus, setActiveCallStatus] = useState(null);
   const [showMultiChannelModal, setShowMultiChannelModal] = useState(false);
   const [isMultiChannelFullscreen, setIsMultiChannelFullscreen] = useState(false);
-  // ✅ NEW LEAD OUTREACH STATE
   const [dailyEmailCount, setDailyEmailCount] = useState(0);
   const [loadingDailyCount, setLoadingDailyCount] = useState(false);
-  
-  // ✅ NEW BUSINESS LOGIC: ADVANCED ANALYTICS & PREDICTIVE SCORING
   const [advancedMetrics, setAdvancedMetrics] = useState({
     avgDaysToFirstReply: 0,
     conversionFunnel: [],
@@ -292,7 +278,6 @@ export default function Dashboard() {
   const [contactFilter, setContactFilter] = useState('all');
   const [sortBy, setSortBy] = useState('score');
   const [showDetailedAnalytics, setShowDetailedAnalytics] = useState(false);
-  // ✅ Instagram & Twitter Templates
   const [instagramTemplate, setInstagramTemplate] = useState(`Hi {{business_name}} 👋
 I run Syndicate Solutions – we help businesses like yours with web, AI, and digital ops.
 Would you be open to a quick chat about how we can help?
@@ -300,7 +285,6 @@ No pressure at all.`);
   const [twitterTemplate, setTwitterTemplate] = useState(`Hi {{business_name}} 👋
 I run Syndicate Solutions – we help businesses like yours with web, AI, and digital ops.
 Would you be open to a quick chat?`);
-  // ✅ Follow-Up Templates
   const [followUpTemplates, setFollowUpTemplates] = useState([
     {
       id: 'followup_1',
@@ -350,11 +334,10 @@ Would you be open to a quick chat?`);
     } else if (contact.followUpCount >= 2) {
       handleTwilioCall(contact, 'voicemail');
     } else {
-      handleTwilioCall(contact, 'interactive'); // IVR
+      handleTwilioCall(contact, 'interactive');
     }
   };
 
-  // ✅ Social Handle Generator
   const generateSocialHandle = (businessName, platform) => {
     if (!businessName) return null;
     let handle = businessName
@@ -365,10 +348,8 @@ Would you be open to a quick chat?`);
     return handle;
   };
 
-  // ✅ LinkedIn Handler - Opens search or direct profile if available
   const handleOpenLinkedIn = (contact, type = 'company') => {
     if (!contact.business) return;
-    
     let url;
     if (type === 'company' && contact.linkedin_company) {
       url = contact.linkedin_company;
@@ -377,19 +358,14 @@ Would you be open to a quick chat?`);
     } else if (type === 'founder' && contact.linkedin_founder) {
       url = contact.linkedin_founder;
     } else {
-      // Fallback: search for the business name on LinkedIn
       const query = encodeURIComponent(contact.business);
       url = `https://www.linkedin.com/search/results/companies/?keywords=${query}`;
     }
     window.open(url, '_blank');
   };
 
-  // ✅ SMART SOCIAL OUTREACH STRATEGY
   const getSocialOutreachStrategy = (link) => {
-    // Determine best engagement strategy based on available data
     const strategies = [];
-    
-    // LinkedIn - Direct professional outreach (highest priority)
     if (link.linkedin_company || link.linkedin_ceo) {
       strategies.push({
         type: 'linkedin',
@@ -398,8 +374,6 @@ Would you be open to a quick chat?`);
         description: 'Send connection request with personalized message'
       });
     }
-    
-    // Email - Most direct (priority based on confidence)
     if (link.email_primary) {
       const confidence = link.contact_confidence;
       strategies.push({
@@ -409,8 +383,6 @@ Would you be open to a quick chat?`);
         description: `Email outreach (${confidence} confidence)`
       });
     }
-    
-    // Twitter/X - For thought leaders & B2B
     if (link.twitter) {
       strategies.push({
         type: 'twitter',
@@ -419,8 +391,6 @@ Would you be open to a quick chat?`);
         description: 'Follow, like recent posts, comment with value'
       });
     }
-    
-    // YouTube - For content creators & channels
     if (link.youtube) {
       strategies.push({
         type: 'youtube',
@@ -429,8 +399,6 @@ Would you be open to a quick chat?`);
         description: 'Subscribe, comment on recent videos'
       });
     }
-    
-    // Instagram - For visual/consumer brands
     if (link.instagram) {
       strategies.push({
         type: 'instagram',
@@ -439,8 +407,6 @@ Would you be open to a quick chat?`);
         description: 'Follow account, like posts, engage authentically'
       });
     }
-    
-    // Facebook - For established businesses
     if (link.facebook) {
       strategies.push({
         type: 'facebook',
@@ -449,8 +415,6 @@ Would you be open to a quick chat?`);
         description: 'Like page, follow, engage with recent posts'
       });
     }
-    
-    // TikTok - For younger/trendy brands
     if (link.tiktok) {
       strategies.push({
         type: 'tiktok',
@@ -459,47 +423,34 @@ Would you be open to a quick chat?`);
         description: 'Follow account, like trending content'
       });
     }
-    
     return strategies.sort((a, b) => a.priority - b.priority);
   };
 
-  // ✅ Copy username to clipboard helper
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
     alert(`✅ Copied ${label}: ${text}`);
   };
 
-  // ✅ INTELLIGENT FOLLOW-UP LOGIC: CONTACT FREQUENCY RULES + ENGAGEMENT DECAY
-
-  // ✅ Determine if a contact is safe to email (prevents spam)
   const isSafeToFollowUp = (email) => {
     if (!email) return false;
-    
-    const daysSinceSent = lastSent[email] ? 
+    const daysSinceSent = lastSent[email] ?
       (new Date() - new Date(lastSent[email])) / (1000 * 60 * 60 * 24) : 999;
-    
     const followUpCount = followUpHistory[email]?.count || 0;
     const hasReplied = repliedLeads[email];
-    
-    // Rules to determine if safe to follow up
     const rules = {
       isWaitingForReply: !hasReplied && daysSinceSent >= 2,
-      notOverContacted: followUpCount < 3, // Max 3 follow-ups
-      notTooRecent: daysSinceSent >= 2, // Wait at least 2 days
-      withinCampaignWindow: daysSinceSent <= 30 // Don't email after 30 days
+      notOverContacted: followUpCount < 3,
+      notTooRecent: daysSinceSent >= 2,
+      withinCampaignWindow: daysSinceSent <= 30
     };
-    
     return rules.isWaitingForReply && rules.notOverContacted && rules.notTooRecent && rules.withinCampaignWindow;
   };
 
-  // ✅ Calculate optimal follow-up for each contact
   const getOptimalFollowUpStrategy = (email) => {
-    const daysSinceSent = lastSent[email] ? 
+    const daysSinceSent = lastSent[email] ?
       (new Date() - new Date(lastSent[email])) / (1000 * 60 * 60 * 24) : 999;
     const followUpCount = followUpHistory[email]?.count || 0;
     const score = leadScores[email] || 50;
-    
-    // Optimal timing by days since contact
     if (daysSinceSent < 2) {
       return { optimalDay: 2, reason: 'Too soon - let settle', templateType: 'none' };
     }
@@ -518,37 +469,32 @@ Would you be open to a quick chat?`);
     return { optimalDay: 999, reason: 'Campaign window closed', templateType: 'none' };
   };
 
-  // ✅ Get contacts safe for follow-up with engagement scoring
   const getSafeFollowUpCandidates = () => {
     const candidates = whatsappLinks
       .filter(contact => contact.email && isSafeToFollowUp(contact.email))
       .map(contact => {
         const strategy = getOptimalFollowUpStrategy(contact.email);
         const followUpCount = followUpHistory[contact.email]?.count || 0;
-        const daysSinceSent = lastSent[contact.email] ? 
+        const daysSinceSent = lastSent[contact.email] ?
           (new Date() - new Date(lastSent[contact.email])) / (1000 * 60 * 60 * 24) : 999;
-        
         return {
           ...contact,
           strategy,
           followUpCount,
           daysSinceSent,
-          urgencyScore: 100 - (daysSinceSent * 2), // Earlier = more urgent
-          safetyScore: (3 - followUpCount) * 33.33 // Fewer follow-ups = safer
+          urgencyScore: 100 - (daysSinceSent * 2),
+          safetyScore: (3 - followUpCount) * 33.33
         };
       })
       .sort((a, b) => b.urgencyScore - a.urgencyScore);
-    
     return candidates;
   };
 
-  // ✅ Calculate engagement health for a contact
   const getEngagementHealth = (email) => {
-    const daysSinceSent = lastSent[email] ? 
+    const daysSinceSent = lastSent[email] ?
       (new Date() - new Date(lastSent[email])) / (1000 * 60 * 60 * 24) : 999;
     const score = leadScores[email] || 50;
     const hasReplied = repliedLeads[email];
-    
     if (hasReplied) return { status: '✅ Engaged', color: 'green', urgency: 'low' };
     if (daysSinceSent < 2) return { status: '⏳ Fresh', color: 'blue', urgency: 'low' };
     if (daysSinceSent < 5) return { status: '🟡 Warming', color: 'yellow', urgency: 'medium' };
@@ -557,54 +503,33 @@ Would you be open to a quick chat?`);
     return { status: '❌ Dead', color: 'gray', urgency: 'none' };
   };
 
-  // ✅ ADVANCED BUSINESS LOGIC: PREDICTIVE SCORING & ANALYTICS
-
-  // ✅ Calculate lead quality with multiple factors
   const calculateLeadQualityScore = (contact) => {
     let score = 50;
     const contactKey = contact.email || contact.phone;
-    
-    // 1. EMAIL ENGAGEMENT FACTORS
     if (contact.email) {
       score += 15;
       if (leadScores[contact.email] && leadScores[contact.email] >= 75) score += 15;
     }
-    
-    // 2. PHONE PRESENCE & DIALING CAPABILITY
     if (contact.phone && formatForDialing(contact.phone)) score += 10;
-    
-    // 3. SOCIAL MEDIA PRESENCE (Multi-channel strategy)
     const socialChannels = [contact.twitter, contact.instagram, contact.facebook, contact.youtube, contact.linkedin_company].filter(Boolean).length;
     score += Math.min(15, socialChannels * 3);
-    
-    // 4. CONTACT INFORMATION QUALITY
     if (contact.contact_confidence === 'High') score += 10;
     else if (contact.contact_confidence === 'Medium') score += 5;
-    
-    // 5. DECISION MAKER TARGETING
     if (contact.linkedin_ceo || contact.linkedin_founder) score += 10;
     if (contact.decision_maker_found === 'Yes') score += 8;
-    
-    // 6. ENGAGEMENT HISTORY
     if (repliedLeads[contact.email]) score += 25;
     if (lastSent[contactKey]) {
       const daysSinceSent = (new Date() - new Date(lastSent[contactKey])) / (1000 * 60 * 60 * 24);
       if (daysSinceSent > 7 && daysSinceSent <= 14) score += 5;
     }
-    
-    // 7. COMPANY SIZE (STRATEGIC FIT)
     if (contact.company_size_indicator === 'small') score += 5;
     if (contact.company_size_indicator === 'medium') score += 10;
     if (contact.company_size_indicator === 'enterprise') score += 12;
-    
-    // 8. WEBSITE & ONLINE PRESENCE
     if (contact.website) score += 5;
     if (contact.contact_page_found === 'Yes') score += 5;
-    
     return Math.min(100, Math.max(0, score));
   };
 
-  // ✅ CONVERSION FUNNEL ANALYSIS
   const calculateConversionFunnel = () => {
     const stages = {
       'sent': whatsappLinks.length,
@@ -614,7 +539,6 @@ Would you be open to a quick chat?`);
       'demo': Math.round(Object.values(repliedLeads).filter(Boolean).length * 0.40),
       'closed': Math.round(Object.values(repliedLeads).filter(Boolean).length * 0.15)
     };
-    
     return {
       stages,
       conversionRate: {
@@ -627,17 +551,14 @@ Would you be open to a quick chat?`);
     };
   };
 
-  // ✅ REVENUE FORECASTING ENGINE
   const calculateRevenueForecasts = () => {
     const avgDealValue = 5000;
     const closeRate = 0.15;
     const demoToCloseRate = 0.40;
     const replyToDemoRate = 0.40;
-    
     const replies = Object.values(repliedLeads).filter(Boolean).length;
     const demoOpportunities = Math.ceil(replies * replyToDemoRate);
     const expectedClosures = Math.ceil(demoOpportunities * demoToCloseRate);
-    
     return {
       currentPipeline: replies * avgDealValue,
       demoOpportunities: demoOpportunities * avgDealValue,
@@ -652,7 +573,6 @@ Would you be open to a quick chat?`);
     };
   };
 
-  // ✅ LEAD SEGMENTATION FOR SMART TARGETING
   const segmentLeads = () => {
     const segments = {
       veryHot: [],
@@ -661,13 +581,11 @@ Would you be open to a quick chat?`);
       cold: [],
       inactive: []
     };
-    
     whatsappLinks.forEach(contact => {
       const score = leadScores[contact.email] || 0;
       const replied = repliedLeads[contact.email];
-      const daysSinceSent = lastSent[contact.email] ? 
+      const daysSinceSent = lastSent[contact.email] ?
         (new Date() - new Date(lastSent[contact.email])) / (1000 * 60 * 60 * 24) : 999;
-      
       if (replied) {
         segments.veryHot.push(contact);
       } else if (score >= 80) {
@@ -680,17 +598,19 @@ Would you be open to a quick chat?`);
         segments.inactive.push(contact);
       }
     });
-    
     return segments;
   };
 
-  // ✅ FILTERED AND SORTED CONTACTS
+  // ✅ HELPER: Check if phone is a 077 priority number (formatted as 9477...)
+  const isPriorityPhone = (phone) => phone && phone.toString().startsWith('9477');
+
+  // ✅ FILTERED AND SORTED CONTACTS - 077 NUMBERS PRIORITIZED
   const getFilteredAndSortedContacts = () => {
     let filtered = [...whatsappLinks];
     
     // Apply search
     if (searchQuery) {
-      filtered = filtered.filter(c => 
+      filtered = filtered.filter(c =>
         c.business.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.phone?.includes(searchQuery.replace(/\D/g, ''))
@@ -708,19 +628,39 @@ Would you be open to a quick chat?`);
       filtered = filtered.filter(c => lastSent[c.email || c.phone]);
     }
     
-    // Apply sorting
-    if (sortBy === 'score') {
-      filtered.sort((a, b) => (leadScores[b.email] || 0) - (leadScores[a.email] || 0));
-    } else if (sortBy === 'recent') {
-      filtered.sort((a, b) => new Date(lastSent[b.email || b.phone] || 0) - new Date(lastSent[a.email || a.phone] || 0));
-    } else if (sortBy === 'name') {
-      filtered.sort((a, b) => a.business.localeCompare(b.business));
-    }
-    
+    // ✅ APPLY SORTING (Priority 1: 077 Numbers, Priority 2: Selected Sort)
+    filtered.sort((a, b) => {
+      const aIsPriority = isPriorityPhone(a.phone);
+      const bIsPriority = isPriorityPhone(b.phone);
+
+      // 1. Force 077 numbers to the top
+      if (aIsPriority && !bIsPriority) return -1;
+      if (!aIsPriority && bIsPriority) return 1;
+
+      // 2. If both are same priority, use existing ranking logic
+      if (sortBy === 'score') {
+        return (leadScores[b.email] || 0) - (leadScores[a.email] || 0);
+      } else if (sortBy === 'recent') {
+        return new Date(lastSent[b.email || b.phone] || 0) - new Date(lastSent[a.email || a.phone] || 0);
+      } else if (sortBy === 'name') {
+        return a.business.localeCompare(b.business);
+      }
+      return 0;
+    });
+
     return filtered;
   };
 
-  // ✅ Instagram Handler
+  // ✅ PREPARE SORTED CONTACTS FOR MAIN OUTREACH LIST (Ignores search filter, keeps 077 priority)
+  const sortedWhatsappLinks = [...whatsappLinks].sort((a, b) => {
+    const aIsPriority = isPriorityPhone(a.phone);
+    const bIsPriority = isPriorityPhone(b.phone);
+    if (aIsPriority && !bIsPriority) return -1;
+    if (!aIsPriority && bIsPriority) return 1;
+    // Fallback to score ranking
+    return (leadScores[b.email] || 0) - (leadScores[a.email] || 0);
+  });
+
   const handleOpenInstagram = (contact) => {
     if (!contact.business) return;
     const igHandle = generateSocialHandle(contact.business, 'instagram');
@@ -731,7 +671,6 @@ Would you be open to a quick chat?`);
     }
   };
 
-  // ✅ Twitter Handler
   const handleOpenTwitter = (contact) => {
     if (!contact.business) return;
     const twitterHandle = generateSocialHandle(contact.business, 'twitter');
@@ -749,7 +688,6 @@ Would you be open to a quick chat?`);
     }
   };
 
-  // ✅ Handle Call
   const handleCall = (phone) => {
     if (!phone) return;
     const dialNumber = formatForDialing(phone) || phone.toString().replace(/\D/g, '');
@@ -762,7 +700,6 @@ Would you be open to a quick chat?`);
     }
   };
 
-  // ✅ Poll Call Status
   const pollCallStatus = (callId, businessName) => {
     let attempts = 0;
     const maxAttempts = 20;
@@ -811,9 +748,7 @@ Check call history for final status.`);
     }, 6000);
   };
 
-  // ✅ Twilio Call
   const handleTwilioCall = async (contact, callType = 'direct') => {
-    // 🔒 SAFETY: Ensure contact is valid and has required fields
     if (!contact || !contact.phone || !contact.business) {
       console.warn('Invalid contact passed to handleTwilioCall:', contact);
       alert('❌ Contact data is incomplete. Cannot place call.');
@@ -852,7 +787,6 @@ Click OK to proceed.`
           callType
         })
       });
-      // ✅ CRITICAL: Check if response is valid JSON
       let data;
       try {
         data = await response.json();
@@ -922,7 +856,6 @@ Check browser console and Vercel function logs.`);
     }
   };
 
-  // ✅ Load Call History
   const loadCallHistory = async () => {
     if (!user?.uid) return;
     setLoadingCallHistory(true);
@@ -973,7 +906,6 @@ Check browser console and Vercel function logs.`);
     return badges[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
   };
 
-  // ✅ SMS Handlers
   const handleSendSMS = async (contact) => {
     if (!user?.uid) return;
     const confirmed = confirm(`Send SMS to ${contact.business} at +${contact.phone}?`);
@@ -1074,7 +1006,6 @@ Sent: ${successCount}
 Failed: ${whatsappLinks.length - successCount}`);
   };
 
-  // ✅ Settings
   const loadSettings = async (userId) => {
     try {
       const docRef = doc(db, 'users', userId, 'settings', 'templates');
@@ -1126,7 +1057,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     return () => clearTimeout(handler);
   }, [saveSettings, user?.uid]);
 
-  // ✅ CSV Upload
   const handleCsvUpload = (e) => {
     setValidEmails(0);
     setValidWhatsApp(0);
@@ -1145,7 +1075,6 @@ Failed: ${whatsappLinks.length - successCount}`);
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       setCsvHeaders(headers);
       setPreviewRecipient(null);
-      // ✅ Expose all possible variables + CSV headers for mapping
       const allTemplateTexts = [
         templateA.subject, templateA.body,
         templateB.subject, templateB.body,
@@ -1170,13 +1099,11 @@ Failed: ${whatsappLinks.length - successCount}`);
       if (headers.includes('email')) initialMappings.email = 'email';
       initialMappings.sender_name = 'sender_name';
       setFieldMappings(initialMappings);
-      // ✅ Lead processing with lead_quality column presence check
       let hotEmails = 0, warmEmails = 0;
       const validPhoneContacts = [];
       const newLeadScores = {};
       const newLastSent = {};
       let firstValid = null;
-      // ✅ CRITICAL: Only filter by leadQuality if the column exists
       const hasLeadQualityCol = headers.includes('lead_quality');
       for (let i = 1; i < lines.length; i++) {
         const values = parseCsvRow(lines[i]);
@@ -1185,7 +1112,6 @@ Failed: ${whatsappLinks.length - successCount}`);
         headers.forEach((header, idx) => {
           row[header] = values[idx] || '';
         });
-        // ✅ Include email only if valid AND passes quality filter (if applicable)
         let includeEmail = true;
         if (hasLeadQualityCol) {
           const quality = (row.lead_quality || '').trim() || 'HOT';
@@ -1223,7 +1149,6 @@ Failed: ${whatsappLinks.length - successCount}`);
             email: row.email || null,
             place_id: row.place_id || '',
             website: row.website || '',
-            // ✅ ALL SOCIAL MEDIA & OUTREACH FIELDS
             instagram: row.instagram || '',
             twitter: row.twitter || '',
             facebook: row.facebook || '',
@@ -1262,7 +1187,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     reader.readAsText(file);
   };
 
-  // ✅ Gmail Token
   const requestGmailToken = () => {
     return new Promise((resolve, reject) => {
       if (typeof window === 'undefined') return reject('Browser only');
@@ -1279,7 +1203,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     });
   };
 
-  // ✅ Data Loaders
   const loadAbResults = async () => {
     try {
       const q = query(collection(db, 'ab_results'), where('userId', '==', user.uid));
@@ -1403,47 +1326,33 @@ Failed: ${whatsappLinks.length - successCount}`);
       const data = await res.json();
       if (res.ok) {
         setSentLeads(data.leads || []);
-        
-        // ✅ BUILD FOLLOW-UP HISTORY FROM LEADS
         const history = {};
         let replied = 0, followedUp = 0, readyForFU = 0, awaiting = 0;
-        
         (data.leads || []).forEach(lead => {
           if (lead.replied) {
             replied++;
           }
-          
-          // ✅ TRACK ALL LEADS WITH FOLLOW-UP DATA (including 0 count for proper tracking)
           const followUpCount = lead.followUpCount || 0;
           if (followUpCount > 0) {
             followedUp++;
           }
-          
-          // ✅ Initialize history entry for all leads (even with 0 follow-ups)
-          // This ensures eligibility checks work correctly
           history[lead.email] = {
             count: followUpCount,
             lastFollowUpAt: lead.lastFollowUpAt || null,
             dates: lead.followUpDates || []
           };
-          
           const followUpAt = new Date(lead.followUpAt);
           const now = new Date();
-          
           if (!lead.replied && followUpAt <= now) {
             readyForFU++;
           } else if (!lead.replied) {
             awaiting++;
           }
         });
-        
-        // ✅ Count interested leads (opens/clicks but no reply yet)
-        const interested = (data.leads || []).filter(lead => 
+        const interested = (data.leads || []).filter(lead =>
           lead.seemsInterested && !lead.replied
         );
-        
         setInterestedLeadsList(interested);
-        
         setFollowUpHistory(history);
         setFollowUpStats({
           totalSent: data.leads?.length || 0,
@@ -1453,12 +1362,9 @@ Failed: ${whatsappLinks.length - successCount}`);
           awaitingReply: awaiting,
           interestedLeads: interested.length
         });
-        
-        // ✅ Notify if old closed loops were deleted
         if (data.deletedCount && data.deletedCount > 0) {
           console.log(`🗑️ Cleaned up ${data.deletedCount} old closed loops (>30 days)`);
         }
-        
         console.log('✅ Follow-up tracking loaded:', { followUpStats: { totalSent: data.leads?.length, totalReplied: replied }, history });
       } else {
         alert('Failed to load sent leads');
@@ -1476,24 +1382,20 @@ Failed: ${whatsappLinks.length - successCount}`);
       alert('Missing required data to send follow-up.');
       return;
     }
-    
-    // ✅ CRITICAL: HARD BLOCK if lead has replied (no override allowed)
     if (repliedLeads[email]) {
       alert(`❌ Cannot send follow-up: ${email} has already replied. Loop is closed.`);
       return;
     }
-    
-    // ✅ CRITICAL: HARD BLOCK if already sent 3+ follow-ups (closing the loop - no override)
     const history = followUpHistory[email];
     const followUpCount = history?.count || 0;
     if (followUpCount >= 3) {
       alert(
-        `❌ Cannot send follow-up: ${email} has already received ${followUpCount} follow-ups (maximum reached).\n\n` +
+        `❌ Cannot send follow-up: ${email} has already received ${followUpCount} follow-ups (maximum reached).
+` +
         `The loop has been closed. No further emails will be sent to prevent spam complaints.`
       );
       return;
     }
-    
     try {
       const res = await fetch('/api/send-followup', {
         method: 'POST',
@@ -1510,10 +1412,8 @@ Failed: ${whatsappLinks.length - successCount}`);
         const isFinalFollowUp = data.followUpCount >= 3;
         alert(
           `✅ Follow-up #${data.followUpCount} sent to ${email}` +
-          (isFinalFollowUp ? '\n\n⚠️ Loop closed - no further emails will be sent to this lead.' : '')
+          (isFinalFollowUp ? '\n⚠️ Loop closed - no further emails will be sent to this lead.' : '')
         );
-        
-        // ✅ UPDATE LOCAL STATE IMMEDIATELY for better UX
         setFollowUpHistory(prev => ({
           ...prev,
           [email]: {
@@ -1523,15 +1423,13 @@ Failed: ${whatsappLinks.length - successCount}`);
             loopClosed: isFinalFollowUp
           }
         }));
-        
-        // ✅ RELOAD FROM SERVER - ENSURES PERFECT ACCURACY
         await loadSentLeads();
         await loadRepliedAndFollowUp();
         await loadDeals();
       } else {
-        // ✅ Handle specific error codes from backend
         if (data.code === 'ALREADY_REPLIED' || data.code === 'MAX_FOLLOWUPS_REACHED') {
-          alert(`❌ ${data.error}\n\nThis prevents duplicate emails and spam complaints.`);
+          alert(`❌ ${data.error}
+This prevents duplicate emails and spam complaints.`);
         } else {
           alert(`❌ Follow-up failed: ${data.error || 'Unknown error'}`);
         }
@@ -1542,7 +1440,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
   };
 
-  // ✅ 2026 Feature: Load Send Time Optimization
   const loadSendTimeOptimization = async () => {
     if (!user?.uid) return;
     try {
@@ -1560,14 +1457,13 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
   };
 
-  // ✅ 2026 Feature: Calculate Predictive Score for Lead
   const calculatePredictiveScore = async (leadEmail, leadData) => {
-    if (!user?.uid || predictiveScores[leadEmail]) return; // Cache results
+    if (!user?.uid || predictiveScores[leadEmail]) return;
     try {
       const res = await fetch('/api/predictive-lead-scoring', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           userId: user.uid,
           leadData: {
             ...leadData,
@@ -1587,7 +1483,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
   };
 
-  // ✅ 2026 Feature: Analyze Reply Sentiment
   const analyzeReplySentiment = async (replyText, leadEmail) => {
     if (!replyText) return;
     try {
@@ -1608,13 +1503,11 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
   };
 
-  // ✅ 2026 Feature: Generate Smart Follow-up
   const generateSmartFollowUp = async (leadEmail, leadData, followUpNumber = 1) => {
     if (!user?.uid) return;
     try {
       const lead = sentLeads.find(l => l.email === leadEmail);
-      const defaultTemplate = `${templateA.subject}\n\n${templateA.body}`;
-      
+      const defaultTemplate = `${templateA.subject}\n${templateA.body}`;
       const res = await fetch('/api/smart-followup-generator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1648,18 +1541,14 @@ Failed: ${whatsappLinks.length - successCount}`);
     return null;
   };
 
-  // ✅ AI Research Function - Cost-efficient individual research
   const researchCompany = async (companyName, companyWebsite, email) => {
     if (!user?.uid) {
       alert('Please sign in to use AI research');
       return;
     }
-    
     setResearchingCompany(email);
     try {
-      // Get default email template to extract general idea
-      const defaultTemplate = `${templateA.subject}\n\n${templateA.body}`;
-      
+      const defaultTemplate = `${templateA.subject}\n${templateA.body}`;
       const res = await fetch('/api/research-company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1670,7 +1559,6 @@ Failed: ${whatsappLinks.length - successCount}`);
           userId: user.uid
         })
       });
-      
       const data = await res.json();
       if (res.ok) {
         setResearchResults(prev => ({
@@ -1693,14 +1581,9 @@ Failed: ${whatsappLinks.length - successCount}`);
     if (!lead || !lead.email || lead.replied) return false;
     const now = new Date();
     const followUpAt = new Date(lead.followUpAt);
-    
-    // ✅ Check if follow-up time has passed
     if (followUpAt > now) return false;
-    
-    // ✅ Check if already followed up too many times
     const followUpCount = followUpHistory[lead.email]?.count || lead.followUpCount || 0;
     if (followUpCount >= 3) return false;
-    
     return true;
   };
 
@@ -1714,16 +1597,12 @@ Failed: ${whatsappLinks.length - successCount}`);
     let successCount = 0;
     let errorCount = 0;
     for (const lead of eligibleLeads) {
-      // ✅ Double-check eligibility before sending (state may have changed)
       if (!isEligibleForFollowUp(lead)) continue;
-      
-      // ✅ Check follow-up count one more time before sending
       const followUpCount = followUpHistory[lead.email]?.count || lead.followUpCount || 0;
       if (followUpCount >= 3) {
         console.warn(`Skipping ${lead.email}: already has ${followUpCount} follow-ups`);
         continue;
       }
-      
       try {
         const res = await fetch('/api/send-followup', {
           method: 'POST',
@@ -1739,7 +1618,6 @@ Failed: ${whatsappLinks.length - successCount}`);
         if (res.ok) {
           successCount++;
           const isFinalFollowUp = data.followUpCount >= 3;
-          // ✅ Update local state immediately for better UX
           setFollowUpHistory(prev => ({
             ...prev,
             [lead.email]: {
@@ -1751,7 +1629,6 @@ Failed: ${whatsappLinks.length - successCount}`);
           }));
         } else {
           errorCount++;
-          // ✅ Skip logging expected errors (already replied, max follow-ups)
           if (data.code !== 'ALREADY_REPLIED' && data.code !== 'MAX_FOLLOWUPS_REACHED') {
             console.error(`Failed to send to ${lead.email}:`, data.error);
           }
@@ -1763,7 +1640,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
     setIsSending(false);
     alert(`✅ Sent follow-ups to ${successCount} leads.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`);
-    // ✅ Reload from server to ensure accuracy
     await loadSentLeads();
     await loadRepliedAndFollowUp();
   };
@@ -1773,7 +1649,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     await loadSentLeads();
   };
 
-  // ✅ Load daily email count
   const loadDailyEmailCount = async () => {
     if (!user?.uid) return;
     setLoadingDailyCount(true);
@@ -1794,19 +1669,14 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
   };
 
-  // ✅ Get new leads (not yet emailed)
   const getNewLeads = () => {
     if (!whatsappLinks || whatsappLinks.length === 0) return [];
-    
-    // Create set of already-sent emails
     const sentEmailsSet = new Set();
     sentLeads.forEach(lead => {
       if (lead.email) {
         sentEmailsSet.add(lead.email.toLowerCase().trim());
       }
     });
-    
-    // Filter to only new leads with valid emails
     const newLeads = whatsappLinks
       .filter(contact => {
         if (!contact.email) return false;
@@ -1817,8 +1687,6 @@ Failed: ${whatsappLinks.length - successCount}`);
         ...contact,
         email: contact.email.toLowerCase().trim()
       }));
-    
-    // Sort by lead quality/score for business value (highest first)
     return newLeads.sort((a, b) => {
       const scoreA = leadScores[a.email] || 50;
       const scoreB = leadScores[b.email] || 50;
@@ -1826,53 +1694,48 @@ Failed: ${whatsappLinks.length - successCount}`);
     });
   };
 
-  // ✅ Send to new leads (smart outreach)
   const handleSendToNewLeads = async () => {
     if (!user?.uid) {
       alert('Please sign in first.');
       return;
     }
-
     const newLeads = getNewLeads();
     if (newLeads.length === 0) {
       alert('✅ No new leads to email. All contacts have already been reached out to.');
       return;
     }
-
-    // Check daily limit
     const remainingQuota = 500 - dailyEmailCount;
     if (remainingQuota <= 0) {
       alert(`⚠️ Daily email limit reached (500 emails/day). ${dailyEmailCount} emails sent today. Please try again tomorrow.`);
       return;
     }
-
     const leadsToSend = newLeads.slice(0, Math.min(remainingQuota, newLeads.length));
-    const potentialValue = Math.round((leadsToSend.length * 0.15 * 5000) / 1000); // 15% conversion, $5k avg deal
-
-    const confirmMsg = `🚀 Smart New Lead Outreach\n\n` +
-      `📊 ${leadsToSend.length} new leads ready (${newLeads.length} total available)\n` +
-      `📈 Prioritized by lead quality for maximum business value\n` +
-      `💰 Estimated potential value: $${potentialValue}k\n` +
-      `📧 Daily quota: ${dailyEmailCount}/500 (${remainingQuota} remaining today)\n\n` +
-      `✅ Prevents duplicates & spam automatically\n` +
-      `🎯 Only contacts never emailed before\n\n` +
+    const potentialValue = Math.round((leadsToSend.length * 0.15 * 5000) / 1000);
+    const confirmMsg = `🚀 Smart New Lead Outreach
+` +
+      `📊 ${leadsToSend.length} new leads ready (${newLeads.length} total available)
+` +
+      `📈 Prioritized by lead quality for maximum business value
+` +
+      `💰 Estimated potential value: $${potentialValue}k
+` +
+      `📧 Daily quota: ${dailyEmailCount}/500 (${remainingQuota} remaining today)
+` +
+      `✅ Prevents duplicates & spam automatically
+` +
+      `🎯 Only contacts never emailed before
+` +
       `Send to ${leadsToSend.length} leads now?`;
-
     if (!confirm(confirmMsg)) return;
-
     if (!templateA.subject?.trim()) {
       alert('Email subject is required.');
       return;
     }
-
     setIsSending(true);
     setStatus('Getting Gmail access...');
-    
     try {
       const accessToken = await requestGmailToken();
       setStatus(`Sending to ${leadsToSend.length} new leads...`);
-
-      // Prepare email images
       const imagesWithBase64 = await Promise.all(
         emailImages.map(async (img, index) => {
           const base64 = await new Promise((resolve) => {
@@ -1888,7 +1751,6 @@ Failed: ${whatsappLinks.length - successCount}`);
           };
         })
       );
-
       const res = await fetch('/api/send-new-leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1902,30 +1764,33 @@ Failed: ${whatsappLinks.length - successCount}`);
           emailImages: imagesWithBase64
         })
       });
-
       const data = await res.json();
-      
       if (res.ok) {
         setStatus(`✅ ${data.sent}/${data.total} emails sent to new leads!`);
         setDailyEmailCount(data.dailyCount || dailyEmailCount + data.sent);
-        
-        const successMsg = `✅ Successfully sent ${data.sent} emails!\n\n` +
-          `📊 Stats:\n` +
-          `  • Sent: ${data.sent}\n` +
-          `  • Failed: ${data.failed || 0}\n` +
-          `  • Skipped (already sent): ${data.skipped || 0}\n` +
-          `  • Daily count: ${data.dailyCount}/500\n` +
-          `  • Remaining today: ${data.remainingToday}\n\n` +
+        const successMsg = `✅ Successfully sent ${data.sent} emails!
+` +
+          `📊 Stats:
+` +
+          `  • Sent: ${data.sent}
+` +
+          `  • Failed: ${data.failed || 0}
+` +
+          `  • Skipped (already sent): ${data.skipped || 0}
+` +
+          `  • Daily count: ${data.dailyCount}/500
+` +
+          `  • Remaining today: ${data.remainingToday}
+` +
           `💰 Estimated value: $${Math.round((data.sent * 0.15 * 5000) / 1000)}k`;
-        
         alert(successMsg);
-        
-        // Reload sent leads to update UI
         await loadSentLeads();
         await loadDailyEmailCount();
       } else {
         if (res.status === 429) {
-          alert(`⚠️ Daily limit reached!\n\n${data.error}\n\nDaily count: ${data.dailyCount}/${data.limit}`);
+          alert(`⚠️ Daily limit reached!
+${data.error}
+Daily count: ${data.dailyCount}/${data.limit}`);
           setDailyEmailCount(data.dailyCount || 500);
         } else {
           alert(`❌ Error: ${data.error || 'Failed to send emails'}`);
@@ -1941,7 +1806,6 @@ Failed: ${whatsappLinks.length - successCount}`);
     }
   };
 
-  // ✅ Send Emails
   const handleSendEmails = async (templateToSend = null) => {
     const lines = csvContent?.split('\n').filter(line => line.trim() !== '') || [];
     if (lines.length < 2) {
@@ -1990,19 +1854,14 @@ Failed: ${whatsappLinks.length - successCount}`);
           };
         })
       );
-      
       const headers = parseCsvRow(lines[0]).map(h => h.trim());
       let validRecipients = [];
-      
-      // ✅ FIXED: Find the actual CSV column names from fieldMappings
       const emailColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'email')?.[1] || 'email';
       const qualityColumnName = Object.entries(fieldMappings).find(([key, val]) => key === 'lead_quality')?.[1] || 'lead_quality';
-      
       console.log('🔍 Debug - Email column:', emailColumnName);
       console.log('🔍 Debug - Quality column:', qualityColumnName);
       console.log('🔍 Debug - Headers:', headers);
       console.log('🔍 Debug - Lead Quality Filter:', leadQualityFilter);
-      
       for (let i = 1; i < lines.length; i++) {
         const values = parseCsvRow(lines[i]);
         if (values.length !== headers.length) continue;
@@ -2010,33 +1869,23 @@ Failed: ${whatsappLinks.length - successCount}`);
         headers.forEach((header, idx) => {
           row[header] = values[idx]?.toString().trim() || '';
         });
-        
-        // ✅ Get email using actual CSV column name
         const emailValue = row[emailColumnName] || '';
         if (!isValidEmail(emailValue)) {
           console.log('❌ Invalid email:', emailValue);
           continue;
         }
-        
-        // ✅ Check if quality column exists in headers
         const hasQualityColumn = headers.includes(qualityColumnName);
         const quality = hasQualityColumn ? (row[qualityColumnName] || '').trim() || 'HOT' : 'HOT';
         console.log(`📧 ${emailValue} - Quality: ${quality}, Filter: ${leadQualityFilter}`);
-        
-        // ✅ Apply quality filter
         if (leadQualityFilter !== 'all' && quality !== leadQualityFilter) {
           console.log(`⏭️ Skipping ${emailValue} - Quality mismatch`);
           continue;
         }
-        
-        // ✅ Normalize row to include 'email' key for consistent rendering
         const normalizedRow = { ...row, email: emailValue };
         validRecipients.push(normalizedRow);
         console.log(`✅ Added ${emailValue} to recipients`);
       }
-      
       console.log(`📊 Total valid recipients: ${validRecipients.length}`);
-      
       let recipientsToSend = [];
       if (abTestMode && templateToSend) {
         const half = Math.ceil(validRecipients.length / 2);
@@ -2045,7 +1894,6 @@ Failed: ${whatsappLinks.length - successCount}`);
       } else {
         recipientsToSend = validRecipients;
       }
-      
       if (recipientsToSend.length === 0) {
         setStatus('❌ No valid leads for selected criteria.');
         setIsSending(false);
@@ -2056,15 +1904,11 @@ Filter: ${leadQualityFilter}
 Check browser console for details.`);
         return;
       }
-      
       setStatus(`Sending to ${recipientsToSend.length} leads...`);
-      
-      // ✅ SMARTER CSV RECONSTRUCTION - Only quote fields that need it
       const csvLines = [headers.join(',')];
       for (const row of recipientsToSend) {
         const csvFields = headers.map(h => {
           const val = (row[h] || '').toString().trim();
-          // Only quote if contains comma, quotes, or newlines
           if (val.includes(',') || val.includes('"') || val.includes('\n')) {
             return `"${val.replace(/"/g, '""')}"`;
           }
@@ -2073,11 +1917,9 @@ Check browser console for details.`);
         csvLines.push(csvFields.join(','));
       }
       const reconstructedCsv = csvLines.join('\n');
-      
       console.log('📤 Reconstructed CSV sample (first 3 rows):');
       console.log(csvLines.slice(0, 3).join('\n'));
       console.log(`✅ Total rows being sent: ${recipientsToSend.length}`);
-      
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2107,8 +1949,6 @@ Check browser console for details.`);
         }
       } else {
         setStatus(`❌ ${data.error}`);
-        
-        // 🚨 CRITICAL DEBUG OUTPUT
         console.error('╔════════════════════════════════════════════════════════════╗');
         console.error('║          EMAIL SEND ERROR - DEBUG INFORMATION              ║');
         console.error('╚════════════════════════════════════════════════════════════╝');
@@ -2131,8 +1971,8 @@ Check browser console for details.`);
         console.error('');
         console.error('📋 COPY THE SECTION ABOVE AND SEND IT TO DEVELOPER');
         console.error('╔════════════════════════════════════════════════════════════╗');
-        
-        alert(`❌ Error: ${data.error}\n\nCheck Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAILS"`);
+        alert(`❌ Error: ${data.error}
+Check Console (F12) for detailed debugging info. Look for "FIRST 5 INVALID EMAILS"`);
       }
     } catch (err) {
       console.error('Send error:', err);
@@ -2143,7 +1983,6 @@ Check browser console for details.`);
     }
   };
 
-  // ✅ Auth & Data Loading
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -2153,8 +1992,8 @@ Check browser console for details.`);
         loadDeals();
         loadAbResults();
         loadRepliedAndFollowUp();
-        loadDailyEmailCount(); // ✅ Load daily email count
-        loadSendTimeOptimization(); // ✅ 2026 Feature: Load send time optimization
+        loadDailyEmailCount();
+        loadSendTimeOptimization();
       } else {
         setUser(null);
       }
@@ -2228,7 +2067,7 @@ Check browser console for details.`);
       </div>
     );
   }
-  
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -2242,7 +2081,6 @@ Check browser console for details.`);
     );
   }
 
-  // ✅ SHOW ALL POSSIBLE VARIABLES + CSV COLUMNS
   const uiVars = [...new Set([
     ...extractTemplateVariables(templateA.subject),
     ...extractTemplateVariables(templateA.body),
@@ -2254,7 +2092,7 @@ Check browser console for details.`);
     ...extractTemplateVariables(twitterTemplate),
     'sender_name',
     ...emailImages.map(img => img.placeholder.replace(/{{|}}/g, '')),
-    ...csvHeaders // 👈 CRITICAL: include all CSV columns
+    ...csvHeaders
   ])];
 
   const abSummary = abTestMode ? (
@@ -2319,50 +2157,39 @@ Check browser console for details.`);
         </div>
       </header>
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
-        {/* ✅ ENHANCED TOP ANALYTICS DASHBOARD - IMPROVED RESPONSIVENESS */}
         {whatsappLinks.length > 0 && (
           <div className="mb-6 sm:mb-8">
             <div className={`grid grid-cols-2 sm:grid-cols-3 ${followUpStats.interestedLeads > 0 ? 'lg:grid-cols-7' : 'lg:grid-cols-6'} gap-2 sm:gap-3`}>
-              {/* Total Contacts */}
               <div className="bg-gradient-to-br from-blue-900 to-blue-800 p-3 sm:p-4 rounded-lg shadow border border-blue-700 hover:border-blue-600 transition">
                 <div className="text-xs text-blue-300 font-semibold">📊 Total</div>
                 <div className="text-2xl sm:text-3xl font-bold text-white mt-1">{whatsappLinks.length}</div>
                 <div className="text-xs text-blue-200 mt-1">contacts loaded</div>
               </div>
-              
-              {/* Replied */}
               <div className="bg-gradient-to-br from-green-900 to-green-800 p-3 sm:p-4 rounded-lg shadow border border-green-700 hover:border-green-600 transition">
                 <div className="text-xs text-green-300 font-semibold">✅ Replied</div>
                 <div className="text-2xl sm:text-3xl font-bold text-white mt-1">{Object.values(repliedLeads).filter(Boolean).length}</div>
                 <div className="text-xs text-green-200 mt-1">{Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}% reply rate</div>
               </div>
-              
-              {/* ✅ Interested Leads (New) */}
               {followUpStats.interestedLeads > 0 && (
                 <div className="bg-gradient-to-br from-pink-900 to-pink-800 p-3 sm:p-4 rounded-lg shadow border border-pink-700 hover:border-pink-600 transition cursor-pointer"
-                     onClick={() => {
-                       // Scroll to interested leads section
-                       document.getElementById('interested-leads-section')?.scrollIntoView({ behavior: 'smooth' });
-                     }}>
+                  onClick={() => {
+                    document.getElementById('interested-leads-section')?.scrollIntoView({ behavior: 'smooth' });
+                  }}>
                   <div className="text-xs text-pink-300 font-semibold">🔥 Interested</div>
                   <div className="text-2xl sm:text-3xl font-bold text-white mt-1">{followUpStats.interestedLeads}</div>
                   <div className="text-xs text-pink-200 mt-1">opens/clicks (no reply)</div>
                 </div>
               )}
-              
-              {/* Avg Quality Score */}
               <div className="bg-gradient-to-br from-yellow-900 to-yellow-800 p-3 sm:p-4 rounded-lg shadow border border-yellow-700 hover:border-yellow-600 transition">
                 <div className="text-xs text-yellow-300 font-semibold">⭐ Quality</div>
                 <div className="text-2xl sm:text-3xl font-bold text-white mt-1">
-                  {Object.values(leadScores).length > 0 
-                    ? Math.round(Object.values(leadScores).reduce((a, b) => a + b, 0) / Object.values(leadScores).length) 
+                  {Object.values(leadScores).length > 0
+                    ? Math.round(Object.values(leadScores).reduce((a, b) => a + b, 0) / Object.values(leadScores).length)
                     : 0}
                   <span className="text-sm text-yellow-300">/100</span>
                 </div>
                 <div className="text-xs text-yellow-200 mt-1">avg lead score</div>
               </div>
-              
-              {/* Pipeline Value */}
               <div className="bg-gradient-to-br from-purple-900 to-purple-800 p-3 sm:p-4 rounded-lg shadow border border-purple-700 hover:border-purple-600 transition">
                 <div className="text-xs text-purple-300 font-semibold">💰 Pipeline</div>
                 <div className="text-2xl sm:text-3xl font-bold text-white mt-1">
@@ -2370,8 +2197,6 @@ Check browser console for details.`);
                 </div>
                 <div className="text-xs text-purple-200 mt-1">potential revenue</div>
               </div>
-              
-              {/* Monthly Forecast */}
               <div className="bg-gradient-to-br from-orange-900 to-orange-800 p-3 sm:p-4 rounded-lg shadow border border-orange-700 hover:border-orange-600 transition">
                 <div className="text-xs text-orange-300 font-semibold">📈 Monthly</div>
                 <div className="text-2xl sm:text-3xl font-bold text-white mt-1">
@@ -2379,8 +2204,6 @@ Check browser console for details.`);
                 </div>
                 <div className="text-xs text-orange-200 mt-1">forecast (30d)</div>
               </div>
-              
-              {/* Action Button */}
               <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 p-3 sm:p-4 rounded-lg shadow border border-indigo-700 hover:border-indigo-600 transition flex flex-col justify-center">
                 <button
                   onClick={() => setShowDetailedAnalytics(!showDetailedAnalytics)}
@@ -2390,8 +2213,6 @@ Check browser console for details.`);
                 </button>
               </div>
             </div>
-
-            {/* ✅ 2026 FEATURE: ADVANCED ANALYTICS DASHBOARD */}
             {showAdvancedAnalytics && (
               <div className="mt-4 bg-gradient-to-br from-purple-900/20 via-indigo-900/20 to-blue-900/20 p-4 sm:p-6 rounded-lg border-2 border-purple-500/30">
                 <div className="flex justify-between items-center mb-4">
@@ -2405,8 +2226,6 @@ Check browser console for details.`);
                     ✕
                   </button>
                 </div>
-                
-                {/* Send Time Optimization */}
                 {sendTimeOptimization && (
                   <div className="bg-gray-800/50 p-4 rounded-lg border border-purple-700 mb-4">
                     <h3 className="text-sm font-bold text-purple-300 mb-2">⏰ Optimal Send Time</h3>
@@ -2429,8 +2248,6 @@ Check browser console for details.`);
                 )}
               </div>
             )}
-
-            {/* DETAILED ANALYTICS PANEL */}
             {showDetailedAnalytics && (
               <div className="mt-4 bg-gradient-to-b from-gray-850 to-gray-900 p-4 sm:p-6 rounded-lg border border-gray-700">
                 <div className="flex justify-between items-center mb-4">
@@ -2443,7 +2260,6 @@ Check browser console for details.`);
                   </button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* Conversion Funnel */}
                   {(() => {
                     const funnel = calculateConversionFunnel();
                     return (
@@ -2454,20 +2270,17 @@ Check browser console for details.`);
                             <span className="text-gray-400">Sent</span>
                             <span className="font-bold text-blue-400">{funnel.stages.sent}</span>
                           </div>
-                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-blue-500" style={{width: '100%'}}></div></div>
-                          
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-blue-500" style={{ width: '100%' }}></div></div>
                           <div className="flex justify-between items-center mt-2">
                             <span className="text-gray-400">Open Rate ({funnel.conversionRate.openRate}%)</span>
                             <span className="font-bold text-green-400">{funnel.stages.opened}</span>
                           </div>
-                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-green-500" style={{width: `${funnel.conversionRate.openRate}%`}}></div></div>
-                          
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-green-500" style={{ width: `${funnel.conversionRate.openRate}%` }}></div></div>
                           <div className="flex justify-between items-center mt-2">
                             <span className="text-gray-400">Reply Rate ({funnel.conversionRate.replyRate}%)</span>
                             <span className="font-bold text-yellow-400">{funnel.stages.replied}</span>
                           </div>
-                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-yellow-500" style={{width: `${funnel.conversionRate.replyRate}%`}}></div></div>
-                          
+                          <div className="w-full h-1 bg-gray-700 rounded overflow-hidden"><div className="h-full bg-yellow-500" style={{ width: `${funnel.conversionRate.replyRate}%` }}></div></div>
                           <div className="flex justify-between items-center mt-2">
                             <span className="text-gray-400">Closed ({funnel.conversionRate.closeRate}% of demos)</span>
                             <span className="font-bold text-green-300">{funnel.stages.closed}</span>
@@ -2476,8 +2289,6 @@ Check browser console for details.`);
                       </div>
                     );
                   })()}
-
-                  {/* Lead Segments */}
                   {(() => {
                     const segments = segmentLeads();
                     return (
@@ -2508,8 +2319,6 @@ Check browser console for details.`);
                       </div>
                     );
                   })()}
-
-                  {/* Revenue Forecast */}
                   {(() => {
                     const forecast = calculateRevenueForecasts();
                     return (
@@ -2541,10 +2350,7 @@ Check browser console for details.`);
             )}
           </div>
         )}
-
-        {/* MAIN CONTENT GRID - IMPROVED LAYOUT */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-          {/* LEFT PANEL */}
           <div className="lg:col-span-1 space-y-4 sm:space-y-6">
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-lg sm:text-xl font-bold mb-4 text-white">1. Upload Leads CSV</h2>
@@ -2584,8 +2390,6 @@ Check browser console for details.`);
                 </label>
               </div>
             </div>
-            
-            {/* SEARCH & FILTER - NEW FEATURE */}
             {whatsappLinks.length > 0 && (
               <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
                 <h2 className="text-lg font-bold mb-3 text-white">🔍 Smart Contact Search</h2>
@@ -2623,8 +2427,6 @@ Check browser console for details.`);
                 </div>
               </div>
             )}
-
-            {/* ✅ FIELD MAPPINGS: SHOW ALL VARS + ALL CSV COLUMNS */}
             {csvHeaders.length > 0 && (
               <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700 max-h-96 overflow-y-auto">
                 <h2 className="text-lg sm:text-xl font-bold mb-4 text-white sticky top-0 bg-gray-800 pb-2">2. Field Mappings</h2>
@@ -2670,8 +2472,6 @@ Check browser console for details.`);
               </div>
             )}
           </div>
-
-          {/* MIDDLE PANEL */}
           <div className="lg:col-span-1 space-y-4 sm:space-y-6">
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">3. Your Name (Sender)</h2>
@@ -2756,22 +2556,20 @@ Check browser console for details.`);
                   <button
                     onClick={() => handleSendEmails('A')}
                     disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-                    className={`w-full py-2.5 rounded font-bold ${
-                      isSending || !csvContent || !senderName.trim() || validEmails === 0
-                      ? 'bg-gray-600 cursor-not-allowed'
-                      : 'bg-green-700 hover:bg-green-600 text-white'
-                    }`}
+                    className={`w-full py-2.5 rounded font-bold ${isSending || !csvContent || !senderName.trim() || validEmails === 0
+                        ? 'bg-gray-600 cursor-not-allowed'
+                        : 'bg-green-700 hover:bg-green-600 text-white'
+                      }`}
                   >
                     📧 Send Template A (First {Math.ceil(validEmails / 2)} leads)
                   </button>
                   <button
                     onClick={() => handleSendEmails('B')}
                     disabled={isSending || !csvContent || !senderName.trim() || validEmails === 0}
-                    className={`w-full py-2.5 rounded font-bold ${
-                      isSending || !csvContent || !senderName.trim() || validEmails === 0
-                      ? 'bg-gray-600 cursor-not-allowed'
-                      : 'bg-blue-700 hover:bg-blue-600 text-white'
-                    }`}
+                    className={`w-full py-2.5 rounded font-bold ${isSending || !csvContent || !senderName.trim() || validEmails === 0
+                        ? 'bg-gray-600 cursor-not-allowed'
+                        : 'bg-blue-700 hover:bg-blue-600 text-white'
+                      }`}
                   >
                     📧 Send Template B (Last {Math.floor(validEmails / 2)} leads)
                   </button>
@@ -2780,23 +2578,20 @@ Check browser console for details.`);
                 <>
                   <button
                     onClick={() => handleSendEmails()}
-                    className={`w-full py-2.5 rounded font-bold mt-4 ${
-                      isSending || !csvContent || !senderName.trim() || validEmails === 0
+                    className={`w-full py-2.5 rounded font-bold mt-4 ${isSending || !csvContent || !senderName.trim() || validEmails === 0
                         ? 'bg-gray-600 cursor-not-allowed'
                         : 'bg-green-700 hover:bg-green-600 text-white'
-                    }`}
+                      }`}
                   >
                     📧 Send Emails ({validEmails})
                   </button>
-                  {/* ✅ NEW LEAD OUTREACH BUTTON */}
                   <button
                     onClick={handleSendToNewLeads}
                     disabled={isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500}
-                    className={`w-full py-2.5 rounded font-bold mt-3 ${
-                      isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500
+                    className={`w-full py-2.5 rounded font-bold mt-3 ${isSending || !csvContent || !senderName.trim() || getNewLeads().length === 0 || dailyEmailCount >= 500
                         ? 'bg-gray-600 cursor-not-allowed text-gray-400'
                         : 'bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white shadow-lg'
-                    }`}
+                      }`}
                     title={dailyEmailCount >= 500 ? 'Daily limit reached (500 emails/day)' : `Send to ${getNewLeads().length} new leads (${500 - dailyEmailCount} remaining today)`}
                   >
                     🚀 Smart New Lead Outreach ({getNewLeads().length} new leads)
@@ -2827,8 +2622,6 @@ Check browser console for details.`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-            
-            {/* FOLLOW-UP TEMPLATES */}
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">7. Follow-Up Sequences</h2>
               {followUpTemplates.map((template, index) => (
@@ -2923,7 +2716,6 @@ Check browser console for details.`);
                 </div>
               ))}
             </div>
-            
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">8. Instagram Template</h2>
               <textarea
@@ -2934,7 +2726,6 @@ Check browser console for details.`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-            
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">9. Twitter Template</h2>
               <textarea
@@ -2945,26 +2736,20 @@ Check browser console for details.`);
                 placeholder="Hi {{business_name}}! ..."
               />
             </div>
-            
             {status && (
               <div
-                className={`p-3 rounded text-center whitespace-pre-line ${
-                  status.includes('✅')
-                  ? 'bg-green-900/50 text-green-300 border border-green-700'
-                  : 'bg-red-900/50 text-red-300 border border-red-700'
-                }`}
+                className={`p-3 rounded text-center whitespace-pre-line ${status.includes('✅')
+                    ? 'bg-green-900/50 text-green-300 border border-green-700'
+                    : 'bg-red-900/50 text-red-300 border border-red-700'
+                  }`}
               >
                 {status}
               </div>
             )}
           </div>
-
-          {/* RIGHT PANEL */}
           <div className="lg:col-span-1 space-y-4 sm:space-y-6">
-            {/* CAMPAIGN METRICS - BUSINESS VALUE */}
             {whatsappLinks.length > 0 && (
               <div className="space-y-4">
-                {/* PRIMARY METRICS */}
                 <div className="bg-gradient-to-br from-purple-900 to-purple-800 p-4 sm:p-6 rounded-xl shadow border border-purple-700">
                   <h2 className="text-lg sm:text-xl font-bold mb-4 text-white">📊 Campaign Performance</h2>
                   <div className="grid grid-cols-2 gap-3">
@@ -2981,8 +2766,8 @@ Check browser console for details.`);
                     <div className="bg-purple-800/50 p-3 rounded">
                       <div className="text-xs text-purple-300">Quality Score</div>
                       <div className="text-xl sm:text-2xl font-bold text-yellow-400">
-                        {Object.values(leadScores).length > 0 
-                          ? Math.round(Object.values(leadScores).reduce((a,b) => a+b, 0) / Object.values(leadScores).length) 
+                        {Object.values(leadScores).length > 0
+                          ? Math.round(Object.values(leadScores).reduce((a, b) => a + b, 0) / Object.values(leadScores).length)
                           : 0}
                         <span className="text-sm text-yellow-300">/100</span>
                       </div>
@@ -2995,8 +2780,6 @@ Check browser console for details.`);
                     </div>
                   </div>
                 </div>
-
-                {/* ROI & REVENUE METRICS */}
                 <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 p-4 rounded-xl border border-green-700/50">
                   <h3 className="text-sm font-bold text-green-300 mb-3">💰 Revenue Potential</h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -3016,8 +2799,6 @@ Check browser console for details.`);
                     </div>
                   </div>
                 </div>
-
-                {/* FUNNEL ANALYSIS */}
                 <div className="bg-gradient-to-br from-blue-900/30 to-blue-800/30 p-4 rounded-xl border border-blue-700/50">
                   <h3 className="text-sm font-bold text-blue-300 mb-3">🎯 Outreach Funnel</h3>
                   <div className="space-y-2 text-xs">
@@ -3025,7 +2806,7 @@ Check browser console for details.`);
                       <span className="text-blue-200">📤 Sent</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-blue-900 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500" style={{width: '100%'}}></div>
+                          <div className="h-full bg-blue-500" style={{ width: '100%' }}></div>
                         </div>
                         <span className="font-bold text-blue-300 w-12">{whatsappLinks.length}</span>
                       </div>
@@ -3034,7 +2815,7 @@ Check browser console for details.`);
                       <span className="text-green-200">✉️ No Reply Yet</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-blue-900 rounded-full overflow-hidden">
-                          <div className="h-full bg-yellow-500" style={{width: `${Math.round((Math.max(0, whatsappLinks.length - Object.values(repliedLeads).filter(Boolean).length) / whatsappLinks.length) * 100)}%`}}></div>
+                          <div className="h-full bg-yellow-500" style={{ width: `${Math.round((Math.max(0, whatsappLinks.length - Object.values(repliedLeads).filter(Boolean).length) / whatsappLinks.length) * 100)}%` }}></div>
                         </div>
                         <span className="font-bold text-yellow-300 w-12">{whatsappLinks.length - Object.values(repliedLeads).filter(Boolean).length}</span>
                       </div>
@@ -3043,7 +2824,7 @@ Check browser console for details.`);
                       <span className="text-green-200">✅ Replied</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-blue-900 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-500" style={{width: `${Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}%`}}></div>
+                          <div className="h-full bg-green-500" style={{ width: `${Math.round((Object.values(repliedLeads).filter(Boolean).length / Math.max(whatsappLinks.length, 1)) * 100)}%` }}></div>
                         </div>
                         <span className="font-bold text-green-300 w-12">{Object.values(repliedLeads).filter(Boolean).length}</span>
                       </div>
@@ -3052,8 +2833,6 @@ Check browser console for details.`);
                 </div>
               </div>
             )}
-            
-            {/* ✅ INTERESTED LEADS CONTROL PANEL */}
             {interestedLeadsList.length > 0 && (
               <div id="interested-leads-section" className="bg-gradient-to-br from-pink-900/20 to-rose-900/20 p-4 sm:p-6 rounded-xl border border-pink-700/50 mb-6">
                 <h2 className="text-lg font-bold mb-4 text-pink-300 flex items-center gap-2">
@@ -3078,11 +2857,10 @@ Check browser console for details.`);
                               )}
                               <span className="text-pink-400">Score: {lead.interestScore}</span>
                               {predictiveScores[lead.email] && (
-                                <span className={`font-bold ${
-                                  predictiveScores[lead.email].predictiveScore >= 70 ? 'text-red-400' :
-                                  predictiveScores[lead.email].predictiveScore >= 50 ? 'text-yellow-400' :
-                                  'text-blue-400'
-                                }`}>
+                                <span className={`font-bold ${predictiveScores[lead.email].predictiveScore >= 70 ? 'text-red-400' :
+                                    predictiveScores[lead.email].predictiveScore >= 50 ? 'text-yellow-400' :
+                                      'text-blue-400'
+                                  }`}>
                                   🎯 ML: {predictiveScores[lead.email].predictiveScore}/100
                                 </span>
                               )}
@@ -3105,7 +2883,10 @@ Check browser console for details.`);
                                 calculatePredictiveScore(lead.email, { ...lead, ...leadData });
                                 const score = predictiveScores[lead.email];
                                 if (score) {
-                                  alert(`Predictive Score: ${score.predictiveScore}/100\nConversion Probability: ${score.conversionProbability}%\nRisk: ${score.riskLevel}\n\n${score.recommendations?.join('\n')}`);
+                                  alert(`Predictive Score: ${score.predictiveScore}/100
+Conversion Probability: ${score.conversionProbability}%
+Risk: ${score.riskLevel}
+${score.recommendations?.join('\n')}`);
                                 }
                               }}
                               className="text-xs bg-gradient-to-r from-blue-700 to-cyan-700 hover:from-blue-600 hover:to-cyan-600 text-white px-3 py-1.5 rounded font-medium"
@@ -3116,7 +2897,10 @@ Check browser console for details.`);
                               onClick={async () => {
                                 const followUp = await generateSmartFollowUp(lead.email, leadData, (lead.followUpCount || 0) + 1);
                                 if (followUp) {
-                                  alert(`Smart Follow-up Generated!\n\nSubject: ${followUp.followUpEmail.subject}\n\nStrategy: ${followUp.followUpEmail.strategy}\n\n${followUp.recommendations?.join('\n')}`);
+                                  alert(`Smart Follow-up Generated!
+Subject: ${followUp.followUpEmail.subject}
+Strategy: ${followUp.followUpEmail.strategy}
+${followUp.recommendations?.join('\n')}`);
                                 }
                               }}
                               className="text-xs bg-gradient-to-r from-green-700 to-emerald-700 hover:from-green-600 hover:to-emerald-600 text-white px-3 py-1.5 rounded font-medium"
@@ -3131,13 +2915,10 @@ Check browser console for details.`);
                 </div>
               </div>
             )}
-
-            {/* CAMPAIGN INTELLIGENCE & PREDICTIONS */}
             {whatsappLinks.length > 0 && (
               <div className="bg-gradient-to-br from-indigo-900/20 to-purple-900/20 p-4 sm:p-6 rounded-xl border border-indigo-700/50">
                 <h2 className="text-lg font-bold mb-4 text-indigo-300">🧠 Campaign Intelligence</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Segment Analysis */}
                   <div className="bg-gray-800/30 p-3 rounded border border-gray-700">
                     <div className="text-xs font-semibold text-indigo-300 mb-2">📊 Lead Segments</div>
                     <div className="space-y-2 text-xs">
@@ -3159,8 +2940,6 @@ Check browser console for details.`);
                       </div>
                     </div>
                   </div>
-
-                  {/* Conversion Predictions */}
                   <div className="bg-gray-800/30 p-3 rounded border border-gray-700">
                     <div className="text-xs font-semibold text-green-300 mb-2">🎯 Conversion Forecast</div>
                     <div className="space-y-2 text-xs">
@@ -3184,8 +2963,6 @@ Check browser console for details.`);
                       </div>
                     </div>
                   </div>
-
-                  {/* Best Practices */}
                   <div className="bg-gray-800/30 p-3 rounded border border-gray-700 sm:col-span-2">
                     <div className="text-xs font-semibold text-purple-300 mb-2">💡 Recommended Actions</div>
                     <div className="space-y-1 text-xs text-gray-300">
@@ -3198,7 +2975,6 @@ Check browser console for details.`);
                 </div>
               </div>
             )}
-            
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
               <h2 className="text-lg sm:text-xl font-bold mb-3 text-white">10. Email Preview</h2>
               <div className="bg-gray-750 p-4 rounded border border-gray-600">
@@ -3218,7 +2994,6 @@ Check browser console for details.`);
                 </div>
               </div>
             </div>
-            
             {whatsappLinks.length > 0 && (
               <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow border border-gray-700">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
@@ -3234,7 +3009,8 @@ Check browser console for details.`);
                   </button>
                 </div>
                 <div className="max-h-96 overflow-y-auto space-y-3">
-                  {whatsappLinks.map((link) => {
+                  {/* ✅ UPDATED: Use sortedWhatsappLinks to show 077 numbers first */}
+                  {sortedWhatsappLinks.map((link) => {
                     const contactKey = link.email || link.phone;
                     const last = lastSent[contactKey];
                     const score = leadScores[link.email] || 0;
@@ -3361,9 +3137,8 @@ Check browser console for details.`);
                   <button
                     onClick={handleSendBulkSMS}
                     disabled={!smsConsent || isSending}
-                    className={`w-full py-2 rounded font-bold ${
-                      !smsConsent ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-600 text-white'
-                    }`}
+                    className={`w-full py-2 rounded font-bold ${!smsConsent ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-600 text-white'
+                      }`}
                   >
                     📲 Send SMS to All ({whatsappLinks.length})
                   </button>
@@ -3373,189 +3148,175 @@ Check browser console for details.`);
           </div>
         </div>
       </main>
-
-      {/* FOLLOW-UP MODAL - REDESIGNED */}
-{showFollowUpModal && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-    <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col border-2 border-indigo-500/30">
-      {/* MODERN HEADER WITH GRADIENT */}
-      <div className="relative p-6 border-b border-gray-700/50 bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-pink-900/40">
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 backdrop-blur-xl"></div>
-        <div className="relative flex justify-between items-center">
-          <div>
-            <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
-              📬 Reply & Follow-Up Center
-            </h2>
-            <p className="text-sm text-indigo-200 mt-2">Intelligent campaign management with AI-powered insights</p>
-          </div>
-          <button
-            onClick={() => setShowFollowUpModal(false)}
-            className="text-gray-400 hover:text-white hover:bg-red-500/20 transition-all duration-200 text-3xl w-12 h-12 rounded-full flex items-center justify-center"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-
-      {/* ENHANCED METRICS WITH GRADIENT CARDS */}
-      <div className="p-6 bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-b border-gray-700/50">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
-            <div className="relative bg-gradient-to-br from-blue-900/40 to-blue-800/40 p-5 rounded-xl border border-blue-500/30 hover:border-blue-400/50 transition-all">
-              <div className="text-4xl font-bold text-blue-400">{followUpStats.totalSent}</div>
-              <div className="text-sm text-blue-200 mt-2 font-medium">Total Sent</div>
-              <div className="absolute top-3 right-3 text-2xl opacity-20">📤</div>
-            </div>
-          </div>
-
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-emerald-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
-            <div className="relative bg-gradient-to-br from-green-900/40 to-emerald-800/40 p-5 rounded-xl border border-green-500/30 hover:border-green-400/50 transition-all">
-              <div className="text-4xl font-bold text-green-400">{followUpStats.totalReplied}</div>
-              <div className="text-sm text-green-200 mt-2 font-medium">
-                Replied ({Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100)}%)
-              </div>
-              <div className="absolute top-3 right-3 text-2xl opacity-20">✅</div>
-            </div>
-          </div>
-
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/20 to-orange-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
-            <div className="relative bg-gradient-to-br from-yellow-900/40 to-orange-800/40 p-5 rounded-xl border border-yellow-500/30 hover:border-yellow-400/50 transition-all">
-              <div className="text-4xl font-bold text-yellow-400">{getSafeFollowUpCandidates().length}</div>
-              <div className="text-sm text-yellow-200 mt-2 font-medium">Ready for Follow-Up</div>
-              <div className="absolute top-3 right-3 text-2xl opacity-20">⏰</div>
-            </div>
-          </div>
-
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
-            <div className="relative bg-gradient-to-br from-purple-900/40 to-pink-800/40 p-5 rounded-xl border border-purple-500/30 hover:border-purple-400/50 transition-all">
-              <div className="text-4xl font-bold text-purple-400">
-                ${Math.round((getSafeFollowUpCandidates().length * 0.25 * 5000) / 1000)}k
-              </div>
-              <div className="text-sm text-purple-200 mt-2 font-medium">Potential Revenue</div>
-              <div className="absolute top-3 right-3 text-2xl opacity-20">💰</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* MAIN ACTION BUTTON - MORE PROMINENT */}
-      <div className="p-6 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30">
-        <button
-          onClick={() => {
-            const safe = getSafeFollowUpCandidates();
-            if (safe.length === 0) {
-              alert('No leads ready for safe follow-up yet. Check timing.');
-              return;
-            }
-            const msg = `📧 Smart Selective Mode\n\nWill send to ${safe.length} safe contacts:\n${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days)`).join('\n')}${safe.length > 3 ? `\n  ... and ${safe.length - 3} more` : ''}\n\nThese contacts won't be over-emailed.`;
-            alert(msg);
-          }}
-          className="w-full relative group overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-90 group-hover:opacity-100 transition-all"></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 opacity-0 group-hover:opacity-20 blur-xl transition-all"></div>
-          <div className="relative px-8 py-5 text-white font-bold text-xl flex items-center justify-center gap-3">
-            <span className="text-2xl">📬</span>
-            <span>Send Smart Follow-Ups</span>
-            <span className="bg-white/20 px-3 py-1 rounded-full text-base">
-              {getSafeFollowUpCandidates().length} leads
-            </span>
-          </div>
-        </button>
-        <p className="text-xs text-gray-400 text-center mt-3">
-          ✓ Respects contact frequency • ✓ Prevents spam • ✓ Shows safety score
-        </p>
-      </div>
-
-      {/* CANDIDATES LIST - IMPROVED VISIBILITY */}
-      <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-900/30 to-gray-800/30">
-        {getSafeFollowUpCandidates().length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">✅</div>
-            <div className="text-2xl text-gray-200 font-bold mb-2">All Caught Up!</div>
-            <div className="text-gray-400">All leads are either replied or too soon to follow up</div>
-            <div className="text-sm text-gray-500 mt-3 bg-gray-800/50 inline-block px-4 py-2 rounded-lg">
-              Follow-ups become available 2+ days after initial send
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="text-lg font-bold text-indigo-300 mb-5 flex items-center gap-3">
-              <span className="text-2xl">🎯</span>
-              <span>{getSafeFollowUpCandidates().length} leads ready for intelligent follow-up</span>
-            </div>
-            
-            {getSafeFollowUpCandidates().map((contact) => {
-              const followUpCount = contact.followUpCount;
-              
-              return (
-                <div
-                  key={contact.email}
-                  className="group relative"
+      {/* FOLLOW-UP MODAL */}
+      {showFollowUpModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col border-2 border-indigo-500/30">
+            <div className="relative p-6 border-b border-gray-700/50 bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-pink-900/40">
+              <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 backdrop-blur-xl"></div>
+              <div className="relative flex justify-between items-center">
+                <div>
+                  <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
+                    📬 Reply & Follow-Up Center
+                  </h2>
+                  <p className="text-sm text-indigo-200 mt-2">Intelligent campaign management with AI-powered insights</p>
+                </div>
+                <button
+                  onClick={() => setShowFollowUpModal(false)}
+                  className="text-gray-400 hover:text-white hover:bg-red-500/20 transition-all duration-200 text-3xl w-12 h-12 rounded-full flex items-center justify-center"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-all"></div>
-                  <div className="relative p-5 rounded-xl bg-gradient-to-br from-gray-800/80 to-gray-900/80 border border-gray-700 hover:border-indigo-500/50 transition-all flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-bold text-white text-lg mb-2">{contact.email}</div>
-                      <div className="flex gap-4 text-sm">
-                        <span className="text-indigo-400 font-medium">
-                          📅 {Math.ceil(contact.daysSinceSent)} days ago
-                        </span>
-                        <span className="text-purple-400 font-medium">
-                          📨 Follow-up #{followUpCount + 1}
-                        </span>
-                        <span className={`font-bold ${contact.safetyScore >= 80 ? 'text-green-400' : contact.safetyScore >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
-                          ✓ {Math.round(contact.safetyScore)}% safe
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        const confirmed = confirm(`Send follow-up #${followUpCount + 1} to ${contact.email}?`);
-                        if (!confirmed) return;
-                        
-                        try {
-                          const token = await requestGmailToken();
-                          await sendFollowUpWithToken(contact.email, token);
-                          // ✅ State will be updated by sendFollowUpWithToken via loadSentLeads()
-                        } catch (err) {
-                          alert('Gmail access failed.');
-                        }
-                      }}
-                      className="ml-6 relative group/btn overflow-hidden"
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 group-hover/btn:from-blue-500 group-hover/btn:to-indigo-500 transition-all"></div>
-                      <div className="relative px-6 py-3 text-white font-bold text-base rounded-lg">
-                        Send Now →
-                      </div>
-                    </button>
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="p-6 bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-b border-gray-700/50">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+                  <div className="relative bg-gradient-to-br from-blue-900/40 to-blue-800/40 p-5 rounded-xl border border-blue-500/30 hover:border-blue-400/50 transition-all">
+                    <div className="text-4xl font-bold text-blue-400">{followUpStats.totalSent}</div>
+                    <div className="text-sm text-blue-200 mt-2 font-medium">Total Sent</div>
+                    <div className="absolute top-3 right-3 text-2xl opacity-20">📤</div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* FOOTER - CLEANER */}
-      <div className="p-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-900/80 to-gray-800/80">
-        <div className="text-sm text-gray-300 text-center space-y-1">
-          <div className="font-semibold text-indigo-300 mb-2">💡 Best Practices:</div>
-          <div className="flex justify-center gap-8 text-xs">
-            <span>✓ 2-day minimum between sends</span>
-            <span>✓ Max 3 follow-ups per contact</span>
-            <span>✓ 30-day campaign window</span>
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-emerald-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+                  <div className="relative bg-gradient-to-br from-green-900/40 to-emerald-800/40 p-5 rounded-xl border border-green-500/30 hover:border-green-400/50 transition-all">
+                    <div className="text-4xl font-bold text-green-400">{followUpStats.totalReplied}</div>
+                    <div className="text-sm text-green-200 mt-2 font-medium">
+                      Replied ({Math.round((followUpStats.totalReplied / Math.max(followUpStats.totalSent, 1)) * 100)}%)
+                    </div>
+                    <div className="absolute top-3 right-3 text-2xl opacity-20">✅</div>
+                  </div>
+                </div>
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/20 to-orange-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+                  <div className="relative bg-gradient-to-br from-yellow-900/40 to-orange-800/40 p-5 rounded-xl border border-yellow-500/30 hover:border-yellow-400/50 transition-all">
+                    <div className="text-4xl font-bold text-yellow-400">{getSafeFollowUpCandidates().length}</div>
+                    <div className="text-sm text-yellow-200 mt-2 font-medium">Ready for Follow-Up</div>
+                    <div className="absolute top-3 right-3 text-2xl opacity-20">⏰</div>
+                  </div>
+                </div>
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all"></div>
+                  <div className="relative bg-gradient-to-br from-purple-900/40 to-pink-800/40 p-5 rounded-xl border border-purple-500/30 hover:border-purple-400/50 transition-all">
+                    <div className="text-4xl font-bold text-purple-400">
+                      ${Math.round((getSafeFollowUpCandidates().length * 0.25 * 5000) / 1000)}k
+                    </div>
+                    <div className="text-sm text-purple-200 mt-2 font-medium">Potential Revenue</div>
+                    <div className="absolute top-3 right-3 text-2xl opacity-20">💰</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30">
+              <button
+                onClick={() => {
+                  const safe = getSafeFollowUpCandidates();
+                  if (safe.length === 0) {
+                    alert('No leads ready for safe follow-up yet. Check timing.');
+                    return;
+                  }
+                  const msg = `📧 Smart Selective Mode
+Will send to ${safe.length} safe contacts:
+${safe.slice(0, 3).map(c => `  • ${c.email} (${Math.ceil(c.daysSinceSent)} days)`).join('\n')}${safe.length > 3 ? `
+... and ${safe.length - 3} more` : ''}
+These contacts won't be over-emailed.`;
+                  alert(msg);
+                }}
+                className="w-full relative group overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-90 group-hover:opacity-100 transition-all"></div>
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 opacity-0 group-hover:opacity-20 blur-xl transition-all"></div>
+                <div className="relative px-8 py-5 text-white font-bold text-xl flex items-center justify-center gap-3">
+                  <span className="text-2xl">📬</span>
+                  <span>Send Smart Follow-Ups</span>
+                  <span className="bg-white/20 px-3 py-1 rounded-full text-base">
+                    {getSafeFollowUpCandidates().length} leads
+                  </span>
+                </div>
+              </button>
+              <p className="text-xs text-gray-400 text-center mt-3">
+                ✓ Respects contact frequency • ✓ Prevents spam • ✓ Shows safety score
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-900/30 to-gray-800/30">
+              {getSafeFollowUpCandidates().length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="text-6xl mb-4">✅</div>
+                  <div className="text-2xl text-gray-200 font-bold mb-2">All Caught Up!</div>
+                  <div className="text-gray-400">All leads are either replied or too soon to follow up</div>
+                  <div className="text-sm text-gray-500 mt-3 bg-gray-800/50 inline-block px-4 py-2 rounded-lg">
+                    Follow-ups become available 2+ days after initial send
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="text-lg font-bold text-indigo-300 mb-5 flex items-center gap-3">
+                    <span className="text-2xl">🎯</span>
+                    <span>{getSafeFollowUpCandidates().length} leads ready for intelligent follow-up</span>
+                  </div>
+                  {getSafeFollowUpCandidates().map((contact) => {
+                    const followUpCount = contact.followUpCount;
+                    return (
+                      <div
+                        key={contact.email}
+                        className="group relative"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-all"></div>
+                        <div className="relative p-5 rounded-xl bg-gradient-to-br from-gray-800/80 to-gray-900/80 border border-gray-700 hover:border-indigo-500/50 transition-all flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-bold text-white text-lg mb-2">{contact.email}</div>
+                            <div className="flex gap-4 text-sm">
+                              <span className="text-indigo-400 font-medium">
+                                📅 {Math.ceil(contact.daysSinceSent)} days ago
+                              </span>
+                              <span className="text-purple-400 font-medium">
+                                📨 Follow-up #{followUpCount + 1}
+                              </span>
+                              <span className={`font-bold ${contact.safetyScore >= 80 ? 'text-green-400' : contact.safetyScore >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                ✓ {Math.round(contact.safetyScore)}% safe
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const confirmed = confirm(`Send follow-up #${followUpCount + 1} to ${contact.email}?`);
+                              if (!confirmed) return;
+                              try {
+                                const token = await requestGmailToken();
+                                await sendFollowUpWithToken(contact.email, token);
+                              } catch (err) {
+                                alert('Gmail access failed.');
+                              }
+                            }}
+                            className="ml-6 relative group/btn overflow-hidden"
+                          >
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 group-hover/btn:from-blue-500 group-hover/btn:to-indigo-500 transition-all"></div>
+                            <div className="relative px-6 py-3 text-white font-bold text-base rounded-lg">
+                              Send Now →
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-900/80 to-gray-800/80">
+              <div className="text-sm text-gray-300 text-center space-y-1">
+                <div className="font-semibold text-indigo-300 mb-2">💡 Best Practices:</div>
+                <div className="flex justify-center gap-8 text-xs">
+                  <span>✓ 2-day minimum between sends</span>
+                  <span>✓ Max 3 follow-ups per contact</span>
+                  <span>✓ 30-day campaign window</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
-      
+      )}
       {/* CALL HISTORY MODAL */}
       {showCallHistoryModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -3656,25 +3417,23 @@ Check browser console for details.`);
                     return (
                       <div
                         key={call.id}
-                        className={`p-4 rounded-lg border-2 ${
-                          isCompleted
+                        className={`p-4 rounded-lg border-2 ${isCompleted
                             ? 'border-green-700 bg-green-900/10'
                             : call.status === 'failed'
                               ? 'border-red-700 bg-red-900/10'
                               : 'border-gray-700 bg-gray-800'
-                        }`}
+                          }`}
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-1">
                               <h3 className="font-bold text-white">{call.businessName}</h3>
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                call.status === 'completed'
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${call.status === 'completed'
                                   ? 'bg-green-900/30 text-green-300'
                                   : call.status === 'failed'
                                     ? 'bg-red-900/30 text-red-300'
                                     : 'bg-gray-700 text-gray-300'
-                              }`}>
+                                }`}>
                                 {call.status === 'completed' ? 'Completed' : call.status === 'failed' ? 'Failed' : 'In Progress'}
                               </span>
                             </div>
@@ -3771,12 +3530,10 @@ Check browser console for details.`);
           </div>
         </div>
       )}
-      
       {/* MULTI-CHANNEL OUTREACH MODAL */}
       {showMultiChannelModal && (
         <div className={`${isMultiChannelFullscreen ? 'fixed inset-0' : 'fixed inset-0'} bg-black/70 flex items-center justify-center z-50 p-4`}>
           <div className={`bg-gray-800 rounded-xl shadow-2xl ${isMultiChannelFullscreen ? 'w-screen h-screen max-h-screen' : 'w-full max-w-6xl max-h-[90vh]'} overflow-hidden flex flex-col border border-gray-700`}>
-            {/* HEADER */}
             <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gradient-to-r from-indigo-900/20 to-blue-900/20">
               <div className="flex-1">
                 <h2 className="text-2xl font-bold text-white">🌐 Multi-Channel Outreach Manager</h2>
@@ -3798,8 +3555,6 @@ Check browser console for details.`);
                 </button>
               </div>
             </div>
-
-            {/* STATS BAR */}
             <div className="p-4 bg-gray-800 border-b border-gray-700 grid grid-cols-2 md:grid-cols-6 gap-3">
               <div className="text-center">
                 <div className="text-xl font-bold text-blue-400">{whatsappLinks.length}</div>
@@ -3836,8 +3591,6 @@ Check browser console for details.`);
                 <div className="text-xs text-gray-400">High Quality</div>
               </div>
             </div>
-
-            {/* SEARCH & FILTER BAR */}
             <div className="p-4 border-b border-gray-700 bg-gray-800 flex gap-2 flex-wrap">
               <input
                 type="text"
@@ -3845,7 +3598,6 @@ Check browser console for details.`);
                 className="flex-1 min-w-[200px] px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 onChange={(e) => {
                   const value = e.target.value.toLowerCase();
-                  // Filter logic can be added here
                 }}
               />
               <select
@@ -3858,29 +3610,25 @@ Check browser console for details.`);
                 <option value="pending">📤 Pending Reply</option>
               </select>
             </div>
-
-            {/* MAIN CONTENT */}
             <div className="flex-1 overflow-y-auto p-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {whatsappLinks.map((link) => {
+                {/* ✅ UPDATED: Use sortedWhatsappLinks to show 077 numbers first */}
+                {sortedWhatsappLinks.map((link) => {
                   const contactKey = link.email || link.phone;
                   const last = lastSent[contactKey];
                   const score = leadScores[link.email] || 0;
                   const isReplied = repliedLeads[link.email];
                   const isFollowUp = followUpLeads[link.email];
-
                   return (
                     <div
                       key={link.id}
-                      className={`p-4 rounded-lg border-2 transition-all ${
-                        isReplied
+                      className={`p-4 rounded-lg border-2 transition-all ${isReplied
                           ? 'border-green-700 bg-green-900/15'
                           : isFollowUp
                             ? 'border-yellow-700 bg-yellow-900/15'
                             : 'border-gray-700 bg-gray-750'
-                      }`}
+                        }`}
                     >
-                      {/* HEADER */}
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
                           <h3 className="font-bold text-white text-lg">{link.business}</h3>
@@ -3889,7 +3637,6 @@ Check browser console for details.`);
                             <p className="text-xs text-blue-400">📧 {link.email}</p>
                           )}
                         </div>
-                        {/* STATUS BADGES */}
                         <div className="flex flex-col gap-1">
                           {isReplied && (
                             <span className="bg-green-900/40 text-green-300 text-xs px-2 py-1 rounded font-medium">
@@ -3903,15 +3650,12 @@ Check browser console for details.`);
                           )}
                         </div>
                       </div>
-
-                      {/* INFO */}
                       <div className="mb-3 p-2 bg-gray-800/50 rounded text-xs space-y-1">
                         {link.email ? (
                           <div className="flex justify-between">
                             <span className="text-gray-400">Lead Quality Score:</span>
-                            <span className={`font-bold ${
-                              score >= 70 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-orange-400'
-                            }`}>
+                            <span className={`font-bold ${score >= 70 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-orange-400'
+                              }`}>
                               {score}/100
                             </span>
                           </div>
@@ -3931,8 +3675,6 @@ Check browser console for details.`);
                           </div>
                         )}
                       </div>
-
-                      {/* PHONE & EMAIL ACTIONS */}
                       <div className="space-y-2">
                         <div className="grid grid-cols-2 gap-2">
                           <button
@@ -3974,20 +3716,15 @@ Check browser console for details.`);
                           💬 WhatsApp
                         </a>
                       </div>
-
-                      {/* SOCIAL MEDIA & WEB ACTIONS - SMART STRATEGY */}
                       <div className="mt-3 pt-3 border-t border-gray-600">
                         <div className="text-xs font-semibold text-gray-300 mb-2">💡 Recommended Outreach Strategy:</div>
                         <div className="space-y-2">
-                          {/* PRIMARY CONTACT METHOD */}
                           {link.best_contact_method && (
                             <div className="bg-indigo-900/40 border border-indigo-700 rounded p-2 text-xs">
                               <div className="text-indigo-300 font-bold mb-1">🎯 Recommended Method:</div>
                               <div className="text-indigo-200">{link.best_contact_method}</div>
                             </div>
                           )}
-
-                          {/* LINKEDIN - PROFESSIONAL OUTREACH (PRIORITY #1) */}
                           {(link.linkedin_company || link.linkedin_ceo || link.linkedin_founder) && (
                             <div className="bg-blue-900/40 border border-blue-700 rounded p-2">
                               <div className="text-xs font-semibold text-blue-300 mb-1">🔗 LinkedIn - Professional Engagement</div>
@@ -4052,8 +3789,6 @@ Check browser console for details.`);
                               </div>
                             </div>
                           )}
-
-                          {/* SOCIAL PLATFORMS - ENGAGEMENT STRATEGY */}
                           {(link.twitter || link.instagram || link.facebook || link.youtube || link.tiktok) && (
                             <div className="bg-purple-900/40 border border-purple-700 rounded p-2">
                               <div className="text-xs font-semibold text-purple-300 mb-1">📱 Social Media Engagement</div>
@@ -4117,8 +3852,6 @@ Check browser console for details.`);
                               </div>
                             </div>
                           )}
-
-                          {/* WEBSITE */}
                           {link.website && (
                             <div className="bg-orange-900/40 border border-orange-700 rounded p-2">
                               <div className="text-xs font-semibold text-orange-300 mb-1">
@@ -4134,15 +3867,14 @@ Check browser console for details.`);
                               </a>
                             </div>
                           )}
-
-                          {/* COMPANY INTELLIGENCE */}
                           <div className="mt-2 pt-2 border-t border-gray-600">
                             <div className="text-xs font-semibold text-gray-400 mb-1">📊 Company Intelligence:</div>
                             <div className="grid grid-cols-2 gap-1 text-xs">
                               {link.lead_quality_score && (
                                 <div className="bg-gray-750 p-1 rounded">
                                   <div className="text-gray-400">Lead Score</div>
-                                  <div className={`font-bold ${link.lead_quality_score >= 70 ? 'text-green-400' : link.lead_quality_score >= 50 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                  <div className={`font-bold ${link.lead_quality_score >= 70 ? 'text-green-400' : link.lead_quality_score >= 50 ? 'text-yellow-400' : 'text-orange-400'
+                                    }`}>
                                     {link.lead_quality_score}/100
                                   </div>
                                 </div>
@@ -4150,7 +3882,8 @@ Check browser console for details.`);
                               {link.contact_confidence && (
                                 <div className="bg-gray-750 p-1 rounded">
                                   <div className="text-gray-400">Contact Trust</div>
-                                  <div className={`font-bold ${link.contact_confidence === 'High' ? 'text-green-400' : link.contact_confidence === 'Medium' ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                  <div className={`font-bold ${link.contact_confidence === 'High' ? 'text-green-400' : link.contact_confidence === 'Medium' ? 'text-yellow-400' : 'text-orange-400'
+                                    }`}>
                                     {link.contact_confidence}
                                   </div>
                                 </div>
@@ -4171,8 +3904,6 @@ Check browser console for details.`);
                               )}
                             </div>
                           </div>
-
-                          {/* TECH STACK */}
                           {link.tech_stack_detected && (
                             <div className="text-xs bg-purple-900/30 text-purple-200 p-1.5 rounded">
                               <span className="font-semibold">⚙️ Tech Stack:</span> {link.tech_stack_detected}
@@ -4184,7 +3915,6 @@ Check browser console for details.`);
                   );
                 })}
               </div>
-
               {whatsappLinks.length === 0 && (
                 <div className="text-center py-12">
                   <div className="text-6xl mb-4">🌐</div>
@@ -4193,8 +3923,6 @@ Check browser console for details.`);
                 </div>
               )}
             </div>
-
-            {/* FOOTER */}
             <div className="p-4 border-t border-gray-700 bg-gray-800 flex justify-between items-center">
               <div className="text-xs text-gray-500 space-x-4">
                 <span>💡 All social profiles and contact info are available for outreach</span>
@@ -4209,8 +3937,7 @@ Check browser console for details.`);
           </div>
         </div>
       )}
-
-      {/* ✅ AI RESEARCH MODAL */}
+      {/* AI RESEARCH MODAL */}
       {showResearchModal && researchingCompany && researchResults[researchingCompany] && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col border-2 border-purple-500/30">
@@ -4235,10 +3962,8 @@ Check browser console for details.`);
                 </button>
               </div>
             </div>
-
             <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-900/30 to-gray-800/30">
               <div className="space-y-4">
-                {/* General Idea */}
                 <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
                   <h3 className="text-sm font-bold text-blue-300 mb-2">📋 General Value Proposition</h3>
                   <div className="text-sm text-gray-300 space-y-2">
@@ -4247,16 +3972,12 @@ Check browser console for details.`);
                     <div><span className="font-semibold">Target:</span> {researchResults[researchingCompany].generalIdea?.targetAudience || 'N/A'}</div>
                   </div>
                 </div>
-
-                {/* Research Notes */}
                 {researchResults[researchingCompany].personalizedEmail?.researchNotes && (
                   <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
                     <h3 className="text-sm font-bold text-yellow-300 mb-2">🔍 Research Notes</h3>
                     <p className="text-sm text-gray-300">{researchResults[researchingCompany].personalizedEmail.researchNotes}</p>
                   </div>
                 )}
-
-                {/* Personalized Email */}
                 <div className="bg-gray-800/50 p-4 rounded-lg border border-purple-700">
                   <h3 className="text-sm font-bold text-purple-300 mb-3">✉️ Personalized Email</h3>
                   <div className="space-y-3">
@@ -4276,12 +3997,11 @@ Check browser console for details.`);
                 </div>
               </div>
             </div>
-
             <div className="p-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30 flex justify-end gap-3">
               <button
                 onClick={() => {
-                  // Copy email to clipboard
-                  const emailText = `Subject: ${researchResults[researchingCompany].personalizedEmail?.subject || ''}\n\n${researchResults[researchingCompany].personalizedEmail?.body || ''}`;
+                  const emailText = `Subject: ${researchResults[researchingCompany].personalizedEmail?.subject || ''}
+${researchResults[researchingCompany].personalizedEmail?.body || ''}`;
                   navigator.clipboard.writeText(emailText);
                   alert('Email copied to clipboard!');
                 }}
