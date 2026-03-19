@@ -15,6 +15,7 @@ export interface Conversation {
   id?: number
   phone_number: string
   customer_name: string
+  last_message_id?: string // Critical for deduplication in blueprint
   history: string
   created_at?: string
   updated_at?: string
