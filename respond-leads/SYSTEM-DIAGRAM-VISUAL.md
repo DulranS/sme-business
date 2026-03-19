@@ -1,0 +1,251 @@
+# 🎯 SYSTEM ARCHITECTURE DIAGRAM - VISUAL OVERVIEW
+
+## 📊 **HIGH-LEVEL SYSTEM ARCHITECTURE**
+
+```
+                    ┌─────────────────────────────────────────────────────┐
+                    │              WHATSAPP AI INVENTORY SYSTEM             │
+                    │                  (Complete Architecture)              │
+                    └─────────────────────────────────────────────────────┘
+
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   CUSTOMER  │    │  WHATSAPP   │    │   NEXT.JS   │    │  SUPABASE   │
+│             │◄──►│   CLOUD    │◄──►│  FRONTEND   │◄──►│  DATABASE   │
+│  WhatsApp   │    │    API     │    │  DASHBOARD  │    │ PostgreSQL  │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+       │                  │                  │                  │
+       │ 1. Message       │ 2. Webhook        │ 3. Process       │ 4. Store
+       │    Send          │    Event          │    Request       │    Data
+       └──────────────────┴──────────────────┴──────────────────┴──────────────────┘
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │                 AI PROCESSING LAYER                  │
+                    └─────────────────────────────────────────────────────┘
+
+                              ┌─────────────┐    ┌─────────────┐
+                              │  CLAUDE AI  │◄──►│  INVENTORY  │
+                              │  Haiku 4.5  │    │   SEARCH    │
+                              │             │    │             │
+                              │ • Keyword   │    │ • Products  │
+                              │ • Response  │    │ • Stock     │
+                              └─────────────┘    └─────────────┘
+                                      │                  │
+                                      │ 5. AI Process   │ 6. Data Query
+                                      └──────────────────┴──────────────────┘
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │              BLUEPRINT 7-STEP WORKFLOW               │
+                    └─────────────────────────────────────────────────────┘
+
+┌───┐  ┌───┐  ┌───┐  ┌───┐  ┌───┐  ┌───┐  ┌───┐
+│ 7 │→│ 9 │→│ 8 │→│ 1 │→│ 2 │→│ 6 │→│10 │
+└───┘  └───┘  └───┘  └───┘  └───┘  └───┘  └───┘
+ │     │     │     │     │     │     │
+ │     │     │     │     │     │     ▼
+ │     │     │     │     │     │  ┌─────────────┐
+ │     │     │     │     │     │  │  MODULE 10  │
+ │     │     │     │     │     │  │ History Save│
+ │     │     │     │     │     │  │ • Upsert    │
+ │     │     │     │     │     │  │ • 4000 Chars│
+ │     │     │     │     │     │  │ • Message ID│
+ │     │     │     │     │     │  └─────────────┘
+ │     │     │     │     │     │
+ │     │     │     │     │     ▼
+ │     │     │     │     │  ┌─────────────┐
+ │     │     │     │     │  │  MODULE 6   │
+ │     │     │     │     │  │ WhatsApp    │
+ │     │     │     │     │  │ Reply Send  │
+ │     │     │     │     │  │ • Message   │
+ │     │     │     │     │  │ • Context   │
+ │     │     │     │     │  │ • Error     │
+ │     │     │     │     │  └─────────────┘
+ │     │     │     │     │
+ │     │     │     │     ▼
+ │     │     │     │  ┌─────────────┐
+ │     │     │     │  │  MODULE 2   │
+ │     │     │     │  │ Response    │
+ │     │     │     │  │ Generation  │
+ │     │     │     │  │ • Claude    │
+ │     │     │     │  │ • 300 Tokens│
+ │     │     │     │  │ • Plain Text│
+ │     │     │     │  └─────────────┘
+ │     │     │     │
+ │     │     │     ▼
+ │     │     │  ┌─────────────┐
+ │     │     │  │  MODULE 1   │
+ │     │     │  │ Inventory   │
+ │     │     │  │ Search      │
+ │     │     │  │ • ilike     │
+ │     │     │  │ • 5 Results │
+ │     │     │  │ • Stock     │
+ │     │     │  └─────────────┘
+ │     │     │
+ │     │     ▼
+ │     │  ┌─────────────┐
+ │     │  │  MODULE 8   │
+ │     │  │ Keyword     │
+ │     │  │ Extraction  │
+ │     │  │ • Claude    │
+ │     │  │ • Dedupe    │
+ │     │  │ • 50 Tokens │
+ │     │  └─────────────┘
+ │     │
+ │     ▼
+ │  ┌─────────────┐
+ │  │  MODULE 9   │
+ │  │ Conversation│
+ │  │ History     │
+ │  │ • Text Only │
+ │  │ • Phone     │
+ │  │ • 4000 Win  │
+ │  └─────────────┘
+ │
+ ▼
+┌─────────────┐
+│  MODULE 7   │
+│  WhatsApp   │
+│  Event      │
+│  Watcher    │
+│  • Text     │
+│  • Parse    │
+│  • Contact  │
+└─────────────┘
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │              FRONTEND DASHBOARD LAYOUT                │
+                    └─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          NEXT.JS RESPONSIVE DASHBOARD                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  📦 INVENTORY  │  💬 CONVERSATIONS  │  📊 ANALYTICS  │  🔧 BLUEPRINT      │
+│  • CRUD Ops    │  • Real-time Chat   │  • Metrics    │  • Message ID     │
+│  • Search      │  • History          │  • Charts     │  • Deduplication  │
+│  • Multi-Curr  │  • Customer Info    │  • Reports    │  • AI Insights    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ⚙️ BULK OPS   │  🔮 FORECASTING     │  📋 REPORTING  │  🚀 MARKETING     │
+│  • Import/Exp  │  • AI Predictions   │  • Templates  │  • Campaigns      │
+│  • File Upload │  • Demand Forecast  │  • PDF/Excel  │  • Segmentation   │
+│  • Validation  │  • Optimization     │  • Scheduling │  • Analytics      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  📱 WHATSAPP   │  💬 WHATSAPP CHAT    │  📈 WHATSAPP  │  🎯 SETTINGS      │
+│  • Dashboard   │  • Interface        │  • Analytics  │  • Configuration  │
+│  • Metrics     │  • Message History  │  • Reports    │  • API Keys       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │              RESPONSIVE DESIGN BREAKPOINTS             │
+                    └─────────────────────────────────────────────────────┘
+
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   MOBILE    │    │   TABLET    │    │   DESKTOP   │    │   LARGE      │
+│  320px+     │    │  768px+     │    │ 1024px+     │    │ 1920px+     │
+│             │    │             │    │             │    │             │
+│ • Touch     │    │ • Adaptive  │    │ • Full      │    │ • Max       │
+│ • Stack     │    │ • Grid      │    │ • Layout    │    │ • Widths    │
+│ • Swipe     │    │ • Flexible  │    │ • Hover     │    │ • Enhanced  │
+│ • Optimized │    │ • Responsive│    │ • Keyboard  │    │ • UX        │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │                DATABASE SCHEMA                         │
+                    └─────────────────────────────────────────────────────┘
+
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  INVENTORY  │    │CONVERSATIONS │    │  ANALYTICS  │    │  MARKETING  │
+│   TABLE     │    │   TABLE     │    │   TABLES    │    │   TABLES    │
+│             │    │             │    │             │    │             │
+│ • id (PK)   │    │ • id (PK)   │    │ • metrics   │    │ • campaigns │
+│ • name      │    │ • phone_num │    │ • reports   │    │ • audiences │
+│ • sku       │    │ • customer  │    │ • forecasts │    │ • automation│
+│ • quantity  │    │ • last_msg  │    │ • exports   │    │ • analytics │
+│ • price     │    │ • history   │    │ • imports   │    │ • logs     │
+│ • currency  │    │ • created   │    │ • schedules │    │ • audit     │
+│ • price_usd │    │ • updated   │    │ • timestamps│    │ • consent   │
+│ • timestamps│    │ • timestamps│    │ • user_data │    │ • gdpr     │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+       │                  │                  │                  │
+       └──────────────────┴──────────────────┴──────────────────┘
+                          │
+                          ▼
+                    ┌─────────────┐
+                    │   INDEXES   │
+                    │ • phone_num │
+                    │ • last_msg  │
+                    │ • sku       │
+                    │ • name      │
+                    │ • timestamps│
+                    └─────────────┘
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │              TECHNOLOGY STACK                          │
+                    └─────────────────────────────────────────────────────┘
+
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  FRONTEND   │    │  BACKEND    │    │  DATABASE   │    │ INFRASTRUCTURE│
+│             │    │             │    │             │    │             │
+│ • Next.js   │    │ • Next.js   │    │ • Supabase  │    │ • Vercel    │
+│ • React 18  │    │ • Serverless│    │ • PostgreSQL│    │ • Edge Func │
+│ • TypeScript│    │ • Webhooks  │    │ • RLS       │    │ • CDN       │
+│ • Tailwind  │    │ • REST API  │    │ • Indexes   │    │ • Monitor   │
+│ • Responsive│    │ • Claude SDK│    │ • Migrations│    │ • Analytics │
+│ • Components│    │ • WhatsApp  │    │ • Backups   │    │ • Security  │
+│ • State Mgmt│    │ • Error Hdl │    │ • Repl      │    │ • Backups   │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │               DATA FLOW SEQUENCE                        │
+                    └─────────────────────────────────────────────────────┘
+
+Customer → WhatsApp → Webhook → History → Dedupe → Claude → Search → Response → WhatsApp → Save → Dashboard
+   (1)        (2)       (3)      (4)      (5)     (6)     (7)      (8)       (9)      (10)
+
+                    ┌─────────────────────────────────────────────────────┐
+                    │              KEY FEATURES SUMMARY                      │
+                    └─────────────────────────────────────────────────────┘
+
+🎯 AI-Powered Support    📱 WhatsApp Integration    🗄️ Inventory Management
+   • 24/7 Automation       • Real-time Processing      • Multi-Currency
+   • Claude Haiku 4.5      • Business Cloud API        • Real-time Stock
+   • Context-Aware         • Media Support             • Advanced Search
+
+📊 Analytics & Insights  🎨 Responsive Design     🔒 Security & Compliance
+   • Real-time Metrics     • Mobile-First             • Row-Level Security
+   • Customer Tracking     • Fluid Typography         • GDPR Compliance
+   • Performance Monitoring│ Touch-Friendly            • Data Encryption
+
+🚀 Performance           🔄 Integration           📈 Business Value
+   • Optimized Queries     • WhatsApp + Claude + DB   • 24/7 Customer Service
+   • Caching Strategies    • Make.com Automation      • Increased Engagement
+   • Edge Computing        • Webhook Processing       • Operational Efficiency
+```
+
+## 🎯 **SYSTEM COMPONENTS MATRIX**
+
+| Component | Technology | Purpose | Integration |
+|-----------|-------------|---------|-------------|
+| **Frontend** | Next.js 16, React 18 | User Interface | API Calls |
+| **Backend** | Next.js API Routes | Server Logic | Database, AI |
+| **Database** | Supabase, PostgreSQL | Data Storage | RLS, Indexes |
+| **AI** | Claude Haiku 4.5 | Intelligence | Prompt Engineering |
+| **WhatsApp** | Business Cloud API | Messaging | Webhook Integration |
+| **Infrastructure** | Vercel, Edge Functions | Hosting | CDN, Monitoring |
+
+## 🔄 **INTERACTION FLOWS**
+
+### **Customer Support Flow**
+```
+Customer Message → WhatsApp API → Webhook → AI Processing → Database Update → Response
+```
+
+### **Inventory Management Flow**
+```
+Dashboard → API → Database → Real-time Updates → Frontend Refresh
+```
+
+### **Analytics Flow**
+```
+User Actions → Database → Aggregation → Dashboard Visualization
+```
+
+This comprehensive diagram provides a complete visual overview of the WhatsApp AI Inventory Support system architecture, including all components, data flows, and technology integrations.
