@@ -1,0 +1,309 @@
+{
+    "name": "WhatsApp AI Inventory Support V8 - Final",
+    "flow": [
+        {
+            "id": 7,
+            "module": "whatsapp-business-cloud:watchEvents2",
+            "version": 1,
+            "parameters": {
+                "hook": "",
+                "phoneNumberId": "1013623275168542"
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 9,
+            "module": "supabase:searchRows",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "tableId": "conversations"
+            },
+            "filter": {
+                "name": "Text messages only — drop status updates, images, audio, etc.",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{7.messages[].type}}",
+                            "b": "text",
+                            "o": "text:equal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "filterType": "eq",
+                "filter": [
+                    {
+                        "name": "phone_number",
+                        "value": "{{7.messages[].from}}"
+                    }
+                ],
+                "orderBy": "updated_at",
+                "orderDirection": "desc",
+                "limit": "1"
+            },
+            "allowEmptyBundle": true,
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 8,
+            "module": "anthropic-claude:simpleTextPrompt",
+            "version": 1,
+            "parameters": {},
+            "filter": {
+                "name": "Dedup — skip if this message ID was already processed",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{7.messages[].id}}",
+                            "b": "{{9[].last_message_id}}",
+                            "o": "text:notequal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "model": "claude-haiku-4-5",
+                "textPrompt": "Extract the single best product search keyword from the customer message below.\nIf the message is NOT about a specific product or inventory, return exactly: GENERAL\n\nRules:\n- Return ONLY the keyword or the word GENERAL\n- No punctuation, no explanation, no extra words\n- Max 5 words\n\nExamples:\n- Do you have Nike Air Max in size 9? -> Nike Air Max\n- Is the iPhone 15 in stock? -> iPhone 15\n- What red dresses do you have? -> red dress\n- How many units of SKU-4821 left? -> SKU-4821\n- Hello, what are your store hours? -> GENERAL\n- Hi! -> GENERAL\n- Can I make a return? -> GENERAL\n- What payment methods do you accept? -> GENERAL\n- Thank you! -> GENERAL\n- [empty] -> GENERAL\n\nCustomer message: {{ifempty(7.messages[].text.body; \"[empty]\")}}",
+                "max_tokens": "50"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 600,
+                    "y": 300
+                },
+                "restore": {
+                    "expect": {
+                        "model": {
+                            "label": "Claude Haiku 4.5"
+                        }
+                    }
+                },
+                "expect": [
+                    {
+                        "name": "model",
+                        "type": "select",
+                        "label": "Model",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "claude-sonnet-4-6",
+                                "claude-opus-4-6",
+                                "claude-sonnet-4-5",
+                                "claude-haiku-4-5",
+                                "claude-opus-4-5"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "textPrompt",
+                        "type": "text",
+                        "label": "Text Prompt",
+                        "required": true
+                    },
+                    {
+                        "name": "max_tokens",
+                        "type": "uinteger",
+                        "label": "Max Tokens",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 1,
+            "module": "supabase:searchRows",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "tableId": "inventory"
+            },
+            "mapper": {
+                "filterType": "ilike",
+                "filter": [
+                    {
+                        "name": "name",
+                        "value": "%{{8.result}}%"
+                    }
+                ],
+                "limit": "5"
+            },
+            "allowEmptyBundle": true,
+            "metadata": {
+                "designer": {
+                    "x": 900,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 2,
+            "module": "anthropic-claude:simpleTextPrompt",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "model": "claude-haiku-4-5",
+                "textPrompt": "You are a warm, helpful customer support assistant for a retail store. You are replying via WhatsApp.\n\nSTRICT FORMATTING RULES (WhatsApp renders markdown badly — never use it):\n- Plain text only\n- No asterisks, underscores, dashes, bullet points, or any symbols used for formatting\n- No numbered lists\n- Short paragraphs or single sentences only\n- Your reply must be under 220 words\n\nBEHAVIOUR RULES:\n- Be conversational and friendly, not robotic or corporate\n- Only state inventory facts that appear in the data below — never guess, invent, or estimate stock levels, prices, or product details\n- If inventory results are empty, tell the customer you could not find that item and ask them to describe it differently or share the SKU\n- If the search keyword was GENERAL or the message is not inventory-related (greetings, returns, hours, payments, complaints, etc.), respond helpfully and naturally from general knowledge\n- Never mention Make, Supabase, Claude, AI, automation, or any internal tools or systems\n- If the customer seems frustrated or upset, acknowledge their frustration warmly before answering\n- Never make up a phone number, email, address, or policy — if you do not know, say so and offer to help find the right person\n\nCustomer name: {{ifempty(7.messages[].profile.name; \"there\")}}\nCustomer message: {{ifempty(7.messages[].text.body; \"[Non-text message received]\")}}\n\nConversation history (most recent at bottom, may be empty for new customers):\n{{ifempty(9[].history; \"No prior conversation — this is the first message.\")}}\n\nInventory search keyword used: {{8.result}}\nInventory results:\n{{ifempty(join(map(1[]; item; ifempty(item.name; \"Unknown item\") & \" | Stock: \" & ifempty(item.quantity & \"\"; \"0\") & \" units | Price: $\" & ifempty(item.price & \"\"; \"N/A\") & \" | SKU: \" & ifempty(item.sku; \"N/A\")); \"\n\"); \"No inventory results found for this query.\")}}\n\nWrite your WhatsApp reply now:",
+                "max_tokens": "300"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1200,
+                    "y": 300
+                },
+                "restore": {
+                    "expect": {
+                        "model": {
+                            "label": "Claude Haiku 4.5"
+                        }
+                    }
+                },
+                "expect": [
+                    {
+                        "name": "model",
+                        "type": "select",
+                        "label": "Model",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "claude-sonnet-4-6",
+                                "claude-opus-4-6",
+                                "claude-sonnet-4-5",
+                                "claude-haiku-4-5",
+                                "claude-opus-4-5"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "textPrompt",
+                        "type": "text",
+                        "label": "Text Prompt",
+                        "required": true
+                    },
+                    {
+                        "name": "max_tokens",
+                        "type": "uinteger",
+                        "label": "Max Tokens",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 6,
+            "module": "whatsapp-business-cloud:sendMessage",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "phoneNumberId": "1013623275168542"
+            },
+            "mapper": {
+                "to": "{{7.messages[].from}}",
+                "type": "text",
+                "text": {
+                    "body": "{{2.result}}"
+                },
+                "context": {
+                    "message_id": "{{7.messages[].id}}"
+                }
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1500,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 10,
+            "module": "supabase:upsertARecord",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "tableId": "conversations"
+            },
+            "mapper": {
+                "phone_number": "{{7.messages[].from}}",
+                "customer_name": "{{ifempty(7.messages[].profile.name; \"Unknown\")}}",
+                "last_message_id": "{{7.messages[].id}}",
+                "history": "{{substring(ifempty(9[].history; \"\") & \"\n[Customer]: \" & ifempty(7.messages[].text.body; \"[Non-text message]\") & \"\n[Assistant]: \" & 2.result; max(0; length(ifempty(9[].history; \"\") & \"\n[Customer]: \" & ifempty(7.messages[].text.body; \"[Non-text message]\") & \"\n[Assistant]: \" & 2.result) - 4000); 4000)}}",
+                "updated_at": "{{now}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1800,
+                    "y": 300
+                }
+            }
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": true,
+            "slots": null,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "eu2.make.com",
+        "notes": [
+            {
+                "id": 1,
+                "content": "MODULE 7 — WhatsApp Trigger.\nSet your Phone Number ID and webhook hook here.\nThis fires on ALL WhatsApp events including status updates (delivered, read). The filter on Module 9 blocks non-text events immediately.",
+                "moduleId": 7
+            },
+            {
+                "id": 2,
+                "content": "MODULE 9 — Fetch Conversation History.\n\nFILTER: Drops all non-text webhook events (images, audio, video, status updates, read receipts) right here so nothing wasted downstream.\n\nSEARCH: Looks up the conversation row by phone_number, ordered by updated_at DESC so the most recent row always wins.\n\n!!!! CRITICAL MANUAL STEP !!!!\nThis module returns 0 rows for EVERY NEW CUSTOMER who has never messaged before. If 'Continue the execution of the route even if the module returns no results' is NOT enabled here, ALL new customers will be silently ignored — no reply ever sent.\n\nGo to this module in Make.com -> click the settings cog -> enable that option.\n\nThe allowEmptyBundle flag in this JSON attempts to set this automatically on import, but verify it manually after importing.\n\nSupabase requirement: the conversations table MUST have phone_number defined as a UNIQUE column. Without this, the upsert in Module 10 will insert duplicate rows and Module 9 may return stale history.",
+                "moduleId": 9
+            },
+            {
+                "id": 3,
+                "content": "MODULE 8 — Keyword Extraction + Dedup Guard.\n\nDEDUP FILTER: Runs BEFORE Claude is called. Compares the incoming WhatsApp message ID against the last stored message ID. If they match, the entire remaining flow is skipped — this prevents double-replies when WhatsApp retries webhook delivery.\n\nFor brand new customers, 9[].last_message_id is null/empty. Since any real WhatsApp message ID is never empty, the condition (id != null) is always true, so new customers correctly pass through.\n\nKEYWORD EXTRACTION: Claude Haiku returns either a product keyword (max 5 words) or the literal string GENERAL for non-product queries. max_tokens is 50 — well above any realistic keyword length.",
+                "moduleId": 8
+            },
+            {
+                "id": 4,
+                "content": "MODULE 1 — Inventory Search.\n\nSearches the inventory table using a case-insensitive partial match (ilike) on the name column. Returns up to 5 matching products.\n\nNo filter is applied here. When keyword is GENERAL, the search '%GENERAL%' returns 0 inventory rows, and Module 2's ifempty guard handles that gracefully.\n\n!!!! CRITICAL MANUAL STEP !!!!\nThis module will return 0 rows for: GENERAL queries, product names not in the database, or any typo-heavy search. If 'Continue the execution of the route even if the module returns no results' is NOT enabled here, Module 2 never runs and NO REPLY is ever sent for these cases.\n\nGo to this module in Make.com -> click the settings cog -> enable that option.\n\nThe allowEmptyBundle flag in this JSON attempts to set this automatically on import, but verify it manually after importing.",
+                "moduleId": 1
+            },
+            {
+                "id": 5,
+                "content": "MODULE 2 — Reply Generation.\n\nAlways runs (no filter). Handles all four cases:\n1. Product found in inventory -> shares stock, price, SKU\n2. Product not found -> asks customer to rephrase or share SKU\n3. GENERAL query -> responds helpfully from general knowledge\n4. New customer (no history) -> ifempty falls back to 'first message' label\n\nAll variable references use ifempty guards so null values never reach the prompt raw.",
+                "moduleId": 2
+            },
+            {
+                "id": 6,
+                "content": "MODULE 6 — Send WhatsApp Reply.\n\nRuns BEFORE Module 10 (the history save). This is intentional: if the WhatsApp send fails (expired token, rate limit, etc.), Module 10 never runs, so the assistant reply is NOT written into the conversation history. This prevents the AI from referencing a reply the customer never actually received on the next turn.\n\ncontext.message_id creates a WhatsApp quote/reply thread so the customer sees which message is being replied to.\n\nSet your Phone Number ID here.",
+                "moduleId": 6
+            },
+            {
+                "id": 7,
+                "content": "MODULE 10 — Save Conversation History.\n\nRuns ONLY after a successful WhatsApp send (Module 6). Upserts the conversations row using phone_number as the conflict key (must be UNIQUE in Supabase — also set the conflict column inside this module's Make.com UI settings).\n\nStores: phone_number, customer_name, last_message_id (for dedup), updated_at, and history.\n\nHistory rolling window: the full concatenated string (old history + new customer message + new assistant reply) is trimmed to the LAST 4000 characters using substring + max(0, length - 4000). This keeps only the most recent context and prevents the Supabase text field from growing forever.",
+                "moduleId": 10
+            }
+        ]
+    }
+}
