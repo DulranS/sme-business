@@ -22,78 +22,87 @@ interface BlueprintConversationDashboardProps {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    padding: '32px',
+    padding: 'clamp(16px, 4vw, 32px)',
     background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.03), rgba(139, 92, 246, 0.03))',
-    borderRadius: '24px',
+    borderRadius: 'clamp(12px, 2vw, 24px)',
     backdropFilter: 'blur(20px)',
     border: '1px solid rgba(139, 92, 246, 0.15)',
     minHeight: 'calc(100vh - 200px)',
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    overflowX: 'hidden'
   },
   
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '32px',
+    marginBottom: 'clamp(20px, 4vw, 32px)',
     flexWrap: 'wrap',
-    gap: '20px'
+    gap: 'clamp(12px, 2vw, 20px)'
   },
   
   title: {
-    fontSize: '32px',
+    fontSize: 'clamp(24px, 4vw, 32px)',
     fontWeight: '900',
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
-    margin: 0
+    margin: 0,
+    wordBreak: 'break-word'
   },
   
   controls: {
     display: 'flex',
-    gap: '12px',
+    gap: 'clamp(8px, 1.5vw, 12px)',
     alignItems: 'center',
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
+    width: '100%',
+    maxWidth: '500px'
   },
   
   searchBox: {
     position: 'relative',
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+    flex: 1,
+    minWidth: '200px'
   },
   
   searchInput: {
-    padding: '12px 16px 12px 44px',
+    padding: 'clamp(10px, 2vw, 12px) clamp(10px, 2vw, 12px) clamp(36px, 6vw, 44px)',
     background: 'rgba(255, 255, 255, 0.1)',
     border: '1px solid rgba(139, 92, 246, 0.3)',
-    borderRadius: '12px',
+    borderRadius: 'clamp(8px, 1.5vw, 12px)',
     color: '#ffffff',
-    fontSize: '14px',
-    width: '300px',
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: 'clamp(14px, 2.5vw, 16px)',
+    width: '100%',
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    transition: 'all 0.3s ease'
   },
   
   searchIcon: {
     position: 'absolute',
-    left: '16px',
+    left: 'clamp(12px, 2vw, 16px)',
     color: '#9ca3af',
-    fontSize: '16px'
+    fontSize: 'clamp(14px, 2.5vw, 16px)',
+    pointerEvents: 'none'
   },
   
   button: {
-    padding: '12px 20px',
+    padding: 'clamp(10px, 2vw, 12px) clamp(16px, 3vw, 20px)',
     background: 'rgba(139, 92, 246, 0.2)',
     border: '1px solid rgba(139, 92, 246, 0.3)',
-    borderRadius: '12px',
+    borderRadius: 'clamp(8px, 1.5vw, 12px)',
     color: '#e5e5e5',
-    fontSize: '14px',
+    fontSize: 'clamp(12px, 2vw, 14px)',
     fontWeight: '600',
     cursor: 'pointer',
     transition: 'all 0.3s ease',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    gap: 'clamp(6px, 1vw, 8px)',
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    whiteSpace: 'nowrap'
   },
   
   primaryButton: {
@@ -104,29 +113,30 @@ const styles: Record<string, React.CSSProperties> = {
   
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
-    marginBottom: '32px'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',
+    gap: 'clamp(12px, 2vw, 20px)',
+    marginBottom: 'clamp(24px, 4vw, 32px)'
   },
   
   statCard: {
     background: 'rgba(255, 255, 255, 0.05)',
     border: '1px solid rgba(139, 92, 246, 0.2)',
-    borderRadius: '16px',
-    padding: '20px',
+    borderRadius: 'clamp(12px, 2vw, 16px)',
+    padding: 'clamp(16px, 3vw, 20px)',
     backdropFilter: 'blur(10px)',
-    transition: 'all 0.3s ease'
+    transition: 'all 0.3s ease',
+    textAlign: 'center'
   },
   
   statValue: {
-    fontSize: '28px',
+    fontSize: 'clamp(24px, 4vw, 28px)',
     fontWeight: '800',
     color: '#ffffff',
-    marginBottom: '8px'
+    marginBottom: 'clamp(6px, 1vw, 8px)'
   },
   
   statLabel: {
-    fontSize: '14px',
+    fontSize: 'clamp(11px, 2vw, 14px)',
     color: '#9ca3af',
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -135,14 +145,14 @@ const styles: Record<string, React.CSSProperties> = {
   
   conversationsList: {
     display: 'grid',
-    gap: '16px'
+    gap: 'clamp(12px, 2vw, 16px)'
   },
   
   conversationCard: {
     background: 'rgba(255, 255, 255, 0.05)',
     border: '1px solid rgba(139, 92, 246, 0.2)',
-    borderRadius: '16px',
-    padding: '24px',
+    borderRadius: 'clamp(12px, 2vw, 16px)',
+    padding: 'clamp(16px, 3vw, 24px)',
     backdropFilter: 'blur(10px)',
     transition: 'all 0.3s ease',
     cursor: 'pointer'
@@ -152,69 +162,84 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: '16px'
+    marginBottom: 'clamp(12px, 2vw, 16px)',
+    gap: 'clamp(12px, 2vw, 16px)'
   },
   
   customerInfo: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px'
+    gap: 'clamp(10px, 1.5vw, 12px)',
+    flex: 1,
+    minWidth: 0
   },
   
   customerAvatar: {
-    width: '40px',
-    height: '40px',
+    width: 'clamp(36px, 5vw, 40px)',
+    height: 'clamp(36px, 5vw, 40px)',
     borderRadius: '50%',
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     color: '#ffffff',
-    fontSize: '16px',
-    fontWeight: '700'
+    fontSize: 'clamp(14px, 3vw, 16px)',
+    fontWeight: '700',
+    flexShrink: 0
   },
   
   customerDetails: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   
   customerName: {
-    fontSize: '16px',
+    fontSize: 'clamp(14px, 2.5vw, 16px)',
     fontWeight: '700',
     color: '#ffffff',
-    marginBottom: '4px'
+    marginBottom: '4px',
+    wordBreak: 'break-word',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
   },
   
   customerPhone: {
-    fontSize: '14px',
+    fontSize: 'clamp(12px, 2vw, 14px)',
     color: '#9ca3af',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px'
+    gap: '6px',
+    wordBreak: 'break-all'
   },
   
   lastMessage: {
-    fontSize: '14px',
+    fontSize: 'clamp(13px, 2vw, 14px)',
     color: '#e5e5e5',
-    marginBottom: '12px',
+    marginBottom: 'clamp(10px, 1.5vw, 12px)',
     lineHeight: '1.5',
-    maxHeight: '60px',
-    overflow: 'hidden'
+    maxHeight: 'clamp(50px, 6vw, 60px)',
+    overflow: 'hidden',
+    wordBreak: 'break-word'
   },
   
   conversationMeta: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    fontSize: '12px',
-    color: '#6b7280'
+    fontSize: 'clamp(10px, 1.5vw, 12px)',
+    color: '#6b7280',
+    flexWrap: 'wrap',
+    gap: 'clamp(8px, 1vw, 12px)'
   },
   
   messageId: {
     fontFamily: 'monospace',
     background: 'rgba(139, 92, 246, 0.2)',
     padding: '2px 6px',
-    borderRadius: '4px'
+    borderRadius: '4px',
+    fontSize: 'clamp(9px, 1.5vw, 10px)',
+    wordBreak: 'break-all'
   },
   
   modal: {
@@ -227,75 +252,81 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1000
+    zIndex: 1000,
+    padding: 'clamp(16px, 3vw, 32px)'
   },
   
   modalContent: {
     background: 'rgba(30, 30, 30, 0.95)',
     border: '1px solid rgba(139, 92, 246, 0.3)',
-    borderRadius: '20px',
-    padding: '32px',
-    maxWidth: '600px',
-    width: '90%',
-    maxHeight: '80vh',
+    borderRadius: 'clamp(16px, 3vw, 20px)',
+    padding: 'clamp(20px, 4vw, 32px)',
+    maxWidth: 'clamp(90%, 600px, 95%)',
+    width: '100%',
+    maxHeight: '90vh',
     overflowY: 'auto',
     backdropFilter: 'blur(20px)'
   },
   
   modalTitle: {
-    fontSize: '24px',
+    fontSize: 'clamp(18px, 3vw, 24px)',
     fontWeight: '700',
     color: '#ffffff',
-    marginBottom: '24px'
+    marginBottom: 'clamp(16px, 3vw, 24px)',
+    wordBreak: 'break-word'
   },
   
   historyContent: {
     background: 'rgba(0, 0, 0, 0.3)',
     border: '1px solid rgba(139, 92, 246, 0.2)',
-    borderRadius: '12px',
-    padding: '20px',
+    borderRadius: 'clamp(8px, 1.5vw, 12px)',
+    padding: 'clamp(16px, 3vw, 20px)',
     fontFamily: 'monospace',
-    fontSize: '14px',
+    fontSize: 'clamp(12px, 2vw, 14px)',
     color: '#e5e5e5',
     lineHeight: '1.6',
     whiteSpace: 'pre-wrap',
-    maxHeight: '400px',
-    overflowY: 'auto'
+    maxHeight: 'clamp(300px, 40vh, 400px)',
+    overflowY: 'auto',
+    wordBreak: 'break-word'
   },
   
   modalActions: {
     display: 'flex',
-    gap: '12px',
+    gap: 'clamp(8px, 1.5vw, 12px)',
     justifyContent: 'flex-end',
-    marginTop: '24px'
+    marginTop: 'clamp(16px, 3vw, 24px)',
+    flexWrap: 'wrap'
   },
   
   loading: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    height: '400px',
+    height: 'clamp(300px, 40vh, 400px)',
     color: '#6b7280',
-    fontSize: '16px'
+    fontSize: 'clamp(14px, 2vw, 16px)',
+    textAlign: 'center'
   },
   
   emptyState: {
     textAlign: 'center',
-    padding: '60px 20px',
+    padding: 'clamp(40px, 6vw, 60px) clamp(20px, 3vw, 32px)',
     color: '#6b7280'
   },
   
   emptyIcon: {
-    fontSize: '48px',
-    marginBottom: '16px',
+    fontSize: 'clamp(36px, 6vw, 48px)',
+    marginBottom: 'clamp(12px, 2vw, 16px)',
     opacity: 0.5
   },
   
   emptyText: {
-    fontSize: '16px',
+    fontSize: 'clamp(14px, 2vw, 16px)',
     fontWeight: '500',
     color: '#9ca3af',
-    marginBottom: '24px'
+    marginBottom: 'clamp(20px, 3vw, 24px)',
+    wordBreak: 'break-word'
   }
 }
 
