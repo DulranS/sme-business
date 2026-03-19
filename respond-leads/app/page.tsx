@@ -558,68 +558,77 @@ const s: Record<string, React.CSSProperties> = {
     background: 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%)', 
     color: '#e5e5e5', 
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    position: 'relative'
+    position: 'relative',
+    overflowX: 'hidden'
   },
   
   toast: { 
     position: 'fixed', 
-    top: 24, 
-    right: 24, 
+    top: 'clamp(12px, 2vw, 24px)', 
+    right: 'clamp(12px, 2vw, 24px)', 
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
     color: '#ffffff', 
-    padding: '12px 20px', 
-    fontSize: 12, 
+    padding: 'clamp(8px, 1.5vw, 12px) clamp(12px, 2vw, 20px)', 
+    fontSize: 'clamp(11px, 1.5vw, 12px)', 
     fontWeight: 600, 
     zIndex: 999, 
     animation: 'slideIn 0.3s ease',
-    borderRadius: '12px',
-    boxShadow: '0 10px 25px rgba(99, 102, 241, 0.3)'
+    borderRadius: 'clamp(8px, 1.5vw, 12px)',
+    boxShadow: '0 10px 25px rgba(99, 102, 241, 0.3)',
+    maxWidth: 'calc(100vw - clamp(24px, 4vw, 48px))'
   },
 
   header: { 
     background: 'linear-gradient(135deg, rgba(15, 15, 15, 0.8), rgba(26, 26, 26, 0.8))', 
     backdropFilter: 'blur(20px)',
     borderBottom: '1px solid rgba(139, 92, 246, 0.2)', 
-    padding: '24px 32px', 
+    padding: 'clamp(16px, 3vw, 24px) clamp(20px, 4vw, 32px)', 
     display: 'flex', 
     alignItems: 'center', 
     justifyContent: 'space-between',
     position: 'sticky',
     top: 0,
-    zIndex: 100
+    zIndex: 100,
+    flexWrap: 'wrap',
+    gap: 'clamp(12px, 2vw, 20px)'
   },
   
-  headerBrand: { display: 'flex', alignItems: 'center', gap: 16 },
-  brandMark: { fontSize: 28, color: '#8b5cf6', fontWeight: 700 },
-  brandName: { fontFamily: "'Inter', sans-serif", fontSize: 20, fontWeight: 800, color: '#ffffff', letterSpacing: 1 },
-  brandSub: { fontSize: 11, color: '#a78bfa', letterSpacing: 1, marginTop: 2, fontWeight: 500 },
-  headerStatus: { display: 'flex', alignItems: 'center', gap: 10 },
-  statusDot: { width: 8, height: 8, borderRadius: '50%', background: '#10b981', animation: 'pulse 2s infinite' },
-  statusText: { fontSize: 10, color: '#10b981', letterSpacing: 1, fontWeight: 600 },
+  headerBrand: { display: 'flex', alignItems: 'center', gap: 'clamp(12px, 2vw, 16px)' },
+  brandMark: { fontSize: 'clamp(20px, 4vw, 28px)', color: '#8b5cf6', fontWeight: 700 },
+  brandName: { fontFamily: "'Inter', sans-serif", fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 800, color: '#ffffff', letterSpacing: 1 },
+  brandSub: { fontSize: 'clamp(9px, 1.5vw, 11px)', color: '#a78bfa', letterSpacing: 1, marginTop: 2, fontWeight: 500 },
+  headerStatus: { display: 'flex', alignItems: 'center', gap: 'clamp(8px, 1.5vw, 10px)' },
+  statusDot: { width: 'clamp(6px, 1vw, 8px)', height: 'clamp(6px, 1vw, 8px)', borderRadius: '50%', background: '#10b981', animation: 'pulse 2s infinite' },
+  statusText: { fontSize: 'clamp(8px, 1.5vw, 10px)', color: '#10b981', letterSpacing: 1, fontWeight: 600 },
 
   tabs: { 
     background: 'linear-gradient(135deg, rgba(15, 15, 15, 0.6), rgba(26, 26, 26, 0.6))', 
     backdropFilter: 'blur(10px)',
     borderBottom: '1px solid rgba(139, 92, 246, 0.2)', 
-    padding: '0 32px', 
+    padding: '0 clamp(16px, 3vw, 32px)', 
     display: 'flex',
     position: 'sticky',
-    top: 89,
-    zIndex: 90
+    top: 'clamp(80px, 10vw, 89px)',
+    zIndex: 90,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    msOverflowStyle: 'none'
   },
   
   tab: { 
     background: 'none', 
     border: 'none', 
     color: '#6b7280', 
-    fontSize: 12, 
+    fontSize: 'clamp(10px, 1.5vw, 12px)', 
     fontWeight: 600, 
-    padding: '16px 24px', 
+    padding: 'clamp(12px, 2vw, 16px) clamp(16px, 2.5vw, 24px)', 
     cursor: 'pointer', 
     borderBottom: '3px solid transparent', 
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    borderRadius: '12px 12px 0 0',
-    margin: '0 2px'
+    borderRadius: 'clamp(8px, 1.5vw, 12px) clamp(8px, 1.5vw, 12px) 0 0',
+    margin: '0 clamp(1px, 0.5vw, 2px)',
+    whiteSpace: 'nowrap',
+    flexShrink: 0
   },
   
   tabActive: { 
@@ -629,41 +638,42 @@ const s: Record<string, React.CSSProperties> = {
   },
 
   main: { 
-    padding: '32px', 
+    padding: 'clamp(20px, 4vw, 32px)', 
     animation: 'fadeIn 0.4s ease',
-    minHeight: 'calc(100vh - 180px)'
+    minHeight: 'calc(100vh - clamp(160px, 15vw, 180px))',
+    overflowX: 'hidden'
   },
 
   statsRow: { 
     display: 'grid', 
-    gridTemplateColumns: 'repeat(4, 1fr)', 
-    gap: 20, 
-    marginBottom: 32 
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', 
+    gap: 'clamp(12px, 2vw, 20px)', 
+    marginBottom: 'clamp(20px, 4vw, 32px)' 
   },
   
   statCard: { 
     background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08))', 
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.2)', 
-    padding: '24px', 
-    borderRadius: '16px',
+    padding: 'clamp(16px, 3vw, 24px)', 
+    borderRadius: 'clamp(12px, 2vw, 16px)',
     transition: 'all 0.3s ease',
     position: 'relative',
     overflow: 'hidden'
   },
   
   statLabel: { 
-    fontSize: 11, 
+    fontSize: 'clamp(9px, 1.5vw, 11px)', 
     color: '#a78bfa', 
     fontWeight: 600, 
-    marginBottom: 8, 
+    marginBottom: 'clamp(6px, 1vw, 8px)', 
     textTransform: 'uppercase',
     letterSpacing: 1 
   },
   
   statValue: { 
     fontFamily: "'Inter', sans-serif", 
-    fontSize: 28, 
+    fontSize: 'clamp(20px, 4vw, 28px)', 
     fontWeight: 800, 
     color: '#ffffff',
     lineHeight: 1.2
@@ -671,8 +681,8 @@ const s: Record<string, React.CSSProperties> = {
 
   toolbar: { 
     display: 'flex', 
-    gap: 12, 
-    marginBottom: 24, 
+    gap: 'clamp(8px, 1.5vw, 12px)', 
+    marginBottom: 'clamp(16px, 3vw, 24px)', 
     alignItems: 'center', 
     flexWrap: 'wrap' 
   },
@@ -682,26 +692,27 @@ const s: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.3)', 
     color: '#e5e5e5', 
-    padding: '12px 16px', 
-    fontSize: 14, 
-    width: 320, 
+    padding: 'clamp(10px, 2vw, 12px) clamp(12px, 2vw, 16px)', 
+    fontSize: 'clamp(12px, 2vw, 14px)', 
+    width: '100%', 
+    maxWidth: 'clamp(250px, 30vw, 320px)', 
     transition: 'all 0.3s ease', 
     flex: 1, 
-    minWidth: 200,
-    borderRadius: '12px'
+    minWidth: 'clamp(150px, 20vw, 200px)',
+    borderRadius: 'clamp(8px, 1.5vw, 12px)'
   },
   
   primaryBtn: { 
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
     border: 'none', 
     color: '#ffffff', 
-    padding: '12px 24px', 
-    fontSize: 12, 
+    padding: 'clamp(10px, 2vw, 12px) clamp(16px, 3vw, 24px)', 
+    fontSize: 'clamp(10px, 1.5vw, 12px)', 
     fontWeight: 600, 
     cursor: 'pointer', 
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', 
     whiteSpace: 'nowrap',
-    borderRadius: '12px',
+    borderRadius: 'clamp(8px, 1.5vw, 12px)',
     boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
   },
   
@@ -710,13 +721,13 @@ const s: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.3)', 
     color: '#e5e5e5', 
-    padding: '12px 24px', 
-    fontSize: 12, 
+    padding: 'clamp(10px, 2vw, 12px) clamp(16px, 3vw, 24px)', 
+    fontSize: 'clamp(10px, 1.5vw, 12px)', 
     fontWeight: 600, 
     cursor: 'pointer', 
     transition: 'all 0.3s ease', 
     whiteSpace: 'nowrap',
-    borderRadius: '12px'
+    borderRadius: 'clamp(8px, 1.5vw, 12px)'
   },
 
   tableWrap: { 
@@ -725,16 +736,20 @@ const s: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(139, 92, 246, 0.2)', 
     overflow: 'hidden', 
     overflowX: 'auto',
-    borderRadius: '16px',
+    borderRadius: 'clamp(12px, 2vw, 16px)',
     boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
   },
   
-  table: { width: '100%', borderCollapse: 'collapse', minWidth: 600 },
+  table: { 
+    width: '100%', 
+    borderCollapse: 'collapse', 
+    minWidth: 'clamp(500px, 80vw, 600px)'
+  },
   th: { 
     background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))', 
-    padding: '16px', 
+    padding: 'clamp(12px, 2vw, 16px)', 
     textAlign: 'left' as const, 
-    fontSize: 11, 
+    fontSize: 'clamp(9px, 1.5vw, 11px)', 
     color: '#a78bfa', 
     fontWeight: 700, 
     borderBottom: '1px solid rgba(139, 92, 246, 0.3)', 
@@ -742,11 +757,12 @@ const s: Record<string, React.CSSProperties> = {
     top: 0, 
     zIndex: 10,
     textTransform: 'uppercase',
-    letterSpacing: 1
+    letterSpacing: 1,
+    whiteSpace: 'nowrap'
   },
   
   td: { 
-    padding: '16px', 
+    padding: 'clamp(12px, 2vw, 16px)', 
     fontSize: 13, 
     borderBottom: '1px solid rgba(139, 92, 246, 0.1)', 
     verticalAlign: 'middle' as const,
@@ -754,19 +770,19 @@ const s: Record<string, React.CSSProperties> = {
   },
   
   emptyCell: { 
-    padding: '48px 16px', 
+    padding: 'clamp(24px, 4vw, 48px) clamp(12px, 2vw, 16px)', 
     textAlign: 'center' as const, 
     color: '#6b7280', 
-    fontSize: 13,
+    fontSize: 'clamp(11px, 1.5vw, 13px)',
     fontStyle: 'italic'
   },
   
   badge: { 
-    fontSize: 10, 
+    fontSize: 'clamp(8px, 1vw, 10px)', 
     fontWeight: 600, 
-    padding: '4px 10px', 
+    padding: 'clamp(2px, 0.5vw, 4px) clamp(6px, 1vw, 10px)', 
     border: '1px solid', 
-    borderRadius: '8px', 
+    borderRadius: 'clamp(4px, 0.8vw, 8px)', 
     whiteSpace: 'nowrap',
     textTransform: 'uppercase',
     letterSpacing: 0.5
@@ -776,56 +792,56 @@ const s: Record<string, React.CSSProperties> = {
     background: 'rgba(99, 102, 241, 0.1)', 
     border: '1px solid rgba(99, 102, 241, 0.3)', 
     color: '#818cf8', 
-    padding: '6px 12px', 
-    fontSize: 10, 
+    padding: 'clamp(4px, 0.8vw, 6px) clamp(8px, 1.5vw, 12px)', 
+    fontSize: 'clamp(8px, 1vw, 10px)', 
     fontWeight: 600, 
     cursor: 'pointer', 
     transition: 'all 0.3s ease', 
-    borderRadius: '8px'
+    borderRadius: 'clamp(4px, 0.8vw, 8px)'
   },
   
   deleteBtn: { 
     background: 'rgba(239, 68, 68, 0.1)', 
     border: '1px solid rgba(239, 68, 68, 0.3)', 
     color: '#f87171', 
-    padding: '6px 12px', 
-    fontSize: 10, 
+    padding: 'clamp(4px, 0.8vw, 6px) clamp(8px, 1.5vw, 12px)', 
+    fontSize: 'clamp(8px, 1vw, 10px)', 
     fontWeight: 600, 
     cursor: 'pointer', 
     transition: 'all 0.3s ease', 
-    borderRadius: '8px'
+    borderRadius: 'clamp(4px, 0.8vw, 8px)'
   },
   
   deleteConfirmBtn: { 
     background: 'rgba(239,68,68,0.2)', 
     border: '1px solid rgba(239,68,68,0.5)', 
     color: '#ef4444', 
-    padding: '6px 12px', 
-    fontSize: 10, 
+    padding: 'clamp(4px, 0.8vw, 6px) clamp(8px, 1.5vw, 12px)', 
+    fontSize: 'clamp(8px, 1vw, 10px)', 
     fontWeight: 600,
     cursor: 'pointer', 
-    borderRadius: '8px'
+    borderRadius: 'clamp(4px, 0.8vw, 8px)'
   },
   
   cancelBtn: { 
     background: 'rgba(107, 114, 128, 0.1)', 
     border: '1px solid rgba(107, 114, 128, 0.3)', 
     color: '#9ca3af', 
-    padding: '6px 12px', 
-    fontSize: 10, 
+    padding: 'clamp(4px, 0.8vw, 6px) clamp(8px, 1.5vw, 12px)', 
+    fontSize: 'clamp(8px, 1vw, 10px)', 
     fontWeight: 600,
     cursor: 'pointer', 
-    borderRadius: '8px'
+    borderRadius: 'clamp(4px, 0.8vw, 8px)'
   },
 
   convoLayout: { 
     display: 'grid', 
-    gridTemplateColumns: '300px 1fr', 
+    gridTemplateColumns: 'clamp(250px, 30vw, 300px) 1fr', 
     gap: 0, 
     border: '1px solid rgba(139, 92, 246, 0.2)', 
-    height: 'calc(100vh - 220px)', 
+    height: 'clamp(400px, 60vh, calc(100vh - 220px))', 
     overflow: 'hidden',
-    borderRadius: '16px',
+    borderRadius: 'clamp(12px, 2vw, 16px)',
     background: 'rgba(255, 255, 255, 0.02)',
     backdropFilter: 'blur(10px)'
   },
@@ -837,8 +853,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   
   convoListHeader: { 
-    padding: '16px 20px', 
-    fontSize: 11, 
+    padding: 'clamp(12px, 2vw, 16px) clamp(16px, 2.5vw, 20px)', 
+    fontSize: 'clamp(9px, 1.5vw, 11px)', 
     color: '#a78bfa', 
     fontWeight: 700, 
     borderBottom: '1px solid rgba(139, 92, 246, 0.2)',
@@ -847,15 +863,15 @@ const s: Record<string, React.CSSProperties> = {
   },
   
   convoEmpty: { 
-    padding: 32, 
-    fontSize: 12, 
+    padding: 'clamp(20px, 3vw, 32px)', 
+    fontSize: 'clamp(10px, 1.5vw, 12px)', 
     color: '#6b7280', 
     lineHeight: 1.6,
     textAlign: 'center' as const
   },
   
   convoItem: { 
-    padding: '16px 20px', 
+    padding: 'clamp(12px, 2vw, 16px) clamp(16px, 2.5vw, 20px)', 
     borderBottom: '1px solid rgba(139, 92, 246, 0.1)', 
     transition: 'all 0.3s ease', 
     borderLeft: '3px solid transparent', 
@@ -868,20 +884,22 @@ const s: Record<string, React.CSSProperties> = {
   },
   
   convoName: { 
-    fontSize: 13, 
+    fontSize: 'clamp(11px, 1.5vw, 13px)', 
     color: '#ffffff', 
-    marginBottom: 4, 
-    fontWeight: 600
+    marginBottom: '4px', 
+    fontWeight: 600,
+    wordBreak: 'break-word'
   },
   
   convoPhone: { 
-    fontSize: 11, 
+    fontSize: 'clamp(9px, 1.5vw, 11px)', 
     color: '#6b7280', 
-    marginBottom: 4 
+    marginBottom: '4px',
+    wordBreak: 'break-all'
   },
   
   convoTime: { 
-    fontSize: 10, 
+    fontSize: 'clamp(8px, 1vw, 10px)', 
     color: '#9ca3af', 
     fontWeight: 500
   },
@@ -894,29 +912,32 @@ const s: Record<string, React.CSSProperties> = {
   },
   
   convoHeader: { 
-    padding: '20px 24px', 
+    padding: 'clamp(16px, 3vw, 20px) clamp(20px, 3vw, 24px)', 
     background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05))', 
     borderBottom: '1px solid rgba(139, 92, 246, 0.2)', 
     display: 'flex', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
+    gap: 'clamp(8px, 1vw, 12px)'
   },
   
   convoHeaderName: { 
-    fontSize: 15, 
+    fontSize: 'clamp(12px, 2vw, 15px)', 
     color: '#ffffff', 
-    marginBottom: 2, 
-    fontWeight: 700
+    marginBottom: '2px', 
+    fontWeight: 700,
+    wordBreak: 'break-word'
   },
   
   convoHeaderPhone: { 
-    fontSize: 12, 
-    color: '#6b7280' 
+    fontSize: 'clamp(10px, 1.5vw, 12px)', 
+    color: '#6b7280',
+    wordBreak: 'break-all'
   },
   
   convoHeaderTime: { 
-    fontSize: 11, 
+    fontSize: 'clamp(9px, 1vw, 11px)', 
     color: '#9ca3af',
     fontWeight: 500
   },
@@ -924,23 +945,23 @@ const s: Record<string, React.CSSProperties> = {
   messageList: { 
     flex: 1, 
     overflow: 'auto', 
-    padding: 24, 
+    padding: 'clamp(16px, 3vw, 24px)', 
     display: 'flex', 
     flexDirection: 'column', 
-    gap: 16 
+    gap: 'clamp(12px, 2vw, 16px)' 
   },
   
   messageBubble: { 
     maxWidth: '70%', 
-    padding: '12px 16px', 
+    padding: 'clamp(10px, 2vw, 12px) clamp(12px, 2vw, 16px)', 
     border: '1px solid rgba(139, 92, 246, 0.2)', 
-    borderRadius: '16px', 
+    borderRadius: 'clamp(12px, 2vw, 16px)', 
     wordBreak: 'break-word',
     backdropFilter: 'blur(10px)'
   },
   
   messageText: { 
-    fontSize: 13, 
+    fontSize: 'clamp(11px, 1.5vw, 13px)', 
     lineHeight: 1.6, 
     color: '#e5e5e5' 
   },
@@ -951,18 +972,20 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: 'column', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    gap: 16 
+    gap: 'clamp(12px, 2vw, 16px)' 
   },
   
   convoPlaceholderIcon: { 
-    fontSize: 48, 
+    fontSize: 'clamp(36px, 6vw, 48px)', 
     color: '#4b5563' 
   },
   
   convoPlaceholderText: { 
-    fontSize: 13, 
+    fontSize: 'clamp(11px, 1.5vw, 13px)', 
     color: '#6b7280', 
-    fontWeight: 500 
+    fontWeight: 500,
+    textAlign: 'center',
+    padding: '0 clamp(16px, 3vw, 32px)'
   },
 
   overlay: { 
@@ -974,18 +997,18 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center', 
     justifyContent: 'center', 
     zIndex: 200, 
-    padding: 20 
+    padding: 'clamp(16px, 3vw, 32px)'
   },
   
   modalCard: { 
     background: 'linear-gradient(135deg, rgba(15, 15, 15, 0.95), rgba(26, 26, 26, 0.95))', 
     backdropFilter: 'blur(20px)',
     border: '1px solid rgba(139, 92, 246, 0.3)', 
-    padding: '40px', 
-    width: 520, 
+    padding: 'clamp(24px, 4vw, 40px)', 
+    width: 'clamp(300px, 90vw, 520px)', 
     maxWidth: '95vw', 
     animation: 'fadeIn 0.3s ease', 
-    borderRadius: '20px', 
+    borderRadius: 'clamp(16px, 3vw, 20px)', 
     maxHeight: '90vh', 
     overflow: 'auto',
     boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)'
@@ -993,30 +1016,31 @@ const s: Record<string, React.CSSProperties> = {
   
   modalTitle: { 
     fontFamily: "'Inter', sans-serif", 
-    fontSize: 22, 
+    fontSize: 'clamp(18px, 3vw, 22px)', 
     fontWeight: 800, 
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
-    marginBottom: 32, 
-    letterSpacing: -0.5
+    marginBottom: 'clamp(20px, 3vw, 32px)', 
+    letterSpacing: -0.5,
+    wordBreak: 'break-word'
   },
   
   modalGrid: { 
     display: 'grid', 
-    gridTemplateColumns: '1fr 1fr', 
-    gap: 24, 
-    marginBottom: 32 
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', 
+    gap: 'clamp(16px, 3vw, 24px)', 
+    marginBottom: 'clamp(20px, 3vw, 32px)' 
   },
   
   modalField: { 
     display: 'flex', 
     flexDirection: 'column', 
-    gap: 8 
+    gap: 'clamp(6px, 1vw, 8px)' 
   },
   
   modalLabel: { 
-    fontSize: 11, 
+    fontSize: 'clamp(9px, 1.5vw, 11px)', 
     color: '#a78bfa', 
     fontWeight: 600, 
     textTransform: 'uppercase',
@@ -1028,17 +1052,18 @@ const s: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.3)', 
     color: '#e5e5e5', 
-    padding: '12px 16px', 
-    fontSize: 14, 
+    padding: 'clamp(10px, 2vw, 12px) clamp(12px, 2vw, 16px)', 
+    fontSize: 'clamp(12px, 2vw, 14px)', 
     width: '100%', 
     transition: 'all 0.3s ease', 
-    borderRadius: '12px'
+    borderRadius: 'clamp(8px, 1.5vw, 12px)'
   },
   
   modalActions: { 
     display: 'flex', 
-    gap: 12, 
-    flexWrap: 'wrap' 
+    gap: 'clamp(8px, 1.5vw, 12px)', 
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
   },
 }
 
@@ -1092,18 +1117,118 @@ const css = `
   }
   
   @keyframes slideIn { 
-    from { opacity: 0; transform: translateX(-20px); } 
+    from { opacity: 0; transform: translateX(20px); } 
     to { opacity: 1; transform: translateX(0); } 
   }
   
   @keyframes pulse { 
-    0%, 100% { opacity: 1; transform: scale(1); } 
-    50% { opacity: 0.8; transform: scale(1.05); } 
+    0%, 100% { opacity: 1; } 
+    50% { opacity: 0.5; } 
   }
   
-  @keyframes shimmer {
-    0% { background-position: -200% center; }
-    100% { background-position: 200% center; }
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .convoLayout {
+      grid-template-columns: 1fr;
+      grid-template-rows: clamp(200px, 30vh, 300px) 1fr;
+    }
+    
+    .convoList {
+      border-right: none;
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+    }
+    
+    .messageBubble {
+      max-width: 85%;
+    }
+    
+    .table {
+      font-size: 12px;
+    }
+    
+    .td {
+      padding: 8px 12px;
+    }
+    
+    .th {
+      padding: 8px 12px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .statsRow {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    
+    .modalGrid {
+      grid-template-columns: 1fr;
+    }
+    
+    .toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .searchInput {
+      max-width: 100%;
+    }
+    
+    .primaryBtn, .ghostBtn {
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+  }
+  
+  @media (hover: hover) {
+    .tr-hover:hover {
+      background: rgba(139, 92, 246, 0.05);
+      transform: translateX(2px);
+      transition: all 0.2s ease;
+    }
+    
+    .action-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+      transition: all 0.2s ease;
+    }
+  }
+  
+  /* Touch device optimizations */
+  @media (pointer: coarse) {
+    .tab, .button, .editBtn, .deleteBtn {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    .messageBubble {
+      padding: 16px;
+    }
+  }
+  
+  /* High contrast mode support */
+  @media (prefers-contrast: high) {
+    .root {
+      background: #000000;
+      color: #ffffff;
+    }
+    
+    .modalCard {
+      border: 2px solid #ffffff;
+    }
+    
+    .tableWrap {
+      border: 2px solid #8b5cf6;
+    }
+  }
+  
+  /* Reduced motion support */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
   
   /* Utility Classes */
@@ -1138,8 +1263,8 @@ const css = `
   
   .currency-selector {
     position: absolute;
-    top: 20px;
-    right: 20px;
+    top: clamp(12px, 2vw, 20px);
+    right: clamp(12px, 2vw, 20px);
     z-index: 10;
   }
   
@@ -1147,8 +1272,8 @@ const css = `
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
     border: 1px solid rgba(139, 92, 246, 0.3);
     color: #e5e5e5;
-    padding: 8px 16px;
-    border-radius: 12px;
+    padding: clamp(6px, 1vw, 8px) clamp(12px, 2vw, 16px);
+    border-radius: clamp(8px, 1.5vw, 12px);
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
