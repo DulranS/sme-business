@@ -23,13 +23,14 @@ OUTPUT_COLUMNS = [
     'linkedin_company', 'linkedin_ceo', 'linkedin_founder', 'phone_primary',
     'email_primary', 'contact_page_found', 'social_media_score',
     'lead_quality_score', 'contact_confidence', 'best_contact_method',
-    'decision_maker_found', 'tech_stack_detected', 'company_size_indicator'
+    'decision_maker_found', 'tech_stack_detected', 'company_size_indicator',
+    'facebook', 'youtube'
 ]
 
 # Scraper settings
 EMAIL_TIMEOUT = 8
 MAX_RETRIES = 2
-MAX_PAGES_PER_SITE = 8
+MAX_PAGES_PER_SITE = 12
 MAX_WORKERS = 8
 REQUEST_DELAY_MIN = 0.5
 REQUEST_DELAY_MAX = 1.0
@@ -44,7 +45,8 @@ domain_lock_manager = Lock()
 PRIORITY_PATHS = [
     '/contact', '/contact-us', '/about', '/about-us', '/team', '/info',
     '/support', '/get-in-touch', '/reach-us', '/leadership', '/our-team',
-    '/meet-the-team', '/careers', '/privacy', '/impressum'
+    '/meet-the-team', '/careers', '/privacy', '/impressum', '/services',
+    '/products', '/blog', '/news', '/company', '/locations', '/offices'
 ]
 
 # Enhanced regex patterns
@@ -53,6 +55,8 @@ INSTAGRAM_PATTERN = re.compile(r'https?://(www\.)?instagram\.com/([A-Za-z0-9._-]
 TWITTER_PATTERN = re.compile(r'https?://(www\.|mobile\.)?(twitter\.com|x\.com)/([A-Za-z0-9_]{1,15})/?', re.IGNORECASE)
 LINKEDIN_PATTERN = re.compile(r'https?://(?:www\.)?linkedin\.com/(?:company|in)/([A-Za-z0-9-]+)/?', re.IGNORECASE)
 LINKEDIN_COMPANY_PATTERN = re.compile(r'https?://(?:www\.)?linkedin\.com/company/([A-Za-z0-9-]+)/?', re.IGNORECASE)
+FACEBOOK_PATTERN = re.compile(r'https?://(www\.)?facebook\.com/([A-Za-z0-9.]+)/?', re.IGNORECASE)
+YOUTUBE_PATTERN = re.compile(r'https?://(www\.)?youtube\.com/(?:channel/|user/|@)?([A-Za-z0-9_-]+)/?', re.IGNORECASE)
 PHONE_PATTERN = re.compile(
     r'(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{2,4}',
     re.IGNORECASE
@@ -287,7 +291,9 @@ def extract_social_profiles(soup):
     profiles = {
         'linkedin_company': '',
         'linkedin_ceo': '',
-        'linkedin_founder': ''
+        'linkedin_founder': '',
+        'facebook': '',
+        'youtube': ''
     }
     
     for a_tag in soup.find_all('a', href=True):
@@ -312,6 +318,20 @@ def extract_social_profiles(soup):
                     elif any(title in anchor_text for title in ['founder', 'co-founder']):
                         if not profiles['linkedin_founder']:
                             profiles['linkedin_founder'] = f"https://www.linkedin.com/in/{profile_id}/"
+        
+        if not profiles['facebook'] and 'facebook.com' in href:
+            fb_match = FACEBOOK_PATTERN.search(href)
+            if fb_match:
+                page_id = fb_match.group(2)
+                if page_id and page_id not in ['pages', 'groups', 'events']:
+                    profiles['facebook'] = f"https://www.facebook.com/{page_id}/"
+        
+        if not profiles['youtube'] and 'youtube.com' in href:
+            yt_match = YOUTUBE_PATTERN.search(href)
+            if yt_match:
+                channel_id = yt_match.group(2)
+                if channel_id:
+                    profiles['youtube'] = f"https://www.youtube.com/@{channel_id}/"
     
     return profiles
 
@@ -391,6 +411,10 @@ def determine_best_contact_method(data):
         methods.append('LinkedIn')
     if data.get('instagram'):
         methods.append('Instagram DM')
+    if data.get('facebook'):
+        methods.append('Facebook Message')
+    if data.get('youtube'):
+        methods.append('YouTube Comment')
     
     if not methods:
         return 'Website Form'
@@ -403,7 +427,8 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
             'emails': set(), 'phones': set(), 'instagram': '', 'twitter': '',
             'linkedin_company': '', 'linkedin_ceo': '', 'linkedin_founder': '',
             'contact_page_found': False, 'social_media_score': 0,
-            'decision_maker_found': False, 'tech_stack': [], 'company_size': 'unknown'
+            'decision_maker_found': False, 'tech_stack': [], 'company_size': 'unknown',
+            'facebook': '', 'youtube': ''
         }
     
     parsed = urlparse(root_url)
@@ -413,7 +438,8 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
         'emails': set(), 'phones': set(), 'instagram': '', 'twitter': '',
         'linkedin_company': '', 'linkedin_ceo': '', 'linkedin_founder': '',
         'contact_page_found': False, 'social_media_score': 0,
-        'decision_maker_found': False, 'tech_stack': [], 'company_size': 'unknown'
+        'decision_maker_found': False, 'tech_stack': [], 'company_size': 'unknown',
+        'facebook': '', 'youtube': ''
     }
     
     if existing_phone:
@@ -474,7 +500,7 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
             
             if urlparse(full_url).netloc == parsed.netloc and len(visited) < MAX_PAGES_PER_SITE:
                 if full_url not in visited and full_url not in urls_to_check:
-                    if any(keyword in full_url.lower() for keyword in ['contact', 'about', 'team']):
+                    if any(keyword in full_url.lower() for keyword in ['contact', 'about', 'team', 'services', 'products', 'blog', 'news', 'company']):
                         urls_to_check.appendleft(full_url)
         
         html_text = str(soup)
@@ -511,7 +537,7 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
     result['tech_stack'] = detect_tech_stack(all_html)
     result['company_size'] = estimate_company_size(all_text)
     result['social_media_score'] = sum([
-        1 for val in [result['instagram'], result['twitter'], result['linkedin_company']] if val
+        1 for val in [result['instagram'], result['twitter'], result['linkedin_company'], result['facebook'], result['youtube']] if val
     ])
     
     clean_emails = set()
@@ -551,6 +577,8 @@ def process_row(row):
         row['linkedin_company'] = data['linkedin_company']
         row['linkedin_ceo'] = data['linkedin_ceo']
         row['linkedin_founder'] = data['linkedin_founder']
+        row['facebook'] = data['facebook']
+        row['youtube'] = data['youtube']
         row['contact_page_found'] = "Yes" if data['contact_page_found'] else "No"
         row['social_media_score'] = str(data['social_media_score'])
         row['decision_maker_found'] = "Yes" if data['decision_maker_found'] else "No"
@@ -576,7 +604,7 @@ def process_row(row):
     except Exception as e:
         logger.warning(f"Failed to scrape {business_name}: {str(e)[:100]}")
         for field in ['email', 'email_primary', 'instagram', 'twitter', 'linkedin_company', 
-                      'linkedin_ceo', 'linkedin_founder', 'tech_stack_detected']:
+                      'linkedin_ceo', 'linkedin_founder', 'facebook', 'youtube', 'tech_stack_detected']:
             row[field] = ""
         row['contact_page_found'] = "No"
         row['social_media_score'] = "0"
@@ -644,7 +672,7 @@ def main():
     
     enrichment_fields = [
         'email', 'email_primary', 'instagram', 'twitter', 'linkedin_company',
-        'linkedin_ceo', 'linkedin_founder', 'phone_primary', 'contact_page_found',
+        'linkedin_ceo', 'linkedin_founder', 'facebook', 'youtube', 'phone_primary', 'contact_page_found',
         'social_media_score', 'lead_quality_score', 'contact_confidence',
         'best_contact_method', 'decision_maker_found', 'tech_stack_detected',
         'company_size_indicator'
