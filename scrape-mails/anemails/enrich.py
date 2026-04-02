@@ -482,6 +482,16 @@ def scrape_all_data_from_site(root_url, existing_phone=""):
         page_phones = extract_phone_numbers(html_text)
         result['phones'].update(page_phones)
         
+        # Extract emails from full HTML
+        raw_emails_html = set(re.findall(EMAIL_PATTERN, html_text))
+        valid_emails_html = {e.lower() for e in raw_emails_html if is_relevant_email(e, base_domain)}
+        result['emails'].update(valid_emails_html)
+        
+        # Extract mailto emails
+        mailto_matches = re.findall(r'mailto:([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})', html_text, re.IGNORECASE)
+        valid_mailto = {e.lower() for e in mailto_matches if is_relevant_email(e, base_domain)}
+        result['emails'].update(valid_mailto)
+        
         for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'svg', 'iframe']):
             tag.decompose()
         
@@ -517,6 +527,7 @@ def process_row(row):
     business_name = row.get('business_name', 'Unknown')
     website = row.get('website', "")
     existing_phone = row.get('whatsapp_number', "")
+    original_website = row.get('website', "")
     
     try:
         data = scrape_all_data_from_site(website, existing_phone)
@@ -580,6 +591,7 @@ def process_row(row):
         else:
             row['phone_primary'] = existing_phone
     
+    row['website'] = original_website
     return row
 
 def save_checkpoint(results, output_path, columns):
