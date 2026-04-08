@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { CurrencyService } from '@/lib/currency'
@@ -20,8 +20,34 @@ type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
 
+// Simple cache implementation
+class SimpleCache {
+  private static cache = new Map<string, { data: unknown; timestamp: number }>()
+  private static readonly CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
+  static get<T>(key: string): T | null {
+    const cached = this.cache.get(key)
+    if (!cached) return null
+
+    if (Date.now() - cached.timestamp > this.CACHE_DURATION) {
+      this.cache.delete(key)
+      return null
+    }
+
+    return cached.data as T
+  }
+
+  static set<T>(key: string, data: T): void {
+    this.cache.set(key, { data, timestamp: Date.now() })
+  }
+
+  static clear(): void {
+    this.cache.clear()
+  }
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
-export default function Dashboard() {
+const Dashboard = memo(() => {
   const [tab, setTab] = useState<Tab>('inventory')
   const [items, setItems] = useState<InventoryItem[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -41,23 +67,43 @@ export default function Dashboard() {
 
   // ─── Data fetching ─────────────────────────────────────────────────────────
   const fetchInventory = useCallback(async () => {
+    const cacheKey = `inventory_${search}`
+    const cached = SimpleCache.get<InventoryItem[]>(cacheKey)
+    if (cached) {
+      setItems(cached)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     let query = supabase.from('inventory').select('*').order('name')
     if (search) query = query.ilike('name', `%${search}%`)
     const { data } = await query
-    setItems(data || [])
+    const items = data || []
+    setItems(items)
+    SimpleCache.set(cacheKey, items)
     setLoading(false)
-  }, [search])
+  }, [search, supabase])
 
   const fetchConversations = useCallback(async () => {
+    const cacheKey = 'conversations'
+    const cached = SimpleCache.get<Conversation[]>(cacheKey)
+    if (cached) {
+      setConversations(cached)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     const { data } = await supabase
       .from('conversations')
       .select('*')
       .order('updated_at', { ascending: false })
-    setConversations(data || [])
+    const convos = data || []
+    setConversations(convos)
+    SimpleCache.set(cacheKey, convos)
     setLoading(false)
-  }, [])
+  }, [supabase])
 
   useEffect(() => {
     if (tab === 'inventory') fetchInventory()
@@ -125,15 +171,26 @@ export default function Dashboard() {
   }
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
-  const totalItems = items.length
-  const lowStock = items.filter(i => i.quantity <= 5 && i.quantity > 0).length
-  const outOfStock = items.filter(i => i.quantity === 0).length
-  const totalValue = items.reduce((sum, i) => sum + (i.price_usd * i.quantity), 0)
+  const stats = useMemo(() => {
+    const totalItems = items.length
+    const lowStock = items.filter(i => i.quantity <= 5 && i.quantity > 0).length
+    const outOfStock = items.filter(i => i.quantity === 0).length
+    const totalValue = items.reduce((sum, i) => sum + (i.price_usd * i.quantity), 0)
 
-  const handleCurrencyChange = (currencyCode: string) => {
+    return {
+      totalItems,
+      lowStock,
+      outOfStock,
+      totalValue: CurrencyService.formatPrice(totalValue, currentCurrency)
+    }
+  }, [items, currentCurrency])
+
+  const handleCurrencyChange = useCallback((currencyCode: string) => {
     setCurrentCurrency(currencyCode)
     CurrencyService.setCurrentCurrency(currencyCode)
-  }
+    // Clear cache when currency changes to ensure fresh data
+    SimpleCache.clear()
+  }, [])
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -155,11 +212,12 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           {/* Currency Selector */}
           <div style={{
-            background: 'rgba(255, 255, 255, 0.05)',
+            background: 'rgba(26, 26, 26, 0.8)',
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
+            border: '1px solid rgba(139, 92, 246, 0.4)',
             borderRadius: '8px',
-            padding: '4px 8px'
+            padding: '4px 8px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
           }}>
             <select 
               value={currentCurrency} 
@@ -167,15 +225,16 @@ export default function Dashboard() {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#e5e5e5',
+                color: '#ffffff',
                 fontSize: '12px',
                 fontWeight: '600',
                 outline: 'none',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                minWidth: '80px'
               }}
             >
               {Object.entries(CurrencyService.getAvailableCurrencies()).map(([code, currency]) => (
-                <option key={code} value={code} style={{ background: '#1a1a1a' }}>
+                <option key={code} value={code} style={{ background: '#1a1a1a', color: '#ffffff' }}>
                   {currency.code} ({currency.symbol})
                 </option>
               ))}
@@ -222,10 +281,10 @@ export default function Dashboard() {
             {/* Stats row */}
             <div style={s.statsRow}>
               {[
-                { label: 'TOTAL SKUs', value: totalItems, color: '#E8FF47' },
-                { label: 'INVENTORY VALUE', value: CurrencyService.formatPrice(totalValue, currentCurrency), color: '#E8FF47' },
-                { label: 'LOW STOCK', value: lowStock, color: '#F59E0B' },
-                { label: 'OUT OF STOCK', value: outOfStock, color: '#EF4444' },
+                { label: 'TOTAL SKUs', value: stats.totalItems, color: '#E8FF47' },
+                { label: 'INVENTORY VALUE', value: stats.totalValue, color: '#E8FF47' },
+                { label: 'LOW STOCK', value: stats.lowStock, color: '#F59E0B' },
+                { label: 'OUT OF STOCK', value: stats.outOfStock, color: '#EF4444' },
               ].map(stat => (
                 <div key={stat.label} style={s.statCard}>
                   <div style={s.statLabel}>{stat.label}</div>
@@ -549,7 +608,11 @@ export default function Dashboard() {
       <NotificationCenter />
     </div>
   )
-}
+})
+
+Dashboard.displayName = 'Dashboard'
+
+export default Dashboard
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
