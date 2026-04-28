@@ -67,6 +67,22 @@ const Dashboard = memo(() => {
   const supabase = getSupabaseClient()
 
   // ─── Data fetching ─────────────────────────────────────────────────────────
+  const showToast = useCallback((msg: string) => {
+    if (toastTimer) {
+      clearTimeout(toastTimer)
+    }
+
+    setToast(msg)
+    const timer = window.setTimeout(() => setToast(''), 3000)
+    setToastTimer(timer)
+  }, [toastTimer])
+
+  const reportError = useCallback((error: unknown, fallbackMessage: string) => {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(fallbackMessage, message)
+    showToast(fallbackMessage)
+  }, [showToast])
+
   const fetchInventory = useCallback(async () => {
     const cacheKey = `inventory_${search}`
     const cached = SimpleCache.get<InventoryItem[]>(cacheKey)
@@ -194,22 +210,6 @@ const Dashboard = memo(() => {
       reportError(error, 'Delete failed')
     }
   }
-
-  const showToast = useCallback((msg: string) => {
-    if (toastTimer) {
-      clearTimeout(toastTimer)
-    }
-
-    setToast(msg)
-    const timer = window.setTimeout(() => setToast(''), 3000)
-    setToastTimer(timer)
-  }, [toastTimer])
-
-  const reportError = useCallback((error: unknown, fallbackMessage: string) => {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(fallbackMessage, message)
-    showToast(fallbackMessage)
-  }, [showToast])
 
   // ─── Parse conversation history into messages ──────────────────────────────
   const parseHistory = (history: string) => {
