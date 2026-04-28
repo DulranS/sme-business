@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase'
+import { Config } from '@/lib/config'
 import { whatsappService } from '@/lib/whatsapp-blueprint'
 import { claudeBlueprintService } from '@/lib/claude-blueprint'
 import { logger } from '@/lib/logger'
 import { WhatsAppContact, WhatsAppMessage } from '@/types'
 
+Config.validate()
 const supabase = createSupabaseServerClient()
 
 export async function GET(request: NextRequest) {
@@ -64,6 +66,8 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
   const messageText = message.text?.body?.trim() || ''
   const customerName = whatsappService.getCustomerName(contact)
 
+  const startTime = Date.now()
+
   try {
     const { data: conversations, error: fetchError } = await supabase
       .from('conversations')
@@ -102,7 +106,7 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
     logger.whatsapp('WhatsApp reply sent', { to: normalizedPhone, messageId, preview: aiResponse.slice(0, 80) })
 
     await saveConversation(normalizedPhone, customerName, messageId, messageText, aiResponse, conversationHistory)
-    await trackConversationAnalytics(normalizedPhone, searchKeyword, inventoryResults.length, Date.now() - Number(message.timestamp || Date.now()))
+    await trackConversationAnalytics(normalizedPhone, searchKeyword, inventoryResults.length, Date.now() - startTime)
   } catch (error) {
     logger.error('Error processing WhatsApp message', {
       phoneNumber: rawPhoneNumber,
