@@ -58,7 +58,7 @@ const Dashboard = memo(() => {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
-  const [toastTimer, setToastTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+  const [toastTimer, setToastTimer] = useState<number | null>(null)
   const [selectedConvo, setSelectedConvo] = useState<Conversation | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [currentCurrency, setCurrentCurrency] = useState(CurrencyService.getCurrentCurrency())
