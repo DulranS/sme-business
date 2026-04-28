@@ -1,3 +1,5 @@
+import crypto from 'crypto'
+import { Config } from '@/lib/config'
 import { WhatsAppWebhookPayload, WhatsAppMessage, WhatsAppContact } from '@/types'
 
 export class WhatsAppService {
@@ -6,9 +8,10 @@ export class WhatsAppService {
   private appSecret: string
 
   constructor() {
-    this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || ''
-    this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN || ''
-    this.appSecret = process.env.WHATSAPP_APP_SECRET || ''
+    const whatsappConfig = Config.whatsapp
+    this.phoneNumberId = whatsappConfig.phoneNumberId
+    this.accessToken = whatsappConfig.accessToken
+    this.appSecret = whatsappConfig.appSecret
   }
 
   private validateEnvironment() {
@@ -93,17 +96,23 @@ export class WhatsAppService {
 
     this.ensureInitialized()
 
-    const crypto = require('crypto')
     const expectedSignature = 'sha256=' + crypto
       .createHmac('sha256', this.appSecret)
       .update(body)
       .digest('hex')
 
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+    const receivedBuffer = Buffer.from(signature)
+    const expectedBuffer = Buffer.from(expectedSignature)
+
+    if (receivedBuffer.length !== expectedBuffer.length) {
+      return false
+    }
+
+    return crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
   }
 
   verifyWebhookChallenge(mode: string | null, token: string | null): string | null {
-    if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    if (mode === 'subscribe' && token === Config.whatsapp.verifyToken) {
       return token
     }
     return null
@@ -112,7 +121,7 @@ export class WhatsAppService {
   async sendMessage(to: string, message: string, replyToMessageId?: string, whatsappPhoneNumberId?: string): Promise<void> {
     this.ensureInitialized()
     const senderId = whatsappPhoneNumberId || this.phoneNumberId
-    const url = `https://graph.facebook.com/v18.0/${senderId}/messages`
+    const url = `${Config.whatsapp.apiUrl}/${senderId}/messages`
 
     const payload = {
       messaging_product: 'whatsapp',
@@ -142,11 +151,15 @@ export class WhatsAppService {
     }
   }
 
-  parseWebhookPayload(body: any): {
+  parseWebhookPayload(body: unknown): {
     messages: WhatsAppMessage[]
     contacts: WhatsAppContact[]
     phoneNumberId: string | null
   } {
+    if (!body || !Array.isArray(body.entry)) {
+      throw new Error('Invalid WhatsApp webhook payload')
+    }
+
     const payload: WhatsAppWebhookPayload = body
     const messages = this.extractMessages(payload)
     const contacts = this.extractContacts(payload)
@@ -165,7 +178,7 @@ export class WhatsAppService {
     return history
   }
 
-  formatInventoryResults(items: any[]): string {
+  formatInventoryResults(items: Array<{ name?: string; quantity?: number; price?: number | string; sku?: string }>): string {
     if (!items || items.length === 0) {
       return 'No inventory results found for this query.'
     }

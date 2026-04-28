@@ -58,6 +58,7 @@ const Dashboard = memo(() => {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
+  const [toastTimer, setToastTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
   const [selectedConvo, setSelectedConvo] = useState<Conversation | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [currentCurrency, setCurrentCurrency] = useState(CurrencyService.getCurrentCurrency())
@@ -76,14 +77,20 @@ const Dashboard = memo(() => {
     }
 
     setLoading(true)
-    let query = supabase.from('inventory').select('*').order('name')
-    if (search) query = query.ilike('name', `%${search}%`)
-    const { data } = await query
-    const items = data || []
-    setItems(items)
-    SimpleCache.set(cacheKey, items)
-    setLoading(false)
-  }, [search, supabase])
+    try {
+      let query = supabase.from('inventory').select('*').order('name')
+      if (search) query = query.ilike('name', `%${search}%`)
+      const { data, error } = await query
+      if (error) throw error
+      const items = data || []
+      setItems(items)
+      SimpleCache.set(cacheKey, items)
+    } catch (error) {
+      reportError(error, 'Unable to load inventory')
+    } finally {
+      setLoading(false)
+    }
+  }, [search, supabase, reportError])
 
   const fetchConversations = useCallback(async () => {
     const cacheKey = 'conversations'
@@ -95,15 +102,21 @@ const Dashboard = memo(() => {
     }
 
     setLoading(true)
-    const { data } = await supabase
-      .from('conversations')
-      .select('*')
-      .order('updated_at', { ascending: false })
-    const convos = data || []
-    setConversations(convos)
-    SimpleCache.set(cacheKey, convos)
-    setLoading(false)
-  }, [supabase])
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .order('updated_at', { ascending: false })
+      if (error) throw error
+      const convos = data || []
+      setConversations(convos)
+      SimpleCache.set(cacheKey, convos)
+    } catch (error) {
+      reportError(error, 'Unable to load conversations')
+    } finally {
+      setLoading(false)
+    }
+  }, [supabase, reportError])
 
   useEffect(() => {
     if (tab === 'inventory') fetchInventory()
@@ -152,6 +165,10 @@ const Dashboard = memo(() => {
         if (error) throw error
         showToast('Item added')
       } else {
+        if (editId === null) {
+          throw new Error('No inventory item selected for update')
+        }
+
         const { error } = await supabase.from('inventory').update(normalizedForm).eq('id', editId)
         if (error) throw error
         showToast('Item updated')
@@ -166,17 +183,33 @@ const Dashboard = memo(() => {
   }
 
   const handleDelete = async (id: number) => {
-    const { error } = await supabase.from('inventory').delete().eq('id', id)
-    if (error) return showToast('Delete failed')
-    setDeleteConfirm(null)
-    showToast('Item deleted')
-    fetchInventory()
+    try {
+      const { error } = await supabase.from('inventory').delete().eq('id', id)
+      if (error) throw error
+
+      setDeleteConfirm(null)
+      showToast('Item deleted')
+      fetchInventory()
+    } catch (error) {
+      reportError(error, 'Delete failed')
+    }
   }
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
+    if (toastTimer) {
+      clearTimeout(toastTimer)
+    }
+
     setToast(msg)
-    setTimeout(() => setToast(''), 3000)
-  }
+    const timer = window.setTimeout(() => setToast(''), 3000)
+    setToastTimer(timer)
+  }, [toastTimer])
+
+  const reportError = useCallback((error: unknown, fallbackMessage: string) => {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(fallbackMessage, message)
+    showToast(fallbackMessage)
+  }, [showToast])
 
   // ─── Parse conversation history into messages ──────────────────────────────
   const parseHistory = (history: string) => {
