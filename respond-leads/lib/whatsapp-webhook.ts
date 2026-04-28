@@ -9,6 +9,9 @@ import { WhatsAppContact, WhatsAppMessage } from '@/types'
 Config.validate()
 const supabase = createSupabaseServerClient()
 
+const INVENTORY_SEARCH_TTL_MS = 60 * 1000 // Cache inventory search results for 1 minute
+const inventorySearchCache = new Map<string, { expiresAt: number; results: unknown[] }>()
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const mode = searchParams.get('hub.mode')
@@ -121,6 +124,13 @@ async function searchInventory(searchKeyword: string) {
     return []
   }
 
+  const cacheKey = `inventory_search:${searchKeyword.toLowerCase().trim()}`
+  const cached = inventorySearchCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    logger.debug('Using cached inventory search results', { searchKeyword, cacheKey })
+    return cached.results
+  }
+
   const safeKeyword = searchKeyword.replace(/[%_]/g, match => `\\${match}`)
   const filter = `name.ilike.%${safeKeyword}%,sku.eq.${safeKeyword},description.ilike.%${safeKeyword}%,category.ilike.%${safeKeyword}%`
 
@@ -136,7 +146,13 @@ async function searchInventory(searchKeyword: string) {
     return []
   }
 
-  return data || []
+  const results = data || []
+  inventorySearchCache.set(cacheKey, {
+    expiresAt: Date.now() + INVENTORY_SEARCH_TTL_MS,
+    results
+  })
+
+  return results
 }
 
 async function saveConversation(
