@@ -156,11 +156,17 @@ export class WhatsAppService {
     contacts: WhatsAppContact[]
     phoneNumberId: string | null
   } {
-    if (!body || !Array.isArray(body.entry)) {
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      !('entry' in body) ||
+      !Array.isArray((body as { entry?: unknown }).entry)
+    ) {
       throw new Error('Invalid WhatsApp webhook payload')
     }
 
-    const payload: WhatsAppWebhookPayload = body
+    const payload: WhatsAppWebhookPayload = body as WhatsAppWebhookPayload
     const messages = this.extractMessages(payload)
     const contacts = this.extractContacts(payload)
     const phoneNumberId = this.extractPhoneNumberId(payload) || null
