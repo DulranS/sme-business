@@ -1,4 +1,5 @@
 import { ClaudeMessage, ClaudeResponse } from '@/types'
+import { claudeResponseCache } from '@/lib/cache'
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages'
 const CLAUDE_VERSION = '2023-06-01'
@@ -17,6 +18,12 @@ export class ClaudeBlueprintService {
   async extractKeyword(messageText: string): Promise<string> {
     if (!this.apiKey) {
       return this.simpleKeywordExtraction(messageText)
+    }
+
+    const cacheKey = `keyword:${messageText.toLowerCase().trim()}`
+    const cached = claudeResponseCache.get(cacheKey)
+    if (cached && typeof cached === 'string') {
+      return cached
     }
 
     try {
@@ -68,6 +75,7 @@ Customer message: ${messageText || '[empty]'}`
       const data = await response.json()
       const keyword = data.content?.[0]?.text?.trim() || this.simpleKeywordExtraction(messageText)
       
+      claudeResponseCache.set(cacheKey, keyword)
       return keyword
     } catch (error) {
       console.error('Claude API error, falling back to simple extraction:', error)
@@ -85,6 +93,12 @@ Customer message: ${messageText || '[empty]'}`
   ): Promise<string> {
     if (!this.apiKey) {
       return this.simpleResponseGeneration(customerName, messageText, inventoryResults, conversationHistory)
+    }
+
+    const cacheKey = `response:${messageText.toLowerCase().trim()}:${searchKeyword}:${inventoryResults.length}`
+    const cached = claudeResponseCache.get(cacheKey)
+    if (cached && typeof cached === 'string') {
+      return cached
     }
 
     try {
@@ -147,6 +161,7 @@ Write your WhatsApp reply now...`
       const data = await response.json()
       const aiResponse = data.content?.[0]?.text?.trim() || this.simpleResponseGeneration(customerName, messageText, inventoryResults, conversationHistory)
       
+      claudeResponseCache.set(cacheKey, aiResponse)
       return aiResponse
     } catch (error) {
       console.error('Claude API error, falling back to simple response:', error)

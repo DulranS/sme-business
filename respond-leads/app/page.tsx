@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { CurrencyService } from '@/lib/currency'
+import { inventoryCache, conversationCache } from '@/lib/cache'
 import AnalyticsDashboard from '@/components/AnalyticsDashboard'
 import BulkOperations from '@/components/BulkOperations'
 import NotificationCenter from '@/components/NotificationCenter'
@@ -19,32 +20,6 @@ type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasti
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
-
-// Simple cache implementation
-class SimpleCache {
-  private static cache = new Map<string, { data: unknown; timestamp: number }>()
-  private static readonly CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
-
-  static get<T>(key: string): T | null {
-    const cached = this.cache.get(key)
-    if (!cached) return null
-
-    if (Date.now() - cached.timestamp > this.CACHE_DURATION) {
-      this.cache.delete(key)
-      return null
-    }
-
-    return cached.data as T
-  }
-
-  static set<T>(key: string, data: T): void {
-    this.cache.set(key, { data, timestamp: Date.now() })
-  }
-
-  static clear(): void {
-    this.cache.clear()
-  }
-}
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 const Dashboard = memo(() => {
@@ -84,10 +59,10 @@ const Dashboard = memo(() => {
   }, [showToast])
 
   const fetchInventory = useCallback(async () => {
-    const cacheKey = `inventory_${search}`
-    const cached = SimpleCache.get<InventoryItem[]>(cacheKey)
-    if (cached) {
-      setItems(cached)
+    const cacheKey = `inventory_search:${search.toLowerCase().trim()}`
+    const cached = inventoryCache.get(cacheKey)
+    if (cached && typeof cached === 'object' && Array.isArray(cached)) {
+      setItems(cached as InventoryItem[])
       setLoading(false)
       return
     }
@@ -100,7 +75,7 @@ const Dashboard = memo(() => {
       if (error) throw error
       const items = data || []
       setItems(items)
-      SimpleCache.set(cacheKey, items)
+      inventoryCache.set(cacheKey, items)
     } catch (error) {
       reportError(error, 'Unable to load inventory')
     } finally {
@@ -109,10 +84,10 @@ const Dashboard = memo(() => {
   }, [search, supabase, reportError])
 
   const fetchConversations = useCallback(async () => {
-    const cacheKey = 'conversations'
-    const cached = SimpleCache.get<Conversation[]>(cacheKey)
-    if (cached) {
-      setConversations(cached)
+    const cacheKey = 'conversations:all'
+    const cached = conversationCache.get(cacheKey)
+    if (cached && typeof cached === 'object' && Array.isArray(cached)) {
+      setConversations(cached as Conversation[])
       setLoading(false)
       return
     }
@@ -126,7 +101,7 @@ const Dashboard = memo(() => {
       if (error) throw error
       const convos = data || []
       setConversations(convos)
-      SimpleCache.set(cacheKey, convos)
+      conversationCache.set(cacheKey, convos)
     } catch (error) {
       reportError(error, 'Unable to load conversations')
     } finally {
@@ -241,8 +216,9 @@ const Dashboard = memo(() => {
   const handleCurrencyChange = useCallback((currencyCode: string) => {
     setCurrentCurrency(currencyCode)
     CurrencyService.setCurrentCurrency(currencyCode)
-    // Clear cache when currency changes to ensure fresh data
-    SimpleCache.clear()
+    // Invalidate caches when currency changes
+    inventoryCache.invalidatePattern('inventory_search')
+    conversationCache.invalidatePattern('conversations')
   }, [])
 
   // ─── Render ────────────────────────────────────────────────────────────────
