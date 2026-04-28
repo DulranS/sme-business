@@ -1,20 +1,333 @@
 {
-    "name": "WhatsApp AI Inventory Support V8 - Final",
+    "name": "WhatsApp AI Inventory Support - Universal",
     "flow": [
         {
             "id": 7,
             "module": "whatsapp-business-cloud:watchEvents2",
             "version": 1,
             "parameters": {
-                "hook": "",
-                "phoneNumberId": "1013623275168542"
+                "__IMTHOOK__": 3939800
             },
             "mapper": {},
             "metadata": {
                 "designer": {
                     "x": 0,
-                    "y": 300
-                }
+                    "y": 0
+                },
+                "restore": {
+                    "parameters": {
+                        "__IMTHOOK__": {
+                            "data": {
+                                "editable": "false"
+                            },
+                            "label": "Inventory"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTHOOK__",
+                        "type": "hook:whatsapp-business-cloud",
+                        "label": "Webhook",
+                        "required": true
+                    }
+                ],
+                "interface": [
+                    {
+                        "name": "id",
+                        "type": "text",
+                        "label": "WhatsApp Business Account ID"
+                    },
+                    {
+                        "name": "time",
+                        "type": "date",
+                        "label": "Time"
+                    },
+                    {
+                        "name": "field",
+                        "type": "text",
+                        "label": "Field"
+                    },
+                    {
+                        "name": "messaging_product",
+                        "type": "text",
+                        "label": "Messaging Product"
+                    },
+                    {
+                        "name": "metadata",
+                        "spec": [
+                            {
+                                "name": "display_phone_number",
+                                "type": "text",
+                                "label": "Display Phone Number"
+                            },
+                            {
+                                "name": "phone_number_id",
+                                "type": "text",
+                                "label": "Phone Number ID"
+                            }
+                        ],
+                        "type": "collection",
+                        "label": "Metadata"
+                    },
+                    {
+                        "name": "contacts",
+                        "spec": {
+                            "spec": [
+                                {
+                                    "name": "profile",
+                                    "spec": [
+                                        {
+                                            "name": "name",
+                                            "type": "text",
+                                            "label": "Name"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Profile"
+                                },
+                                {
+                                    "name": "wa_id",
+                                    "type": "text",
+                                    "label": "WhatsApp ID"
+                                }
+                            ],
+                            "type": "collection"
+                        },
+                        "type": "array",
+                        "label": "Contacts"
+                    },
+                    {
+                        "name": "messages",
+                        "spec": {
+                            "spec": [
+                                {
+                                    "name": "from",
+                                    "type": "text",
+                                    "label": "Sender"
+                                },
+                                {
+                                    "name": "id",
+                                    "type": "text",
+                                    "label": "Message ID"
+                                },
+                                {
+                                    "name": "timestamp",
+                                    "type": "date",
+                                    "label": "Timestamp"
+                                },
+                                {
+                                    "name": "text",
+                                    "spec": [
+                                        {
+                                            "name": "body",
+                                            "type": "text",
+                                            "label": "Body"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Text"
+                                },
+                                {
+                                    "name": "type",
+                                    "type": "text",
+                                    "label": "Type"
+                                },
+                                {
+                                    "name": "image",
+                                    "spec": [
+                                        {
+                                            "name": "caption",
+                                            "type": "text",
+                                            "label": "Caption"
+                                        },
+                                        {
+                                            "name": "mime_type",
+                                            "type": "text",
+                                            "label": "MIME Type"
+                                        },
+                                        {
+                                            "name": "sha256",
+                                            "type": "text",
+                                            "label": "SHA256"
+                                        },
+                                        {
+                                            "name": "id",
+                                            "type": "text",
+                                            "label": "Media ID"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Image"
+                                },
+                                {
+                                    "name": "audio",
+                                    "spec": [
+                                        {
+                                            "name": "mime_type",
+                                            "type": "text",
+                                            "label": "MIME Type"
+                                        },
+                                        {
+                                            "name": "sha256",
+                                            "type": "text",
+                                            "label": "SHA256"
+                                        },
+                                        {
+                                            "name": "id",
+                                            "type": "text",
+                                            "label": "Media ID"
+                                        },
+                                        {
+                                            "name": "voice",
+                                            "type": "boolean",
+                                            "label": "Voice"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Audio"
+                                },
+                                {
+                                    "name": "sticker",
+                                    "spec": [
+                                        {
+                                            "name": "mime_type",
+                                            "type": "text",
+                                            "label": "MIME Type"
+                                        },
+                                        {
+                                            "name": "sha256",
+                                            "type": "text",
+                                            "label": "SHA256"
+                                        },
+                                        {
+                                            "name": "id",
+                                            "type": "text",
+                                            "label": "Media ID"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Sticker"
+                                },
+                                {
+                                    "name": "location",
+                                    "spec": [
+                                        {
+                                            "name": "latitude",
+                                            "type": "number",
+                                            "label": "Latitude"
+                                        },
+                                        {
+                                            "name": "longitude",
+                                            "type": "number",
+                                            "label": "Longitude"
+                                        },
+                                        {
+                                            "name": "name",
+                                            "type": "text",
+                                            "label": "Name"
+                                        },
+                                        {
+                                            "name": "address",
+                                            "type": "text",
+                                            "label": "Address"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Location"
+                                },
+                                {
+                                    "name": "context",
+                                    "spec": [
+                                        {
+                                            "name": "from",
+                                            "type": "text",
+                                            "label": "From"
+                                        },
+                                        {
+                                            "name": "id",
+                                            "type": "text",
+                                            "label": "Context ID"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Context"
+                                },
+                                {
+                                    "name": "button",
+                                    "spec": [
+                                        {
+                                            "name": "payload",
+                                            "type": "text",
+                                            "label": "Payload"
+                                        },
+                                        {
+                                            "name": "text",
+                                            "type": "text",
+                                            "label": "Text"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Button"
+                                },
+                                {
+                                    "name": "interactive",
+                                    "spec": [
+                                        {
+                                            "name": "type",
+                                            "type": "text",
+                                            "label": "Type"
+                                        },
+                                        {
+                                            "name": "list_reply",
+                                            "spec": [
+                                                {
+                                                    "name": "id",
+                                                    "type": "number",
+                                                    "label": "ID"
+                                                },
+                                                {
+                                                    "name": "title",
+                                                    "type": "text",
+                                                    "label": "Title"
+                                                },
+                                                {
+                                                    "name": "description",
+                                                    "type": "text",
+                                                    "label": "Description"
+                                                }
+                                            ],
+                                            "type": "collection",
+                                            "label": "List Reply"
+                                        },
+                                        {
+                                            "name": "button_reply",
+                                            "spec": [
+                                                {
+                                                    "name": "id",
+                                                    "type": "number",
+                                                    "label": "ID"
+                                                },
+                                                {
+                                                    "name": "title",
+                                                    "type": "text",
+                                                    "label": "Title"
+                                                }
+                                            ],
+                                            "type": "collection",
+                                            "label": "Button Reply"
+                                        }
+                                    ],
+                                    "type": "collection",
+                                    "label": "Interactive"
+                                }
+                            ],
+                            "type": "collection"
+                        },
+                        "type": "array",
+                        "label": "Messages"
+                    }
+                ]
             }
         },
         {
@@ -22,15 +335,14 @@
             "module": "supabase:searchRows",
             "version": 1,
             "parameters": {
-                "accountId": "",
-                "tableId": "conversations"
+                "__IMTCONN__": 13929562
             },
             "filter": {
-                "name": "Text messages only — drop status updates, images, audio, etc.",
+                "name": "Text messages only",
                 "conditions": [
                     [
                         {
-                            "a": "{{7.messages[].type}}",
+                            "a": "{{7.messages[1].type}}",
                             "b": "text",
                             "o": "text:equal"
                         }
@@ -38,23 +350,247 @@
                 ]
             },
             "mapper": {
-                "filterType": "eq",
-                "filter": [
-                    {
-                        "name": "phone_number",
-                        "value": "{{7.messages[].from}}"
-                    }
-                ],
-                "orderBy": "updated_at",
-                "orderDirection": "desc",
-                "limit": "1"
+                "limit": "1",
+                "table": "conversations",
+                "search": [
+                    [
+                        {
+                            "a": "phone_number",
+                            "b": "{{replace(replace(7.messages[1].from; \" \"; \"\"); \"tel:\"; \"\")}}",
+                            "o": "text:eq."
+                        }
+                    ]
+                ]
             },
-            "allowEmptyBundle": true,
             "metadata": {
                 "designer": {
                     "x": 300,
-                    "y": 300
-                }
+                    "y": 0
+                },
+                "restore": {
+                    "expect": {
+                        "table": {
+                            "mode": "chose",
+                            "label": "conversations",
+                            "nested": [
+                                {
+                                    "name": "search",
+                                    "type": "filter",
+                                    "label": "Search criteria",
+                                    "options": {
+                                        "logic": "and",
+                                        "store": [
+                                            {
+                                                "label": "id",
+                                                "value": "id"
+                                            },
+                                            {
+                                                "label": "phone_number",
+                                                "value": "phone_number"
+                                            },
+                                            {
+                                                "label": "customer_name",
+                                                "value": "customer_name"
+                                            },
+                                            {
+                                                "label": "history",
+                                                "value": "history"
+                                            },
+                                            {
+                                                "label": "created_at",
+                                                "value": "created_at"
+                                            },
+                                            {
+                                                "label": "updated_at",
+                                                "value": "updated_at"
+                                            },
+                                            {
+                                                "label": "last_message_id",
+                                                "value": "last_message_id"
+                                            }
+                                        ],
+                                        "operators": [
+                                            {
+                                                "label": "Text",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "text:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "text:neq."
+                                                    },
+                                                    {
+                                                        "label": "Contains (case sensitive)",
+                                                        "value": "text:like."
+                                                    },
+                                                    {
+                                                        "label": "Contains (case insensitive)",
+                                                        "value": "text:ilike."
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Numbers",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "number:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "number:neq."
+                                                    },
+                                                    {
+                                                        "label": "Greater than",
+                                                        "value": "number:gt."
+                                                    },
+                                                    {
+                                                        "label": "Less than",
+                                                        "value": "number:lt."
+                                                    },
+                                                    {
+                                                        "label": "Greater than or equal to",
+                                                        "value": "number:gte."
+                                                    },
+                                                    {
+                                                        "label": "Less than or equal to",
+                                                        "value": "number:lte."
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Date",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "date:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "date:neq."
+                                                    },
+                                                    {
+                                                        "label": "Later than",
+                                                        "value": "date:gt."
+                                                    },
+                                                    {
+                                                        "label": "Earlier than",
+                                                        "value": "date:lt."
+                                                    },
+                                                    {
+                                                        "label": "Later than or equal to",
+                                                        "value": "date:gte."
+                                                    },
+                                                    {
+                                                        "label": "Earlier than or equal to",
+                                                        "value": "date:lte."
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Boolean",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "boolean:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "boolean:neq."
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "parameters": {
+                        "__IMTCONN__": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "supabase"
+                            },
+                            "label": "inventory-check"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTCONN__",
+                        "type": "account:supabase",
+                        "label": "Connection",
+                        "required": true
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "table",
+                        "type": "select",
+                        "label": "Table",
+                        "required": true
+                    },
+                    {
+                        "name": "limit",
+                        "type": "uinteger",
+                        "label": "Limit"
+                    },
+                    {
+                        "name": "search",
+                        "type": "filter",
+                        "label": "Search criteria"
+                    }
+                ],
+                "interface": [
+                    {
+                        "name": "__IMTLENGTH__",
+                        "type": "uinteger",
+                        "label": "Total number of bundles"
+                    },
+                    {
+                        "name": "__IMTINDEX__",
+                        "type": "uinteger",
+                        "label": "Bundle order position"
+                    },
+                    {
+                        "name": "id",
+                        "type": "number",
+                        "label": "id"
+                    },
+                    {
+                        "name": "phone_number",
+                        "type": "text",
+                        "label": "phone_number"
+                    },
+                    {
+                        "name": "customer_name",
+                        "type": "text",
+                        "label": "customer_name"
+                    },
+                    {
+                        "name": "history",
+                        "type": "text",
+                        "label": "history"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "text",
+                        "label": "created_at"
+                    },
+                    {
+                        "name": "updated_at",
+                        "type": "text",
+                        "label": "updated_at"
+                    },
+                    {
+                        "name": "last_message_id",
+                        "type": "text",
+                        "label": "last_message_id"
+                    }
+                ]
             }
         },
         {
@@ -63,31 +599,45 @@
             "version": 1,
             "parameters": {},
             "filter": {
-                "name": "Dedup — skip if this message ID was already processed",
+                "name": "Dedup - skip if this message ID was already processed",
                 "conditions": [
                     [
                         {
-                            "a": "{{7.messages[].id}}",
-                            "b": "{{9[].last_message_id}}",
-                            "o": "text:notequal"
+                            "o": "or",
+                            "conditions": [
+                                [
+                                    {
+                                        "a": "{{9.__IMTLENGTH__}}",
+                                        "b": "0",
+                                        "o": "number:eq."
+                                    }
+                                ],
+                                [
+                                    {
+                                        "a": "{{7.messages[1].id}}",
+                                        "b": "{{ifempty(9[1].last_message_id; \"\")}}",
+                                        "o": "text:notequal"
+                                    }
+                                ]
+                            ]
                         }
                     ]
                 ]
             },
             "mapper": {
                 "model": "claude-haiku-4-5",
-                "textPrompt": "Extract the single best product search keyword from the customer message below.\nIf the message is NOT about a specific product or inventory, return exactly: GENERAL\n\nRules:\n- Return ONLY the keyword or the word GENERAL\n- No punctuation, no explanation, no extra words\n- Max 5 words\n\nExamples:\n- Do you have Nike Air Max in size 9? -> Nike Air Max\n- Is the iPhone 15 in stock? -> iPhone 15\n- What red dresses do you have? -> red dress\n- How many units of SKU-4821 left? -> SKU-4821\n- Hello, what are your store hours? -> GENERAL\n- Hi! -> GENERAL\n- Can I make a return? -> GENERAL\n- What payment methods do you accept? -> GENERAL\n- Thank you! -> GENERAL\n- [empty] -> GENERAL\n\nCustomer message: {{ifempty(7.messages[].text.body; \"[empty]\")}}",
-                "max_tokens": "50"
+                "max_tokens": "50",
+                "textPrompt": "Extract the single best product search keyword from the customer message below.\nIf the message is NOT about a specific product or inventory, return exactly: GENERAL\n\nRules:\n- Return ONLY the keyword or the word GENERAL\n- No punctuation, no explanation, no extra words\n- Max 5 words\n- If the message contains an SKU pattern (SKU-#### or SKU-####-##), return ONLY that SKU exactly as written\n- If multiple products are mentioned, return the FIRST one only\n- If the message is ambiguous, generic, or not product-related, return GENERAL\n- Trim any leading/trailing whitespace from your output\n\nExamples:\n- Do you have Nike Air Max in size 9? -> Nike Air Max\n- Is the iPhone 15 in stock? -> iPhone 15\n- What red dresses do you have? -> red dress\n- How many units of SKU-4821 left? -> SKU-4821\n- Do you have SKU-9999 or Nike shoes? -> SKU-9999\n- Hello, what are your store hours? -> GENERAL\n- Hi! -> GENERAL\n- Can I make a return? -> GENERAL\n- What payment methods do you accept? -> GENERAL\n- Thank you! -> GENERAL\n- [empty] -> GENERAL\n- I need help with my order -> GENERAL\n- Where is my package? -> GENERAL\n\nCustomer message: {{ifempty(7.messages[1].text.body; \"[empty]\")}}"
             },
             "metadata": {
                 "designer": {
                     "x": 600,
-                    "y": 300
+                    "y": 0
                 },
                 "restore": {
                     "expect": {
                         "model": {
-                            "label": "Claude Haiku 4.5"
+                            "label": "Claude Haiku 4.5The quickest option, perfect for simple questions and instant, straightforward answers"
                         }
                     }
                 },
@@ -119,7 +669,8 @@
                         "label": "Max Tokens",
                         "required": true
                     }
-                ]
+                ],
+                "advanced": true
             }
         },
         {
@@ -127,25 +678,489 @@
             "module": "supabase:searchRows",
             "version": 1,
             "parameters": {
-                "accountId": "",
-                "tableId": "inventory"
+                "__IMTCONN__": 13929562
+            },
+            "filter": {
+                "name": "Skip GENERAL keyword - only search inventory for product queries",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{trim(8.result)}}",
+                            "b": "GENERAL",
+                            "o": "text:notequal"
+                        }
+                    ],
+                    [
+                        {
+                            "a": "is_active",
+                            "b": "true",
+                            "o": "boolean:eq."
+                        }
+                    ]
+                ]
             },
             "mapper": {
-                "filterType": "ilike",
-                "filter": [
-                    {
-                        "name": "name",
-                        "value": "%{{8.result}}%"
-                    }
-                ],
-                "limit": "5"
+                "limit": "5",
+                "table": "inventory",
+                "search": [
+                    [
+                        {
+                            "a": "name",
+                            "b": "%{{trim(8.result)}}%",
+                            "o": "text:ilike."
+                        },
+                        {
+                            "a": "sku",
+                            "b": "{{trim(8.result)}}",
+                            "o": "text:eq."
+                        },
+                        {
+                            "a": "description",
+                            "b": "%{{trim(8.result)}}%",
+                            "o": "text:ilike."
+                        },
+                        {
+                            "a": "category",
+                            "b": "%{{trim(8.result)}}%",
+                            "o": "text:ilike."
+                        }
+                    ]
+                ]
             },
-            "allowEmptyBundle": true,
             "metadata": {
                 "designer": {
                     "x": 900,
-                    "y": 300
-                }
+                    "y": 0
+                },
+                "restore": {
+                    "expect": {
+                        "table": {
+                            "mode": "chose",
+                            "label": "inventory",
+                            "nested": [
+                                {
+                                    "name": "search",
+                                    "type": "filter",
+                                    "label": "Search criteria",
+                                    "options": {
+                                        "logic": "and",
+                                        "store": [
+                                            {
+                                                "label": "id",
+                                                "value": "id"
+                                            },
+                                            {
+                                                "label": "name",
+                                                "value": "name"
+                                            },
+                                            {
+                                                "label": "sku",
+                                                "value": "sku"
+                                            },
+                                            {
+                                                "label": "quantity",
+                                                "value": "quantity"
+                                            },
+                                            {
+                                                "label": "price",
+                                                "value": "price"
+                                            },
+                                            {
+                                                "label": "currency",
+                                                "value": "currency"
+                                            },
+                                            {
+                                                "label": "price_usd",
+                                                "value": "price_usd"
+                                            },
+                                            {
+                                                "label": "created_at",
+                                                "value": "created_at"
+                                            },
+                                            {
+                                                "label": "updated_at",
+                                                "value": "updated_at"
+                                            }
+                                        ],
+                                        "operators": [
+                                            {
+                                                "label": "Text",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "text:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "text:neq."
+                                                    },
+                                                    {
+                                                        "label": "Contains (case sensitive)",
+                                                        "value": "text:like."
+                                                    },
+                                                    {
+                                                        "label": "Contains (case insensitive)",
+                                                        "value": "text:ilike."
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Numbers",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "number:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "number:neq."
+                                                    },
+                                                    {
+                                                        "label": "Greater than",
+                                                        "value": "number:gt."
+                                                    },
+                                                    {
+                                                        "label": "Less than",
+                                                        "value": "number:lt."
+                                                    },
+                                                    {
+                                                        "label": "Greater than or equal to",
+                                                        "value": "number:gte."
+                                                    },
+                                                    {
+                                                        "label": "Less than or equal to",
+                                                        "value": "number:lte."
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Date",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "date:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "date:neq."
+                                                    },
+                                                    {
+                                                        "label": "Later than",
+                                                        "value": "date:gt."
+                                                    },
+                                                    {
+                                                        "label": "Earlier than",
+                                                        "value": "date:lt."
+                                                    },
+                                                    {
+                                                        "label": "Later than or equal to",
+                                                        "value": "date:gte."
+                                                    },
+                                                    {
+                                                        "label": "Earlier than or equal to",
+                                                        "value": "date:lte."
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Boolean",
+                                                "options": [
+                                                    {
+                                                        "label": "Equals",
+                                                        "value": "boolean:eq."
+                                                    },
+                                                    {
+                                                        "label": "Does not equal",
+                                                        "value": "boolean:neq."
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "parameters": {
+                        "__IMTCONN__": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "supabase"
+                            },
+                            "label": "inventory-check"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTCONN__",
+                        "type": "account:supabase",
+                        "label": "Connection",
+                        "required": true
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "table",
+                        "type": "select",
+                        "label": "Table",
+                        "required": true
+                    },
+                    {
+                        "name": "limit",
+                        "type": "uinteger",
+                        "label": "Limit"
+                    },
+                    {
+                        "name": "search",
+                        "type": "filter",
+                        "label": "Search criteria",
+                        "options": {
+                            "logic": "and",
+                            "store": [
+                                {
+                                    "label": "id",
+                                    "value": "id"
+                                },
+                                {
+                                    "label": "name",
+                                    "value": "name"
+                                },
+                                {
+                                    "label": "sku",
+                                    "value": "sku"
+                                },
+                                {
+                                    "label": "quantity",
+                                    "value": "quantity"
+                                },
+                                {
+                                    "label": "price",
+                                    "value": "price"
+                                },
+                                {
+                                    "label": "currency",
+                                    "value": "currency"
+                                },
+                                {
+                                    "label": "price_usd",
+                                    "value": "price_usd"
+                                },
+                                {
+                                    "label": "created_at",
+                                    "value": "created_at"
+                                },
+                                {
+                                    "label": "updated_at",
+                                    "value": "updated_at"
+                                }
+                            ],
+                            "operators": [
+                                {
+                                    "label": "Text",
+                                    "options": [
+                                        {
+                                            "label": "Equals",
+                                            "value": "text:eq."
+                                        },
+                                        {
+                                            "label": "Does not equal",
+                                            "value": "text:neq."
+                                        },
+                                        {
+                                            "label": "Contains (case sensitive)",
+                                            "value": "text:like."
+                                        },
+                                        {
+                                            "label": "Contains (case insensitive)",
+                                            "value": "text:ilike."
+                                        }
+                                    ]
+                                },
+                                {
+                                    "label": "Numbers",
+                                    "options": [
+                                        {
+                                            "label": "Equals",
+                                            "value": "number:eq."
+                                        },
+                                        {
+                                            "label": "Does not equal",
+                                            "value": "number:neq."
+                                        },
+                                        {
+                                            "label": "Greater than",
+                                            "value": "number:gt."
+                                        },
+                                        {
+                                            "label": "Less than",
+                                            "value": "number:lt."
+                                        },
+                                        {
+                                            "label": "Greater than or equal to",
+                                            "value": "number:gte."
+                                        },
+                                        {
+                                            "label": "Less than or equal to",
+                                            "value": "number:lte."
+                                        }
+                                    ]
+                                },
+                                {
+                                    "label": "Date",
+                                    "options": [
+                                        {
+                                            "label": "Equals",
+                                            "value": "date:eq."
+                                        },
+                                        {
+                                            "label": "Does not equal",
+                                            "value": "date:neq."
+                                        },
+                                        {
+                                            "label": "Later than",
+                                            "value": "date:gt."
+                                        },
+                                        {
+                                            "label": "Earlier than",
+                                            "value": "date:lt."
+                                        },
+                                        {
+                                            "label": "Later than or equal to",
+                                            "value": "date:gte."
+                                        },
+                                        {
+                                            "label": "Earlier than or equal to",
+                                            "value": "date:lte."
+                                        }
+                                    ]
+                                },
+                                {
+                                    "label": "Boolean",
+                                    "options": [
+                                        {
+                                            "label": "Equals",
+                                            "value": "boolean:eq."
+                                        },
+                                        {
+                                            "label": "Does not equal",
+                                            "value": "boolean:neq."
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "interface": [
+                    {
+                        "name": "__IMTLENGTH__",
+                        "type": "uinteger",
+                        "label": "Total number of bundles"
+                    },
+                    {
+                        "name": "__IMTINDEX__",
+                        "type": "uinteger",
+                        "label": "Bundle order position"
+                    },
+                    {
+                        "name": "id",
+                        "type": "number",
+                        "label": "id"
+                    },
+                    {
+                        "name": "name",
+                        "type": "text",
+                        "label": "name"
+                    },
+                    {
+                        "name": "sku",
+                        "type": "text",
+                        "label": "sku"
+                    },
+                    {
+                        "name": "quantity",
+                        "type": "number",
+                        "label": "quantity"
+                    },
+                    {
+                        "name": "price",
+                        "type": "text",
+                        "label": "price"
+                    },
+                    {
+                        "name": "currency",
+                        "type": "text",
+                        "label": "currency"
+                    },
+                    {
+                        "name": "price_usd",
+                        "type": "text",
+                        "label": "price_usd"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "text",
+                        "label": "created_at"
+                    },
+                    {
+                        "name": "updated_at",
+                        "type": "text",
+                        "label": "updated_at"
+                    }
+                ]
+            }
+        },
+        {
+            "id": 11,
+            "module": "util:TextAggregator",
+            "version": 1,
+            "parameters": {
+                "feeder": 1,
+                "rowSeparator": "\n"
+            },
+            "mapper": {
+                "value": "{{1.name}} | Stock: {{if(1.quantity > 0; 1.quantity & \" units\"; \"OUT OF STOCK\")}} | Price: {{ifempty(1.price; \"Not listed\")}} {{ifempty(1.currency; \"\")}} | SKU: {{1.sku}}{{if(1.category; \" | Category: \" & 1.category; \"\")}}{{if(1.description; \" | \" & substring(1.description; 0; 100) & \"...\"; \"\")}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1200,
+                    "y": 0
+                },
+                "restore": {
+                    "extra": {
+                        "feeder": {
+                            "label": "Supabase - Search Rows [1]"
+                        }
+                    },
+                    "parameters": {
+                        "rowSeparator": {
+                            "label": "New row"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "rowSeparator",
+                        "type": "select",
+                        "label": "Row separator",
+                        "validate": {
+                            "enum": [
+                                "\n",
+                                "\t",
+                                "other"
+                            ]
+                        }
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "value",
+                        "type": "text",
+                        "label": "Text"
+                    }
+                ],
+                "advanced": true
             }
         },
         {
@@ -155,18 +1170,18 @@
             "parameters": {},
             "mapper": {
                 "model": "claude-haiku-4-5",
-                "textPrompt": "You are a warm, helpful customer support assistant for a retail store. You are replying via WhatsApp.\n\nSTRICT FORMATTING RULES (WhatsApp renders markdown badly — never use it):\n- Plain text only\n- No asterisks, underscores, dashes, bullet points, or any symbols used for formatting\n- No numbered lists\n- Short paragraphs or single sentences only\n- Your reply must be under 220 words\n\nBEHAVIOUR RULES:\n- Be conversational and friendly, not robotic or corporate\n- Only state inventory facts that appear in the data below — never guess, invent, or estimate stock levels, prices, or product details\n- If inventory results are empty, tell the customer you could not find that item and ask them to describe it differently or share the SKU\n- If the search keyword was GENERAL or the message is not inventory-related (greetings, returns, hours, payments, complaints, etc.), respond helpfully and naturally from general knowledge\n- Never mention Make, Supabase, Claude, AI, automation, or any internal tools or systems\n- If the customer seems frustrated or upset, acknowledge their frustration warmly before answering\n- Never make up a phone number, email, address, or policy — if you do not know, say so and offer to help find the right person\n\nCustomer name: {{ifempty(7.messages[].profile.name; \"there\")}}\nCustomer message: {{ifempty(7.messages[].text.body; \"[Non-text message received]\")}}\n\nConversation history (most recent at bottom, may be empty for new customers):\n{{ifempty(9[].history; \"No prior conversation — this is the first message.\")}}\n\nInventory search keyword used: {{8.result}}\nInventory results:\n{{ifempty(join(map(1[]; item; ifempty(item.name; \"Unknown item\") & \" | Stock: \" & ifempty(item.quantity & \"\"; \"0\") & \" units | Price: $\" & ifempty(item.price & \"\"; \"N/A\") & \" | SKU: \" & ifempty(item.sku; \"N/A\")); \"\n\"); \"No inventory results found for this query.\")}}\n\nWrite your WhatsApp reply now:",
-                "max_tokens": "300"
+                "max_tokens": "400",
+                "textPrompt": "You are a warm, helpful customer support assistant for an inventory-based business. You are replying via WhatsApp.\n\nSTRICT FORMATTING RULES (WhatsApp renders markdown badly - never use it):\n- Plain text only\n- No asterisks, underscores, dashes, bullet points, or any symbols used for formatting\n- No numbered lists\n- Short paragraphs or single sentences only\n- Your reply must be under 220 words - COUNT YOUR WORDS AND SHORTEN IF NEEDED\n\nBEHAVIOUR RULES:\n- Be conversational and friendly, not robotic or corporate\n- Only state inventory facts that appear in the data below - never guess, invent, or estimate stock levels, prices, or product details\n- If inventory results show \"No results found\" or \"No inventory data available\", tell the customer you could not find that item and ask them to describe it differently or share the SKU\n- If the search keyword was GENERAL or the message is not inventory-related (greetings, returns, hours, payments, complaints, etc.), respond helpfully and naturally from general knowledge\n- Never mention Make, Supabase, Claude, AI, automation, or any internal tools or systems\n- If the customer message contains words like \"angry\", \"frustrated\", \"not working\", \"complaint\", \"upset\", \"disappointed\", start with: \"I understand this is frustrating, and I'm here to help.\"\n- Never make up a phone number, email, address, or policy - if you do not know, say so and offer to help find the right person\n- If the customer asks about delivery, returns, or payments and you lack specific policy data, say: \"Let me connect you with our team who can give you exact details on that.\"\n\nCustomer name: {{ifempty(7.contacts[1].profile.name; \"there\")}}\nCustomer message: {{ifempty(7.messages[1].text.body; \"[Non-text message received]\")}}\n\nConversation history (most recent at bottom, may be empty for new customers):\n{{ifempty(9[1].history; \"No prior conversation - this is the first message.\")}}\n\nInventory search keyword used: {{trim(8.result)}}\nInventory results:\n{{ifempty(11.text; \"No inventory data available - do not mention specific products\")}}\n\nWrite your WhatsApp reply now. FINAL CHECK: Count your words. If over 220, shorten by removing filler words. Reply must be 220 words or fewer."
             },
             "metadata": {
                 "designer": {
-                    "x": 1200,
-                    "y": 300
+                    "x": 1500,
+                    "y": 0
                 },
                 "restore": {
                     "expect": {
                         "model": {
-                            "label": "Claude Haiku 4.5"
+                            "label": "Claude Haiku 4.5The quickest option, perfect for simple questions and instant, straightforward answers"
                         }
                     }
                 },
@@ -198,7 +1213,8 @@
                         "label": "Max Tokens",
                         "required": true
                     }
-                ]
+                ],
+                "advanced": true
             }
         },
         {
@@ -206,24 +1222,111 @@
             "module": "whatsapp-business-cloud:sendMessage",
             "version": 1,
             "parameters": {
-                "accountId": "",
-                "phoneNumberId": "1013623275168542"
+                "__IMTCONN__": 13842210
             },
             "mapper": {
-                "to": "{{7.messages[].from}}",
-                "type": "text",
+                "to": "{{replace(replace(7.messages[1].from; \" \"; \"\"); \"tel:\"; \"\")}}",
                 "text": {
-                    "body": "{{2.result}}"
+                    "body": "{{if(length(2.result) > 4000; substring(2.result; 0; 4000) & \"...\"; 2.result)}}",
+                    "preview_url": false
                 },
-                "context": {
-                    "message_id": "{{7.messages[].id}}"
-                }
+                "type": "text",
+                "fromId": "{{7.metadata.phone_number_id}}"
             },
             "metadata": {
                 "designer": {
-                    "x": 1500,
-                    "y": 300
-                }
+                    "x": 1800,
+                    "y": 0
+                },
+                "restore": {
+                    "expect": {
+                        "text": {
+                            "nested": {
+                                "preview_url": {
+                                    "mode": "chose"
+                                }
+                            }
+                        },
+                        "type": {
+                            "label": "Text"
+                        },
+                        "fromId": {
+                            "mode": "edit"
+                        }
+                    },
+                    "parameters": {
+                        "__IMTCONN__": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "whatsapp-business-cloud"
+                            },
+                            "label": "Inventory-call (Veloxal (1620130195857388))"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTCONN__",
+                        "type": "account:whatsapp-business-cloud",
+                        "label": "Connection",
+                        "required": true
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "fromId",
+                        "type": "select",
+                        "label": "Sender ID",
+                        "required": true
+                    },
+                    {
+                        "name": "to",
+                        "type": "text",
+                        "label": "Receiver",
+                        "required": true
+                    },
+                    {
+                        "name": "type",
+                        "type": "select",
+                        "label": "Message Type",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "text",
+                                "image",
+                                "audio",
+                                "video",
+                                "document",
+                                "sticker",
+                                "location",
+                                "contacts",
+                                "interactive"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "text",
+                        "spec": [
+                            {
+                                "name": "body",
+                                "type": "text",
+                                "label": "Body",
+                                "required": true,
+                                "validate": {
+                                    "max": 4096
+                                }
+                            },
+                            {
+                                "name": "preview_url",
+                                "type": "boolean",
+                                "label": "Preview URL",
+                                "required": true
+                            }
+                        ],
+                        "type": "collection",
+                        "label": "Text"
+                    }
+                ]
             }
         },
         {
@@ -231,26 +1334,182 @@
             "module": "supabase:upsertARecord",
             "version": 1,
             "parameters": {
-                "accountId": "",
-                "tableId": "conversations"
+                "__IMTCONN__": 13929562
             },
             "mapper": {
-                "phone_number": "{{7.messages[].from}}",
-                "customer_name": "{{ifempty(7.messages[].profile.name; \"Unknown\")}}",
-                "last_message_id": "{{7.messages[].id}}",
-                "history": "{{substring(ifempty(9[].history; \"\") & \"\n[Customer]: \" & ifempty(7.messages[].text.body; \"[Non-text message]\") & \"\n[Assistant]: \" & 2.result; max(0; length(ifempty(9[].history; \"\") & \"\n[Customer]: \" & ifempty(7.messages[].text.body; \"[Non-text message]\") & \"\n[Assistant]: \" & 2.result) - 4000); 4000)}}",
-                "updated_at": "{{now}}"
+                "table": "conversations",
+                "history": "{{substring(ifempty(9[1].history; \"\") & \"\\n[Customer]: \" & ifempty(7.messages[1].text.body; \"[Non-text message]\") & \"\\n[Assistant]: \" & 2.result; max(0; length(ifempty(9[1].history; \"\") & \"\\n[Customer]: \" & ifempty(7.messages[1].text.body; \"[Non-text message]\") & \"\\n[Assistant]: \" & 2.result) - 3800); 3800)}}",
+                "updated_at": "{{formatDate(now; \"YYYY-MM-DDTHH:mm:ss.SSSZ\")}}",
+                "phone_number": "{{replace(replace(7.messages[1].from; \" \"; \"\"); \"tel:\"; \"\")}}",
+                "customer_name": "{{ifempty(7.contacts[1].profile.name; \"Unknown\")}}",
+                "last_message_id": "{{7.messages[1].id}}"
             },
             "metadata": {
                 "designer": {
-                    "x": 1800,
-                    "y": 300
-                }
+                    "x": 2100,
+                    "y": 0
+                },
+                "restore": {
+                    "expect": {
+                        "table": {
+                            "mode": "chose",
+                            "label": "conversations",
+                            "nested": [
+                                {
+                                    "help": "Note:\nThis is a Primary Key.<pk/>",
+                                    "name": "id",
+                                    "type": "integer",
+                                    "label": "id",
+                                    "options": null,
+                                    "required": false
+                                },
+                                {
+                                    "help": "",
+                                    "name": "phone_number",
+                                    "type": "text",
+                                    "label": "phone_number",
+                                    "options": null,
+                                    "required": false
+                                },
+                                {
+                                    "help": "Defaults to Unknown.",
+                                    "name": "customer_name",
+                                    "type": "text",
+                                    "label": "customer_name",
+                                    "options": null,
+                                    "required": false
+                                },
+                                {
+                                    "help": "",
+                                    "name": "history",
+                                    "type": "text",
+                                    "label": "history",
+                                    "options": null,
+                                    "required": false
+                                },
+                                {
+                                    "help": "Defaults to now().",
+                                    "name": "created_at",
+                                    "type": "text",
+                                    "label": "created_at",
+                                    "options": null,
+                                    "required": false
+                                },
+                                {
+                                    "help": "Defaults to now().",
+                                    "name": "updated_at",
+                                    "type": "text",
+                                    "label": "updated_at",
+                                    "options": null,
+                                    "required": false
+                                },
+                                {
+                                    "help": "WhatsApp message ID for deduplication",
+                                    "name": "last_message_id",
+                                    "type": "text",
+                                    "label": "last_message_id",
+                                    "options": null,
+                                    "required": false
+                                }
+                            ]
+                        }
+                    },
+                    "parameters": {
+                        "__IMTCONN__": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "supabase"
+                            },
+                            "label": "inventory-check"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTCONN__",
+                        "type": "account:supabase",
+                        "label": "Connection",
+                        "required": true
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "table",
+                        "type": "select",
+                        "label": "Table",
+                        "required": true
+                    },
+                    {
+                        "name": "id",
+                        "type": "integer"
+                    },
+                    {
+                        "name": "phone_number",
+                        "type": "text"
+                    },
+                    {
+                        "name": "customer_name",
+                        "type": "text"
+                    },
+                    {
+                        "name": "history",
+                        "type": "text"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "text"
+                    },
+                    {
+                        "name": "updated_at",
+                        "type": "text"
+                    },
+                    {
+                        "name": "last_message_id",
+                        "type": "text"
+                    }
+                ],
+                "interface": [
+                    {
+                        "name": "id",
+                        "type": "number",
+                        "label": "id"
+                    },
+                    {
+                        "name": "phone_number",
+                        "type": "text",
+                        "label": "phone_number"
+                    },
+                    {
+                        "name": "customer_name",
+                        "type": "text",
+                        "label": "customer_name"
+                    },
+                    {
+                        "name": "history",
+                        "type": "text",
+                        "label": "history"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "text",
+                        "label": "created_at"
+                    },
+                    {
+                        "name": "updated_at",
+                        "type": "text",
+                        "label": "updated_at"
+                    },
+                    {
+                        "name": "last_message_id",
+                        "type": "text",
+                        "label": "last_message_id"
+                    }
+                ]
             }
         }
     ],
     "metadata": {
-        "instant": true,
+        "instant": false,
         "version": 1,
         "scenario": {
             "roundtrips": 1,
@@ -268,42 +1527,6 @@
             "orphans": []
         },
         "zone": "eu2.make.com",
-        "notes": [
-            {
-                "id": 1,
-                "content": "MODULE 7 — WhatsApp Trigger.\nSet your Phone Number ID and webhook hook here.\nThis fires on ALL WhatsApp events including status updates (delivered, read). The filter on Module 9 blocks non-text events immediately.",
-                "moduleId": 7
-            },
-            {
-                "id": 2,
-                "content": "MODULE 9 — Fetch Conversation History.\n\nFILTER: Drops all non-text webhook events (images, audio, video, status updates, read receipts) right here so nothing wasted downstream.\n\nSEARCH: Looks up the conversation row by phone_number, ordered by updated_at DESC so the most recent row always wins.\n\n!!!! CRITICAL MANUAL STEP !!!!\nThis module returns 0 rows for EVERY NEW CUSTOMER who has never messaged before. If 'Continue the execution of the route even if the module returns no results' is NOT enabled here, ALL new customers will be silently ignored — no reply ever sent.\n\nGo to this module in Make.com -> click the settings cog -> enable that option.\n\nThe allowEmptyBundle flag in this JSON attempts to set this automatically on import, but verify it manually after importing.\n\nSupabase requirement: the conversations table MUST have phone_number defined as a UNIQUE column. Without this, the upsert in Module 10 will insert duplicate rows and Module 9 may return stale history.",
-                "moduleId": 9
-            },
-            {
-                "id": 3,
-                "content": "MODULE 8 — Keyword Extraction + Dedup Guard.\n\nDEDUP FILTER: Runs BEFORE Claude is called. Compares the incoming WhatsApp message ID against the last stored message ID. If they match, the entire remaining flow is skipped — this prevents double-replies when WhatsApp retries webhook delivery.\n\nFor brand new customers, 9[].last_message_id is null/empty. Since any real WhatsApp message ID is never empty, the condition (id != null) is always true, so new customers correctly pass through.\n\nKEYWORD EXTRACTION: Claude Haiku returns either a product keyword (max 5 words) or the literal string GENERAL for non-product queries. max_tokens is 50 — well above any realistic keyword length.",
-                "moduleId": 8
-            },
-            {
-                "id": 4,
-                "content": "MODULE 1 — Inventory Search.\n\nSearches the inventory table using a case-insensitive partial match (ilike) on the name column. Returns up to 5 matching products.\n\nNo filter is applied here. When keyword is GENERAL, the search '%GENERAL%' returns 0 inventory rows, and Module 2's ifempty guard handles that gracefully.\n\n!!!! CRITICAL MANUAL STEP !!!!\nThis module will return 0 rows for: GENERAL queries, product names not in the database, or any typo-heavy search. If 'Continue the execution of the route even if the module returns no results' is NOT enabled here, Module 2 never runs and NO REPLY is ever sent for these cases.\n\nGo to this module in Make.com -> click the settings cog -> enable that option.\n\nThe allowEmptyBundle flag in this JSON attempts to set this automatically on import, but verify it manually after importing.",
-                "moduleId": 1
-            },
-            {
-                "id": 5,
-                "content": "MODULE 2 — Reply Generation.\n\nAlways runs (no filter). Handles all four cases:\n1. Product found in inventory -> shares stock, price, SKU\n2. Product not found -> asks customer to rephrase or share SKU\n3. GENERAL query -> responds helpfully from general knowledge\n4. New customer (no history) -> ifempty falls back to 'first message' label\n\nAll variable references use ifempty guards so null values never reach the prompt raw.",
-                "moduleId": 2
-            },
-            {
-                "id": 6,
-                "content": "MODULE 6 — Send WhatsApp Reply.\n\nRuns BEFORE Module 10 (the history save). This is intentional: if the WhatsApp send fails (expired token, rate limit, etc.), Module 10 never runs, so the assistant reply is NOT written into the conversation history. This prevents the AI from referencing a reply the customer never actually received on the next turn.\n\ncontext.message_id creates a WhatsApp quote/reply thread so the customer sees which message is being replied to.\n\nSet your Phone Number ID here.",
-                "moduleId": 6
-            },
-            {
-                "id": 7,
-                "content": "MODULE 10 — Save Conversation History.\n\nRuns ONLY after a successful WhatsApp send (Module 6). Upserts the conversations row using phone_number as the conflict key (must be UNIQUE in Supabase — also set the conflict column inside this module's Make.com UI settings).\n\nStores: phone_number, customer_name, last_message_id (for dedup), updated_at, and history.\n\nHistory rolling window: the full concatenated string (old history + new customer message + new assistant reply) is trimmed to the LAST 4000 characters using substring + max(0, length - 4000). This keeps only the most recent context and prevents the Supabase text field from growing forever.",
-                "moduleId": 10
-            }
-        ]
+        "notes": []
     }
 }
