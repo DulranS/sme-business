@@ -1,6 +1,10 @@
 -- Multi-currency support migration
 -- Run this in your Supabase SQL editor after the initial schema
 
+-- Remove legacy currency constraint if it exists
+ALTER TABLE inventory
+DROP CONSTRAINT IF EXISTS inventory_currency_check;
+
 -- Add currency columns to inventory table
 ALTER TABLE inventory 
 ADD COLUMN IF NOT EXISTS currency VARCHAR(3) NOT NULL DEFAULT 'USD',

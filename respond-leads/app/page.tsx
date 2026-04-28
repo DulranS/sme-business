@@ -123,16 +123,36 @@ const Dashboard = memo(() => {
     setModal('edit')
   }
 
+  const normalizeInventoryForm = (item: InventoryItem): InventoryItem => {
+    const rawCurrency = String(item.currency || '').trim().toUpperCase()
+    const currency = CurrencyService.isValidCurrency(rawCurrency) ? rawCurrency : 'USD'
+    const price = Number(item.price) || 0
+    const price_usd = Number(item.price_usd) || 0
+
+    return {
+      ...item,
+      currency,
+      price,
+      price_usd: price_usd > 0 ? price_usd : CurrencyService.convertToUSD(price, currency)
+    }
+  }
+
   const handleSave = async () => {
     if (!form.name || !form.sku) return showToast('Name and SKU are required')
     setSaving(true)
     try {
+      const normalizedForm = normalizeInventoryForm(form)
+      const rawCurrency = String(form.currency || '').trim().toUpperCase()
+      if (rawCurrency && !CurrencyService.isValidCurrency(rawCurrency)) {
+        showToast('Invalid currency provided, defaulted to USD')
+      }
+
       if (modal === 'add') {
-        const { error } = await supabase.from('inventory').insert(form)
+        const { error } = await supabase.from('inventory').insert(normalizedForm)
         if (error) throw error
         showToast('Item added')
       } else {
-        const { error } = await supabase.from('inventory').update(form).eq('id', editId)
+        const { error } = await supabase.from('inventory').update(normalizedForm).eq('id', editId)
         if (error) throw error
         showToast('Item updated')
       }

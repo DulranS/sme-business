@@ -1,6 +1,7 @@
 import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
 import { ImportResult, ExportResult } from '../types'
+import { CurrencyService } from './currency'
 
 export interface BulkOperation {
   type: 'create' | 'update' | 'delete'
@@ -50,16 +51,17 @@ export class BulkOperationsService {
             continue
           }
           
-          // Set default currency if not provided
-          if (!item.currency) {
+          // Normalize currency and set default if invalid
+          item.currency = String(item.currency || '').trim().toUpperCase()
+          if (!CurrencyService.isValidCurrency(item.currency)) {
             item.currency = 'USD'
           }
-          
+
           // Calculate price_usd if not provided
           if (!item.price_usd && item.price) {
-            item.price_usd = item.price
+            item.price_usd = CurrencyService.convertToUSD(item.price, item.currency)
           }
-          
+
           items.push(item)
         } catch (error) {
           errors.push(`Row ${i + 1}: ${error}`)

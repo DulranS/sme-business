@@ -15,7 +15,17 @@ CREATE TABLE IF NOT EXISTS inventory (
     price_usd DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (price_usd >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CHECK (currency IN ('USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL'))
+    CHECK (currency IN (
+      'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL',
+      'MXN', 'ARS', 'CLP', 'COP', 'PEN', 'UYU',
+      'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'BGN', 'HRK', 'RUB', 'TRY',
+      'KRW', 'TWD', 'HKD', 'SGD', 'MYR', 'THB', 'VND', 'PHP', 'IDR', 'SAR', 'AED', 'QAR', 'KWD', 'BHD', 'OMR', 'ILS', 'JOD', 'LBP',
+      'NIS', 'LKR', 'PKR', 'BDT', 'NPR', 'AFN', 'MMK', 'LAK', 'KHR', 'MVR', 'BTN', 'GEL', 'AMD', 'AZN', 'KZT', 'KGS', 'UZS', 'TJS', 'TMT', 'MNT', 'KPW',
+      'ZAR', 'NGN', 'GHS', 'KES', 'UGX', 'TZS', 'EGP', 'MAD', 'DZD', 'TND',
+      'NZD', 'FJD', 'PGK', 'SBD', 'VUV', 'WST', 'TOP',
+      'JMD', 'TTD', 'BBD', 'BSD', 'BZD', 'GTQ', 'HNL', 'NIO', 'CRC', 'XCD',
+      'BTC', 'ETH', 'USDT'
+    ))
 );
 
 -- Create conversations table
