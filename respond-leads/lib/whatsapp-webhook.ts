@@ -4,13 +4,11 @@ import { Config } from '@/lib/config'
 import { whatsappService } from '@/lib/whatsapp-blueprint'
 import { claudeBlueprintService } from '@/lib/claude-blueprint'
 import { logger } from '@/lib/logger'
+import { inventorySearchCache, conversationCache } from '@/lib/cache'
 import { WhatsAppContact, WhatsAppMessage } from '@/types'
 
 Config.validate()
 const supabase = createSupabaseServerClient()
-
-const INVENTORY_SEARCH_TTL_MS = 60 * 1000 // Cache inventory search results for 1 minute
-const inventorySearchCache = new Map<string, { expiresAt: number; results: unknown[] }>()
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -69,8 +67,6 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
   const messageText = message.text?.body?.trim() || ''
   const customerName = whatsappService.getCustomerName(contact)
 
-  const startTime = Date.now()
-
   try {
     const { data: conversations, error: fetchError } = await supabase
       .from('conversations')
@@ -110,6 +106,8 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
 
     await saveConversation(normalizedPhone, customerName, messageId, messageText, aiResponse, conversationHistory)
     await trackConversationAnalytics(normalizedPhone, searchKeyword, inventoryResults.length, Date.now() - startTime)
+
+    conversationCache.invalidatePattern(`phone_number:${normalizedPhone}`)
   } catch (error) {
     logger.error('Error processing WhatsApp message', {
       phoneNumber: rawPhoneNumber,
@@ -126,9 +124,8 @@ async function searchInventory(searchKeyword: string) {
 
   const cacheKey = `inventory_search:${searchKeyword.toLowerCase().trim()}`
   const cached = inventorySearchCache.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    logger.debug('Using cached inventory search results', { searchKeyword, cacheKey })
-    return cached.results
+  if (cached) {
+    return cached as Array<{ name?: string; quantity?: number; price?: number; sku?: string }>
   }
 
   const safeKeyword = searchKeyword.replace(/[%_]/g, match => `\\${match}`)
@@ -147,10 +144,7 @@ async function searchInventory(searchKeyword: string) {
   }
 
   const results = data || []
-  inventorySearchCache.set(cacheKey, {
-    expiresAt: Date.now() + INVENTORY_SEARCH_TTL_MS,
-    results
-  })
+  inventorySearchCache.set(cacheKey, results)
 
   return results
 }
