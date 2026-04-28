@@ -67,6 +67,8 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
   const messageText = message.text?.body?.trim() || ''
   const customerName = whatsappService.getCustomerName(contact)
 
+  const startTime = Date.now()
+
   try {
     const { data: conversations, error: fetchError } = await supabase
       .from('conversations')
