@@ -7,27 +7,43 @@ import { logger } from '@/lib/logger'
 import { inventorySearchCache, conversationCache } from '@/lib/cache'
 import { WhatsAppContact, WhatsAppMessage } from '@/types'
 
-Config.validate()
 const supabase = createSupabaseServerClient()
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const mode = searchParams.get('hub.mode')
-  const token = searchParams.get('hub.verify_token')
-  const challenge = searchParams.get('hub.challenge')
+  try {
+    // Check if WhatsApp is configured
+    if (!Config.whatsappPhoneNumberId || !Config.whatsappVerifyToken) {
+      logger.warn('WhatsApp not configured - webhook verification disabled')
+      return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 503 })
+    }
 
-  const verifyToken = whatsappService.verifyWebhookChallenge(mode, token)
-  if (verifyToken && challenge) {
-    logger.webhook('Webhook verification succeeded', { mode, challenge: challenge.slice(0, 16) })
-    return new NextResponse(challenge)
+    const searchParams = request.nextUrl.searchParams
+    const mode = searchParams.get('hub.mode')
+    const token = searchParams.get('hub.verify_token')
+    const challenge = searchParams.get('hub.challenge')
+
+    const verifyToken = whatsappService.verifyWebhookChallenge(mode, token)
+    if (verifyToken && challenge) {
+      logger.webhook('Webhook verification succeeded', { mode, challenge: challenge.slice(0, 16) })
+      return new NextResponse(challenge)
+    }
+
+    logger.warn('Webhook verification failed', { mode, token })
+    return NextResponse.json({ error: 'Invalid verification' }, { status: 400 })
+  } catch (error) {
+    logger.error('Error in GET webhook', { error: error instanceof Error ? error.message : String(error) })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-
-  logger.warn('Webhook verification failed', { mode, token })
-  return NextResponse.json({ error: 'Invalid verification' }, { status: 400 })
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if WhatsApp is configured
+    if (!Config.whatsappPhoneNumberId || !Config.whatsappAccessToken || !Config.whatsappAppSecret) {
+      logger.warn('WhatsApp not configured - webhook processing disabled')
+      return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 503 })
+    }
+
     const body = await request.text()
     const signature = request.headers.get('x-hub-signature-256')
 

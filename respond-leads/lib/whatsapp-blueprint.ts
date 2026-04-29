@@ -3,37 +3,32 @@ import { Config } from '@/lib/config'
 import { WhatsAppWebhookPayload, WhatsAppMessage, WhatsAppContact } from '@/types'
 
 export class WhatsAppService {
-  private phoneNumberId: string
-  private accessToken: string
-  private appSecret: string
+  private phoneNumberId?: string
+  private accessToken?: string
+  private appSecret?: string
+  private verifyToken?: string
 
   constructor() {
-    const whatsappConfig = Config.whatsapp
-    this.phoneNumberId = whatsappConfig.phoneNumberId
-    this.accessToken = whatsappConfig.accessToken
-    this.appSecret = whatsappConfig.appSecret
+    // Initialize lazily to avoid build-time errors
+    this.initializeIfConfigured()
   }
 
-  private validateEnvironment() {
-    const required = [
-      'WHATSAPP_PHONE_NUMBER_ID',
-      'WHATSAPP_ACCESS_TOKEN',
-      'WHATSAPP_APP_SECRET',
-      'WHATSAPP_VERIFY_TOKEN'
-    ]
-
-    const missing = required.filter(key => !process.env[key])
-    if (missing.length > 0) {
-      throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
+  private initializeIfConfigured() {
+    try {
+      const whatsappConfig = Config.whatsapp
+      this.phoneNumberId = whatsappConfig.phoneNumberId
+      this.accessToken = whatsappConfig.accessToken
+      this.appSecret = whatsappConfig.appSecret
+      this.verifyToken = whatsappConfig.verifyToken
+    } catch (error) {
+      // WhatsApp not configured - service will be disabled
+      console.warn('WhatsApp service not configured:', error instanceof Error ? error.message : String(error))
     }
   }
 
   private ensureInitialized() {
     if (!this.phoneNumberId || !this.accessToken || !this.appSecret) {
-      this.validateEnvironment()
-      this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!
-      this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN!
-      this.appSecret = process.env.WHATSAPP_APP_SECRET!
+      throw new Error('WhatsApp service is not configured. Please set the required environment variables.')
     }
   }
 
@@ -88,6 +83,9 @@ export class WhatsAppService {
 
   getPhoneNumberId(): string {
     this.ensureInitialized()
+    if (!this.phoneNumberId) {
+      throw new Error('Phone number ID not available')
+    }
     return this.phoneNumberId
   }
 
@@ -95,6 +93,10 @@ export class WhatsAppService {
     if (!signature) return false
 
     this.ensureInitialized()
+
+    if (!this.appSecret) {
+      throw new Error('App secret not available')
+    }
 
     const expectedSignature = 'sha256=' + crypto
       .createHmac('sha256', this.appSecret)
@@ -112,7 +114,7 @@ export class WhatsAppService {
   }
 
   verifyWebhookChallenge(mode: string | null, token: string | null): string | null {
-    if (mode === 'subscribe' && token === Config.whatsapp.verifyToken) {
+    if (mode === 'subscribe' && token === this.verifyToken) {
       return token
     }
     return null
@@ -120,8 +122,14 @@ export class WhatsAppService {
 
   async sendMessage(to: string, message: string, replyToMessageId?: string, whatsappPhoneNumberId?: string): Promise<void> {
     this.ensureInitialized()
+    if (!this.accessToken) {
+      throw new Error('Access token not available')
+    }
     const senderId = whatsappPhoneNumberId || this.phoneNumberId
-    const url = `${Config.whatsapp.apiUrl}/${senderId}/messages`
+    if (!senderId) {
+      throw new Error('Sender ID not available')
+    }
+    const url = `https://graph.facebook.com/v18.0/${senderId}/messages`
 
     const payload = {
       messaging_product: 'whatsapp',

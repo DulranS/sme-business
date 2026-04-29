@@ -18,28 +18,20 @@ export class Config {
   }
 
   // WhatsApp
-  static get whatsappPhoneNumberId(): string {
-    const id = process.env.WHATSAPP_PHONE_NUMBER_ID
-    if (!id) throw new Error('WHATSAPP_PHONE_NUMBER_ID is required')
-    return id
+  static get whatsappPhoneNumberId(): string | undefined {
+    return process.env.WHATSAPP_PHONE_NUMBER_ID
   }
 
-  static get whatsappAccessToken(): string {
-    const token = process.env.WHATSAPP_ACCESS_TOKEN
-    if (!token) throw new Error('WHATSAPP_ACCESS_TOKEN is required')
-    return token
+  static get whatsappAccessToken(): string | undefined {
+    return process.env.WHATSAPP_ACCESS_TOKEN
   }
 
-  static get whatsappAppSecret(): string {
-    const secret = process.env.WHATSAPP_APP_SECRET
-    if (!secret) throw new Error('WHATSAPP_APP_SECRET is required')
-    return secret
+  static get whatsappAppSecret(): string | undefined {
+    return process.env.WHATSAPP_APP_SECRET
   }
 
-  static get whatsappVerifyToken(): string {
-    const token = process.env.WHATSAPP_VERIFY_TOKEN
-    if (!token) throw new Error('WHATSAPP_VERIFY_TOKEN is required')
-    return token
+  static get whatsappVerifyToken(): string | undefined {
+    return process.env.WHATSAPP_VERIFY_TOKEN
   }
 
   // Anthropic Claude (optional - for AI features)
@@ -68,11 +60,7 @@ export class Config {
   static validate(): void {
     const required = [
       'NEXT_PUBLIC_SUPABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-      'WHATSAPP_PHONE_NUMBER_ID',
-      'WHATSAPP_ACCESS_TOKEN',
-      'WHATSAPP_APP_SECRET',
-      'WHATSAPP_VERIFY_TOKEN'
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY'
     ]
 
     const missing = required.filter(key => !process.env[key])
@@ -89,13 +77,19 @@ export class Config {
       throw new Error('Invalid URL format in environment variables')
     }
 
-    // Optional validations
-    if (this.anthropicApiKey && this.anthropicApiKey.length < 20) {
-      console.warn('ANTHROPIC_API_KEY appears to be invalid, AI features will be disabled')
+    // Optional validations for WhatsApp
+    if (this.whatsappPhoneNumberId && this.whatsappAccessToken && this.whatsappAppSecret && this.whatsappVerifyToken) {
+      console.log('WhatsApp configuration found - webhook features enabled')
+      if (this.whatsappAccessToken.length < 50) {
+        console.warn('WHATSAPP_ACCESS_TOKEN appears to be invalid')
+      }
+    } else {
+      console.warn('WhatsApp environment variables not configured - webhook features will be disabled')
     }
 
-    if (this.whatsappAccessToken.length < 50) {
-      console.warn('WHATSAPP_ACCESS_TOKEN appears to be invalid')
+    // Optional validations for AI
+    if (this.anthropicApiKey && this.anthropicApiKey.length < 20) {
+      console.warn('ANTHROPIC_API_KEY appears to be invalid, AI features will be disabled')
     }
   }
 
@@ -110,11 +104,20 @@ export class Config {
 
   // Get WhatsApp configuration
   static get whatsapp() {
+    const phoneNumberId = this.whatsappPhoneNumberId
+    const accessToken = this.whatsappAccessToken
+    const appSecret = this.whatsappAppSecret
+    const verifyToken = this.whatsappVerifyToken
+
+    if (!phoneNumberId || !accessToken || !appSecret || !verifyToken) {
+      throw new Error('WhatsApp configuration is incomplete. Please set all required WhatsApp environment variables.')
+    }
+
     return {
-      phoneNumberId: this.whatsappPhoneNumberId,
-      accessToken: this.whatsappAccessToken,
-      appSecret: this.whatsappAppSecret,
-      verifyToken: this.whatsappVerifyToken,
+      phoneNumberId,
+      accessToken,
+      appSecret,
+      verifyToken,
       apiUrl: 'https://graph.facebook.com/v18.0'
     }
   }
