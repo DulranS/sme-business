@@ -48,8 +48,10 @@ const Dashboard = memo(() => {
     }
 
     setToast(msg)
-    const timer = window.setTimeout(() => setToast(''), 3000)
-    setToastTimer(timer)
+    if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+      const timer = window.setTimeout(() => setToast(''), 3000)
+      setToastTimer(timer)
+    }
   }, [toastTimer])
 
   const reportError = useCallback((error: unknown, fallbackMessage: string) => {
