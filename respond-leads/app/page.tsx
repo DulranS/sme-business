@@ -15,8 +15,9 @@ import WhatsAppChat from '@/components/WhatsAppChat'
 import WhatsAppAnalyticsDashboard from '@/components/WhatsAppAnalyticsDashboard'
 import MarketingAutomationDashboard from '@/components/MarketingAutomationDashboard'
 import BlueprintConversationDashboard from '@/components/BlueprintConversationDashboard'
+import LeadManagementDashboard from '@/components/LeadManagementDashboard'
 
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations' | 'lead-management'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -280,7 +281,7 @@ const Dashboard = memo(() => {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations', 'lead-management'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -299,6 +300,7 @@ const Dashboard = memo(() => {
              t === 'whatsapp-analytics' ? '📈 WHATSAPP ANALYTICS' :
              t === 'marketing-automation' ? '🚀 MARKETING AUTOMATION' :
              t === 'blueprint-conversations' ? '🔧 BLUEPRINT CONVERSATIONS' :
+             t === 'lead-management' ? '🎯 LEAD MANAGEMENT' :
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
@@ -503,6 +505,11 @@ const Dashboard = memo(() => {
         {/* ── BLUEPRINT CONVERSATIONS TAB ── */}
         {tab === 'blueprint-conversations' && (
           <BlueprintConversationDashboard />
+        )}
+
+        {/* ── LEAD MANAGEMENT TAB ── */}
+        {tab === 'lead-management' && (
+          <LeadManagementDashboard />
         )}
       </main>
 
