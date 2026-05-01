@@ -42,6 +42,8 @@ const Dashboard = memo(() => {
   const [currentCurrency, setCurrentCurrency] = useState(CurrencyService.getCurrentCurrency())
   const [searchCurrency, setSearchCurrency] = useState('')
 
+  const currencyOptions = useMemo(() => CurrencyService.searchCurrencies(searchCurrency), [searchCurrency])
+
   const supabase = getSupabaseClient()
 
   // ─── Data fetching ─────────────────────────────────────────────────────────
@@ -122,12 +124,14 @@ const Dashboard = memo(() => {
   // ─── Inventory CRUD ────────────────────────────────────────────────────────
   const openAdd = () => {
     setForm({ ...EMPTY_ITEM, currency: CurrencyService.getCurrentCurrency() })
+    setSearchCurrency('')
     setEditId(null)
     setModal('add')
   }
 
   const openEdit = (item: InventoryItem) => {
     setForm({ name: item.name, sku: item.sku, quantity: item.quantity, price: item.price, currency: item.currency, price_usd: item.price_usd })
+    setSearchCurrency('')
     setEditId(item.id!)
     setModal('edit')
   }
@@ -558,75 +562,12 @@ const Dashboard = memo(() => {
                   onChange={e => setForm({ ...form, currency: e.target.value })}
                   style={{ ...s.modalInput, cursor: 'pointer' }}
                 >
-                  <optgroup label="Major Global Currencies">
-                    {['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'INR'].map(code => {
-                      const currency = CurrencyService.getCurrencyInfo(code)
-                      return (
-                        <option key={code} value={code}>
-                          {currency.code} ({currency.symbol}) - {currency.name}
-                        </option>
-                      )
-                    })}
-                  </optgroup>
-                  <optgroup label="Americas">
-                    {['CAD', 'AUD', 'BRL', 'MXN', 'ARS', 'CLP', 'COP', 'PEN', 'UYU'].map(code => {
-                      const currency = CurrencyService.getCurrencyInfo(code)
-                      return (
-                        <option key={code} value={code}>
-                          {currency.code} ({currency.symbol}) - {currency.name}
-                        </option>
-                      )
-                    })}
-                  </optgroup>
-                  <optgroup label="Europe">
-                    {['CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'BGN', 'HRK', 'RUB', 'TRY'].map(code => {
-                      const currency = CurrencyService.getCurrencyInfo(code)
-                      return (
-                        <option key={code} value={code}>
-                          {currency.code} ({currency.symbol}) - {currency.name}
-                        </option>
-                      )
-                    })}
-                  </optgroup>
-                  <optgroup label="Asia & Middle East">
-                    {['KRW', 'TWD', 'HKD', 'SGD', 'MYR', 'THB', 'VND', 'PHP', 'IDR', 'SAR', 'AED', 'QAR', 'KWD', 'BHD', 'OMR', 'ILS', 'JOD', 'LKR', 'PKR', 'BDT', 'NPR', 'AFN', 'MMK', 'LAK', 'KHR', 'MVR', 'BTN', 'GEL', 'AMD', 'AZN', 'KZT', 'KGS', 'UZS', 'TJS', 'TMT', 'MNT', 'KPW'].map(code => {
-                      const currency = CurrencyService.getCurrencyInfo(code)
-                      return (
-                        <option key={code} value={code}>
-                          {currency.code} ({currency.symbol}) - {currency.name}
-                        </option>
-                      )
-                    })}
-                  </optgroup>
-                  <optgroup label="Africa">
-                    {['ZAR', 'NGN', 'GHS', 'KES', 'UGX', 'TZS', 'EGP', 'MAD', 'DZD', 'TND'].map(code => {
-                      const currency = CurrencyService.getCurrencyInfo(code)
-                      return (
-                        <option key={code} value={code}>
-                          {currency.code} ({currency.symbol}) - {currency.name}
-                        </option>
-                      )
-                    })}
-                  </optgroup>
-                  <optgroup label="Oceania">
-                    {['NZD', 'FJD', 'PGK', 'SBD', 'VUV', 'WST', 'TOP'].map(code => {
-                      const currency = CurrencyService.getCurrencyInfo(code)
-                      return (
-                        <option key={code} value={code}>
-                          {currency.code} ({currency.symbol}) - {currency.name}
-                        </option>
-                      )
-                    })}
-                  </optgroup>
-                  <optgroup label="Cryptocurrencies">
-                    {['BTC', 'ETH', 'USDT'].map(code => {
-                      const currency = CurrencyService.getCurrencyInfo(code)
-                      return (
-                        <option key={code} value={code}>
-                          {currency.code} ({currency.symbol}) - {currency.name}
-                        </option>
-                      )
-                    })}
+                  <optgroup label={searchCurrency ? 'Filtered currencies' : 'All currencies'}>
+                    {currencyOptions.map(currency => (
+                      <option key={currency.code} value={currency.code}>
+                        {currency.code} ({currency.symbol}) - {currency.name}
+                      </option>
+                    ))}
                   </optgroup>
                 </select>
               </div>
