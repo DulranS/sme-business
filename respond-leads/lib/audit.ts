@@ -112,74 +112,48 @@ export class AuditService {
 
   async getActivitySummary(timeRange: string = '24h'): Promise<ActivitySummary> {
     try {
-      // Simulate activity summary generation
-      const mockLogs: AuditLog[] = [
-        {
-          id: '1',
-          userId: 'user1',
-          action: 'Item Created',
-          resourceType: 'inventory',
-          resourceId: '123',
-          resourceName: 'Premium Widget',
-          newValues: { name: 'Premium Widget', quantity: 100, price: 29.99 },
-          timestamp: new Date(Date.now() - 3600000),
-          severity: 'medium',
-          category: 'create',
-          description: 'Created new inventory item: Premium Widget'
-        },
-        {
-          id: '2',
-          userId: 'user1',
-          action: 'Item Updated',
-          resourceType: 'inventory',
-          resourceId: '123',
-          resourceName: 'Premium Widget',
-          oldValues: { quantity: 100 },
-          newValues: { quantity: 95 },
-          timestamp: new Date(Date.now() - 1800000),
-          severity: 'low',
-          category: 'update',
-          description: 'Updated quantity for Premium Widget from 100 to 95'
-        },
-        {
-          id: '3',
-          action: 'Low Stock Alert',
-          resourceType: 'system',
-          severity: 'high',
-          category: 'system',
-          description: 'Critical: Premium Widget is running low on stock (5 units remaining)',
-          timestamp: new Date(Date.now() - 900000)
-        }
-      ]
+      const days = timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
 
-      const actionsByType = mockLogs.reduce((acc, log) => {
+      const { data: logs, error } = await this.supabase
+        .from('audit_log')
+        .select('*')
+        .gte('timestamp', startDate.toISOString())
+        .order('timestamp', { ascending: false })
+
+      if (error) throw error
+
+      const logData = logs || []
+
+      const actionsByType = logData.reduce((acc, log) => {
         acc[log.action] = (acc[log.action] || 0) + 1
         return acc
       }, {} as Record<string, number>)
 
-      const actionsByUser = mockLogs.reduce((acc, log) => {
-        if (log.userId) {
-          acc[log.userId] = (acc[log.userId] || 0) + 1
+      const actionsByUser = logData.reduce((acc, log) => {
+        if (log.user_id) {
+          acc[log.user_id] = (acc[log.user_id] || 0) + 1
         }
         return acc
       }, {} as Record<string, number>)
 
-      const actionsByResource = mockLogs.reduce((acc, log) => {
-        acc[log.resourceType] = (acc[log.resourceType] || 0) + 1
+      const actionsByResource = logData.reduce((acc, log) => {
+        acc[log.entity_type] = (acc[log.entity_type] || 0) + 1
         return acc
       }, {} as Record<string, number>)
 
       const summary: ActivitySummary = {
-        totalActions: mockLogs.length,
+        totalActions: logData.length,
         actionsByType,
         actionsByUser,
         actionsByResource,
-        recentActivity: mockLogs.slice(0, 10),
-        criticalActions: mockLogs.filter(log => log.severity === 'critical' || log.severity === 'high'),
+        recentActivity: logData.slice(0, 10) as AuditLog[],
+        criticalActions: logData.filter(log => log.severity === 'critical' || log.severity === 'high') as AuditLog[],
         timeRange
       }
 
-      logger.info('Activity summary generated', { totalActions: summary.totalActions, timeRange })
+      logger.info('Activity summary generated from database', { totalActions: summary.totalActions, timeRange })
       return summary
 
     } catch (error) {
@@ -198,54 +172,34 @@ export class AuditService {
     limit?: number
   }): Promise<AuditLog[]> {
     try {
-      // In a real implementation, this would query the audit_logs table
-      // For now, return mock data
-      const mockLogs: AuditLog[] = [
-        {
-          id: '1',
-          userId: 'user1',
-          action: 'Item Created',
-          resourceType: 'inventory',
-          resourceId: '123',
-          resourceName: 'Premium Widget',
-          newValues: { name: 'Premium Widget', quantity: 100, price: 29.99 },
-          timestamp: new Date(Date.now() - 3600000),
-          severity: 'medium',
-          category: 'create',
-          description: 'Created new inventory item: Premium Widget'
-        },
-        {
-          id: '2',
-          userId: 'user2',
-          action: 'Export Started',
-          resourceType: 'system',
-          severity: 'low',
-          category: 'system',
-          description: 'User initiated inventory export',
-          timestamp: new Date(Date.now() - 7200000)
-        }
-      ]
-
-      let filteredLogs = mockLogs
+      let query = this.supabase
+        .from('audit_log')
+        .select('*')
+        .order('timestamp', { ascending: false })
 
       if (filters?.userId) {
-        filteredLogs = filteredLogs.filter(log => log.userId === filters.userId)
+        query = query.eq('user_id', filters.userId)
       }
       if (filters?.resourceType) {
-        filteredLogs = filteredLogs.filter(log => log.resourceType === filters.resourceType)
+        query = query.eq('entity_type', filters.resourceType)
       }
       if (filters?.severity) {
-        filteredLogs = filteredLogs.filter(log => log.severity === filters.severity)
+        query = query.eq('severity', filters.severity)
       }
-      if (filters?.category) {
-        filteredLogs = filteredLogs.filter(log => log.category === filters.category)
+      if (filters?.dateFrom) {
+        query = query.gte('timestamp', filters.dateFrom.toISOString())
       }
-
+      if (filters?.dateTo) {
+        query = query.lte('timestamp', filters.dateTo.toISOString())
+      }
       if (filters?.limit) {
-        filteredLogs = filteredLogs.slice(0, filters.limit)
+        query = query.limit(filters.limit)
       }
 
-      return filteredLogs
+      const { data, error } = await query
+      if (error) throw error
+
+      return (data || []) as AuditLog[]
 
     } catch (error) {
       logger.error('Failed to retrieve audit logs', error as Error)

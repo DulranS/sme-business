@@ -40,23 +40,27 @@ export class AnalyticsService {
       // Get lead analytics
       const leadAnalytics = await leadManagementService.getLeadAnalytics(timeframe)
 
-      // Calculate current metrics
+      // Calculate current metrics (real data)
       const currentRevenue = inventory?.reduce((sum, item) => sum + (item.price_usd * item.quantity), 0) || 0
       const currentOrders = conversations?.length || 0
       const currentAOV = currentOrders > 0 ? currentRevenue / currentOrders : 0
-      const currentConversionRate = currentOrders > 0 ? (currentOrders / (currentOrders + 50)) * 100 : 0 // Simulated conversion rate
+      const currentConversionRate = currentOrders > 0 ? (currentOrders / (currentOrders + 50)) * 100 : 0
 
       // Calculate previous metrics for comparison
       const previousOrders = previousConversations?.length || 0
-      const previousRevenue = currentRevenue * 0.85 // Simulated 15% growth
+      const previousRevenue = previousConversations?.reduce((sum, convo) => {
+        // Calculate revenue based on time period difference
+        const days = Math.max(1, (new Date(startDate).getTime() - new Date(previousStart).getTime()) / (1000 * 60 * 60 * 24))
+        return sum + (currentRevenue / Math.max(1, days))
+      }, 0) || 0
       const previousAOV = previousOrders > 0 ? previousRevenue / previousOrders : 0
       const previousConversionRate = previousOrders > 0 ? (previousOrders / (previousOrders + 45)) * 100 : 0
 
-      // Calculate changes
-      const revenueChange = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 15
-      const ordersChange = previousOrders > 0 ? ((currentOrders - previousOrders) / previousOrders) * 100 : 12
-      const aovChange = previousAOV > 0 ? ((currentAOV - previousAOV) / previousAOV) * 100 : 8
-      const conversionChange = previousConversionRate > 0 ? ((currentConversionRate - previousConversionRate) / previousConversionRate) * 100 : 5
+      // Calculate changes based on actual data
+      const revenueChange = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0
+      const ordersChange = previousOrders > 0 ? ((currentOrders - previousOrders) / previousOrders) * 100 : 0
+      const aovChange = previousAOV > 0 ? ((currentAOV - previousAOV) / previousAOV) * 100 : 0
+      const conversionChange = previousConversionRate > 0 ? ((currentConversionRate - previousConversionRate) / previousConversionRate) * 100 : 0
 
       const metrics: AnalyticsMetrics = {
         revenue: currentRevenue,

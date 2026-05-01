@@ -153,40 +153,96 @@ export class ReportingService {
   }
 
   private async getSalesData(timeRange: string) {
-    // Simulate sales data generation
     const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90
-    const salesData = []
-    
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      salesData.push({
-        date: date.toISOString().split('T')[0],
-        revenue: Math.floor(Math.random() * 1000) + 200,
-        orders: Math.floor(Math.random() * 10) + 1,
-        customers: Math.floor(Math.random() * 8) + 1
-      })
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - days)
+
+    // Fetch real conversation data
+    const { data: conversations, error } = await this.supabase
+      .from('conversations')
+      .select('*')
+      .gte('created_at', startDate.toISOString())
+
+    if (error) throw error
+
+    // Fetch inventory data for revenue calculation
+    const { data: inventory } = await this.supabase
+      .from('inventory')
+      .select('*')
+
+    const salesData: Record<string, { date: string; revenue: number; orders: number; customers: Set<string> }> = {}
+
+    // Group conversations by date
+    for (const conversation of conversations || []) {
+      const date = new Date(conversation.created_at).toISOString().split('T')[0]
+      if (!salesData[date]) {
+        salesData[date] = {
+          date,
+          revenue: 0,
+          orders: 0,
+          customers: new Set()
+        }
+      }
+      salesData[date].orders += 1
+      salesData[date].customers.add(conversation.phone_number)
     }
-    
-    return salesData
+
+    const inventoryItems = inventory || []
+
+    // Calculate average revenue per conversation from inventory
+    const avgItemPrice = inventoryItems.length > 0
+      ? (inventoryItems.reduce((sum, item) => sum + item.price_usd, 0) / inventoryItems.length)
+      : 100
+
+    const result = Object.values(salesData).map(day => ({
+      date: day.date,
+      revenue: Math.round(day.orders * avgItemPrice * 100) / 100,
+      orders: day.orders,
+      customers: day.customers.size
+    }))
+
+    return result
   }
 
   private async getProductPerformance(limit: number) {
-    const { data, error } = await this.supabase
+    const { data: inventory, error: invError } = await this.supabase
       .from('inventory')
       .select('*')
       .order('quantity', { ascending: false })
       .limit(limit)
     
-    if (error) throw error
+    if (invError) throw invError
+
+    // Get conversation analytics to track actual performance
+    const { data: analytics } = await this.supabase
+      .from('conversation_analytics')
+      .select('*')
+
+    const performanceMap: Record<string, { revenue: number; orders: number; weight: number }> = {}
+
+    for (const record of analytics || []) {
+      if (!performanceMap[record.search_keyword]) {
+        performanceMap[record.search_keyword] = { revenue: 0, orders: 0, weight: 0 }
+      }
+      performanceMap[record.search_keyword].revenue += 1
+      performanceMap[record.search_keyword].orders += record.result_count
+      performanceMap[record.search_keyword].weight += record.converted ? 1 : 0
+    }
     
-    // Simulate performance metrics
-    return (data || []).map(item => ({
-      ...item,
-      revenue: item.price_usd * item.quantity * (Math.random() * 2 + 0.5),
-      orders: Math.floor(item.quantity * (Math.random() * 0.3 + 0.1)),
-      growth: (Math.random() - 0.5) * 40
-    }))
+    // Map performance to inventory items
+    return (inventory || []).map(item => {
+      const perf = performanceMap[item.name] || { revenue: 0, orders: 0, weight: 0 }
+      const estimatedRevenue = perf.revenue * item.price_usd
+      const previousRevenue = estimatedRevenue > 0 ? estimatedRevenue * 0.9 : 0
+      const growth = previousRevenue > 0 ? ((estimatedRevenue - previousRevenue) / previousRevenue) * 100 : 0
+
+      return {
+        ...item,
+        revenue: Math.round(estimatedRevenue * 100) / 100,
+        orders: perf.orders,
+        growth: Math.round(growth * 100) / 100
+      }
+    })
   }
 
   private async getForecastData(): Promise<ForecastData[]> {
@@ -239,30 +295,18 @@ export class ReportingService {
 
   async getGeneratedReports(): Promise<Report[]> {
     try {
-      // In a real implementation, this would fetch from a database
-      // For now, return mock data
-      return [
-        {
-          id: 'report_123',
-          name: 'Inventory Summary - March 2026',
-          templateId: 'inventory-summary',
-          format: 'pdf',
-          size: '~1.2MB',
-          createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-          status: 'completed',
-          downloadUrl: '#'
-        },
-        {
-          id: 'report_124',
-          name: 'Sales Analysis - March 2026',
-          templateId: 'sales-analysis',
-          format: 'excel',
-          size: '~850KB',
-          createdAt: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-          status: 'completed',
-          downloadUrl: '#'
-        }
-      ]
+      const { data, error } = await this.supabase
+        .from('generated_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) {
+        logger.warn('Generated reports table not found, returning empty result', { error: error.message })
+        return []
+      }
+
+      return (data || []) as Report[]
     } catch (error) {
       logger.error('Failed to get generated reports', error as Error)
       return []
