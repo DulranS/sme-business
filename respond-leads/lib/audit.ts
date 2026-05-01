@@ -39,9 +39,29 @@ export class AuditService {
         timestamp: new Date()
       }
 
-      // In a real implementation, this would save to a dedicated audit_logs table
-      // For now, we'll log to the console and store in memory for demo purposes
-      logger.info('Audit log entry created', auditLog)
+      const { error } = await this.supabase.from('audit_log').insert({
+        id: auditLog.id,
+        user_id: auditLog.userId || null,
+        action: auditLog.action,
+        resource_type: auditLog.resourceType,
+        resource_id: auditLog.resourceId || null,
+        resource_name: auditLog.resourceName || null,
+        old_values: auditLog.oldValues || null,
+        new_values: auditLog.newValues || null,
+        ip_address: auditLog.ipAddress || null,
+        user_agent: auditLog.userAgent || null,
+        timestamp: auditLog.timestamp.toISOString(),
+        severity: auditLog.severity,
+        category: auditLog.category,
+        description: auditLog.description
+      })
+
+      if (error) {
+        logger.error('Failed to persist audit log entry', { error })
+        throw error
+      }
+
+      logger.info('Audit log entry created', { id: auditLog.id, action: auditLog.action, resourceType: auditLog.resourceType })
 
       // Check if this is a critical action that needs immediate attention
       if (entry.severity === 'critical' || entry.severity === 'high') {

@@ -62,18 +62,6 @@ CREATE TRIGGER update_inventory_updated_at BEFORE UPDATE ON inventory
 CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert sample data with multi-currency support (optional - remove in production)
-INSERT INTO inventory (name, sku, quantity, price, currency, price_usd) VALUES
-('Nike Air Max 90', 'NIKE-AIR-MAX-90', 15, 120.00, 'USD', 120.00),
-('iPhone 15 Pro', 'APPLE-IPHONE-15-PRO', 8, 999.00, 'USD', 999.00),
-('Red Summer Dress', 'DRESS-RED-SUMMER', 12, 45.99, 'USD', 45.99),
-('Sony WH-1000XM5 Headphones', 'SONY-WH1000XM5', 5, 399.99, 'USD', 399.99),
-('MacBook Air M2', 'APPLE-MACBOOK-AIR-M2', 3, 1299.00, 'USD', 1299.00),
-('European Watch', 'WATCH-EURO-001', 8, 450.00, 'EUR', 485.50),
-('Japanese Camera', 'CAM-JP-001', 6, 85000.00, 'JPY', 567.00),
-('British Tea Set', 'TEA-UK-001', 10, 75.00, 'GBP', 95.00)
-ON CONFLICT (sku) DO NOTHING;
-
 -- Row Level Security (RLS) policies
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
