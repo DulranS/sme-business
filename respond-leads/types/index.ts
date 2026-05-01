@@ -17,8 +17,40 @@ export interface Conversation {
   customer_name: string
   last_message_id?: string // Critical for deduplication in blueprint
   history: string
+  lead_score?: number // AI-calculated lead score (0-100)
+  lead_status?: 'new' | 'qualified' | 'contacted' | 'converted' | 'lost'
+  conversion_value?: number
+  conversion_date?: string
+  last_interaction_type?: 'inquiry' | 'follow_up' | 'negotiation' | 'purchase' | 'complaint'
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
   created_at?: string
   updated_at?: string
+}
+
+export interface Lead {
+  id?: number
+  conversation_id?: number
+  phone_number: string
+  customer_name: string
+  lead_score: number
+  status: 'new' | 'qualified' | 'contacted' | 'converted' | 'lost'
+  estimated_value?: number
+  conversion_probability?: number
+  last_message?: string
+  next_follow_up?: string
+  tags?: string[]
+  created_at?: string
+  updated_at?: string
+  converted_at?: string
+}
+
+export interface LeadScoringRule {
+  id?: number
+  rule_name: string
+  keywords: string[]
+  score_increase: number
+  is_active?: boolean
+  created_at?: string
 }
 
 // Currency configuration
@@ -220,6 +252,11 @@ export interface AnalyticsMetrics {
   aovChange: number
   conversionRate: number
   conversionChange: number
+  // Lead analytics
+  totalLeads?: number
+  qualifiedLeads?: number
+  leadConversionRate?: number
+  averageLeadScore?: number
 }
 
 // Bulk Operations types

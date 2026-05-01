@@ -1,6 +1,7 @@
 import { getSupabaseClient } from './supabase'
 import { logger } from './logger'
 import { AnalyticsMetrics } from '../types'
+import { leadManagementService } from './lead-management'
 
 export class AnalyticsService {
   private supabase = getSupabaseClient()
@@ -36,6 +37,9 @@ export class AnalyticsService {
         .gte('created_at', previousStart.toISOString())
         .lt('created_at', startDate.toISOString())
 
+      // Get lead analytics
+      const leadAnalytics = await leadManagementService.getLeadAnalytics(timeframe)
+
       // Calculate current metrics
       const currentRevenue = inventory?.reduce((sum, item) => sum + (item.price_usd * item.quantity), 0) || 0
       const currentOrders = conversations?.length || 0
@@ -62,7 +66,12 @@ export class AnalyticsService {
         averageOrderValue: Math.round(currentAOV * 100) / 100,
         aovChange: Math.round(aovChange * 10) / 10,
         conversionRate: Math.round(currentConversionRate * 100) / 100,
-        conversionChange: Math.round(conversionChange * 10) / 10
+        conversionChange: Math.round(conversionChange * 10) / 10,
+        // Lead analytics
+        totalLeads: leadAnalytics.totalLeads,
+        qualifiedLeads: leadAnalytics.qualifiedLeads,
+        leadConversionRate: leadAnalytics.conversionRate,
+        averageLeadScore: leadAnalytics.averageLeadScore
       }
 
       logger.info('Analytics metrics generated successfully', { timeframe, metrics })
