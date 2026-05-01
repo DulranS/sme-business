@@ -1,21 +1,23 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 'react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { CurrencyService } from '@/lib/currency'
 import { inventoryCache, conversationCache } from '@/lib/cache'
-import AnalyticsDashboard from '@/components/AnalyticsDashboard'
-import BulkOperations from '@/components/BulkOperations'
-import NotificationCenter from '@/components/NotificationCenter'
-import ForecastingDashboard from '@/components/ForecastingDashboard'
-import ReportingDashboard from '@/components/ReportingDashboard'
-import WhatsAppDashboard from '@/components/WhatsAppDashboard'
-import WhatsAppChat from '@/components/WhatsAppChat'
-import WhatsAppAnalyticsDashboard from '@/components/WhatsAppAnalyticsDashboard'
-import MarketingAutomationDashboard from '@/components/MarketingAutomationDashboard'
-import BlueprintConversationDashboard from '@/components/BlueprintConversationDashboard'
-import LeadManagementDashboard from '@/components/LeadManagementDashboard'
+
+// Lazy load components for better performance
+const AnalyticsDashboard = lazy(() => import('@/components/AnalyticsDashboard'))
+const BulkOperations = lazy(() => import('@/components/BulkOperations'))
+const NotificationCenter = lazy(() => import('@/components/NotificationCenter'))
+const ForecastingDashboard = lazy(() => import('@/components/ForecastingDashboard'))
+const ReportingDashboard = lazy(() => import('@/components/ReportingDashboard'))
+const WhatsAppDashboard = lazy(() => import('@/components/WhatsAppDashboard'))
+const WhatsAppChat = lazy(() => import('@/components/WhatsAppChat'))
+const WhatsAppAnalyticsDashboard = lazy(() => import('@/components/WhatsAppAnalyticsDashboard'))
+const MarketingAutomationDashboard = lazy(() => import('@/components/MarketingAutomationDashboard'))
+const BlueprintConversationDashboard = lazy(() => import('@/components/BlueprintConversationDashboard'))
+const LeadManagementDashboard = lazy(() => import('@/components/LeadManagementDashboard'))
 
 type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations' | 'lead-management'
 type Modal = 'add' | 'edit' | null
@@ -464,52 +466,72 @@ const Dashboard = memo(() => {
 
         {/* ── ANALYTICS TAB ── */}
         {tab === 'analytics' && (
-          <AnalyticsDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Analytics...</div>}>
+            <AnalyticsDashboard />
+          </Suspense>
         )}
 
         {/* ── BULK OPERATIONS TAB ── */}
         {tab === 'bulk-ops' && (
-          <BulkOperations />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Bulk Operations...</div>}>
+            <BulkOperations />
+          </Suspense>
         )}
 
         {/* ── FORECASTING TAB ── */}
         {tab === 'forecasting' && (
-          <ForecastingDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Forecasting...</div>}>
+            <ForecastingDashboard />
+          </Suspense>
         )}
 
         {/* ── REPORTING TAB ── */}
         {tab === 'reporting' && (
-          <ReportingDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Reporting...</div>}>
+            <ReportingDashboard />
+          </Suspense>
         )}
 
         {/* ── WHATSAPP DASHBOARD TAB ── */}
         {tab === 'whatsapp-dashboard' && (
-          <WhatsAppDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading WhatsApp Dashboard...</div>}>
+            <WhatsAppDashboard />
+          </Suspense>
         )}
 
         {/* ── WHATSAPP CHAT TAB ── */}
         {tab === 'whatsapp-chat' && (
-          <WhatsAppChat />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading WhatsApp Chat...</div>}>
+            <WhatsAppChat />
+          </Suspense>
         )}
 
         {/* ── WHATSAPP ANALYTICS TAB ── */}
         {tab === 'whatsapp-analytics' && (
-          <WhatsAppAnalyticsDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading WhatsApp Analytics...</div>}>
+            <WhatsAppAnalyticsDashboard />
+          </Suspense>
         )}
 
         {/* ── MARKETING AUTOMATION TAB ── */}
         {tab === 'marketing-automation' && (
-          <MarketingAutomationDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Marketing Automation...</div>}>
+            <MarketingAutomationDashboard />
+          </Suspense>
         )}
 
         {/* ── BLUEPRINT CONVERSATIONS TAB ── */}
         {tab === 'blueprint-conversations' && (
-          <BlueprintConversationDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Blueprint Conversations...</div>}>
+            <BlueprintConversationDashboard />
+          </Suspense>
         )}
 
         {/* ── LEAD MANAGEMENT TAB ── */}
         {tab === 'lead-management' && (
-          <LeadManagementDashboard />
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Lead Management...</div>}>
+            <LeadManagementDashboard />
+          </Suspense>
         )}
       </main>
 
