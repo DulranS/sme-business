@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { CurrencyService } from '@/lib/currency'
-import { inventoryCache, conversationCache } from '@/lib/cache'
+import { inventoryCache, conversationCache, clearAllData } from '@/lib/cache'
 
 // Lazy load components for better performance
 const AnalyticsDashboard = lazy(() => import('@/components/AnalyticsDashboard'))
@@ -306,6 +306,11 @@ const Dashboard = memo(() => {
     }
   }, [csvFile, downloadBlob, reportError, showToast])
 
+  const handleClearCache = useCallback(() => {
+    clearAllData()
+    showToast('Cache and browser storage cleared')
+  }, [showToast])
+
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -354,6 +359,23 @@ const Dashboard = memo(() => {
               ))}
             </select>
           </div>
+          <button 
+            onClick={handleClearCache}
+            style={{
+              background: 'rgba(139, 92, 246, 0.2)',
+              border: '1px solid rgba(139, 92, 246, 0.4)',
+              color: '#a78bfa',
+              padding: '6px 12px',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              borderRadius: '6px',
+              transition: 'all 0.2s ease'
+            }}
+            title="Clear cache and browser storage"
+          >
+            🧹 CLEAR CACHE
+          </button>
           <div style={s.headerStatus}>
             <div style={s.statusDot} />
             <span style={s.statusText}>LIVE</span>

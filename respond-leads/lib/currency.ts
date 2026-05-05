@@ -23,9 +23,14 @@ export class CurrencyService {
   static getCurrentCurrency(): string {
     if (typeof window !== 'undefined') {
       try {
-        return localStorage.getItem(this.STORAGE_KEY) || this.DEFAULT_CURRENCY
+        const stored = localStorage.getItem(this.STORAGE_KEY)
+        if (stored && typeof stored === 'string') {
+          return stored
+        }
+        return this.DEFAULT_CURRENCY
       } catch (e) {
-        // localStorage might be blocked on mobile in some browsers
+        // localStorage might be blocked, corrupted, or quota exceeded
+        console.warn('Currency preference deserialization failed, using default:', e)
         return this.DEFAULT_CURRENCY
       }
     }
