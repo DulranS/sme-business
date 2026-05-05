@@ -315,6 +315,30 @@ export function clearAllCaches(): void {
 }
 
 /**
+ * Clear browser storage (localStorage, sessionStorage)
+ */
+export function clearBrowserStorage(): void {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+      logger.info('Browser storage cleared')
+    } catch (e) {
+      logger.warn('Failed to clear browser storage', { error: String(e) })
+    }
+  }
+}
+
+/**
+ * Clear all caches and browser storage
+ */
+export function clearAllData(): void {
+  clearAllCaches()
+  clearBrowserStorage()
+  logger.info('All data cleared')
+}
+
+/**
  * Invalidate cache pattern across all caches
  */
 export function invalidateCachePattern(pattern: RegExp | string): void {
