@@ -23,6 +23,7 @@ type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasti
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
+const CSV_LAMBDA_URL = 'https://dummy-lambda-url.example.com/enrich'
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 const Dashboard = memo(() => {
@@ -41,6 +42,9 @@ const Dashboard = memo(() => {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [currentCurrency, setCurrentCurrency] = useState(CurrencyService.getCurrentCurrency())
   const [searchCurrency, setSearchCurrency] = useState('')
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvStatus, setCsvStatus] = useState('')
+  const [csvLoading, setCsvLoading] = useState(false)
 
   const currencyOptions = useMemo(() => CurrencyService.searchCurrencies(searchCurrency), [searchCurrency])
 
@@ -230,6 +234,78 @@ const Dashboard = memo(() => {
     conversationCache.invalidatePattern('conversations')
   }, [])
 
+  const handleCsvFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    setCsvFile(file)
+    setCsvStatus(file ? `Selected file: ${file.name}` : '')
+  }, [])
+
+  const downloadBlob = useCallback((blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }, [])
+
+  const handleCsvUpload = useCallback(async () => {
+    if (!csvFile) {
+      showToast('Please select a CSV file first.')
+      return
+    }
+
+    setCsvLoading(true)
+    setCsvStatus('Uploading and enriching...')
+
+    try {
+      const csvText = await csvFile.text()
+      const response = await fetch(CSV_LAMBDA_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ csv: csvText })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || 'Lambda request failed')
+      }
+
+      const contentType = response.headers.get('content-type') || ''
+      let blob: Blob
+      const filename = `enriched_${csvFile.name.replace(/\.csv$/i, '') || 'output'}.csv`
+
+      if (contentType.includes('text/csv') || contentType.includes('application/octet-stream')) {
+        blob = await response.blob()
+      } else {
+        const encoded = await response.text()
+        try {
+          const decoded = atob(encoded)
+          const bytes = new Uint8Array(decoded.length)
+          for (let i = 0; i < decoded.length; i += 1) {
+            bytes[i] = decoded.charCodeAt(i)
+          }
+          blob = new Blob([bytes], { type: 'text/csv' })
+        } catch {
+          throw new Error('Unable to decode CSV response')
+        }
+      }
+
+      downloadBlob(blob, filename)
+      setCsvStatus(`Download started: ${filename}`)
+      showToast('CSV enriched successfully')
+    } catch (error) {
+      reportError(error, 'CSV upload failed')
+      setCsvStatus('Unable to process file. See console for details.')
+    } finally {
+      setCsvLoading(false)
+    }
+  }, [csvFile, downloadBlob, reportError, showToast])
+
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -310,6 +386,37 @@ const Dashboard = memo(() => {
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
+      </div>
+
+      <div style={s.csvCard}>
+        <div style={s.csvUploadContent}>
+          <div style={s.csvCardTitle}>Upload raw CSV and download enriched CSV</div>
+          <div style={s.csvUploadRow}>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvFileChange}
+              style={s.csvFileInput}
+            />
+            <button
+              type="button"
+              onClick={handleCsvUpload}
+              disabled={!csvFile || csvLoading}
+              style={{
+                ...s.primaryBtn,
+                ...(csvLoading || !csvFile ? s.disabledBtn : {}),
+                minWidth: 170
+              }}
+            >
+              {csvLoading ? 'Processing...' : 'Upload & Download CSV'}
+            </button>
+          </div>
+          {csvStatus && <div style={s.csvStatusText}>{csvStatus}</div>}
+        </div>
+        <div style={s.csvCardMeta}>
+          <div style={s.csvMetaText}>Dummy Lambda URL: {CSV_LAMBDA_URL}</div>
+          <div style={s.csvMetaText}>The enriched CSV will be downloaded automatically.</div>
+        </div>
       </div>
 
       <main style={s.main}>
@@ -794,7 +901,72 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 'clamp(8px, 1.5vw, 12px)'
   },
 
-  tableWrap: { 
+  csvCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+    background: 'rgba(255, 255, 255, 0.04)',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(139, 92, 246, 0.2)',
+    borderRadius: 'clamp(16px, 2vw, 20px)',
+    padding: 'clamp(18px, 2vw, 24px)',
+    marginBottom: '24px'
+  },
+
+  csvUploadContent: {
+    display: 'grid',
+    gap: '12px'
+  },
+
+  csvCardTitle: {
+    fontSize: 'clamp(14px, 2vw, 16px)',
+    fontWeight: 700,
+    color: '#ffffff'
+  },
+
+  csvUploadRow: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'center',
+    flexWrap: 'wrap'
+  },
+
+  csvFileInput: {
+    background: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(139, 92, 246, 0.3)',
+    borderRadius: '12px',
+    color: '#e5e5e5',
+    padding: '12px 14px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    minWidth: '240px',
+    flex: 1,
+    maxWidth: '420px'
+  },
+
+  csvStatusText: {
+    fontSize: '13px',
+    color: '#9ca3af'
+  },
+
+  csvCardMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    color: '#9ca3af',
+    fontSize: '12px'
+  },
+
+  csvMetaText: {
+    lineHeight: 1.4
+  },
+
+  disabledBtn: {
+    opacity: 0.5,
+    cursor: 'not-allowed'
+  },
+
+  tableWrap: {
     background: 'rgba(255, 255, 255, 0.02)', 
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.2)', 
