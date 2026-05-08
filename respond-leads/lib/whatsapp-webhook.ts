@@ -1,49 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase'
-import { Config } from '@/lib/config'
 import { whatsappService } from '@/lib/whatsapp-blueprint'
 import { claudeBlueprintService } from '@/lib/claude-blueprint'
 import { logger } from '@/lib/logger'
-import { inventorySearchCache, conversationCache } from '@/lib/cache'
 import { WhatsAppContact, WhatsAppMessage } from '@/types'
 
 const supabase = createSupabaseServerClient()
 
 export async function GET(request: NextRequest) {
-  try {
-    // Check if WhatsApp is configured
-    if (!Config.whatsappPhoneNumberId || !Config.whatsappVerifyToken) {
-      logger.warn('WhatsApp not configured - webhook verification disabled')
-      return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 503 })
-    }
+  const searchParams = request.nextUrl.searchParams
+  const mode = searchParams.get('hub.mode')
+  const token = searchParams.get('hub.verify_token')
+  const challenge = searchParams.get('hub.challenge')
 
-    const searchParams = request.nextUrl.searchParams
-    const mode = searchParams.get('hub.mode')
-    const token = searchParams.get('hub.verify_token')
-    const challenge = searchParams.get('hub.challenge')
-
-    const verifyToken = whatsappService.verifyWebhookChallenge(mode, token)
-    if (verifyToken && challenge) {
-      logger.webhook('Webhook verification succeeded', { mode, challenge: challenge.slice(0, 16) })
-      return new NextResponse(challenge)
-    }
-
-    logger.warn('Webhook verification failed', { mode, token })
-    return NextResponse.json({ error: 'Invalid verification' }, { status: 400 })
-  } catch (error) {
-    logger.error('Error in GET webhook', { error: error instanceof Error ? error.message : String(error) })
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  const verifyToken = whatsappService.verifyWebhookChallenge(mode, token)
+  if (verifyToken && challenge) {
+    logger.webhook('Webhook verification succeeded', { mode, challenge: challenge.slice(0, 16) })
+    return new NextResponse(challenge)
   }
+
+  logger.warn('Webhook verification failed', { mode, token })
+  return NextResponse.json({ error: 'Invalid verification' }, { status: 400 })
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Check if WhatsApp is configured
-    if (!Config.whatsappPhoneNumberId || !Config.whatsappAccessToken || !Config.whatsappAppSecret) {
-      logger.warn('WhatsApp not configured - webhook processing disabled')
-      return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 503 })
-    }
-
     const body = await request.text()
     const signature = request.headers.get('x-hub-signature-256')
 
@@ -83,8 +64,6 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
   const messageText = message.text?.body?.trim() || ''
   const customerName = whatsappService.getCustomerName(contact)
 
-  const startTime = Date.now()
-
   try {
     const { data: conversations, error: fetchError } = await supabase
       .from('conversations')
@@ -123,9 +102,7 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
     logger.whatsapp('WhatsApp reply sent', { to: normalizedPhone, messageId, preview: aiResponse.slice(0, 80) })
 
     await saveConversation(normalizedPhone, customerName, messageId, messageText, aiResponse, conversationHistory)
-    await trackConversationAnalytics(normalizedPhone, searchKeyword, inventoryResults.length, Date.now() - startTime)
-
-    conversationCache.invalidatePattern(`phone_number:${normalizedPhone}`)
+    await trackConversationAnalytics(normalizedPhone, searchKeyword, inventoryResults.length, Date.now() - Number(message.timestamp || Date.now()))
   } catch (error) {
     logger.error('Error processing WhatsApp message', {
       phoneNumber: rawPhoneNumber,
@@ -138,12 +115,6 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
 async function searchInventory(searchKeyword: string) {
   if (!searchKeyword || searchKeyword === 'GENERAL') {
     return []
-  }
-
-  const cacheKey = `inventory_search:${searchKeyword.toLowerCase().trim()}`
-  const cached = inventorySearchCache.get(cacheKey)
-  if (cached) {
-    return cached as Array<{ name?: string; quantity?: number; price?: number; sku?: string }>
   }
 
   const safeKeyword = searchKeyword.replace(/[%_]/g, match => `\\${match}`)
@@ -161,10 +132,7 @@ async function searchInventory(searchKeyword: string) {
     return []
   }
 
-  const results = data || []
-  inventorySearchCache.set(cacheKey, results)
-
-  return results
+  return data || []
 }
 
 async function saveConversation(

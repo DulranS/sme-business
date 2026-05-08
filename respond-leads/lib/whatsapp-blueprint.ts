@@ -1,34 +1,36 @@
-import crypto from 'crypto'
-import { Config } from '@/lib/config'
 import { WhatsAppWebhookPayload, WhatsAppMessage, WhatsAppContact } from '@/types'
 
 export class WhatsAppService {
-  private phoneNumberId?: string
-  private accessToken?: string
-  private appSecret?: string
-  private verifyToken?: string
+  private phoneNumberId: string
+  private accessToken: string
+  private appSecret: string
 
   constructor() {
-    // Initialize lazily to avoid build-time errors
-    this.initializeIfConfigured()
+    this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || ''
+    this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN || ''
+    this.appSecret = process.env.WHATSAPP_APP_SECRET || ''
   }
 
-  private initializeIfConfigured() {
-    try {
-      const whatsappConfig = Config.whatsapp
-      this.phoneNumberId = whatsappConfig.phoneNumberId
-      this.accessToken = whatsappConfig.accessToken
-      this.appSecret = whatsappConfig.appSecret
-      this.verifyToken = whatsappConfig.verifyToken
-    } catch (error) {
-      // WhatsApp not configured - service will be disabled
-      console.warn('WhatsApp service not configured:', error instanceof Error ? error.message : String(error))
+  private validateEnvironment() {
+    const required = [
+      'WHATSAPP_PHONE_NUMBER_ID',
+      'WHATSAPP_ACCESS_TOKEN',
+      'WHATSAPP_APP_SECRET',
+      'WHATSAPP_VERIFY_TOKEN'
+    ]
+
+    const missing = required.filter(key => !process.env[key])
+    if (missing.length > 0) {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
     }
   }
 
   private ensureInitialized() {
     if (!this.phoneNumberId || !this.accessToken || !this.appSecret) {
-      throw new Error('WhatsApp service is not configured. Please set the required environment variables.')
+      this.validateEnvironment()
+      this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!
+      this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN!
+      this.appSecret = process.env.WHATSAPP_APP_SECRET!
     }
   }
 
@@ -83,9 +85,6 @@ export class WhatsAppService {
 
   getPhoneNumberId(): string {
     this.ensureInitialized()
-    if (!this.phoneNumberId) {
-      throw new Error('Phone number ID not available')
-    }
     return this.phoneNumberId
   }
 
@@ -94,27 +93,17 @@ export class WhatsAppService {
 
     this.ensureInitialized()
 
-    if (!this.appSecret) {
-      throw new Error('App secret not available')
-    }
-
+    const crypto = require('crypto')
     const expectedSignature = 'sha256=' + crypto
       .createHmac('sha256', this.appSecret)
       .update(body)
       .digest('hex')
 
-    const receivedBuffer = Buffer.from(signature)
-    const expectedBuffer = Buffer.from(expectedSignature)
-
-    if (receivedBuffer.length !== expectedBuffer.length) {
-      return false
-    }
-
-    return crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
   }
 
   verifyWebhookChallenge(mode: string | null, token: string | null): string | null {
-    if (mode === 'subscribe' && token === this.verifyToken) {
+    if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
       return token
     }
     return null
@@ -122,13 +111,7 @@ export class WhatsAppService {
 
   async sendMessage(to: string, message: string, replyToMessageId?: string, whatsappPhoneNumberId?: string): Promise<void> {
     this.ensureInitialized()
-    if (!this.accessToken) {
-      throw new Error('Access token not available')
-    }
     const senderId = whatsappPhoneNumberId || this.phoneNumberId
-    if (!senderId) {
-      throw new Error('Sender ID not available')
-    }
     const url = `https://graph.facebook.com/v18.0/${senderId}/messages`
 
     const payload = {
@@ -159,22 +142,12 @@ export class WhatsAppService {
     }
   }
 
-  parseWebhookPayload(body: unknown): {
+  parseWebhookPayload(body: any): {
     messages: WhatsAppMessage[]
     contacts: WhatsAppContact[]
     phoneNumberId: string | null
   } {
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      Array.isArray(body) ||
-      !('entry' in body) ||
-      !Array.isArray((body as { entry?: unknown }).entry)
-    ) {
-      throw new Error('Invalid WhatsApp webhook payload')
-    }
-
-    const payload: WhatsAppWebhookPayload = body as WhatsAppWebhookPayload
+    const payload: WhatsAppWebhookPayload = body
     const messages = this.extractMessages(payload)
     const contacts = this.extractContacts(payload)
     const phoneNumberId = this.extractPhoneNumberId(payload) || null
@@ -192,7 +165,7 @@ export class WhatsAppService {
     return history
   }
 
-  formatInventoryResults(items: Array<{ name?: string; quantity?: number; price?: number | string; sku?: string }>): string {
+  formatInventoryResults(items: any[]): string {
     if (!items || items.length === 0) {
       return 'No inventory results found for this query.'
     }

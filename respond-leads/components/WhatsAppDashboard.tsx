@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { databaseService } from '../lib/database'
 import { Conversation } from '../types'
 
@@ -191,7 +191,7 @@ const styles: Record<string, React.CSSProperties> = {
   }
 }
 
-export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashboardProps) {
+export default function WhatsAppDashboard({ className = '' }: WhatsAppDashboardProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [inventoryResults, setInventoryResults] = useState<InventoryResult[]>([])
   const [stats, setStats] = useState<DashboardStats>({
@@ -206,7 +206,7 @@ export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashb
     loadDashboardData()
   }, [])
 
-  const loadDashboardData = useCallback(async () => {
+  const loadDashboardData = async () => {
     try {
       setLoading(true)
       const data = await databaseService.getConversations()
@@ -235,9 +235,9 @@ export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashb
     } finally {
       setLoading(false)
     }
-  }, [])
+  }
 
-  const getTimeAgo = useCallback((dateString: string | undefined) => {
+  const getTimeAgo = (dateString: string | undefined) => {
     if (!dateString) return 'Unknown'
     
     const date = new Date(dateString as string)
@@ -253,9 +253,9 @@ export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashb
     
     const diffDays = Math.floor(diffHours / 24)
     return `${diffDays}d ago`
-  }, [])
+  }
 
-  const getLastMessage = useCallback((history: string | undefined) => {
+  const getLastMessage = (history: string | undefined) => {
     if (!history) return 'No messages'
     
     const messages = history.split('[Customer]:')
@@ -266,35 +266,7 @@ export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashb
     // Extract just the customer message part
     const messageParts = lastCustomerMessage.split('[Assistant]:')
     return messageParts[0]?.trim() || 'No messages'
-  }, [])
-
-  // Memoize computed values
-  const recentConversations = useMemo(() => 
-    conversations.slice(0, 10), [conversations]
-  )
-
-  const statsCards = useMemo(() => [
-    {
-      icon: '💬',
-      value: stats.totalConversations,
-      label: 'Total Conversations'
-    },
-    {
-      icon: '📅',
-      value: stats.activeToday,
-      label: 'Active Today'
-    },
-    {
-      icon: '⚡',
-      value: stats.avgResponseTime,
-      label: 'Avg Response Time'
-    },
-    {
-      icon: '📨',
-      value: stats.totalMessages,
-      label: 'Total Messages'
-    }
-  ], [stats])
+  }
 
   if (loading) {
     return <div style={styles.loading}>Loading WhatsApp dashboard...</div>
@@ -307,13 +279,29 @@ export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashb
       </div>
 
       <div style={styles.statsGrid}>
-        {statsCards.map((card, index) => (
-          <div key={index} style={styles.statCard}>
-            <div style={styles.statIcon}>{card.icon}</div>
-            <div style={styles.statValue}>{card.value}</div>
-            <div style={styles.statLabel}>{card.label}</div>
-          </div>
-        ))}
+        <div style={styles.statCard}>
+          <div style={styles.statIcon}>💬</div>
+          <div style={styles.statValue}>{stats.totalConversations}</div>
+          <div style={styles.statLabel}>Total Conversations</div>
+        </div>
+
+        <div style={styles.statCard}>
+          <div style={styles.statIcon}>📅</div>
+          <div style={styles.statValue}>{stats.activeToday}</div>
+          <div style={styles.statLabel}>Active Today</div>
+        </div>
+
+        <div style={styles.statCard}>
+          <div style={styles.statIcon}>⚡</div>
+          <div style={styles.statValue}>{stats.avgResponseTime}</div>
+          <div style={styles.statLabel}>Avg Response Time</div>
+        </div>
+
+        <div style={styles.statCard}>
+          <div style={styles.statIcon}>📨</div>
+          <div style={styles.statValue}>{stats.totalMessages}</div>
+          <div style={styles.statLabel}>Total Messages</div>
+        </div>
       </div>
 
       <div style={styles.recentConversations}>
@@ -326,8 +314,8 @@ export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashb
           </div>
         ) : (
           <div style={styles.conversationList}>
-            {recentConversations.map((conversation, index) => (
-              <div key={conversation.id || index} style={styles.conversationItem}>
+            {conversations.slice(0, 10).map((conversation, index) => (
+              <div key={index} style={styles.conversationItem}>
                 <div style={styles.conversationInfo}>
                   <div style={styles.customerPhone}>{conversation.phone_number}</div>
                   <div style={styles.customerName}>{conversation.customer_name}</div>
@@ -345,4 +333,4 @@ export default memo(function WhatsAppDashboard({ className = '' }: WhatsAppDashb
       </div>
     </div>
   )
-})
+}

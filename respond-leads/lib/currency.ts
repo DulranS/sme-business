@@ -11,24 +11,14 @@ export class CurrencyService {
 
   static getCurrentCurrency(): string {
     if (typeof window !== 'undefined') {
-      try {
-        return localStorage.getItem(this.STORAGE_KEY) || this.DEFAULT_CURRENCY
-      } catch (e) {
-        // localStorage might be blocked on mobile in some browsers
-        return this.DEFAULT_CURRENCY
-      }
+      return localStorage.getItem(this.STORAGE_KEY) || this.DEFAULT_CURRENCY
     }
     return this.DEFAULT_CURRENCY
   }
 
   static setCurrentCurrency(currencyCode: string): void {
     if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(this.STORAGE_KEY, currencyCode)
-      } catch (e) {
-        // localStorage might be blocked on mobile in some browsers
-        console.warn('Unable to save currency preference:', e)
-      }
+      localStorage.setItem(this.STORAGE_KEY, currencyCode)
     }
   }
 

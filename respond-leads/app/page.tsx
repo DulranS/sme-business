@@ -1,31 +1,27 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { CurrencyService } from '@/lib/currency'
-import { inventoryCache, conversationCache } from '@/lib/cache'
+import AnalyticsDashboard from '@/components/AnalyticsDashboard'
+import BulkOperations from '@/components/BulkOperations'
+import NotificationCenter from '@/components/NotificationCenter'
+import ForecastingDashboard from '@/components/ForecastingDashboard'
+import ReportingDashboard from '@/components/ReportingDashboard'
+import WhatsAppDashboard from '@/components/WhatsAppDashboard'
+import WhatsAppChat from '@/components/WhatsAppChat'
+import WhatsAppAnalyticsDashboard from '@/components/WhatsAppAnalyticsDashboard'
+import MarketingAutomationDashboard from '@/components/MarketingAutomationDashboard'
+import BlueprintConversationDashboard from '@/components/BlueprintConversationDashboard'
 
-// Lazy load components for better performance
-const AnalyticsDashboard = lazy(() => import('@/components/AnalyticsDashboard'))
-const BulkOperations = lazy(() => import('@/components/BulkOperations'))
-const NotificationCenter = lazy(() => import('@/components/NotificationCenter'))
-const ForecastingDashboard = lazy(() => import('@/components/ForecastingDashboard'))
-const ReportingDashboard = lazy(() => import('@/components/ReportingDashboard'))
-const WhatsAppDashboard = lazy(() => import('@/components/WhatsAppDashboard'))
-const WhatsAppChat = lazy(() => import('@/components/WhatsAppChat'))
-const WhatsAppAnalyticsDashboard = lazy(() => import('@/components/WhatsAppAnalyticsDashboard'))
-const MarketingAutomationDashboard = lazy(() => import('@/components/MarketingAutomationDashboard'))
-const BlueprintConversationDashboard = lazy(() => import('@/components/BlueprintConversationDashboard'))
-const LeadManagementDashboard = lazy(() => import('@/components/LeadManagementDashboard'))
-
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations' | 'lead-management'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
-const Dashboard = memo(() => {
+export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('inventory')
   const [items, setItems] = useState<InventoryItem[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -36,7 +32,6 @@ const Dashboard = memo(() => {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
-  const [toastTimer, setToastTimer] = useState<number | null>(null)
   const [selectedConvo, setSelectedConvo] = useState<Conversation | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [currentCurrency, setCurrentCurrency] = useState(CurrencyService.getCurrentCurrency())
@@ -45,74 +40,24 @@ const Dashboard = memo(() => {
   const supabase = getSupabaseClient()
 
   // ─── Data fetching ─────────────────────────────────────────────────────────
-  const showToast = useCallback((msg: string) => {
-    if (toastTimer) {
-      clearTimeout(toastTimer)
-    }
-
-    setToast(msg)
-    if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
-      const timer = window.setTimeout(() => setToast(''), 3000)
-      setToastTimer(timer)
-    }
-  }, [toastTimer])
-
-  const reportError = useCallback((error: unknown, fallbackMessage: string) => {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(fallbackMessage, message)
-    showToast(fallbackMessage)
-  }, [showToast])
-
   const fetchInventory = useCallback(async () => {
-    const cacheKey = `inventory_search:${search.toLowerCase().trim()}`
-    const cached = inventoryCache.get(cacheKey)
-    if (cached && typeof cached === 'object' && Array.isArray(cached)) {
-      setItems(cached as InventoryItem[])
-      setLoading(false)
-      return
-    }
-
     setLoading(true)
-    try {
-      let query = supabase.from('inventory').select('*').order('name')
-      if (search) query = query.ilike('name', `%${search}%`)
-      const { data, error } = await query
-      if (error) throw error
-      const items = data || []
-      setItems(items)
-      inventoryCache.set(cacheKey, items)
-    } catch (error) {
-      reportError(error, 'Unable to load inventory')
-    } finally {
-      setLoading(false)
-    }
-  }, [search, supabase, reportError])
+    let query = supabase.from('inventory').select('*').order('name')
+    if (search) query = query.ilike('name', `%${search}%`)
+    const { data } = await query
+    setItems(data || [])
+    setLoading(false)
+  }, [search])
 
   const fetchConversations = useCallback(async () => {
-    const cacheKey = 'conversations:all'
-    const cached = conversationCache.get(cacheKey)
-    if (cached && typeof cached === 'object' && Array.isArray(cached)) {
-      setConversations(cached as Conversation[])
-      setLoading(false)
-      return
-    }
-
     setLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .order('updated_at', { ascending: false })
-      if (error) throw error
-      const convos = data || []
-      setConversations(convos)
-      conversationCache.set(cacheKey, convos)
-    } catch (error) {
-      reportError(error, 'Unable to load conversations')
-    } finally {
-      setLoading(false)
-    }
-  }, [supabase, reportError])
+    const { data } = await supabase
+      .from('conversations')
+      .select('*')
+      .order('updated_at', { ascending: false })
+    setConversations(data || [])
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
     if (tab === 'inventory') fetchInventory()
@@ -132,40 +77,16 @@ const Dashboard = memo(() => {
     setModal('edit')
   }
 
-  const normalizeInventoryForm = (item: InventoryItem): InventoryItem => {
-    const rawCurrency = String(item.currency || '').trim().toUpperCase()
-    const currency = CurrencyService.isValidCurrency(rawCurrency) ? rawCurrency : 'USD'
-    const price = Number(item.price) || 0
-    const price_usd = Number(item.price_usd) || 0
-
-    return {
-      ...item,
-      currency,
-      price,
-      price_usd: price_usd > 0 ? price_usd : CurrencyService.convertToUSD(price, currency)
-    }
-  }
-
   const handleSave = async () => {
     if (!form.name || !form.sku) return showToast('Name and SKU are required')
     setSaving(true)
     try {
-      const normalizedForm = normalizeInventoryForm(form)
-      const rawCurrency = String(form.currency || '').trim().toUpperCase()
-      if (rawCurrency && !CurrencyService.isValidCurrency(rawCurrency)) {
-        showToast('Invalid currency provided, defaulted to USD')
-      }
-
       if (modal === 'add') {
-        const { error } = await supabase.from('inventory').insert(normalizedForm)
+        const { error } = await supabase.from('inventory').insert(form)
         if (error) throw error
         showToast('Item added')
       } else {
-        if (editId === null) {
-          throw new Error('No inventory item selected for update')
-        }
-
-        const { error } = await supabase.from('inventory').update(normalizedForm).eq('id', editId)
+        const { error } = await supabase.from('inventory').update(form).eq('id', editId)
         if (error) throw error
         showToast('Item updated')
       }
@@ -179,16 +100,16 @@ const Dashboard = memo(() => {
   }
 
   const handleDelete = async (id: number) => {
-    try {
-      const { error } = await supabase.from('inventory').delete().eq('id', id)
-      if (error) throw error
+    const { error } = await supabase.from('inventory').delete().eq('id', id)
+    if (error) return showToast('Delete failed')
+    setDeleteConfirm(null)
+    showToast('Item deleted')
+    fetchInventory()
+  }
 
-      setDeleteConfirm(null)
-      showToast('Item deleted')
-      fetchInventory()
-    } catch (error) {
-      reportError(error, 'Delete failed')
-    }
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
   }
 
   // ─── Parse conversation history into messages ──────────────────────────────
@@ -204,27 +125,15 @@ const Dashboard = memo(() => {
   }
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
-  const stats = useMemo(() => {
-    const totalItems = items.length
-    const lowStock = items.filter(i => i.quantity <= 5 && i.quantity > 0).length
-    const outOfStock = items.filter(i => i.quantity === 0).length
-    const totalValue = items.reduce((sum, i) => sum + (i.price_usd * i.quantity), 0)
+  const totalItems = items.length
+  const lowStock = items.filter(i => i.quantity <= 5 && i.quantity > 0).length
+  const outOfStock = items.filter(i => i.quantity === 0).length
+  const totalValue = items.reduce((sum, i) => sum + (i.price_usd * i.quantity), 0)
 
-    return {
-      totalItems,
-      lowStock,
-      outOfStock,
-      totalValue: CurrencyService.formatPrice(totalValue, currentCurrency)
-    }
-  }, [items, currentCurrency])
-
-  const handleCurrencyChange = useCallback((currencyCode: string) => {
+  const handleCurrencyChange = (currencyCode: string) => {
     setCurrentCurrency(currencyCode)
     CurrencyService.setCurrentCurrency(currencyCode)
-    // Invalidate caches when currency changes
-    inventoryCache.invalidatePattern('inventory_search')
-    conversationCache.invalidatePattern('conversations')
-  }, [])
+  }
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -246,12 +155,11 @@ const Dashboard = memo(() => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           {/* Currency Selector */}
           <div style={{
-            background: 'rgba(26, 26, 26, 0.8)',
+            background: 'rgba(255, 255, 255, 0.05)',
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(139, 92, 246, 0.4)',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
             borderRadius: '8px',
-            padding: '4px 8px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
+            padding: '4px 8px'
           }}>
             <select 
               value={currentCurrency} 
@@ -259,16 +167,15 @@ const Dashboard = memo(() => {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#ffffff',
+                color: '#e5e5e5',
                 fontSize: '12px',
                 fontWeight: '600',
                 outline: 'none',
-                cursor: 'pointer',
-                minWidth: '80px'
+                cursor: 'pointer'
               }}
             >
               {Object.entries(CurrencyService.getAvailableCurrencies()).map(([code, currency]) => (
-                <option key={code} value={code} style={{ background: '#1a1a1a', color: '#ffffff' }}>
+                <option key={code} value={code} style={{ background: '#1a1a1a' }}>
                   {currency.code} ({currency.symbol})
                 </option>
               ))}
@@ -283,7 +190,7 @@ const Dashboard = memo(() => {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations', 'lead-management'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -302,7 +209,6 @@ const Dashboard = memo(() => {
              t === 'whatsapp-analytics' ? '📈 WHATSAPP ANALYTICS' :
              t === 'marketing-automation' ? '🚀 MARKETING AUTOMATION' :
              t === 'blueprint-conversations' ? '🔧 BLUEPRINT CONVERSATIONS' :
-             t === 'lead-management' ? '🎯 LEAD MANAGEMENT' :
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
@@ -316,10 +222,10 @@ const Dashboard = memo(() => {
             {/* Stats row */}
             <div style={s.statsRow}>
               {[
-                { label: 'TOTAL SKUs', value: stats.totalItems, color: '#E8FF47' },
-                { label: 'INVENTORY VALUE', value: stats.totalValue, color: '#E8FF47' },
-                { label: 'LOW STOCK', value: stats.lowStock, color: '#F59E0B' },
-                { label: 'OUT OF STOCK', value: stats.outOfStock, color: '#EF4444' },
+                { label: 'TOTAL SKUs', value: totalItems, color: '#E8FF47' },
+                { label: 'INVENTORY VALUE', value: CurrencyService.formatPrice(totalValue, currentCurrency), color: '#E8FF47' },
+                { label: 'LOW STOCK', value: lowStock, color: '#F59E0B' },
+                { label: 'OUT OF STOCK', value: outOfStock, color: '#EF4444' },
               ].map(stat => (
                 <div key={stat.label} style={s.statCard}>
                   <div style={s.statLabel}>{stat.label}</div>
@@ -466,72 +372,47 @@ const Dashboard = memo(() => {
 
         {/* ── ANALYTICS TAB ── */}
         {tab === 'analytics' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Analytics...</div>}>
-            <AnalyticsDashboard />
-          </Suspense>
+          <AnalyticsDashboard />
         )}
 
         {/* ── BULK OPERATIONS TAB ── */}
         {tab === 'bulk-ops' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Bulk Operations...</div>}>
-            <BulkOperations />
-          </Suspense>
+          <BulkOperations />
         )}
 
         {/* ── FORECASTING TAB ── */}
         {tab === 'forecasting' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Forecasting...</div>}>
-            <ForecastingDashboard />
-          </Suspense>
+          <ForecastingDashboard />
         )}
 
         {/* ── REPORTING TAB ── */}
         {tab === 'reporting' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Reporting...</div>}>
-            <ReportingDashboard />
-          </Suspense>
+          <ReportingDashboard />
         )}
 
         {/* ── WHATSAPP DASHBOARD TAB ── */}
         {tab === 'whatsapp-dashboard' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading WhatsApp Dashboard...</div>}>
-            <WhatsAppDashboard />
-          </Suspense>
+          <WhatsAppDashboard />
         )}
 
         {/* ── WHATSAPP CHAT TAB ── */}
         {tab === 'whatsapp-chat' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading WhatsApp Chat...</div>}>
-            <WhatsAppChat />
-          </Suspense>
+          <WhatsAppChat />
         )}
 
         {/* ── WHATSAPP ANALYTICS TAB ── */}
         {tab === 'whatsapp-analytics' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading WhatsApp Analytics...</div>}>
-            <WhatsAppAnalyticsDashboard />
-          </Suspense>
+          <WhatsAppAnalyticsDashboard />
         )}
 
         {/* ── MARKETING AUTOMATION TAB ── */}
         {tab === 'marketing-automation' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Marketing Automation...</div>}>
-            <MarketingAutomationDashboard />
-          </Suspense>
+          <MarketingAutomationDashboard />
         )}
 
         {/* ── BLUEPRINT CONVERSATIONS TAB ── */}
         {tab === 'blueprint-conversations' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Blueprint Conversations...</div>}>
-            <BlueprintConversationDashboard />
-          </Suspense>
-        )}
-
-        {/* ── LEAD MANAGEMENT TAB ── */}
-        {tab === 'lead-management' && (
-          <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading Lead Management...</div>}>
-            <LeadManagementDashboard />
-          </Suspense>
+          <BlueprintConversationDashboard />
         )}
       </main>
 
@@ -668,11 +549,7 @@ const Dashboard = memo(() => {
       <NotificationCenter />
     </div>
   )
-})
-
-Dashboard.displayName = 'Dashboard'
-
-export default Dashboard
+}
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
