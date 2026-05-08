@@ -6,6 +6,7 @@ export class WhatsAppService {
   private appSecret: string
 
   constructor() {
+    // Don't validate on construction - validate when methods are called
     this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || ''
     this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN || ''
     this.appSecret = process.env.WHATSAPP_APP_SECRET || ''
@@ -28,48 +29,41 @@ export class WhatsAppService {
   private ensureInitialized() {
     if (!this.phoneNumberId || !this.accessToken || !this.appSecret) {
       this.validateEnvironment()
+      // Re-assign if validation passed
       this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!
       this.accessToken = process.env.WHATSAPP_ACCESS_TOKEN!
       this.appSecret = process.env.WHATSAPP_APP_SECRET!
     }
   }
 
-  private extractPhoneNumberId(payload: WhatsAppWebhookPayload): string | null {
-    for (const entry of payload.entry) {
-      for (const change of entry.changes) {
-        const metadata = change.value.metadata
-        if (metadata?.phone_number_id) {
-          return metadata.phone_number_id
-        }
-      }
-    }
-    return null
-  }
-
+  // Blueprint: Filter text messages only - drop status updates, images, audio, etc.
   isTextMessage(message: WhatsAppMessage): boolean {
     return message.type === 'text' && !!message.text?.body
   }
 
+  // Blueprint: Extract messages from webhook payload
   extractMessages(payload: WhatsAppWebhookPayload): WhatsAppMessage[] {
     const messages: WhatsAppMessage[] = []
-
+    
     for (const entry of payload.entry) {
       if (entry.changes) {
         for (const change of entry.changes) {
           if (change.value.messages) {
+            // Filter text messages only as per blueprint requirement
             const textMessages = change.value.messages.filter(msg => this.isTextMessage(msg))
             messages.push(...textMessages)
           }
         }
       }
     }
-
+    
     return messages
   }
 
+  // Blueprint: Extract contact information
   extractContacts(payload: WhatsAppWebhookPayload): WhatsAppContact[] {
     const contacts: WhatsAppContact[] = []
-
+    
     for (const entry of payload.entry) {
       if (entry.changes) {
         for (const change of entry.changes) {
@@ -79,10 +73,11 @@ export class WhatsAppService {
         }
       }
     }
-
+    
     return contacts
   }
 
+  // Blueprint: Get phone number ID from environment or payload
   getPhoneNumberId(): string {
     this.ensureInitialized()
     return this.phoneNumberId
@@ -90,16 +85,19 @@ export class WhatsAppService {
 
   verifyWebhookSignature(body: string, signature: string | null): boolean {
     if (!signature) return false
-
+    
     this.ensureInitialized()
-
+    
     const crypto = require('crypto')
     const expectedSignature = 'sha256=' + crypto
       .createHmac('sha256', this.appSecret)
       .update(body)
       .digest('hex')
-
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+    
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    )
   }
 
   verifyWebhookChallenge(mode: string | null, token: string | null): string | null {
@@ -109,14 +107,14 @@ export class WhatsAppService {
     return null
   }
 
-  async sendMessage(to: string, message: string, replyToMessageId?: string, whatsappPhoneNumberId?: string): Promise<void> {
+  async sendMessage(to: string, message: string, replyToMessageId?: string): Promise<void> {
     this.ensureInitialized()
-    const senderId = whatsappPhoneNumberId || this.phoneNumberId
-    const url = `https://graph.facebook.com/v18.0/${senderId}/messages`
-
+    
+    const url = `https://graph.facebook.com/v18.0/${this.phoneNumberId}/messages`
+    
     const payload = {
       messaging_product: 'whatsapp',
-      to: this.normalizePhoneNumber(to),
+      to: to,
       text: {
         body: message
       },
@@ -126,38 +124,46 @@ export class WhatsAppService {
         }
       })
     }
-
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.accessToken}`,
+        'Authorization': `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     })
-
+    
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`WhatsApp API error: ${response.status} ${errorText}`)
+      const error = await response.text()
+      throw new Error(`WhatsApp API error: ${response.status} ${error}`)
     }
+    
+    const result = await response.json()
+    return result
   }
 
-  parseWebhookPayload(body: any): {
-    messages: WhatsAppMessage[]
-    contacts: WhatsAppContact[]
-    phoneNumberId: string | null
+  // Blueprint: Parse webhook payload for processing
+  parseWebhookPayload(body: any): { 
+    messages: WhatsAppMessage[], 
+    contacts: WhatsAppContact[],
+    phoneNumberId: string 
   } {
     const payload: WhatsAppWebhookPayload = body
+    
     const messages = this.extractMessages(payload)
     const contacts = this.extractContacts(payload)
-    const phoneNumberId = this.extractPhoneNumberId(payload) || null
+    const phoneNumberId = this.getPhoneNumberId()
+    
     return { messages, contacts, phoneNumberId }
   }
 
+  // Blueprint: Check if message was already processed (deduplication)
   isMessageProcessed(messageId: string, lastMessageId?: string): boolean {
-    return !!lastMessageId && messageId === lastMessageId
+    return messageId === lastMessageId
   }
 
+  // Blueprint: Format conversation history for AI prompt
   formatConversationHistory(history: string): string {
     if (!history || history.trim() === '') {
       return 'No prior conversation — this is the first message.'
@@ -165,29 +171,27 @@ export class WhatsAppService {
     return history
   }
 
+  // Blueprint: Format inventory results for AI prompt
   formatInventoryResults(items: any[]): string {
     if (!items || items.length === 0) {
       return 'No inventory results found for this query.'
     }
-
-    return items
-      .map(item => {
-        const name = item.name || 'Unknown item'
-        const quantity = item.quantity ?? 0
-        const price = item.price ?? 'N/A'
-        const sku = item.sku || 'N/A'
-        return `${name} | Stock: ${quantity} units | Price: $${price} | SKU: ${sku}`
-      })
-      .join('\n')
+    
+    return items.map(item => {
+      const name = item.name || 'Unknown item'
+      const quantity = item.quantity || 0
+      const price = item.price || 'N/A'
+      const sku = item.sku || 'N/A'
+      
+      return `${name} | Stock: ${quantity} units | Price: $${price} | SKU: ${sku}`
+    }).join('\n')
   }
 
+  // Blueprint: Get customer name from contact or fallback
   getCustomerName(contact?: WhatsAppContact): string {
     return contact?.profile?.name || 'there'
   }
-
-  normalizePhoneNumber(raw: string): string {
-    return raw.replace(/[^0-9]/g, '')
-  }
 }
 
+// Singleton instance
 export const whatsappService = new WhatsAppService()
