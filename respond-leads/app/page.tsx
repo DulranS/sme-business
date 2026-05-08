@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 
 import { getSupabaseClient } from '@/lib/supabase'
 import { InventoryItem, Conversation } from '@/types'
 import { CurrencyService } from '@/lib/currency'
-import { inventoryCache, conversationCache, clearAllData } from '@/lib/cache'
+import { inventoryCache, conversationCache } from '@/lib/cache'
 
 // Lazy load components for better performance
 const AnalyticsDashboard = lazy(() => import('@/components/AnalyticsDashboard'))
@@ -23,7 +23,6 @@ type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasti
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
-const CSV_LAMBDA_URL = 'https://dummy-lambda-url.example.com/enrich'
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 const Dashboard = memo(() => {
@@ -42,11 +41,6 @@ const Dashboard = memo(() => {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [currentCurrency, setCurrentCurrency] = useState(CurrencyService.getCurrentCurrency())
   const [searchCurrency, setSearchCurrency] = useState('')
-  const [csvFile, setCsvFile] = useState<File | null>(null)
-  const [csvStatus, setCsvStatus] = useState('')
-  const [csvLoading, setCsvLoading] = useState(false)
-
-  const currencyOptions = useMemo(() => CurrencyService.searchCurrencies(searchCurrency), [searchCurrency])
 
   const supabase = getSupabaseClient()
 
@@ -128,14 +122,12 @@ const Dashboard = memo(() => {
   // ─── Inventory CRUD ────────────────────────────────────────────────────────
   const openAdd = () => {
     setForm({ ...EMPTY_ITEM, currency: CurrencyService.getCurrentCurrency() })
-    setSearchCurrency('')
     setEditId(null)
     setModal('add')
   }
 
   const openEdit = (item: InventoryItem) => {
     setForm({ name: item.name, sku: item.sku, quantity: item.quantity, price: item.price, currency: item.currency, price_usd: item.price_usd })
-    setSearchCurrency('')
     setEditId(item.id!)
     setModal('edit')
   }
@@ -234,83 +226,6 @@ const Dashboard = memo(() => {
     conversationCache.invalidatePattern('conversations')
   }, [])
 
-  const handleCsvFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null
-    setCsvFile(file)
-    setCsvStatus(file ? `Selected file: ${file.name}` : '')
-  }, [])
-
-  const downloadBlob = useCallback((blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
-  }, [])
-
-  const handleCsvUpload = useCallback(async () => {
-    if (!csvFile) {
-      showToast('Please select a CSV file first.')
-      return
-    }
-
-    setCsvLoading(true)
-    setCsvStatus('Uploading and enriching...')
-
-    try {
-      const csvText = await csvFile.text()
-      const response = await fetch(CSV_LAMBDA_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ csv: csvText })
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(errorText || 'Lambda request failed')
-      }
-
-      const contentType = response.headers.get('content-type') || ''
-      let blob: Blob
-      const filename = `enriched_${csvFile.name.replace(/\.csv$/i, '') || 'output'}.csv`
-
-      if (contentType.includes('text/csv') || contentType.includes('application/octet-stream')) {
-        blob = await response.blob()
-      } else {
-        const encoded = await response.text()
-        try {
-          const decoded = atob(encoded)
-          const bytes = new Uint8Array(decoded.length)
-          for (let i = 0; i < decoded.length; i += 1) {
-            bytes[i] = decoded.charCodeAt(i)
-          }
-          blob = new Blob([bytes], { type: 'text/csv' })
-        } catch {
-          throw new Error('Unable to decode CSV response')
-        }
-      }
-
-      downloadBlob(blob, filename)
-      setCsvStatus(`Download started: ${filename}`)
-      showToast('CSV enriched successfully')
-    } catch (error) {
-      reportError(error, 'CSV upload failed')
-      setCsvStatus('Unable to process file. See console for details.')
-    } finally {
-      setCsvLoading(false)
-    }
-  }, [csvFile, downloadBlob, reportError, showToast])
-
-  const handleClearCache = useCallback(() => {
-    clearAllData()
-    showToast('Cache and browser storage cleared')
-  }, [showToast])
-
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -359,23 +274,6 @@ const Dashboard = memo(() => {
               ))}
             </select>
           </div>
-          <button 
-            onClick={handleClearCache}
-            style={{
-              background: 'rgba(139, 92, 246, 0.2)',
-              border: '1px solid rgba(139, 92, 246, 0.4)',
-              color: '#a78bfa',
-              padding: '6px 12px',
-              fontSize: '11px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              borderRadius: '6px',
-              transition: 'all 0.2s ease'
-            }}
-            title="Clear cache and browser storage"
-          >
-            🧹 CLEAR CACHE
-          </button>
           <div style={s.headerStatus}>
             <div style={s.statusDot} />
             <span style={s.statusText}>LIVE</span>
@@ -408,37 +306,6 @@ const Dashboard = memo(() => {
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
-      </div>
-
-      <div style={s.csvCard}>
-        <div style={s.csvUploadContent}>
-          <div style={s.csvCardTitle}>Upload raw CSV and download enriched CSV</div>
-          <div style={s.csvUploadRow}>
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={handleCsvFileChange}
-              style={s.csvFileInput}
-            />
-            <button
-              type="button"
-              onClick={handleCsvUpload}
-              disabled={!csvFile || csvLoading}
-              style={{
-                ...s.primaryBtn,
-                ...(csvLoading || !csvFile ? s.disabledBtn : {}),
-                minWidth: 170
-              }}
-            >
-              {csvLoading ? 'Processing...' : 'Upload & Download CSV'}
-            </button>
-          </div>
-          {csvStatus && <div style={s.csvStatusText}>{csvStatus}</div>}
-        </div>
-        <div style={s.csvCardMeta}>
-          <div style={s.csvMetaText}>Dummy Lambda URL: {CSV_LAMBDA_URL}</div>
-          <div style={s.csvMetaText}>The enriched CSV will be downloaded automatically.</div>
-        </div>
       </div>
 
       <main style={s.main}>
@@ -691,12 +558,75 @@ const Dashboard = memo(() => {
                   onChange={e => setForm({ ...form, currency: e.target.value })}
                   style={{ ...s.modalInput, cursor: 'pointer' }}
                 >
-                  <optgroup label={searchCurrency ? 'Filtered currencies' : 'All currencies'}>
-                    {currencyOptions.map(currency => (
-                      <option key={currency.code} value={currency.code}>
-                        {currency.code} ({currency.symbol}) - {currency.name}
-                      </option>
-                    ))}
+                  <optgroup label="Major Global Currencies">
+                    {['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'INR'].map(code => {
+                      const currency = CurrencyService.getCurrencyInfo(code)
+                      return (
+                        <option key={code} value={code}>
+                          {currency.code} ({currency.symbol}) - {currency.name}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+                  <optgroup label="Americas">
+                    {['CAD', 'AUD', 'BRL', 'MXN', 'ARS', 'CLP', 'COP', 'PEN', 'UYU'].map(code => {
+                      const currency = CurrencyService.getCurrencyInfo(code)
+                      return (
+                        <option key={code} value={code}>
+                          {currency.code} ({currency.symbol}) - {currency.name}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+                  <optgroup label="Europe">
+                    {['CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'BGN', 'HRK', 'RUB', 'TRY'].map(code => {
+                      const currency = CurrencyService.getCurrencyInfo(code)
+                      return (
+                        <option key={code} value={code}>
+                          {currency.code} ({currency.symbol}) - {currency.name}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+                  <optgroup label="Asia & Middle East">
+                    {['KRW', 'TWD', 'HKD', 'SGD', 'MYR', 'THB', 'VND', 'PHP', 'IDR', 'SAR', 'AED', 'QAR', 'KWD', 'BHD', 'OMR', 'ILS', 'JOD', 'LKR', 'PKR', 'BDT', 'NPR', 'AFN', 'MMK', 'LAK', 'KHR', 'MVR', 'BTN', 'GEL', 'AMD', 'AZN', 'KZT', 'KGS', 'UZS', 'TJS', 'TMT', 'MNT', 'KPW'].map(code => {
+                      const currency = CurrencyService.getCurrencyInfo(code)
+                      return (
+                        <option key={code} value={code}>
+                          {currency.code} ({currency.symbol}) - {currency.name}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+                  <optgroup label="Africa">
+                    {['ZAR', 'NGN', 'GHS', 'KES', 'UGX', 'TZS', 'EGP', 'MAD', 'DZD', 'TND'].map(code => {
+                      const currency = CurrencyService.getCurrencyInfo(code)
+                      return (
+                        <option key={code} value={code}>
+                          {currency.code} ({currency.symbol}) - {currency.name}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+                  <optgroup label="Oceania">
+                    {['NZD', 'FJD', 'PGK', 'SBD', 'VUV', 'WST', 'TOP'].map(code => {
+                      const currency = CurrencyService.getCurrencyInfo(code)
+                      return (
+                        <option key={code} value={code}>
+                          {currency.code} ({currency.symbol}) - {currency.name}
+                        </option>
+                      )
+                    })}
+                  </optgroup>
+                  <optgroup label="Cryptocurrencies">
+                    {['BTC', 'ETH', 'USDT'].map(code => {
+                      const currency = CurrencyService.getCurrencyInfo(code)
+                      return (
+                        <option key={code} value={code}>
+                          {currency.code} ({currency.symbol}) - {currency.name}
+                        </option>
+                      )
+                    })}
                   </optgroup>
                 </select>
               </div>
@@ -923,72 +853,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 'clamp(8px, 1.5vw, 12px)'
   },
 
-  csvCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-    background: 'rgba(255, 255, 255, 0.04)',
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(139, 92, 246, 0.2)',
-    borderRadius: 'clamp(16px, 2vw, 20px)',
-    padding: 'clamp(18px, 2vw, 24px)',
-    marginBottom: '24px'
-  },
-
-  csvUploadContent: {
-    display: 'grid',
-    gap: '12px'
-  },
-
-  csvCardTitle: {
-    fontSize: 'clamp(14px, 2vw, 16px)',
-    fontWeight: 700,
-    color: '#ffffff'
-  },
-
-  csvUploadRow: {
-    display: 'flex',
-    gap: '12px',
-    alignItems: 'center',
-    flexWrap: 'wrap'
-  },
-
-  csvFileInput: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(139, 92, 246, 0.3)',
-    borderRadius: '12px',
-    color: '#e5e5e5',
-    padding: '12px 14px',
-    fontSize: '14px',
-    cursor: 'pointer',
-    minWidth: '240px',
-    flex: 1,
-    maxWidth: '420px'
-  },
-
-  csvStatusText: {
-    fontSize: '13px',
-    color: '#9ca3af'
-  },
-
-  csvCardMeta: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-    color: '#9ca3af',
-    fontSize: '12px'
-  },
-
-  csvMetaText: {
-    lineHeight: 1.4
-  },
-
-  disabledBtn: {
-    opacity: 0.5,
-    cursor: 'not-allowed'
-  },
-
-  tableWrap: {
+  tableWrap: { 
     background: 'rgba(255, 255, 255, 0.02)', 
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(139, 92, 246, 0.2)', 

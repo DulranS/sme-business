@@ -6,31 +6,15 @@ export class CurrencyService {
   private static readonly DEFAULT_CURRENCY = 'USD'
 
   static getAvailableCurrencies(): Currency[] {
-    return Object.values(CURRENCIES).sort((a, b) => a.code.localeCompare(b.code))
-  }
-
-  static searchCurrencies(query: string): Currency[] {
-    const normalized = String(query || '').trim().toLowerCase()
-    if (!normalized) return this.getAvailableCurrencies()
-
-    return this.getAvailableCurrencies().filter(currency =>
-      currency.code.toLowerCase().includes(normalized) ||
-      currency.name.toLowerCase().includes(normalized) ||
-      currency.symbol.toLowerCase().includes(normalized)
-    )
+    return Object.values(CURRENCIES)
   }
 
   static getCurrentCurrency(): string {
     if (typeof window !== 'undefined') {
       try {
-        const stored = localStorage.getItem(this.STORAGE_KEY)
-        if (stored && typeof stored === 'string') {
-          return stored
-        }
-        return this.DEFAULT_CURRENCY
+        return localStorage.getItem(this.STORAGE_KEY) || this.DEFAULT_CURRENCY
       } catch (e) {
-        // localStorage might be blocked, corrupted, or quota exceeded
-        console.warn('Currency preference deserialization failed, using default:', e)
+        // localStorage might be blocked on mobile in some browsers
         return this.DEFAULT_CURRENCY
       }
     }

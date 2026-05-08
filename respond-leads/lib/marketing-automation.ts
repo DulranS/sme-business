@@ -411,10 +411,12 @@ Generate a natural, personalized message that references their specific interest
           }
           break
         case 'email':
-          logger.warn('Email sending is not configured. Message will be logged rather than delivered.', { customer, message })
+          // TODO: Implement email sending
+          logger.info('Email sending not implemented yet', { customer, message })
           break
         case 'sms':
-          logger.warn('SMS sending is not configured. Message will be logged rather than delivered.', { customer, message })
+          // TODO: Implement SMS sending
+          logger.info('SMS sending not implemented yet', { customer, message })
           break
         default:
           throw new Error(`Unknown channel: ${channel}`)
