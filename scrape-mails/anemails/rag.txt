@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""
+rag_demo.py
+
+A single-file local RAG demo:
+1) reads .txt/.md/.pdf files from a folder
+2) chunks them
+3) embeds the chunks with OpenAI
+4) stores embeddings in FAISS
+5) retrieves top matches for a query
+6) sends retrieved context to an OpenAI model with the Responses API
+
+Install:
+  pip install openai faiss-cpu numpy pypdf
+
+Environment:
+  export OPENAI_API_KEY="your_key_here"
+  # optional:
+  export OPENAI_EMBED_MODEL="text-embedding-3-small"
+  export OPENAI_CHAT_MODEL="gpt-4.1-mini"
+
+Run:
+  python rag_demo.py --data_dir ./docs --query "What does the policy say about refunds?"
+  python rag_demo.py --data_dir ./docs --reindex
+"""
