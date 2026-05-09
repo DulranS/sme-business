@@ -17,7 +17,7 @@ from pypdf import PdfReader
 # -----------------------------
 # Config
 # -----------------------------
-OPENAI_API_KEY = os.getenv("OPENAI_EMBED_MODEL","test123")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY","test12")
 EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 
@@ -313,7 +313,12 @@ def build_or_load_index(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Simple single-file RAG demo")
-    parser.add_argument("--data_dir", type=str, required=True, help="Folder with .txt/.md/.pdf files")
+    parser.add_argument(
+    "--data_dir",
+    type=str,
+    default="./data_dir",
+    help="Folder with .txt/.md/.pdf files"
+)
     parser.add_argument("--query", type=str, default=None, help="Ask a question")
     parser.add_argument("--top_k", type=int, default=4, help="How many chunks to retrieve")
     parser.add_argument("--reindex", action="store_true", help="Rebuild the index from scratch")

@@ -1,0 +1,10 @@
+{
+  "inventory": [],
+  "stats": {
+    "totalItems": 0,
+    "totalValue": 0,
+    "lowStockItems": 0,
+    "outOfStockItems": 0
+  },
+  "lowStock": []
+}

@@ -3,11 +3,11 @@
 rag_demo.py
 
 A single-file local RAG demo:
-1) reads .txt/.md/.pdf files from a folder
+1) reads .txt/.md/.pdf files from data_dir folder
 2) chunks them
 3) embeds the chunks with OpenAI
-4) stores embeddings in FAISS
-5) retrieves top matches for a query
+4) stores embeddings in FAISS (vector search)
+5) retrieves top matches for a query (chunk based search)
 6) sends retrieved context to an OpenAI model with the Responses API
 
 Install:

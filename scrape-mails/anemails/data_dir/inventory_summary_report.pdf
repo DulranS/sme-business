@@ -1,0 +1,32 @@
+
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Inventory Summary Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h1 { color: #333; }
+          table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f2f2f2; }
+        </style>
+      </head>
+      <body>
+        <h1>Inventory Summary Report</h1>
+        <p>Generated on: 3/7/2026, 12:28:02 AM</p>
+        <pre>{
+  "kpi-overview": {
+    "total_items": 0,
+    "out_of_stock": 0,
+    "low_stock": 0,
+    "total_value_usd": null,
+    "total_value_native": null,
+    "currency_count": 0,
+    "avg_price_usd": null
+  },
+  "inventory-table": [],
+  "stock-alerts": []
+}</pre>
+      </body>
+      </html>
+    
