@@ -14,8 +14,10 @@ import WhatsAppChat from '@/components/WhatsAppChat'
 import WhatsAppAnalyticsDashboard from '@/components/WhatsAppAnalyticsDashboard'
 import MarketingAutomationDashboard from '@/components/MarketingAutomationDashboard'
 import BlueprintConversationDashboard from '@/components/BlueprintConversationDashboard'
+import BusinessIntelligenceDashboard from '@/components/BusinessIntelligenceDashboard'
+import RealTimeMonitoringDashboard from '@/components/RealTimeMonitoringDashboard'
 
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations' | 'business-intelligence' | 'real-time-monitoring'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -190,7 +192,7 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations', 'business-intelligence', 'real-time-monitoring'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -209,6 +211,8 @@ export default function Dashboard() {
              t === 'whatsapp-analytics' ? '📈 WHATSAPP ANALYTICS' :
              t === 'marketing-automation' ? '🚀 MARKETING AUTOMATION' :
              t === 'blueprint-conversations' ? '🔧 BLUEPRINT CONVERSATIONS' :
+             t === 'business-intelligence' ? '🧠 BUSINESS INTELLIGENCE' :
+             t === 'real-time-monitoring' ? '📡 REAL-TIME MONITORING' :
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
@@ -408,6 +412,16 @@ export default function Dashboard() {
         {/* ── MARKETING AUTOMATION TAB ── */}
         {tab === 'marketing-automation' && (
           <MarketingAutomationDashboard />
+        )}
+
+        {/* ── BUSINESS INTELLIGENCE TAB ── */}
+        {tab === 'business-intelligence' && (
+          <BusinessIntelligenceDashboard />
+        )}
+
+        {/* ── REAL-TIME MONITORING TAB ── */}
+        {tab === 'real-time-monitoring' && (
+          <RealTimeMonitoringDashboard />
         )}
 
         {/* ── BLUEPRINT CONVERSATIONS TAB ── */}

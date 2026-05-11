@@ -19,6 +19,8 @@ export interface Conversation {
   history: string
   created_at?: string
   updated_at?: string
+  lead_status?: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost'
+  priority?: string
 }
 
 // Currency configuration
@@ -157,7 +159,11 @@ export interface WhatsAppMessage {
 
 export interface WhatsAppContact {
   profile: {
-    name: string
+    name: {
+      first_name?: string
+      last_name?: string
+      formatted_name?: string
+    }
   }
   wa_id: string
 }
@@ -288,4 +294,47 @@ export interface Report {
   createdAt: string
   status: 'generating' | 'completed' | 'failed'
   downloadUrl?: string
+}
+
+// Lead Management types
+export interface Lead {
+  id: string
+  name: string
+  email: string
+  phone: string
+  source: string
+  status: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost'
+  score: number
+  assignedTo?: string
+  createdAt: string
+  updatedAt: string
+  notes?: string
+  tags?: string[]
+  customFields?: Record<string, any>
+  conversation_id?: string
+  customer_name?: string
+  phone_number?: string
+  lead_score?: number
+  last_message?: string
+  estimated_value?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface LeadScoringRule {
+  id: string
+  name: string
+  description: string
+  conditions: LeadScoringCondition[]
+  score: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadScoringCondition {
+  field: string
+  operator: 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than'
+  value: string | number
+  weight?: number
 }

@@ -52,7 +52,7 @@ export class LeadManagementService {
    * Update lead status and conversion details
    */
   async updateLeadStatus(
-    conversationId: number,
+    conversationId: string,
     updates: {
       status?: 'new' | 'qualified' | 'contacted' | 'converted' | 'lost'
       conversion_value?: number

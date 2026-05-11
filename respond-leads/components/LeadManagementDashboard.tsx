@@ -230,13 +230,13 @@ const LeadManagementDashboard: React.FC<LeadManagementDashboardProps> = ({ class
     }
   }
 
-  const handleStatusUpdate = async (leadId: number, newStatus: string) => {
+  const handleStatusUpdate = async (leadId: string, newStatus: string) => {
     try {
       // Find the conversation ID for this lead
       const lead = leads.find(l => l.id === leadId)
       if (!lead?.conversation_id) return
 
-      await leadManagementService.updateLeadStatus(lead.conversation_id, { status: newStatus as any })
+      await leadManagementService.updateLeadStatus(lead.conversation_id!, { status: newStatus as any })
       await loadData() // Refresh data
     } catch (error) {
       console.error('Failed to update lead status:', error)
@@ -392,12 +392,12 @@ const LeadManagementDashboard: React.FC<LeadManagementDashboardProps> = ({ class
                 </td>
                 <td style={styles.td}>
                   <div style={styles.leadScore}>
-                    <Star size={16} style={{ color: getScoreColor(lead.lead_score) }} />
+                    <Star size={16} style={{ color: getScoreColor(lead.lead_score || 0) }} />
                     <span style={{
-                      color: getScoreColor(lead.lead_score),
+                      color: getScoreColor(lead.lead_score || 0),
                       fontWeight: '600'
                     }}>
-                      {lead.lead_score}
+                      {lead.lead_score || 0}
                     </span>
                   </div>
                 </td>

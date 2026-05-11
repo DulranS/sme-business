@@ -189,7 +189,20 @@ export class WhatsAppService {
 
   // Blueprint: Get customer name from contact or fallback
   getCustomerName(contact?: WhatsAppContact): string {
-    return contact?.profile?.name || 'there'
+    if (!contact?.profile?.name) return 'there'
+    
+    const name = contact.profile.name
+    if (name.first_name && name.last_name) {
+      return `${name.first_name} ${name.last_name}`
+    } else if (name.first_name) {
+      return name.first_name
+    } else if (name.last_name) {
+      return name.last_name
+    } else if (name.formatted_name) {
+      return name.formatted_name
+    }
+    
+    return 'there'
   }
 }
 

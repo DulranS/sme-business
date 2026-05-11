@@ -67,7 +67,7 @@ export const fetchLeadAnalytics = createAsyncThunk(
 
 export const updateLeadStatus = createAsyncThunk(
   'leads/updateStatus',
-  async ({ conversationId, updates }: { conversationId: number; updates: any }, { rejectWithValue }) => {
+  async ({ conversationId, updates }: { conversationId: string; updates: any }, { rejectWithValue }) => {
     try {
       await leadManagementService.updateLeadStatus(conversationId, updates)
       return { conversationId, updates }
@@ -103,7 +103,7 @@ const leadsSlice = createSlice({
         totalLeads: leads.length,
         qualifiedLeads: leads.filter(l => l.status === 'qualified').length,
         conversionRate: leads.length > 0 ? (leads.filter(l => l.status === 'converted').length / leads.length) * 100 : 0,
-        averageLeadScore: leads.length > 0 ? leads.reduce((sum, l) => sum + l.lead_score, 0) / leads.length : 0,
+        averageLeadScore: leads.length > 0 ? leads.reduce((sum, l) => sum + (l.lead_score || 0), 0) / leads.length : 0,
         totalConversionValue: leads
           .filter(l => l.status === 'converted')
           .reduce((sum, l) => sum + (l.estimated_value || 0), 0),

@@ -36,6 +36,18 @@ export class WhatsAppService {
     }
   }
 
+  normalizePhoneNumber(phoneNumber: string): string {
+    // Remove all non-numeric characters
+    let normalized = phoneNumber.replace(/\D/g, '')
+    
+    // Remove leading country code if present (assuming it's already normalized)
+    if (normalized.startsWith('1') && normalized.length === 11) {
+      normalized = normalized.substring(1)
+    }
+    
+    return normalized
+  }
+
   verifyWebhookSignature(body: string, signature: string | null): boolean {
     if (!signature) return false
     
@@ -125,6 +137,29 @@ export class WhatsAppService {
     }
 
     return results
+  }
+
+  getCustomerName(contact: WhatsAppContact | undefined): string {
+    if (!contact) return 'Customer'
+    
+    const name = contact.profile?.name
+    if (!name) return 'Customer'
+    
+    if (name.first_name && name.last_name) {
+      return `${name.first_name} ${name.last_name}`
+    } else if (name.first_name) {
+      return name.first_name
+    } else if (name.last_name) {
+      return name.last_name
+    } else if (name.formatted_name) {
+      return name.formatted_name
+    }
+    
+    return 'Customer'
+  }
+
+  isMessageProcessed(messageId: string, lastMessageId?: string): boolean {
+    return messageId === lastMessageId
   }
 }
 

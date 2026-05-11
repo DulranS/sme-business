@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase'
-import { whatsappService } from '@/lib/whatsapp-blueprint'
+import { whatsappService } from '@/lib/whatsapp'
 import { claudeBlueprintService } from '@/lib/claude-blueprint'
 import { logger } from '@/lib/logger'
 import { WhatsAppContact, WhatsAppMessage } from '@/types'
@@ -34,17 +34,16 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = JSON.parse(body)
-    const { messages, contacts, phoneNumberId } = whatsappService.parseWebhookPayload(payload)
+    const parsedMessages = whatsappService.parseWebhookPayload(payload)
 
-    if (!messages.length) {
+    if (!parsedMessages.length) {
       logger.webhook('Webhook payload contained no text messages', { payload })
       return NextResponse.json({ status: 'no_messages' })
     }
 
-    for (let i = 0; i < messages.length; i += 1) {
-      const message = messages[i]
-      const contact = contacts[i]
-      await processWhatsAppMessage(message, contact, phoneNumberId)
+    for (let i = 0; i < parsedMessages.length; i += 1) {
+      const { message, contact } = parsedMessages[i]
+      await processWhatsAppMessage(message, contact, null)
     }
 
     return NextResponse.json({ status: 'processed' })
@@ -98,7 +97,7 @@ async function processWhatsAppMessage(message: WhatsAppMessage, contact: WhatsAp
       searchKeyword
     )
 
-    await whatsappService.sendMessage(normalizedPhone, aiResponse, messageId, phoneNumberId || undefined)
+    await whatsappService.sendMessage(normalizedPhone, aiResponse, messageId)
     logger.whatsapp('WhatsApp reply sent', { to: normalizedPhone, messageId, preview: aiResponse.slice(0, 80) })
 
     await saveConversation(normalizedPhone, customerName, messageId, messageText, aiResponse, conversationHistory)
