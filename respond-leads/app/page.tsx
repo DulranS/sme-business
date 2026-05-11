@@ -16,8 +16,9 @@ import MarketingAutomationDashboard from '@/components/MarketingAutomationDashbo
 import BlueprintConversationDashboard from '@/components/BlueprintConversationDashboard'
 import BusinessIntelligenceDashboard from '@/components/BusinessIntelligenceDashboard'
 import RealTimeMonitoringDashboard from '@/components/RealTimeMonitoringDashboard'
+import V9BlueprintDashboard from '@/components/V9BlueprintDashboard'
 
-type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations' | 'business-intelligence' | 'real-time-monitoring'
+type Tab = 'inventory' | 'conversations' | 'analytics' | 'bulk-ops' | 'forecasting' | 'reporting' | 'whatsapp-dashboard' | 'whatsapp-chat' | 'whatsapp-analytics' | 'marketing-automation' | 'blueprint-conversations' | 'business-intelligence' | 'real-time-monitoring' | 'v9-blueprint'
 type Modal = 'add' | 'edit' | null
 
 const EMPTY_ITEM: InventoryItem = { name: '', sku: '', quantity: 0, price: 0, currency: 'USD', price_usd: 0 }
@@ -192,7 +193,7 @@ export default function Dashboard() {
 
       {/* Tabs */}
       <div style={s.tabs}>
-        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations', 'business-intelligence', 'real-time-monitoring'] as Tab[]).map(t => (
+        {(['inventory', 'conversations', 'analytics', 'bulk-ops', 'forecasting', 'reporting', 'whatsapp-dashboard', 'whatsapp-chat', 'whatsapp-analytics', 'marketing-automation', 'blueprint-conversations', 'business-intelligence', 'real-time-monitoring', 'v9-blueprint'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -213,6 +214,7 @@ export default function Dashboard() {
              t === 'blueprint-conversations' ? '🔧 BLUEPRINT CONVERSATIONS' :
              t === 'business-intelligence' ? '🧠 BUSINESS INTELLIGENCE' :
              t === 'real-time-monitoring' ? '📡 REAL-TIME MONITORING' :
+             t === 'v9-blueprint' ? '🚀 V9 BLUEPRINT' :
              '💬 WHATSAPP CHAT'}
           </button>
         ))}
@@ -422,6 +424,11 @@ export default function Dashboard() {
         {/* ── REAL-TIME MONITORING TAB ── */}
         {tab === 'real-time-monitoring' && (
           <RealTimeMonitoringDashboard />
+        )}
+
+        {/* ── V9 BLUEPRINT TAB ── */}
+        {tab === 'v9-blueprint' && (
+          <V9BlueprintDashboard />
         )}
 
         {/* ── BLUEPRINT CONVERSATIONS TAB ── */}
