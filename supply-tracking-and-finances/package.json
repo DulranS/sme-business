@@ -11,8 +11,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
     "lucide-react": "^0.544.0",
-    "papaparse": "^5.5.3",
     "next": "16.0.7",
+    "papaparse": "^5.5.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "recharts": "^3.2.1"
@@ -20,7 +20,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.19.42",
     "@types/papaparse": "^5.3.16",
     "@types/react": "^19",
     "@types/react-dom": "^19",

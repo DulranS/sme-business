@@ -21,6 +21,25 @@ export interface Conversation {
   updated_at?: string
   lead_status?: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost'
   priority?: string
+  // V10 Store Config Fields
+  store_name?: string
+  store_hours?: string
+  store_location?: string
+  store_contact?: string
+  return_policy?: string
+  shipping_info?: string
+  payment_methods?: string
+  additional_info?: string
+  // V10 Battle Card Fields
+  battle_card_generated?: boolean
+  battle_card_content?: string
+  battle_card_sent_at?: string
+  closer_phone_number?: string
+  blueprint_version?: string
+  // Analytics Fields
+  search_keyword?: string
+  inventory_results_count?: number
+  processing_time_ms?: number
 }
 
 // Currency configuration
