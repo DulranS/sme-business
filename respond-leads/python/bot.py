@@ -1,6 +1,6 @@
 """
 Main orchestrator — ties together all components.
-Handles message processing, evaluation, and metric logging.
+Now adapted for Discord instead of WhatsApp.
 """
 
 import asyncio
@@ -14,38 +14,44 @@ from agent import InventoryAgent
 from cache import CacheLayer
 from config import Config
 from database import DataLayer
+from discord_client import DiscordWebhookSender, DiscordBotClient
 from eval import EvalSystem
 from rag import RAGIndexer
-from whatsapp import WhatsAppClient
 
 logger = logging.getLogger(__name__)
 
 
-class WhatsAppSupportBot:
+class DiscordSupportBot:
     def __init__(self):
         self.cache = CacheLayer(Config.REDIS_URL)
         self.data = DataLayer(Config.SUPABASE_URL, Config.SUPABASE_KEY, self.cache)
-        self.whatsapp = WhatsAppClient(Config.WHATSAPP_TOKEN, Config.WHATSAPP_PHONE_ID)
+        self.discord_sender = DiscordWebhookSender()
         self.claude = AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
         self.evaluator = EvalSystem(self.claude, self.cache)
+        self._bot_client: DiscordBotClient | None = None
+
+    def set_bot_client(self, bot_client: DiscordBotClient):
+        """Set the Discord bot client for direct channel messaging."""
+        self._bot_client = bot_client
 
     async def handle_message(self, msg: dict):
-        """Process a single incoming WhatsApp message."""
-        phone = msg["from"]
+        """Process a single incoming Discord message."""
+        user_id = msg["from"]
         msg_id = msg["id"]
         customer_msg = msg["text_body"]
         customer_name = msg["profile_name"]
+        channel_id = msg.get("channel_id", "")
 
-        logger.info(f"Processing message from {customer_name} ({phone}): {customer_msg[:50]}...")
+        logger.info(f"Processing message from {customer_name} ({user_id}): {customer_msg[:50]}...")
 
-        # Dedup check
-        history, last_msg_id = await self.data.get_conversation(phone)
+        # Dedup check — use user_id as the "phone number" equivalent
+        history, last_msg_id = await self.data.get_conversation(user_id)
         if msg_id == last_msg_id:
             logger.info(f"Skipping duplicate message {msg_id}")
             return
 
         # Run agentic loop
-        agent = InventoryAgent(self.claude, self.data, phone, customer_name)
+        agent = InventoryAgent(self.claude, self.data, user_id, customer_name)
         result = await agent.run(customer_msg)
 
         # Evaluate response
@@ -56,22 +62,28 @@ class WhatsAppSupportBot:
         result.eval_score = eval_score
         result.eval_reason = eval_reason
 
-        # Send customer response
-        await self.whatsapp.send_text(phone, result.customer_response, context_msg_id=msg_id)
+        # Send customer response via webhook (or direct channel if bot is available)
+        if self._bot_client and channel_id:
+            await self._bot_client.send_response(int(channel_id), result.customer_response)
+        else:
+            await self.discord_sender.send_customer_response(
+                result.customer_response,
+                username=f"{customer_name} Support"
+            )
+
         logger.info(
-            f"Sent response to {phone} | Score: {eval_score}/10 | "
+            f"Sent response to {customer_name} | Score: {eval_score}/10 | "
             f"Tokens: {result.tokens_used} | Latency: {result.latency_ms}ms"
         )
 
         # Send battle card to sales channel (if product query)
         if result.battle_card:
-            battle_msg = f"Lead alert — {customer_name}\n\n{result.battle_card}"
-            await self.whatsapp.send_text(Config.SALES_CHANNEL_NUMBER, battle_msg)
+            await self.discord_sender.send_battle_card(result.battle_card, customer_name)
             logger.info(f"Sent battle card for lead {customer_name}")
 
         # Save conversation
         await self.data.save_conversation(
-            phone, customer_name, msg_id, history,
+            user_id, customer_name, msg_id, history,
             customer_msg, result.customer_response
         )
 
@@ -94,12 +106,6 @@ class WhatsAppSupportBot:
         }
         logger.info(f"METRICS: {json.dumps(metrics)}")
 
-    async def webhook_handler(self, payload: dict):
-        """Process all messages from a webhook payload in parallel."""
-        messages = self.whatsapp.parse_webhook(payload)
-        tasks = [self.handle_message(msg) for msg in messages]
-        await asyncio.gather(*tasks, return_exceptions=True)
-
     async def reindex_inventory(self) -> dict:
         """Trigger RAG re-indexing of inventory."""
         if not Config.USE_RAG:
@@ -110,4 +116,6 @@ class WhatsAppSupportBot:
 
     async def close(self):
         """Clean up resources."""
-        await self.whatsapp.close()
+        await self.discord_sender.close()
+        if self._bot_client and not self._bot_client.is_closed():
+            await self._bot_client.close()

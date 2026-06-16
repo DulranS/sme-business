@@ -1,5 +1,5 @@
 """
-Centralized configuration — loads from environment variables with sensible defaults.
+Centralized configuration — loads from environment variables.
 """
 
 import os
@@ -15,11 +15,14 @@ class Config:
     SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-    # ── WhatsApp ──
-    WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
-    WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
-    SALES_CHANNEL_NUMBER: str = os.getenv("SALES_CHANNEL_NUMBER", "")
-    WEBHOOK_VERIFY_TOKEN: str = os.getenv("WEBHOOK_VERIFY_TOKEN", "verify_me")
+    # ── Discord ──
+    DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
+    DISCORD_APPLICATION_ID: str = os.getenv("DISCORD_APPLICATION_ID", "")
+    DISCORD_PUBLIC_KEY: str = os.getenv("DISCORD_PUBLIC_KEY", "")
+    DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
+    DISCORD_SALES_WEBHOOK_URL: str = os.getenv("DISCORD_SALES_WEBHOOK_URL", "")
+    DISCORD_SUPPORT_CHANNEL_ID: int = int(os.getenv("DISCORD_SUPPORT_CHANNEL_ID", "0"))
+    DISCORD_SALES_CHANNEL_ID: int = int(os.getenv("DISCORD_SALES_CHANNEL_ID", "0"))
 
     # ── Model Selection ──
     MODEL_FAST: str = "claude-haiku-4-5"
@@ -54,8 +57,6 @@ class Config:
             errors.append("SUPABASE_URL is required")
         if not cls.SUPABASE_KEY:
             errors.append("SUPABASE_KEY is required")
-        if not cls.WHATSAPP_TOKEN:
-            errors.append("WHATSAPP_TOKEN is required")
-        if not cls.WHATSAPP_PHONE_ID:
-            errors.append("WHATSAPP_PHONE_ID is required")
+        if not cls.DISCORD_BOT_TOKEN and not cls.DISCORD_WEBHOOK_URL:
+            errors.append("Either DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL is required")
         return errors
