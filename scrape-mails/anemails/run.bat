@@ -9,8 +9,8 @@ echo.
 
 python -m pip install --upgrade pip >nul
 python -m pip install -r requirements.txt
-
-python enrich.py
+playwright install chromium
+python maps_enrich.py
 
 echo.
 echo ======================================
