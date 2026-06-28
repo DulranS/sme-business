@@ -1,0 +1,401 @@
+{
+    "name": "WhatsApp AI Inventory Support V11 — Inbound + Close Detection",
+    "flow": [
+        {
+            "id": 7,
+            "module": "whatsapp-business-cloud:watchEvents2",
+            "version": 1,
+            "parameters": {
+                "hook": "",
+                "phoneNumberId": ""
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 9,
+            "module": "supabase:searchRows",
+            "version": 1,
+            "parameters": {
+                "tableId": "conversations",
+                "accountId": ""
+            },
+            "filter": {
+                "name": "Text messages only",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{7.messages[].type}}",
+                            "b": "text",
+                            "o": "text:equal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "limit": "1",
+                "filter": [
+                    {
+                        "name": "phone_number",
+                        "value": "{{7.messages[].from}}"
+                    }
+                ],
+                "orderBy": "updated_at",
+                "filterType": "eq",
+                "orderDirection": "desc"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 90,
+            "module": "supabase:upsertARecord",
+            "version": 1,
+            "parameters": {
+                "tableId": "conversations",
+                "accountId": ""
+            },
+            "filter": {
+                "name": "Opt-out: message contains STOP",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{7.messages[].text.body}}",
+                            "b": "STOP",
+                            "o": "text:contain"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "opt_out": true,
+                "updated_at": "{{now}}",
+                "phone_number": "{{7.messages[].from}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 600
+                }
+            }
+        },
+        {
+            "id": 8,
+            "module": "anthropic-claude:simpleTextPrompt",
+            "version": 1,
+            "parameters": {},
+            "filter": {
+                "name": "Dedup — skip processed message ID and opt-outs",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{7.messages[].id}}",
+                            "b": "{{9[].last_message_id}}",
+                            "o": "text:notequal"
+                        },
+                        {
+                            "a": "{{9[].opt_out}}",
+                            "b": "true",
+                            "o": "text:notequal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "model": "claude-haiku-4-5",
+                "max_tokens": "50",
+                "textPrompt": "Extract the single best product search keyword from the customer message below.\n\nIf the message is NOT about a specific product or inventory item, return exactly: GENERAL\n\nIf the message uses a vague reference like 'it', 'that one', 'the same', 'this' — look at conversation history to resolve which product is being discussed and return that product name.\n\nRules:\n- Return ONLY the keyword or the word GENERAL\n- No punctuation, no explanation, no extra words\n- Maximum 5 words\n\nExamples:\n- Do you have Nike Air Max in size 9? -> Nike Air Max\n- Is the iPhone 15 in stock? -> iPhone 15\n- What red dresses do you have? -> red dress\n- How many units of SKU-4821 left? -> SKU-4821\n- History shows Nike Air Max discussed, customer says does it come in white -> Nike Air Max\n- Hello, what are your store hours? -> GENERAL\n- Hi! -> GENERAL\n- Can I make a return? -> GENERAL\n- What payment methods do you accept? -> GENERAL\n- Thank you! -> GENERAL\n- [empty] -> GENERAL\n\nConversation history:\n{{ifempty(9[].history; \"No prior conversation.\")}}\n\nCustomer message: {{ifempty(7.messages[].text.body; \"[empty]\")}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 600,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 1,
+            "module": "supabase:searchRows",
+            "version": 1,
+            "parameters": {
+                "tableId": "inventory",
+                "accountId": ""
+            },
+            "mapper": {
+                "limit": "5",
+                "filter": [
+                    {
+                        "name": "name",
+                        "value": "%{{8.result}}%"
+                    }
+                ],
+                "filterType": "ilike"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 900,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 2,
+            "module": "anthropic-claude:simpleTextPrompt",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "model": "claude-haiku-4-5",
+                "max_tokens": "300",
+                "textPrompt": "You are a warm, helpful customer support assistant. You reply via WhatsApp.\n\nBUSINESS KNOWLEDGE:\nBusiness name: {{ifempty(9[].store_name; \"our store\")}}\nBusiness hours: {{ifempty(9[].store_hours; \"please contact us for hours\")}}\nLocation: {{ifempty(9[].store_location; \"please contact us for our address\")}}\nContact: {{ifempty(9[].store_contact; \"please reply here for help\")}}\nReturn policy: {{ifempty(9[].return_policy; \"please contact us about returns\")}}\nShipping: {{ifempty(9[].shipping_info; \"please contact us for shipping details\")}}\nPayment methods: {{ifempty(9[].payment_methods; \"please contact us for payment options\")}}\nAdditional info: {{ifempty(9[].additional_info; \"\")}}\n\nFORMATTING RULES:\n- Plain text only — no asterisks, underscores, dashes as bullets, or numbered lists\n- Short paragraphs or single sentences\n- Under 220 words\n- Never open with Certainly, Absolutely, Great question, or I understand your concern\n- Start naturally, like a real person would\n\nBEHAVIOUR:\n- Warm and conversational, not robotic or corporate\n- For stock levels, prices, SKUs: use inventory results only, never guess\n- For policies, hours, contact: use business knowledge above\n- If inventory results are empty, say so honestly and ask the customer to describe it differently or share the product code\n- If the keyword was GENERAL or message is not product-related, respond helpfully using business knowledge\n- If the customer seems frustrated, acknowledge it warmly before answering\n- Never mention Make, Supabase, Claude, AI, automation, or any internal systems\n- Never invent contact details, addresses, or policies\n\nCustomer name: {{ifempty(7.messages[].profile.name; \"there\")}}\nCustomer message: {{ifempty(7.messages[].text.body; \"[Non-text message received]\")}}\n\nConversation history (most recent at bottom):\n{{ifempty(9[].history; \"No prior conversation — this is the first message.\")}}\n\nInventory search keyword: {{8.result}}\nInventory results:\n{{ifempty(join(map(1[]; item; ifempty(item.name; \"Unknown\") & \" | Stock: \" & ifempty(item.quantity & \"\"; \"0\") & \" units | Price: \" & ifempty(item.price & \"\"; \"N/A\") & \" | SKU: \" & ifempty(item.sku; \"N/A\")); \"\n\"); \"No inventory results found for this query.\")}}\n\nWrite your WhatsApp reply now:"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1200,
+                    "y": 150
+                }
+            }
+        },
+        {
+            "id": 11,
+            "module": "anthropic-claude:simpleTextPrompt",
+            "version": 1,
+            "parameters": {},
+            "filter": {
+                "name": "Battle card only on product queries",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{8.result}}",
+                            "b": "GENERAL",
+                            "o": "text:notequal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "model": "claude-haiku-4-5",
+                "max_tokens": "420",
+                "textPrompt": "You are a sales intelligence assistant. A lead just messaged our business on WhatsApp and our inventory system found matching products. Generate a concise battle card for our human sales closer. Plain text only — no markdown, no asterisks, no dashes as bullets.\n\nUse exactly this structure:\n\nLEAD SNAPSHOT\n[One sentence: who this person appears to be, what they want, any budget or timeline signals from their message or history. Be specific.]\n\nTOP 3 SELLING POINTS\n1. [Concrete inventory fact tied directly to what the customer asked. Lead with the number or stat.]\n2. [Second point. Specific, not generic. Translate numbers into customer value where possible.]\n3. [Third point. Frame around the customer situation or implied concern.]\n\nOBJECTION 1: [Name it in 5 words or fewer]\nWhy: [One sentence on the emotion or psychology driving this.]\nScript: [How a real salesperson would coach a colleague. Never start with I understand, Certainly, or Absolutely. Start mid-thought.]\n\nOBJECTION 2: [Name it in 5 words or fewer]\nWhy: [One sentence on what is really behind it.]\nScript: [Same rules — human, direct, no corporate opener. Under 3 sentences.]\n\nCLOSER TIP\n[One tactical observation specific to this lead based on their message and history.]\n\nRules:\n- Never invent inventory data — use only what is provided below\n- Scripts must sound like a real person talking, not a sales manual\n- Keep the whole card under 300 words\n- Address the lead by name if known\n\nCustomer name: {{ifempty(7.messages[].profile.name; \"Unknown\")}}\nCustomer message: {{ifempty(7.messages[].text.body; \"[empty]\")}}\nConversation history: {{ifempty(9[].history; \"No prior history — first contact.\")}}\nInventory search keyword: {{8.result}}\nInventory results:\n{{ifempty(join(map(1[]; item; ifempty(item.name; \"Unknown\") & \" | Stock: \" & ifempty(item.quantity & \"\"; \"0\") & \" units | Price: \" & ifempty(item.price & \"\"; \"N/A\") & \" | SKU: \" & ifempty(item.sku; \"N/A\")); \"\n\"); \"No inventory results found.\")}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1200,
+                    "y": 450
+                }
+            }
+        },
+        {
+            "id": 6,
+            "module": "whatsapp-business-cloud:sendMessage",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "phoneNumberId": ""
+            },
+            "mapper": {
+                "to": "{{7.messages[].from}}",
+                "text": {
+                    "body": "{{2.result}}"
+                },
+                "type": "text",
+                "context": {
+                    "message_id": "{{7.messages[].id}}"
+                }
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1500,
+                    "y": 150
+                }
+            }
+        },
+        {
+            "id": 12,
+            "module": "whatsapp-business-cloud:sendMessage",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "phoneNumberId": ""
+            },
+            "filter": {
+                "name": "Only send battle card if one was generated",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{11.result}}",
+                            "b": "",
+                            "o": "text:notequal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "to": "",
+                "text": {
+                    "body": "Lead alert — {{ifempty(7.messages[].profile.name; \"Unknown\")}}\n\n{{11.result}}"
+                },
+                "type": "text"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1500,
+                    "y": 450
+                }
+            }
+        },
+        {
+            "id": 13,
+            "module": "anthropic-claude:simpleTextPrompt",
+            "version": 1,
+            "parameters": {},
+            "filter": {
+                "name": "Close detection — product queries only, not already closed",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{8.result}}",
+                            "b": "GENERAL",
+                            "o": "text:notequal"
+                        },
+                        {
+                            "a": "{{9[].status}}",
+                            "b": "closed",
+                            "o": "text:notequal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "model": "claude-haiku-4-5",
+                "max_tokens": "20",
+                "textPrompt": "You are a close-detection classifier for a retail business. Read the customer message and conversation history below.\n\nReturn CLOSED only if ALL of these are true:\n1. The customer has explicitly confirmed they want to purchase (e.g. 'yes I will take it', 'I want to buy', 'please process my order', 'I will come in to pay', 'confirmed', 'done, please proceed')\n2. There is a specific product being discussed\n3. The business has acknowledged the purchase or provided next steps\n\nReturn ACTIVE in all other cases including:\n- Customer asking questions about a product\n- Customer saying they are interested or thinking about it\n- Customer asking about price, stock, or delivery\n- General enthusiasm like 'sounds good' without explicit purchase commitment\n- Any ambiguity whatsoever\n\nReturn exactly one word: CLOSED or ACTIVE\nNo explanation, no punctuation.\n\nConversation history:\n{{ifempty(9[].history; \"No prior conversation.\")}}\n\nLatest customer message: {{ifempty(7.messages[].text.body; \"[empty]\")}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1800,
+                    "y": 150
+                }
+            }
+        },
+        {
+            "id": 14,
+            "module": "supabase:upsertARecord",
+            "version": 1,
+            "parameters": {
+                "tableId": "conversations",
+                "accountId": ""
+            },
+            "filter": {
+                "name": "Only stamp closed if close detected",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{13.result}}",
+                            "b": "CLOSED",
+                            "o": "text:equal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "status": "closed",
+                "closed_at": "{{now}}",
+                "updated_at": "{{now}}",
+                "phone_number": "{{7.messages[].from}}",
+                "total_orders": "{{ifempty(9[].total_orders; 0) + 1}}",
+                "followup_stage": "pending_delivery"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 2100,
+                    "y": 150
+                }
+            }
+        },
+        {
+            "id": 15,
+            "module": "supabase:upsertARecord",
+            "version": 1,
+            "parameters": {
+                "tableId": "conversations",
+                "accountId": ""
+            },
+            "filter": {
+                "name": "Capture NPS reply if in review_ask stage",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{9[].followup_stage}}",
+                            "b": "review_ask",
+                            "o": "text:equal"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "nps_score": "{{7.messages[].text.body}}",
+                "updated_at": "{{now}}",
+                "phone_number": "{{7.messages[].from}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 2100,
+                    "y": 450
+                }
+            }
+        },
+        {
+            "id": 10,
+            "module": "supabase:upsertARecord",
+            "version": 1,
+            "parameters": {
+                "tableId": "conversations",
+                "accountId": ""
+            },
+            "mapper": {
+                "history": "{{substring(ifempty(9[].history; \"\") & \"\n[Customer]: \" & ifempty(7.messages[].text.body; \"[Non-text message]\") & \"\n[Assistant]: \" & 2.result; max(0; length(ifempty(9[].history; \"\") & \"\n[Customer]: \" & ifempty(7.messages[].text.body; \"[Non-text message]\") & \"\n[Assistant]: \" & 2.result) - 4000); 4000)}}",
+                "updated_at": "{{now}}",
+                "phone_number": "{{7.messages[].from}}",
+                "customer_name": "{{ifempty(7.messages[].profile.name; \"Unknown\")}}",
+                "last_inbound_at": "{{now}}",
+                "last_message_id": "{{7.messages[].id}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 2400,
+                    "y": 300
+                }
+            }
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": true,
+            "slots": null,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "eu2.make.com",
+        "notes": []
+    }
+}

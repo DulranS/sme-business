@@ -1,0 +1,244 @@
+{
+    "name": "WhatsApp Post-Close Lifecycle Runner",
+    "flow": [
+        {
+            "id": 102,
+            "module": "supabase:searchRows",
+            "version": 1,
+            "parameters": {
+                "tableId": "conversations",
+                "accountId": ""
+            },
+            "mapper": {
+                "limit": "50",
+                "filter": [
+                    {
+                        "name": "opt_out",
+                        "value": "false",
+                        "filterType": "eq"
+                    },
+                    {
+                        "name": "status",
+                        "value": "churned",
+                        "filterType": "neq"
+                    },
+                    {
+                        "name": "followup_stage",
+                        "value": "",
+                        "filterType": "neq"
+                    },
+                    {
+                        "name": "followup_stage",
+                        "value": "winback_monitor_complete",
+                        "filterType": "neq"
+                    }
+                ],
+                "orderBy": "last_followup_at",
+                "orderDirection": "asc"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 104,
+            "module": "anthropic-claude:simpleTextPrompt",
+            "version": 1,
+            "parameters": {},
+            "filter": {
+                "name": "Timing gate — only process contacts due for follow-up",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{102.followup_stage}}",
+                            "b": "pending_delivery",
+                            "o": "text:equal"
+                        },
+                        {
+                            "a": "{{102.closed_at}}",
+                            "b": "{{addHours(now; -1)}}",
+                            "o": "date:less"
+                        }
+                    ],
+                    [
+                        {
+                            "a": "{{102.followup_stage}}",
+                            "b": "delivery_check",
+                            "o": "text:equal"
+                        },
+                        {
+                            "a": "{{102.last_followup_at}}",
+                            "b": "{{addDays(now; -3)}}",
+                            "o": "date:less"
+                        }
+                    ],
+                    [
+                        {
+                            "a": "{{102.followup_stage}}",
+                            "b": "review_ask",
+                            "o": "text:equal"
+                        },
+                        {
+                            "a": "{{102.last_followup_at}}",
+                            "b": "{{addDays(now; -4)}}",
+                            "o": "date:less"
+                        }
+                    ],
+                    [
+                        {
+                            "a": "{{102.followup_stage}}",
+                            "b": "reorder_nudge",
+                            "o": "text:equal"
+                        },
+                        {
+                            "a": "{{102.last_followup_at}}",
+                            "b": "{{addDays(now; -21)}}",
+                            "o": "date:less"
+                        }
+                    ],
+                    [
+                        {
+                            "a": "{{102.followup_stage}}",
+                            "b": "winback_monitor",
+                            "o": "text:equal"
+                        },
+                        {
+                            "a": "{{102.last_followup_at}}",
+                            "b": "{{addDays(now; -60)}}",
+                            "o": "date:less"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "model": "claude-haiku-4-5",
+                "max_tokens": "250",
+                "textPrompt": "You are a warm post-sales assistant for {{ifempty(102.store_name; \"our store\")}}. You are sending a WhatsApp follow-up to a customer who has already purchased from us.\n\nFORMATTING:\n- Plain text only — no asterisks, bullets, or markdown\n- Under 120 words — WhatsApp messages, keep it tight\n- Never open with Certainly, Absolutely, or Great question\n- Sound like a real person from the store, not a bot\n- Never mention AI, automation, or internal systems\n\nSTAGE INSTRUCTIONS:\n\npending_delivery: Confirm their order is being processed. Tell them what to expect next using shipping info if known. Make them feel the purchase was the right call. End with a soft offer to help if they have questions.\n\ndelivery_check: Check in warmly — did everything arrive okay? If they have any issues, make it easy to raise them now. Keep tone light, not formal.\n\nreview_ask: Thank them genuinely. Ask for a quick rating out of 10 — just reply with a number. Mention referrals casually if it fits. Never pushy.\n\nreorder_nudge: Reference what they previously bought using history. Let them know if it is still in stock or if there are new items in the same category. Frame it as a heads-up, not a sales push.\n\nwinback_monitor: It has been a while. Reach out genuinely — no guilt, no pressure. Mention something new or relevant if available. Leave the door open.\n\nCustomer name: {{ifempty(102.customer_name; \"there\")}}\nCurrent stage: {{102.followup_stage}}\nConversation history: {{ifempty(102.history; \"No prior conversation recorded.\")}}\nStore shipping info: {{ifempty(102.shipping_info; \"\")}}\nNPS score if known: {{ifempty(102.nps_score; \"not captured yet\")}}\nTotal orders with us: {{ifempty(102.total_orders; 1)}}\n\nWrite the WhatsApp follow-up message now:"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 300
+                }
+            }
+        },
+        {
+            "id": 105,
+            "module": "whatsapp-business-cloud:sendMessage",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "phoneNumberId": ""
+            },
+            "filter": {
+                "name": "24h window open — send free-form message",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{102.last_inbound_at}}",
+                            "b": "{{addHours(now; -24)}}",
+                            "o": "date:greater"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "to": "{{102.phone_number}}",
+                "text": {
+                    "body": "{{104.result}}"
+                },
+                "type": "text"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 600,
+                    "y": 150
+                }
+            }
+        },
+        {
+            "id": 201,
+            "module": "whatsapp-business-cloud:sendMessage",
+            "version": 1,
+            "parameters": {
+                "accountId": "",
+                "phoneNumberId": ""
+            },
+            "filter": {
+                "name": "24h window closed — use approved template",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{102.last_inbound_at}}",
+                            "b": "{{addHours(now; -24)}}",
+                            "o": "date:lessOrEqual"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "to": "{{102.phone_number}}",
+                "type": "template",
+                "template": {
+                    "name": "{{if(102.followup_stage = \"pending_delivery\"; \"post_purchase_confirmation\"; if(102.followup_stage = \"delivery_check\"; \"delivery_check_in\"; if(102.followup_stage = \"review_ask\"; \"nps_and_review_ask\"; if(102.followup_stage = \"reorder_nudge\"; \"reorder_reminder\"; \"winback_reach_out\"))))}}",
+                    "language": {
+                        "code": "en"
+                    }
+                }
+            },
+            "metadata": {
+                "designer": {
+                    "x": 600,
+                    "y": 450
+                }
+            }
+        },
+        {
+            "id": 106,
+            "module": "supabase:upsertARecord",
+            "version": 1,
+            "parameters": {
+                "tableId": "conversations",
+                "accountId": ""
+            },
+            "mapper": {
+                "status": "{{if(102.followup_stage = \"winback_monitor\"; \"churned\"; 102.status)}}",
+                "history": "{{substring(ifempty(102.history; \"\") & \"\n[Outbound - \" & 102.followup_stage & \"]: \" & 104.result; max(0; length(ifempty(102.history; \"\") & \"\n[Outbound - \" & 102.followup_stage & \"]: \" & 104.result) - 4000); 4000)}}",
+                "updated_at": "{{now}}",
+                "phone_number": "{{102.phone_number}}",
+                "followup_stage": "{{if(102.followup_stage = \"pending_delivery\"; \"delivery_check\"; if(102.followup_stage = \"delivery_check\"; \"review_ask\"; if(102.followup_stage = \"review_ask\"; \"reorder_nudge\"; if(102.followup_stage = \"reorder_nudge\"; \"winback_monitor\"; \"winback_monitor_complete\"))))}}",
+                "last_followup_at": "{{now}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 900,
+                    "y": 300
+                }
+            }
+        }
+    ],
+    "metadata": {
+        "instant": false,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": true,
+            "slots": null,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "eu2.make.com",
+        "notes": []
+    }
+}
