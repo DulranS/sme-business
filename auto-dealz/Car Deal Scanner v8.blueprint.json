@@ -93,7 +93,7 @@
                 "headers": [
                     {
                         "name": "x-api-key",
-                        "value": "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"
+                        "value": "-"
                     },
                     {
                         "name": "anthropic-version",
