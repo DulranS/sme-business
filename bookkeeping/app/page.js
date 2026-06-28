@@ -57,6 +57,13 @@ const internalCategories = [
 const userSelectableCategories = internalCategories.filter(cat => cat !== "Cash Flow Gap");
 const categories = userSelectableCategories;
 
+const formatLKR = (amount) => {
+  return new Intl.NumberFormat("en-LK", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount || 0);
+};
+
 export default function BookkeepingApp() {
   const [records, setRecords] = useState([]);
   const [recurringCosts, setRecurringCosts] = useState([]);
@@ -99,7 +106,6 @@ export default function BookkeepingApp() {
   const [budgetCategory, setBudgetCategory] = useState("Overhead");
   const [budgetAmount, setBudgetAmount] = useState("");
   const [groupBy, setGroupBy] = useState("none");
-
   const csvInputRef = useRef(null);
 
   const loadRecords = useCallback(async () => {
@@ -247,18 +253,15 @@ export default function BookkeepingApp() {
     const map = new Map();
     for (const r of filteredRecords) {
       if (r.category !== "Inflow" || !r.customer) continue;
-
       const qty = parseFloat(r.quantity) || 1;
       const price = parseFloat(r.amount) || 0;
       let cost = parseFloat(r.cost_per_unit) || 0;
       if (!cost && r.description && inventoryCostMap[r.description]) {
         cost = inventoryCostMap[r.description];
       }
-
       const revenue = price * qty;
       const totalCost = cost * qty;
       const contributionMargin = revenue - totalCost;
-
       const key = r.customer;
       if (!map.has(key)) {
         map.set(key, {
@@ -270,7 +273,6 @@ export default function BookkeepingApp() {
           totalCost: 0,
         });
       }
-
       const entry = map.get(key);
       entry.totalRevenue += revenue;
       entry.totalContributionMargin += contributionMargin;
@@ -278,7 +280,6 @@ export default function BookkeepingApp() {
       entry.totalUnits += qty;
       entry.totalCost += totalCost;
     }
-
     return Array.from(map.values()).map(c => ({
       ...c,
       arpu: c.totalRevenue / c.totalTransactions,
@@ -736,28 +737,26 @@ export default function BookkeepingApp() {
   // ======= BUSINESS INTELLIGENCE ENGINE =======
   const generateBusinessRecommendations = useMemo(() => {
     const recommendations = [];
-    
     // AI-POWERED BUSINESS ANALYSIS
     if (trueGrossMargin > 40) {
       recommendations.push({
         priority: 'high',
         category: 'growth',
-        message: `Your 40%+ gross margin indicates strong pricing power. Consider scaling your high-margin offerings and reinvesting 30-40% of profit into growth initiatives.",
+        message: `Your 40%+ gross margin indicates strong pricing power. Consider scaling your high-margin offerings and reinvesting 30-40% of profit into growth initiatives.`,
         impact: `+${Math.round((trueGrossMargin - 30) * 2)}% additional revenue potential`,
         action: {
           type: 'priority',
           title: 'Premium Service Launch',
           description: 'Position as premium service provider',
-            timeValue: '2-4 weeks'
+          timeValue: '2-4 weeks'
         }
       });
     }
-    
     if (loanCoveragePercent >= 100) {
       recommendations.push({
         priority: 'high',
         category: 'expansion',
-        message: `With ${loanCoveragePercent.toFixed(1)}% loan coverage, you can pursue strategic acquisitions or major expansion.",
+        message: `With ${loanCoveragePercent.toFixed(1)}% loan coverage, you can pursue strategic acquisitions or major expansion.`,
         impact: 'Access to additional financing opportunities up to $2M',
         action: {
           type: 'strategic',
@@ -767,12 +766,11 @@ export default function BookkeepingApp() {
         }
       });
     }
-    
     if (workingCapital > 50000 && cashRunwayMonths > 6) {
       recommendations.push({
         priority: 'medium',
         category: 'invest',
-        message: `Strong balance sheet allows strategic investments. Consider diversifying into complementary service lines or technology upgrades.",
+        message: `Strong balance sheet allows strategic investments. Consider diversifying into complementary service lines or technology upgrades.`,
         impact: 'Business value enhancement potential: 25-40%',
         action: {
           type: 'investment',
@@ -782,12 +780,11 @@ export default function BookkeepingApp() {
         }
       });
     }
-    
     if (topCustomerShare > 0.5) {
       recommendations.push({
         priority: 'critical',
         category: 'risk',
-        message: `Over-dependence on top customer creates revenue volatility. Implement customer diversification strategy.",
+        message: `Over-dependence on top customer creates revenue volatility. Implement customer diversification strategy.`,
         impact: 'Reduce revenue risk by 40-60%',
         action: {
           type: 'urgent',
@@ -797,12 +794,11 @@ export default function BookkeepingApp() {
         }
       });
     }
-    
     if (onHoldRatio > 20) {
       recommendations.push({
         priority: 'high',
         category: 'efficiency',
-        message: `High on-hold cash (20%+) indicates delayed collections inefficiency. Implement automated collection system.",
+        message: `High on-hold cash (20%+) indicates delayed collections inefficiency. Implement automated collection system.`,
         impact: 'Free up LKR 500K-5M in working capital',
         action: {
           type: 'process',
@@ -812,12 +808,11 @@ export default function BookkeepingApp() {
         }
       });
     }
-    
     if (recurringRatio > 30) {
       recommendations.push({
         priority: 'medium',
         category: 'optimization',
-        message: `Recurring costs (30%+) exceed optimal range. Budget audit needed to optimize subscription economy.",
+        message: `Recurring costs (30%+) exceed optimal range. Budget audit needed to optimize subscription economy.`,
         impact: 'Reduce overhead by 10-20% annually',
         action: {
           type: 'optimization',
@@ -827,12 +822,11 @@ export default function BookkeepingApp() {
         }
       });
     }
-    
     if (businessHealthIndex >= 80) {
       recommendations.push({
         priority: 'low',
         category: 'opportunity',
-        message: `Excellent business health score (80+). Focus on scaling and market position strengthening.",
+        message: `Excellent business health score (80+). Focus on scaling and market position strengthening.`,
         impact: 'Ready for aggressive growth initiatives',
         action: {
           type: 'growth',
@@ -842,7 +836,6 @@ export default function BookkeepingApp() {
         }
       });
     }
-    
     return recommendations.sort((a, b) => {
       const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
       return priorityOrder[a.priority] - priorityOrder[b.priority];
@@ -858,14 +851,11 @@ export default function BookkeepingApp() {
       roiScenarios: [],
       riskFactors: []
     };
-    
     // Revenue Forecast (based on historical patterns)
     const recentMonths = monthlyData.slice(-6);
     const avgMonthlyRevenue = recentMonths.reduce((sum, m) => sum + m.revenue, 0) / Math.max(recentMonths.length, 1);
-    
     const Q3RevenueTarget = avgMonthlyRevenue * 3.2;
     const Q3ProfitTarget = avgMonthlyRevenue * 0.18;
-    
     predictions.nextQuarter.push({
       metric: 'Q3 Revenue',
       value: `LKR ${formatLKR(Q3RevenueTarget)}`,
@@ -873,11 +863,9 @@ export default function BookkeepingApp() {
       confidence: 'high',
       trend: 'upward'
     });
-    
     // Cost Structure Evolution
     const currentOverheadRatio = overheadWithRecurring / Math.max(totals.inflow, 1);
     const optimizedOverheadRatio = Math.max(20, currentOverheadRatio - 0.05);
-    
     predictions.nextQuarter.push({
       metric: 'Operating Margin',
       value: `${Math.min(35, (trueGrossMargin - currentOverheadRatio * 100))}%`,
@@ -885,7 +873,6 @@ export default function BookkeepingApp() {
       confidence: 'medium',
       trend: 'improving'
     });
-    
     // Investment ROI Scenarios
     const scenarios = [
       { investment: 'Technology Upgrade', return: 150, timeframe: '18 months' },
@@ -893,12 +880,9 @@ export default function BookkeepingApp() {
       { investment: 'Process Automation', return: 200, timeframe: '12 months' },
       { investment: 'New Product Line', return: 120, timeframe: '24 months' }
     ];
-    
     predictions.roiScenarios = scenarios;
-    
     // Risk Assessment
     const riskFactors = [];
-    
     if (cashRunwayMonths < 3) {
       riskFactors.push({
         factor: 'Liquidity Risk',
@@ -906,7 +890,6 @@ export default function BookkeepingApp() {
         mitigation: 'Immediate cash infusion required'
       });
     }
-    
     if (topCustomerShare > 0.6) {
       riskFactors.push({
         factor: 'Revenue Concentration Risk',
@@ -914,7 +897,6 @@ export default function BookkeepingApp() {
         mitigation: 'Accelerate diversification efforts'
       });
     }
-    
     if (onHoldRatio > 25) {
       riskFactors.push({
         factor: 'Working Capital Efficiency',
@@ -922,14 +904,12 @@ export default function BookkeepingApp() {
         mitigation: 'Implement automated collection system'
       });
     }
-    
     predictions.riskFactors = riskFactors;
-    
     return predictions;
   }, [monthlyData, totals.inflow, overheadWithRecurring, trueGrossMargin, cashRunwayMonths, topCustomerShare, onHoldRatio]);
 
   // === COMPETITIVE INTELLIGENCE ===
-  const competitiveAnalysis = useMemo(() => {
+  const competitiveIntelligence = useMemo(() => {
     return {
       marketPosition: businessHealthIndex >= 75 ? 'market_leader' : 'strong_contender',
       competitiveMetrics: {
@@ -951,6 +931,14 @@ export default function BookkeepingApp() {
       ]
     };
   }, [businessHealthIndex, trueGrossMargin]);
+
+  const businessValueData = useMemo(() => [
+    { metric: 'Margin', current: Math.min(100, trueGrossMargin * 2), target: 100 },
+    { metric: 'Liquidity', current: Math.min(100, quickRatio * 50), target: 100 },
+    { metric: 'Health', current: businessHealthIndex, target: 80 },
+    { metric: 'Efficiency', current: Math.max(0, 100 - onHoldRatio), target: 90 },
+    { metric: 'Growth', current: Math.min(100, (totals.inflow / Math.max(targetRevenue, 1)) * 100), target: 100 },
+  ], [trueGrossMargin, quickRatio, businessHealthIndex, onHoldRatio, totals.inflow, targetRevenue]);
 
   const roiTimeline = useMemo(() => [
     { month: "M0", investment: 100, return: 0, net: -100 },
@@ -1295,13 +1283,6 @@ export default function BookkeepingApp() {
     window.URL.revokeObjectURL(url);
   };
 
-  const formatLKR = (amount) => {
-    return new Intl.NumberFormat("en-LK", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
-
   const clearDateFilter = () => setDateFilter({ start: "", end: "" });
   const setQuickFilter = (days) => {
     const end = new Date();
@@ -1436,8 +1417,7 @@ export default function BookkeepingApp() {
       setShowBudgetModal(false);
       setBudgetAmount("");
       alert(
-        `Budget for ${
-          categoryLabels[budgetCategory] || budgetCategory
+        `Budget for ${categoryLabels[budgetCategory] || budgetCategory
         } saved successfully!`
       );
     } catch (error) {
@@ -1547,11 +1527,10 @@ export default function BookkeepingApp() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm whitespace-nowrap ${
-                      activeTab === tab.id
+                    className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 font-medium text-xs sm:text-sm whitespace-nowrap ${activeTab === tab.id
                         ? "bg-blue-600 text-white"
                         : "text-gray-600 hover:bg-gray-100"
-                    }`}
+                      }`}
                   >
                     <Icon className="w-3 h-3 sm:w-4 sm:h-4" />
                     {tab.label}
@@ -1574,7 +1553,6 @@ export default function BookkeepingApp() {
                 Understand contribution margin per customer and product
               </p>
             </div>
-
             {customerUnitEconomics.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                 <Calculator className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
@@ -1606,10 +1584,9 @@ export default function BookkeepingApp() {
                             LKR {formatLKR(c.contributionMarginPerUnit)}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <span className={`font-bold ${
-                              c.contributionMarginRatio >= 50 ? 'text-green-600' :
-                              c.contributionMarginRatio >= 30 ? 'text-blue-600' : 'text-orange-600'
-                            }`}>
+                            <span className={`font-bold ${c.contributionMarginRatio >= 50 ? 'text-green-600' :
+                                c.contributionMarginRatio >= 30 ? 'text-blue-600' : 'text-orange-600'
+                              }`}>
                               {c.contributionMarginRatio.toFixed(1)}%
                             </span>
                           </td>
@@ -1626,7 +1603,6 @@ export default function BookkeepingApp() {
                 </div>
               </div>
             )}
-
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-4 rounded-lg">
                 <h4 className="text-sm opacity-90">Avg. Contribution Margin / Unit</h4>
@@ -1666,7 +1642,6 @@ export default function BookkeepingApp() {
                 See who drives sustainable profit—not just revenue
               </p>
             </div>
-
             {customerUnitEconomics.length === 0 ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                 <Users className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
@@ -1700,10 +1675,9 @@ export default function BookkeepingApp() {
                             LKR {formatLKR(c.totalContributionMargin)}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <span className={`font-bold ${
-                              c.contributionMarginRatio >= 50 ? 'text-green-600' :
-                              c.contributionMarginRatio >= 30 ? 'text-blue-600' : 'text-orange-600'
-                            }`}>
+                            <span className={`font-bold ${c.contributionMarginRatio >= 50 ? 'text-green-600' :
+                                c.contributionMarginRatio >= 30 ? 'text-blue-600' : 'text-orange-600'
+                              }`}>
                               {c.contributionMarginRatio.toFixed(1)}%
                             </span>
                           </td>
@@ -1765,11 +1739,10 @@ export default function BookkeepingApp() {
                 <p className="text-xs sm:text-sm opacity-90">Gross Profit (True)</p>
               </div>
               <div
-                className={`bg-gradient-to-br ${
-                  netProfitAfterTax >= 0
+                className={`bg-gradient-to-br ${netProfitAfterTax >= 0
                     ? "from-purple-500 to-purple-600"
                     : "from-orange-500 to-orange-600"
-                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
+                  } text-white rounded-lg shadow-lg p-3 sm:p-5`}
               >
                 <div className="flex justify-between items-start mb-1 sm:mb-2">
                   <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
@@ -1783,11 +1756,10 @@ export default function BookkeepingApp() {
                 <p className="text-xs sm:text-sm opacity-90">Net Profit (After Tax)</p>
               </div>
               <div
-                className={`bg-gradient-to-br ${
-                  loanStatus === "On Track"
+                className={`bg-gradient-to-br ${loanStatus === "On Track"
                     ? "from-green-500 to-teal-600"
                     : "from-red-500 to-orange-600"
-                } text-white rounded-lg shadow-lg p-3 sm:p-5`}
+                  } text-white rounded-lg shadow-lg p-3 sm:p-5`}
               >
                 <div className="flex justify-between items-start mb-1 sm:mb-2">
                   <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" />
@@ -1835,7 +1807,6 @@ export default function BookkeepingApp() {
                 <p className="text-xs sm:text-sm opacity-90">Liquidity Health</p>
               </div>
             </div>
-
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
               <h2 className="text-base sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
                 <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -2110,8 +2081,7 @@ export default function BookkeepingApp() {
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3">
                             <span
-                              className={`px-2 py-1 text-black rounded-full text-xs ${
-                                record.category === "Inflow"
+                              className={`px-2 py-1 text-black rounded-full text-xs ${record.category === "Inflow"
                                   ? "bg-green-100 text-green-800"
                                   : record.category === "Outflow"
                                     ? "bg-red-100 text-red-800"
@@ -2130,8 +2100,7 @@ export default function BookkeepingApp() {
                             LKR {formatLKR(price)}
                           </td>
                           <td
-                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
-                              record.category === "Inflow" ||
+                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${record.category === "Inflow" ||
                                 record.category === "Loan Received"
                                 ? "text-green-600"
                                 : "text-red-600"
@@ -2146,8 +2115,7 @@ export default function BookkeepingApp() {
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                             {margin !== null ? (
                               <span
-                                className={`font-semibold ${
-                                  margin >= 50
+                                className={`font-semibold ${margin >= 50
                                     ? "text-green-600"
                                     : margin >= 30
                                       ? "text-blue-600"
@@ -2212,8 +2180,7 @@ export default function BookkeepingApp() {
               <div className="bg-white rounded-lg shadow-md p-3 sm:p-5 text-center">
                 <h3 className="text-xs sm:text-sm text-gray-600 mb-1">Health Index</h3>
                 <p
-                  className={`text-lg sm:text-2xl font-bold ${
-                    businessHealthIndex >= 80
+                  className={`text-lg sm:text-2xl font-bold ${businessHealthIndex >= 80
                       ? "text-green-600"
                       : businessHealthIndex >= 60
                         ? "text-blue-600"
@@ -2748,8 +2715,7 @@ export default function BookkeepingApp() {
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3">
                             <span
-                              className={`px-2 py-1 text-black rounded-full text-xs ${
-                                record.category === "Inflow"
+                              className={`px-2 py-1 text-black rounded-full text-xs ${record.category === "Inflow"
                                   ? "bg-green-100 text-green-800"
                                   : record.category === "Outflow"
                                     ? "bg-red-100 text-red-800"
@@ -2781,8 +2747,7 @@ export default function BookkeepingApp() {
                             {cost > 0 ? `LKR ${formatLKR(cost)}` : "-"}
                           </td>
                           <td
-                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${
-                              record.category === "Inflow" ||
+                            className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right font-semibold ${record.category === "Inflow" ||
                                 record.category === "Loan Received"
                                 ? "text-green-600"
                                 : "text-red-600"
@@ -2802,8 +2767,7 @@ export default function BookkeepingApp() {
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                             {margin !== null ? (
                               <span
-                                className={`font-semibold ${
-                                  margin >= 50
+                                className={`font-semibold ${margin >= 50
                                     ? "text-green-600"
                                     : margin >= 30
                                       ? "text-blue-600"
@@ -3095,8 +3059,7 @@ export default function BookkeepingApp() {
                           </td>
                           <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-right">
                             <span
-                              className={`font-bold ${
-                                product.margin >= 50
+                              className={`font-bold ${product.margin >= 50
                                   ? "text-green-600"
                                   : product.margin >= 30
                                     ? "text-blue-600"
@@ -3227,8 +3190,7 @@ export default function BookkeepingApp() {
                             </td>
                             <td className="px-3 sm:px-4 py-2 sm:py-3 text-center">
                               <span
-                                className={`px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold rounded-full text-xs ${
-                                  idx < 3
+                                className={`px-2 sm:px-3 py-0.5 sm:py-1 text-black font-semibold rounded-full text-xs ${idx < 3
                                     ? "bg-red-100 text-red-800"
                                     : idx < 6
                                       ? "bg-orange-100 text-orange-800"
@@ -4183,8 +4145,7 @@ export default function BookkeepingApp() {
                         </div>
                         <div className="flex items-center gap-1 sm:gap-2">
                           <span
-                            className={`text-black font-semibold px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm ${
-                              idx === 0
+                            className={`text-black font-semibold px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm ${idx === 0
                                 ? "bg-green-100 text-green-700"
                                 : idx === 1
                                   ? "bg-blue-100 text-blue-700"
