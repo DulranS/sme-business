@@ -153,3 +153,161 @@ export class Config {
 
 // Note: Config.validate() should be called explicitly when needed, not on module evaluation
 // This allows the app to load gracefully and validate environment variables only when required
+
+// ---------------------------------------------------------------------------
+// Startup configuration validation (ConfigValidator)
+//
+// Feature: respond-leadz
+// Requirements: 1.1, 1.7, 19.1, 19.2, 19.3, 13.1, 13.2
+//
+// `validateStartup()` verifies that every required environment value is present
+// and non-empty. If one or more are missing or empty it reports a named
+// configuration error (referencing each value by name only, never its value)
+// and keeps the application in a "starting" state that refuses inbound webhook
+// requests until the configuration is resolved. When all required values are
+// present the validator transitions to a "ready" state in which webhooks are
+// accepted, regardless of other non-required validation outcomes.
+// ---------------------------------------------------------------------------
+
+import { ConfigError } from './pipeline/errors'
+import { logger } from './logger'
+
+/**
+ * The required environment configuration values that must be present and
+ * non-empty before RespondLeadz will accept inbound webhook requests.
+ *
+ * All secrets are read from environment configuration rather than source code
+ * (Requirement 13.1). The four WhatsApp credentials are mandatory per
+ * Requirement 1.1; the Supabase connection values are required for the database
+ * layer that backs every tenant-scoped operation.
+ */
+export const REQUIRED_ENV_KEYS = [
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'WHATSAPP_PHONE_NUMBER_ID',
+  'WHATSAPP_ACCESS_TOKEN',
+  'WHATSAPP_APP_SECRET',
+  'WHATSAPP_VERIFY_TOKEN',
+] as const
+
+/** A required environment configuration key. */
+export type RequiredEnvKey = (typeof REQUIRED_ENV_KEYS)[number]
+
+/** The lifecycle state of the application with respect to startup validation. */
+export type StartupState = 'starting' | 'ready'
+
+/** The outcome of a startup validation run. */
+export interface StartupValidationResult {
+  /** True only when every required value is present and non-empty. */
+  ok: boolean
+  /** Names (never values) of required values that are missing or empty. */
+  missingKeys: RequiredEnvKey[]
+  /** A named configuration error when validation failed; null on success. */
+  error: ConfigError | null
+}
+
+/** A minimal view of an environment source (e.g. `process.env`). */
+type EnvSource = Record<string, string | undefined>
+
+/**
+ * Validates required startup configuration and gates inbound webhook acceptance
+ * on the result. The app begins in a `starting` state and only advances to
+ * `ready` once every required value is present and non-empty.
+ */
+export class ConfigValidator {
+  private static state: StartupState = 'starting'
+  private static lastResult: StartupValidationResult | null = null
+
+  /**
+   * Returns true when a value is present and non-empty (ignoring surrounding
+   * whitespace). Absent, empty, and whitespace-only values are treated as
+   * missing (Requirements 19.1, 19.2).
+   */
+  private static isPresent(value: string | undefined): boolean {
+    return typeof value === 'string' && value.trim().length > 0
+  }
+
+  /**
+   * Verify that all required environment configuration values are present and
+   * non-empty.
+   *
+   * On failure, reports a named {@link ConfigError} identifying each missing or
+   * empty value (by name only — no values are ever read into the error or log)
+   * and leaves the validator in the `starting` state so inbound webhooks are
+   * refused until the configuration is resolved (Requirements 1.7, 19.2).
+   *
+   * On success, transitions to the `ready` state so inbound webhooks are
+   * accepted (Requirement 19.3).
+   *
+   * @param env Optional environment source; defaults to `process.env`.
+   * @returns The validation result, including any named configuration error.
+   */
+  static validateStartup(env: EnvSource = process.env): StartupValidationResult {
+    const missingKeys = REQUIRED_ENV_KEYS.filter((key) => !this.isPresent(env[key]))
+
+    if (missingKeys.length > 0) {
+      const error = new ConfigError(missingKeys)
+      this.state = 'starting'
+      this.lastResult = { ok: false, missingKeys: [...missingKeys], error }
+      // Log by name only — credential values are never written to the log
+      // (Requirement 13.3). ConfigError.missingKeys holds names, not values.
+      logger.error('Startup configuration validation failed: missing or empty required value(s)', {
+        type: 'config',
+        missingKeys: error.missingKeys,
+      })
+      return this.lastResult
+    }
+
+    this.state = 'ready'
+    this.lastResult = { ok: true, missingKeys: [], error: null }
+    logger.info('Startup configuration validation passed; accepting inbound webhooks', {
+      type: 'config',
+    })
+    return this.lastResult
+  }
+
+  /** The current startup lifecycle state. */
+  static getState(): StartupState {
+    return this.state
+  }
+
+  /** The result of the most recent {@link validateStartup} run, if any. */
+  static getLastResult(): StartupValidationResult | null {
+    return this.lastResult
+  }
+
+  /**
+   * Whether the application is in a state that accepts inbound webhook requests.
+   * Returns false until {@link validateStartup} has confirmed all required
+   * values are present (Requirements 19.2, 19.3).
+   */
+  static isAcceptingWebhooks(): boolean {
+    return this.state === 'ready'
+  }
+
+  /**
+   * Throws the named {@link ConfigError} when the application is not yet ready
+   * to accept inbound webhooks. Use this at the entry of the webhook handler to
+   * refuse requests while configuration is unresolved (Requirement 19.2).
+   */
+  static assertAcceptingWebhooks(): void {
+    if (!this.isAcceptingWebhooks()) {
+      throw (
+        this.lastResult?.error ??
+        new ConfigError(
+          [...REQUIRED_ENV_KEYS],
+          'Startup configuration has not been validated; refusing inbound webhooks'
+        )
+      )
+    }
+  }
+
+  /**
+   * Reset validation state back to `starting`. Primarily intended for tests so
+   * each scenario starts from a known state.
+   */
+  static reset(): void {
+    this.state = 'starting'
+    this.lastResult = null
+  }
+}
