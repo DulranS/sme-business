@@ -1,338 +1,255 @@
-# WhatsApp AI Customer Support System
-
-A production-ready Next.js application that provides intelligent WhatsApp customer support with inventory management and conversation memory using Claude AI and Supabase.
-
-## 🚀 Features
-
-- **WhatsApp Integration**: Real-time message processing via WhatsApp Business Cloud API
-- **AI-Powered Responses**: Claude AI for intelligent keyword extraction and customer responses
-- **Inventory Management**: Full CRUD operations for product inventory with stock tracking
-- **Conversation Memory**: Persistent conversation history with automatic truncation
-- **Real-time Dashboard**: Modern UI for monitoring inventory and conversations
-- **Production Security**: Webhook verification, rate limiting, input validation, and sanitization
-- **Comprehensive Logging**: Structured logging with multiple levels and external service integration
-- **Type Safety**: Full TypeScript implementation with strict typing
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   WhatsApp      │    │   Next.js       │    │   Supabase      │
-│   Business      │───▶│   API Routes    │───▶│   Database      │
-│   Cloud API     │    │   (Webhook)     │    │   (PostgreSQL)  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │   Claude AI     │
-                       │   (Anthropic)   │
-                       └─────────────────┘
-```
-
-## 📋 Prerequisites
-
-- Node.js 18+ 
-- npm or yarn
-- Supabase account
-- WhatsApp Business Account
-- Anthropic Claude API access
-
-## 🛠️ Setup
-
-### 1. Clone and Install
-
-```bash
-git clone <repository-url>
-cd respond-leads
-npm install
-```
-
-### 2. Environment Configuration
-
-Copy the environment template:
-
-```bash
-cp env.example .env.local
-```
-
-Fill in your environment variables:
-
-```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# WhatsApp Business Cloud Configuration
-WHATSAPP_PHONE_NUMBER_ID=your_whatsapp_phone_number_id
-WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
-WHATSAPP_APP_SECRET=your_whatsapp_app_secret
-WHATSAPP_VERIFY_TOKEN=your_custom_webhook_verify_token
-
-# Anthropic Claude Configuration
-ANTHROPIC_API_KEY=your_anthropic_api_key
-
-# Application Configuration
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-NODE_ENV=development
-```
-
-### 3. Database Setup
-
-1. Create a new Supabase project
-2. Run the migration script in `supabase/migrations/001_initial_schema.sql`
-3. Verify tables are created: `inventory` and `conversations`
-
-### 4. WhatsApp Business Setup
-
-1. Create a Meta Developer Account
-2. Set up WhatsApp Business Cloud API
-3. Create a Web App and get your:
-   - Phone Number ID
-   - Access Token
-   - App Secret
-4. Configure webhook URL: `https://your-domain.com/api/webhook/whatsapp`
-
-### 5. Run the Application
-
-```bash
-npm run dev
-```
-
-Visit `http://localhost:3000` to access the dashboard.
-
-## 📊 Database Schema
-
-### Inventory Table
-```sql
-CREATE TABLE inventory (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
-    sku VARCHAR(50) NOT NULL UNIQUE,
-    quantity INTEGER NOT NULL DEFAULT 0,
-    price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-### Conversations Table
-```sql
-CREATE TABLE conversations (
-    id SERIAL PRIMARY KEY,
-    phone_number VARCHAR(20) NOT NULL UNIQUE,
-    customer_name VARCHAR(100) NOT NULL DEFAULT 'Unknown',
-    history TEXT DEFAULT '',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-## 🔧 API Endpoints
-
-### WhatsApp Webhook
-- **GET** `/api/webhook/whatsapp` - Webhook verification
-- **POST** `/api/webhook/whatsapp` - Process incoming messages
-
-## 🤖 AI Integration
-
-The system uses Claude AI for two main tasks:
-
-1. **Keyword Extraction**: Extracts relevant search terms from customer messages
-2. **Response Generation**: Creates contextually appropriate responses based on inventory data and conversation history
-
-### Example Flow
-
-```
-Customer: "Do you have Nike Air Max in size 9?"
-├─ Claude extracts: "Nike Air Max"
-├─ Database search: Finds matching products
-├─ Claude generates: "Yes, we have Nike Air Max in stock! Currently 15 pairs available at $120 each."
-└─ WhatsApp sends response
-```
-
-## 🛡️ Security Features
-
-- **Webhook Verification**: HMAC-SHA256 signature validation
-- **Rate Limiting**: Configurable request limits per IP
-- **Input Validation**: Comprehensive validation for all inputs
-- **Input Sanitization**: XSS prevention and data cleaning
-- **CSP Headers**: Content Security Policy for XSS protection
-- **Row Level Security**: Database access controls
-
-## 📝 Logging
-
-The application includes structured logging with multiple levels:
-
-- **ERROR**: Critical errors requiring immediate attention
-- **WARN**: Warning messages for potential issues
-- **INFO**: General information about system operations
-- **DEBUG**: Detailed debugging information (development only)
-
-## 🌍 Multi-Currency Architecture
-
-The system supports **true multi-currency inventory management** with automatic USD conversion and real-time display formatting.
-
-### **Currency Support**
-- **100+ Currencies**: Comprehensive support for major global currencies
-- **Regional Coverage**: Americas, Europe, Asia, Middle East, Africa, Oceania, Caribbean
-- **Cryptocurrency Support**: Bitcoin, Ethereum, Tether for future expansion
-- **Automatic Conversion**: All prices stored with USD equivalent for consistent calculations
-- **Real-time Display**: Prices shown in user's preferred currency with proper formatting
-- **Exchange Rate Management**: Built-in currency converter with update capabilities
-- **Organized Selection**: Currencies grouped by region for easy navigation
-
-### **Database Schema**
-```sql
-inventory table:
-- price: DECIMAL(10,2) -- Original price in item's currency
-- currency: VARCHAR(3) -- Currency code (USD, EUR, etc.)
-- price_usd: DECIMAL(10,2) -- USD equivalent for calculations
-```
-
-### **Architecture Components**
-1. **CurrencyConverter**: Handles exchange rate calculations and conversions
-2. **CurrencyService**: Manages user preferences and formatting
-3. **Database Triggers**: Auto-calculate USD equivalents on insert/update
-4. **UI Components**: Currency selectors and formatted displays
-
-### **Usage**
-- **Add Items**: Select currency when creating inventory items
-- **View Prices**: See prices in your preferred currency automatically
-- **Consistent Totals**: All calculations use USD equivalents for accuracy
-- **Persistent Settings**: Currency preference saved to localStorage
-
-### Vercel (Recommended) - Free Tier Optimized
-
-1. Connect your repository to Vercel
-2. Add environment variables in Vercel dashboard
-3. Deploy automatically on git push
-
-**Vercel Hobby Plan Limitations:**
-- **Cron Jobs**: Limited to ONE execution per day per cron job
-- **Rate Limiting**: Built-in rate limiting for API calls
-- **Message Queuing**: Handles burst traffic with delayed processing
-- **Health Monitoring**: Limited to daily scheduled checks
-
-**Cron Jobs Included:**
-- `/api/cron/health-check` - Health monitoring (once daily at 2 PM)
-- `/api/cron/cleanup` - Data cleanup and optimization (once daily at 3 AM)
-
-**Rate Limiting:**
-- 50 requests per minute per phone number
-- Message queuing for burst handling
-- 5-second delays between queued messages
-- Graceful fallback responses
-
-### Environment-Specific Considerations
-
-**Production:**
-- Set `NODE_ENV=production`
-- Use HTTPS for webhook URL
-- Configure external logging service
-- Enable database backups
-- Set up monitoring and alerts
-
-**Development:**
-- Use `NODE_ENV=development`
-- Debug logging enabled
-- Hot reload available
-
-## 🔍 Monitoring
-
-### Key Metrics to Monitor
-
-- API response times
-- Error rates (4xx, 5xx)
-- WhatsApp webhook failures
-- Claude API rate limits
-- Database performance
-- Memory usage
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Webhook Verification Fails**
-   - Check `WHATSAPP_VERIFY_TOKEN` matches exactly
-   - Ensure webhook URL is publicly accessible
-   - Verify SSL certificate is valid
-
-2. **Messages Not Processing**
-   - Check WhatsApp API credentials
-   - Verify webhook is receiving requests
-   - Check application logs for errors
-
-3. **Database Errors**
-   - Verify Supabase connection strings
-   - Check database migrations are applied
-   - Verify RLS policies
-
-4. **AI Response Issues**
-   - Check Anthropic API key
-   - Monitor rate limits
-   - Verify prompt templates
-
-### Debug Mode
-
-Enable debug logging by setting:
-```env
-NODE_ENV=development
-```
-
-## 📚 API Documentation
-
-### WhatsApp Webhook Endpoint
-
-**GET /api/webhook/whatsapp**
-Webhook verification for WhatsApp Business Cloud.
-
-**POST /api/webhook/whatsapp**
-Processes incoming WhatsApp messages.
-
-Request body:
-```json
-{
-  "object": "whatsapp_business_account",
-  "entry": [{
-    "changes": [{
-      "field": "messages",
-      "value": {
-        "messages": [{
-          "id": "message_id",
-          "from": "phone_number",
-          "text": {"body": "message_text"},
-          "type": "text"
-        }],
-        "contacts": [{
-          "profile": {"name": "customer_name"},
-          "wa_id": "whatsapp_id"
-        }]
-      }
-    }]
-  }]
-}
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🆘 Support
-
-For issues and questions:
-- Create an issue in the repository
-- Check the troubleshooting section
-- Review the logs for detailed error information
+# RespondLeadz
+
+RespondLeadz is the **sales & conversion engine** of an SME operations stack. It answers inbound
+**WhatsApp** messages with AI, grounds every reply in **live inventory**, remembers each
+conversation, detects when a **deal closes**, and runs an automated **post-close follow-up**
+lifecycle — all **multi-tenant** with strict per-business data isolation.
+
+> Built on Next.js (App Router) + TypeScript, Supabase/Postgres with Row Level Security, the
+> WhatsApp Business Cloud API, and Anthropic Claude Haiku.
 
 ---
 
-**Built with ❤️ using Next.js, Supabase, and Claude AI**
+## 1. What it does (in plain words)
+
+A customer messages your WhatsApp number. RespondLeadz:
+
+1. **Receives** the message (webhook), verifies it really came from Meta (HMAC signature).
+2. **Finds the right business** (tenant) from the receiving phone number.
+3. **Skips duplicates** so a customer is never replied to twice.
+4. **Understands intent** — the LLM extracts what product the customer is asking about.
+5. **Looks up inventory** for that tenant (price + quantity, capped to 5 results).
+6. **Writes a grounded reply** that only mentions items that actually exist, including price and
+   stock — and a safe fallback message if the AI is unavailable.
+7. **Sends** the reply back over WhatsApp (with retries).
+8. **Remembers** the exchange (trimmed conversation history).
+9. **Detects a closed deal** and records it (value + currency), then **schedules follow-ups**
+   (delivery check, review ask, re-order nudge…) that a daily job sends — but only to customers who
+   consented and haven't opted out.
+
+It also talks to sibling systems: **CashFlow** (money tracking), **AutoDealz** (supply feed), and
+**Mails2Leadz** (lead hand-off) — using the phone number as the shared customer identifier. If a
+sibling is down, inbound handling keeps working.
+
+---
+
+## 2. Architecture
+
+```
+                         WhatsApp Business Cloud API
+                                   │  (webhook POST, HMAC-signed)
+                                   ▼
+            ┌──────────────────────────────────────────────┐
+            │  app/api/webhook/whatsapp/route.ts            │  ← the ONE production endpoint
+            │            delegates to                       │
+            │  lib/pipeline/inbound-handler.ts              │
+            └──────────────────────────────────────────────┘
+                                   │  per message, independently
+   ┌───────────────┬──────────────┼───────────────┬───────────────┬────────────────┐
+   ▼               ▼              ▼               ▼               ▼                ▼
+ signature      parser        tenant         rate-limiter   conversation-     close-detector
+ (verify)    (extract msgs) (resolve+RLS)   (burst queue)   engine (memory)   (record close)
+                                   │                               │                │
+                                   ▼                               ▼                ▼
+                            inventory (search)            ai-responder        lifecycle (cron)
+                                   │                    (Claude Haiku +       follow-ups
+                                   ▼                     fallback)            (consent-gated)
+                            outbound-sender ── reply ──▶ WhatsApp
+                                   │
+                                   ▼
+                       Supabase / Postgres (RLS-enforced, per tenant)
+```
+
+Everything tenant-scoped goes through `withTenantContext()`, which opens a transaction, sets
+`app.current_tenant`, and runs on a **non-superuser** Postgres role so **Row Level Security** is
+always enforced. The dashboard (`app/page.tsx`) is a separate admin UI over the same data.
+
+---
+
+## 3. Project structure
+
+```
+respond-leads/
+├─ app/
+│  ├─ page.tsx                         # Admin dashboard (inventory + conversations UI)
+│  └─ api/
+│     ├─ webhook/whatsapp/route.ts     # CANONICAL webhook (GET verify, POST pipeline)
+│     ├─ health/route.ts               # Health check (DB + WhatsApp reachability)
+│     └─ cron/lifecycle/route.ts       # Daily post-close follow-up runner
+├─ lib/
+│  ├─ pipeline/                        # ← the canonical pipeline (this spec)
+│  │  ├─ inbound-handler.ts            #   webhook verify + POST orchestration
+│  │  ├─ signature.ts                  #   HMAC-SHA256 verify (constant-time)
+│  │  ├─ parser.ts                     #   payload → messages (cap 100, truncate 4096)
+│  │  ├─ tenant.ts                     #   tenant resolution + RLS context + probe
+│  │  ├─ inventory.ts                  #   tenant-scoped search (≤5, active only)
+│  │  ├─ llm-provider.ts               #   single Claude Haiku provider
+│  │  ├─ ai-responder.ts               #   intent extract + grounded reply + fallback
+│  │  ├─ outbound-sender.ts            #   WhatsApp send w/ 3-attempt retry
+│  │  ├─ conversation-engine.ts        #   history fetch/trim, dedup, commit
+│  │  ├─ close-detector.ts             #   close evaluation + idempotent record
+│  │  ├─ consent.ts                    #   consent / opt-out / data deletion
+│  │  ├─ rate-limiter.ts               #   burst queue + spaced draining
+│  │  ├─ lifecycle.ts                  #   follow-up scheduling + sending
+│  │  ├─ types.ts / errors.ts          #   shared domain types + typed errors
+│  ├─ integrations/                    # CashFlow, Mails2Leadz, AutoDealz adapters
+│  ├─ config.ts                        # ConfigValidator (startup env gate)
+│  ├─ logger.ts                        # Structured logger w/ credential redaction
+│  └─ supabase.ts                      # Dashboard Supabase clients
+├─ supabase/migrations/                # 001–007 SQL migrations (007 = RLS policies)
+├─ tests/                              # Jest + fast-check property tests (32 properties)
+├─ reference/                          # Archived non-production material (blueprints, python/)
+├─ proxy.ts                            # Edge proxy: request logging, rate limit, security headers
+├─ .env.example                        # Documented environment template
+└─ vercel.json                         # Cron schedule (lifecycle daily @ 09:00)
+```
+
+---
+
+## 4. Prerequisites
+
+- **Node.js 18+** and npm
+- A **Supabase**/Postgres project (migrations `001`–`007` applied)
+- A **WhatsApp Business Cloud API** app (Meta Developer account)
+- An **Anthropic** API key (optional — without it the AI falls back to a safe canned reply)
+
+---
+
+## 5. Setup & run (local)
+
+```bash
+# from the repo
+cd respond-leads
+npm install
+
+# create your local env and fill in real values (see section 6)
+cp .env.example .env.local      # then edit .env.local
+
+# run the dashboard + API
+npm run dev                     # http://localhost:3000
+```
+
+Other scripts:
+
+```bash
+npm run build      # production build (must pass before deploy)
+npm start          # run the production build
+npm run lint       # eslint
+npm test           # full Jest + fast-check suite
+npm run test:watch # watch mode
+```
+
+> **Note (Windows):** run long-lived commands like `npm run dev` in your own terminal — they don't
+> exit on their own.
+
+### Database setup
+
+Apply the migrations in `supabase/migrations/` in order (`001` → `007`). The important ones for this
+pipeline:
+
+- `006_multi_tenant_schema.sql` — adds `tenant_id` + the `tenants`, `close_events`,
+  `follow_up_actions`, `customer_consent`, `inbound_queue` tables.
+- `007_tenant_rls_policies.sql` — **enables and FORCES** Row Level Security on every tenant table and
+  creates the non-superuser `respondleadz_tenant` role used by the pipeline.
+
+The pipeline connects with **two** roles:
+- `TENANT_DATABASE_URL` → the **non-superuser** `respondleadz_tenant` role (RLS enforced). This is
+  the only path for tenant business data.
+- `ADMIN_DATABASE_URL` (or `DATABASE_URL`) → a role that can read the `tenants` table, used only for
+  routing inbound messages and the startup RLS probe.
+
+---
+
+## 6. Environment variables
+
+Copy `.env.example` → `.env.local` and fill these in. The webhook **refuses inbound traffic** until
+every REQUIRED value is present (enforced by `ConfigValidator`).
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL (dashboard + data) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon key (browser) |
+| `SUPABASE_SERVICE_ROLE_KEY` | ◻ | Server-side privileged key |
+| `TENANT_DATABASE_URL` | ✅ | Postgres conn as `respondleadz_tenant` (RLS enforced) |
+| `ADMIN_DATABASE_URL` / `DATABASE_URL` | ✅ | Routing + RLS probe connection |
+| `WHATSAPP_PHONE_NUMBER_ID` | ✅ | From Meta WhatsApp config |
+| `WHATSAPP_ACCESS_TOKEN` | ✅ | WhatsApp Cloud API token |
+| `WHATSAPP_APP_SECRET` | ✅ | Used to verify webhook signatures |
+| `WHATSAPP_VERIFY_TOKEN` | ✅ | Must match the token entered in Meta webhook setup |
+| `ANTHROPIC_API_KEY` | ◻ | Claude Haiku; absent → fallback replies |
+| `CRON_SECRET` | ◻ (recommended) | Bearer token guarding the lifecycle cron |
+| `CASHFLOW_WEBHOOK_URL` | ◻ | CashFlow close-event sink |
+| `AUTODEALZ_FEED_URL` | ◻ | AutoDealz supply feed |
+| `NEXT_PUBLIC_APP_URL` | ◻ | App base URL (default `http://localhost:3000`) |
+
+---
+
+## 7. Connecting WhatsApp (Meta)
+
+1. In the [Meta Developer](https://developers.facebook.com/) console, create an app and add
+   **WhatsApp**. Note the **Phone Number ID**, **Access Token**, and **App Secret**.
+2. Choose any **Verify Token** string and put the same value in `WHATSAPP_VERIFY_TOKEN`.
+3. Set the webhook callback URL to `https://<your-domain>/api/webhook/whatsapp` and subscribe to the
+   **`messages`** field.
+4. Meta sends a GET verification request → the handler echoes the challenge only when the token
+   matches (returns 403 otherwise).
+5. Send a test message to your number; watch it get a reply. Use `/api/health` to confirm the app
+   can reach the DB and WhatsApp.
+
+For local testing, expose `localhost:3000` with a tunnel (e.g. ngrok) and use that HTTPS URL as the
+webhook.
+
+---
+
+## 8. Testing
+
+```bash
+npm test
+```
+
+The suite is **Jest + fast-check** (property-based testing): 32 correctness properties plus unit
+tests, ~139 cases, fully hermetic (the database layer is mocked, so no DB is needed). Tagged like
+`// Feature: respond-leadz, Property N: ...`.
+
+The true **RLS isolation** tests (`tests/tenant.test.ts`) require a live Postgres and are **skipped
+by default**. To run them, apply migrations `001`–`007`, create the `respondleadz_tenant` role, then:
+
+```bash
+# PowerShell example
+$env:RESPONDLEADZ_TEST_DATABASE="1"
+$env:ADMIN_DATABASE_URL="postgres://admin:...@host:5432/db"
+$env:TENANT_DATABASE_URL="postgres://respondleadz_tenant:...@host:5432/db"
+npx jest tests/tenant.test.ts
+```
+
+---
+
+## 9. Deployment (Vercel)
+
+1. Push the repo and import it in Vercel.
+2. Add every REQUIRED env var (section 6) in **Project Settings → Environment Variables**, plus
+   `CRON_SECRET`.
+3. Deploy. `vercel.json` registers the daily crons (lifecycle at 09:00) — Vercel Hobby allows **one
+   run per day per job**, which the lifecycle runner respects.
+4. Point the Meta webhook at `https://<your-vercel-domain>/api/webhook/whatsapp`.
+
+`npm run build` must be green before deploying (it is).
+
+---
+
+## 10. Security & compliance notes
+
+- **Signature verification** (HMAC-SHA256, constant-time) on every webhook POST → 401 on mismatch.
+- **Startup config gate** refuses webhooks until required secrets are present.
+- **Credential redaction** in logs — values are never written, only names.
+- **Row Level Security** forced on all tenant tables; the pipeline uses a non-superuser role.
+- **Consent & GDPR** — follow-ups are consent-gated; opt-out and data-deletion are supported.
+- **Cron auth** — set `CRON_SECRET` so only Vercel Cron can trigger the customer-facing lifecycle.
+
+---
+
+## 11. Spec & docs
+
+This app was built from a formal spec in `.kiro/specs/respond-leadz/`
+(`requirements.md`, `design.md`, `tasks.md`). The `reference/` folder holds archived, non-production
+material (Make.com blueprints, the Python RAG prototype) kept for historical context only.
