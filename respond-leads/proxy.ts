@@ -29,7 +29,12 @@ function rateLimit(ip: string): boolean {
   return true
 }
 
-export function middleware(request: NextRequest) {
+/**
+ * Edge proxy (formerly Next.js middleware). Logs requests, rate-limits API
+ * routes, and applies security headers. Renamed to the Next 16 `proxy`
+ * convention.
+ */
+export function proxy(request: NextRequest) {
   const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
   const pathname = request.nextUrl.pathname
 
@@ -60,7 +65,7 @@ export function middleware(request: NextRequest) {
   response.headers.set('X-Content-Type-Options', 'nosniff')
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   response.headers.set('X-XSS-Protection', '1; mode=block')
-  
+
   // CSP header (restrict content sources)
   if (process.env.NODE_ENV === 'production') {
     response.headers.set(

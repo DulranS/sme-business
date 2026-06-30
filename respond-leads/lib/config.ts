@@ -85,7 +85,7 @@ export class Config {
     try {
       new URL(this.supabaseUrl)
       new URL(this.appUrl)
-    } catch (error) {
+    } catch {
       throw new Error('Invalid URL format in environment variables')
     }
 

@@ -90,7 +90,8 @@ export async function handoffLead(lead: LeadHandoff): Promise<LeadHandoffResult>
     const row = result.rows[0]
     const created = row.__inserted === true
     // Strip the upsert discriminator from the returned domain object.
-    const { __inserted, ...conversation } = row
+    const conversation: Conversation = { ...row }
+    delete (conversation as { __inserted?: boolean }).__inserted
 
     logger.info('Mails2Leadz lead handed off', {
       type: 'integration',

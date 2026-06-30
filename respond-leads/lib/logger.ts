@@ -55,7 +55,7 @@ export interface LogEntry {
   timestamp: string
   level: LogLevel
   message: string
-  context?: Record<string, any>
+  context?: unknown
   error?: {
     name: string
     message: string
@@ -179,9 +179,14 @@ export class Logger {
 
     let logString = `[${timestamp}] ${level}: ${message}`
 
-    if (context && Object.keys(context).length > 0) {
-      const redactedContext = this.redact(context)
-      logString += ` | Context: ${JSON.stringify(redactedContext)}`
+    if (context !== undefined && context !== null) {
+      // Context may be a structured object or, from legacy callers, an arbitrary
+      // value (e.g. an Error). Redact then serialize either shape safely.
+      const isObject = typeof context === 'object'
+      if (!isObject || Object.keys(context as Record<string, unknown>).length > 0) {
+        const redactedContext = this.redact(context)
+        logString += ` | Context: ${JSON.stringify(redactedContext)}`
+      }
     }
 
     if (error) {
@@ -196,7 +201,7 @@ export class Logger {
     return this.scrubSecrets(logString)
   }
 
-  private log(level: LogLevel, message: string, context?: Record<string, any>, error?: Error): void {
+  private log(level: LogLevel, message: string, context?: unknown, error?: Error): void {
     if (!this.shouldLog(level)) return
 
     const logEntry: LogEntry = {
@@ -242,19 +247,19 @@ export class Logger {
     void logEntry
   }
 
-  error(message: string, context?: Record<string, any>, error?: Error): void {
+  error(message: string, context?: unknown, error?: Error): void {
     this.log(LogLevel.ERROR, message, context, error)
   }
 
-  warn(message: string, context?: Record<string, any>): void {
+  warn(message: string, context?: unknown): void {
     this.log(LogLevel.WARN, message, context)
   }
 
-  info(message: string, context?: Record<string, any>): void {
+  info(message: string, context?: unknown): void {
     this.log(LogLevel.INFO, message, context)
   }
 
-  debug(message: string, context?: Record<string, any>): void {
+  debug(message: string, context?: unknown): void {
     this.log(LogLevel.DEBUG, message, context)
   }
 
@@ -264,8 +269,8 @@ export class Logger {
    * (Requirement 17.1). Defaults to the INFO level; pass a different level to
    * record a failed outcome at a higher severity (Requirement 17.2).
    */
-  message(fields: MessageLogFields, level: LogLevel = LogLevel.INFO, extra?: Record<string, any>): void {
-    const context: Record<string, any> = {
+  message(fields: MessageLogFields, level: LogLevel = LogLevel.INFO, extra?: Record<string, unknown>): void {
+    const context: Record<string, unknown> = {
       type: 'inbound_message',
       tenant: fields.tenant,
       phone: fields.phone,
@@ -277,19 +282,19 @@ export class Logger {
   }
 
   // Specialized logging methods
-  webhook(message: string, data: any): void {
+  webhook(message: string, data: unknown): void {
     this.info(`Webhook: ${message}`, { type: 'webhook', data })
   }
 
-  ai(message: string, data: any): void {
+  ai(message: string, data: unknown): void {
     this.info(`AI Service: ${message}`, { type: 'ai', data })
   }
 
-  database(message: string, data: any): void {
+  database(message: string, data: unknown): void {
     this.info(`Database: ${message}`, { type: 'database', data })
   }
 
-  whatsapp(message: string, data: any): void {
+  whatsapp(message: string, data: unknown): void {
     this.info(`WhatsApp: ${message}`, { type: 'whatsapp', data })
   }
 }
