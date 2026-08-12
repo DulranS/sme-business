@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {
   ResponsiveContainer,
   LineChart,
