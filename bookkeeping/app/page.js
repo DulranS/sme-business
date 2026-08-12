@@ -89,12 +89,18 @@ export default function BookkeepingApp() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+          const cleanedFormData = {
+        ...formData,
+        amount: formData.amount ? parseFloat(formData.amount) : 0,
+        cost_per_unit: formData.cost_per_unit ? parseFloat(formData.cost_per_unit) : null,
+        quantity: formData.quantity ? parseFloat(formData.quantity) : 1,
+      };
     try {
       if (isEditing) {
         // Update logic would go here
         setIsEditing(null);
       } else {
-        await createRecord.mutateAsync(formData);
+        await createRecord.mutateAsync(cleanedFormData);
       }
       setShowForm(false);
       setFormData({
