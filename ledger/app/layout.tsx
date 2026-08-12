@@ -36,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: "if(typeof document!=='undefined'){Array.from(document.documentElement.attributes).forEach(attr=>{if(attr.name.includes('bybit')||attr.name.includes('wallet'))document.documentElement.removeAttribute(attr.name)})}" }} />
         <AuthProvider>
           <DataProvider>
             <AppShell>{children}</AppShell>
