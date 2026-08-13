@@ -32,6 +32,7 @@ import type {
   VariableCost,
   CapitalEntry,
   Employee,
+  Loan,
   Settings,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
@@ -48,6 +49,8 @@ import {
   computeOnOrderByProduct,
   computeOpenOrderValue,
   monthlyPayrollCost,
+  computeLoanPortfolio,
+  computeBalanceSheet,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -55,6 +58,8 @@ import {
   type BreakEvenResult,
   type CapitalSummary,
   type OpenOrderValue,
+  type LoanPortfolioSummary,
+  type BalanceSheet,
 } from "@/lib/calculations";
 import { todayIso } from "@/lib/format";
 
@@ -68,6 +73,7 @@ interface DataContextValue {
   variableCosts: VariableCost[];
   capitalEntries: CapitalEntry[];
   employees: Employee[];
+  loans: Loan[];
   settings: Settings;
 
   ledgers: Map<string, ProductLedgerResult>;
@@ -81,6 +87,8 @@ interface DataContextValue {
   onOrderByProduct: Map<string, number>;
   openOrders: OpenOrderValue;
   monthlyPayroll: number;
+  loanPortfolio: LoanPortfolioSummary;
+  balanceSheet: BalanceSheet;
 
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
@@ -127,6 +135,10 @@ interface DataContextValue {
   updateEmployee: (id: string, e: Partial<Employee>) => Promise<void>;
   deleteEmployee: (id: string) => Promise<void>;
 
+  addLoan: (l: Omit<Loan, "id" | "createdAt">) => Promise<void>;
+  updateLoan: (id: string, l: Partial<Loan>) => Promise<void>;
+  deleteLoan: (id: string) => Promise<void>;
+
   updateSettings: (s: Partial<Settings>) => Promise<void>;
 }
 
@@ -147,6 +159,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [variableCosts, setVariableCosts] = useState<VariableCost[]>([]);
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loadedFlags, setLoadedFlags] = useState({
     products: false,
@@ -157,6 +170,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     variableCosts: false,
     capitalEntries: false,
     employees: false,
+    loans: false,
     settings: false,
   });
 
@@ -175,6 +189,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setVariableCosts([]);
       setCapitalEntries([]);
       setEmployees([]);
+      setLoans([]);
       setSettings(DEFAULT_SETTINGS);
       return;
     }
@@ -222,6 +237,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setEmployees(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Employee)));
         setLoadedFlags((f) => ({ ...f, employees: true }));
       }),
+      onSnapshot(
+        query(collection(db, "users", uid, "loans"), orderBy("startDate", "desc")),
+        (snap) => {
+          setLoans(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Loan)));
+          setLoadedFlags((f) => ({ ...f, loans: true }));
+        }
+      ),
       onSnapshot(doc(db, "users", uid, "meta", "settings"), (snap) => {
         if (snap.exists()) setSettings({ ...DEFAULT_SETTINGS, ...(snap.data() as Settings) });
         setLoadedFlags((f) => ({ ...f, settings: true }));
@@ -245,8 +267,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [sales, ledgers, variableCosts]
   );
   const monthlyPnL = useMemo(
-    () => computeMonthlyPnL(sales, saleEconomics, expenses, settings.taxRatePct),
-    [sales, saleEconomics, expenses, settings.taxRatePct]
+    () => computeMonthlyPnL(sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct),
+    [sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct]
   );
   const inventoryValue = useMemo(() => currentInventoryValue(ledgers), [ledgers]);
   const inventoryUnits = useMemo(() => currentInventoryUnits(ledgers), [ledgers]);
@@ -274,6 +296,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const onOrderByProduct = useMemo(() => computeOnOrderByProduct(purchaseOrders), [purchaseOrders]);
   const openOrders = useMemo(() => computeOpenOrderValue(purchaseOrders), [purchaseOrders]);
   const monthlyPayroll = useMemo(() => monthlyPayrollCost(employees), [employees]);
+  const loanPortfolio = useMemo(() => computeLoanPortfolio(loans, todayIso()), [loans]);
+  const balanceSheet = useMemo(
+    () => computeBalanceSheet(monthlyPnL, inventoryValue, loans, capitalSummary, todayIso()),
+    [monthlyPnL, inventoryValue, loans, capitalSummary]
+  );
 
   function requireUid(): string {
     if (!uid) throw new Error("Not signed in");
@@ -307,6 +334,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     variableCosts,
     capitalEntries,
     employees,
+    loans,
     settings,
     ledgers,
     saleEconomics,
@@ -319,6 +347,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     onOrderByProduct,
     openOrders,
     monthlyPayroll,
+    loanPortfolio,
+    balanceSheet,
 
     addProduct: async (p) => {
       const id = requireUid();
@@ -526,6 +556,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
         batch.delete(doc(db, "users", id, "expenses", existing.linkedExpenseId));
       }
       await batch.commit();
+    },
+
+    addLoan: async (l) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await addDoc(collection(db, "users", id, "loans"), { ...l, createdAt: Date.now() });
+    },
+    updateLoan: async (docId, l) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", id, "loans", docId), l);
+    },
+    deleteLoan: async (docId) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", id, "loans", docId));
     },
 
     updateSettings: async (s) => {

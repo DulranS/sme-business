@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
-import { formatMoney, todayIso } from "@/lib/format";
+import { formatMoney, formatNumber, todayIso } from "@/lib/format";
+import { computeProductProfitability } from "@/lib/calculations";
 import type { CapitalEntry } from "@/lib/types";
 import {
   Badge,
@@ -19,17 +20,145 @@ import {
   EmptyState,
 } from "@/components/ui";
 
+const MARGIN_BAND_TONE = {
+  thin: "bad",
+  moderate: "amber",
+  healthy: "good",
+  strong: "good",
+  "n/a": "default",
+} as const;
+
+const MARGIN_BAND_LABEL = {
+  thin: "thin (price-competitive)",
+  moderate: "moderate",
+  healthy: "healthy",
+  strong: "strong (differentiated)",
+  "n/a": "no sales yet",
+} as const;
+
+type PeriodFilter = "all" | "30" | "90" | "month";
+
 export default function ProfitabilityPage() {
-  const { breakEven, capitalSummary, capitalEntries, addCapitalEntry, deleteCapitalEntry, settings, monthlyPnL } =
-    useData();
+  const {
+    breakEven,
+    capitalSummary,
+    capitalEntries,
+    addCapitalEntry,
+    deleteCapitalEntry,
+    settings,
+    monthlyPnL,
+    products,
+    sales,
+    saleEconomics,
+    ledgers,
+  } = useData();
   const currency = settings.currency;
   const [modalOpen, setModalOpen] = useState(false);
+  const [period, setPeriod] = useState<PeriodFilter>("90");
 
   const hasData = monthlyPnL.length > 0;
+
+  const { dateFrom, dateTo } = useMemo(() => {
+    const today = todayIso();
+    if (period === "all") return { dateFrom: undefined, dateTo: undefined };
+    if (period === "month") return { dateFrom: today.slice(0, 8) + "01", dateTo: today };
+    const days = period === "30" ? 30 : 90;
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    return { dateFrom: from, dateTo: today };
+  }, [period]);
+
+  const productProfitability = useMemo(
+    () => computeProductProfitability(products, sales, saleEconomics, ledgers, dateFrom, dateTo),
+    [products, sales, saleEconomics, ledgers, dateFrom, dateTo]
+  );
+  const rankedProfitability = useMemo(
+    () => [...productProfitability].sort((a, b) => b.grossProfit - a.grossProfit),
+    [productProfitability]
+  );
 
   return (
     <>
       <PageHeader title="Profitability" />
+
+      <Card className="mb-6">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <div className="text-sm font-medium">Item-level profitability</div>
+            <div className="text-xs text-muted mt-0.5">
+              Per product/service: units sold, selling price vs. wholesale cost, gross profit, and what&apos;s still
+              tied up as inventory. Cost of goods sold moves with each unit sold (weighted-average cost), not with
+              what you happen to be holding.
+            </div>
+          </div>
+          <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="w-36 shrink-0">
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="month">This month</option>
+            <option value="all">All time</option>
+          </Select>
+        </div>
+
+        {rankedProfitability.length === 0 ? (
+          <div className="text-xs text-muted py-6 text-center">No products or services set up yet.</div>
+        ) : (
+          <div className="overflow-x-auto -mx-4 sm:-mx-5 mt-4">
+            <div className="px-4 sm:px-5 min-w-[900px]">
+              <Table>
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
+                    <th className="py-2 pr-3 font-medium">Item</th>
+                    <th className="py-2 px-3 font-medium text-right">Qty sold</th>
+                    <th className="py-2 px-3 font-medium text-right">Avg. price</th>
+                    <th className="py-2 px-3 font-medium text-right">Avg. unit cost</th>
+                    <th className="py-2 px-3 font-medium text-right">Revenue</th>
+                    <th className="py-2 px-3 font-medium text-right">COGS</th>
+                    <th className="py-2 px-3 font-medium text-right">Gross profit</th>
+                    <th className="py-2 px-3 font-medium text-right">Margin</th>
+                    <th className="py-2 px-3 font-medium text-right">On hand</th>
+                    <th className="py-2 pl-3 font-medium text-right">Inventory value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankedProfitability.map((p) => (
+                    <tr key={p.productId} className="border-b border-line last:border-0">
+                      <td className="py-2.5 pr-3">
+                        <div className="font-medium">{p.name}</div>
+                        {p.sku && <div className="text-xs text-muted">{p.sku}</div>}
+                      </td>
+                      <td className="py-2.5 px-3 num text-right">{formatNumber(p.unitsSold)}</td>
+                      <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.avgSellingPrice, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.avgUnitCost, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right">{formatMoney(p.revenue, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.cogs, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right">
+                        <span className={p.grossProfit >= 0 ? "text-good" : "text-bad"}>
+                          {formatMoney(p.grossProfit, currency)}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <Badge tone={MARGIN_BAND_TONE[p.marginBand]}>
+                          {p.grossMarginPct !== null ? `${p.grossMarginPct.toFixed(0)}%` : "—"}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 px-3 num text-right text-muted">
+                        {p.type === "service" ? "—" : formatNumber(p.qtyOnHand)}
+                      </td>
+                      <td className="py-2.5 pl-3 num text-right text-muted">
+                        {p.type === "service" ? "—" : formatMoney(p.inventoryValue, currency)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          </div>
+        )}
+        <div className="text-[11px] text-muted mt-3">
+          Margin band is a rough pricing-power signal, not a verdict — thin margins often mean a commoditized,
+          price-competitive item (easy substitutes, buyers shop around); strong margins often mean real
+          differentiation or low price-sensitivity. Worth asking why for any item at either extreme.
+        </div>
+      </Card>
 
       {!hasData ? (
         <EmptyState

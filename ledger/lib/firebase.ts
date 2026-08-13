@@ -29,6 +29,12 @@ let auth: Auth;
 // load, snapshot listeners only ship deltas over the wire, and the app keeps
 // working (read-only) offline. Multi-tab manager avoids duplicate listeners
 // when the user has the app open in two tabs.
+//
+// ignoreUndefinedProperties: true — several entities have genuinely optional
+// fields (Product.orderingCost, Loan.lender, Expense.endDate, etc.) that get
+// written as `undefined` when left blank in a form. Firestore's SDK rejects
+// `undefined` outright ("Unsupported field value: undefined") unless this is
+// set, so this is required, not optional, given how the forms are written.
 function getFirebase() {
   if (!getApps().length) {
     app = initializeApp(firebaseConfig);
@@ -36,6 +42,7 @@ function getFirebase() {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
+      ignoreUndefinedProperties: true,
     });
     auth = getAuth(app);
   }

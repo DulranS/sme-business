@@ -2,6 +2,8 @@ import type {
   CapitalEntry,
   Employee,
   Expense,
+  Loan,
+  OfferingType,
   Product,
   Purchase,
   PurchaseOrder,
@@ -257,38 +259,78 @@ export interface MonthlyPnL {
   cogs: number;
   variableCosts: number;
   grossProfit: number;
-  operatingExpenses: number;
-  netProfitPreTax: number;
+  operatingExpenses: number; // rent, payroll, subscriptions, etc — excludes loan interest
+  interestExpense: number; // loan interest for the month
+  netProfitPreTax: number; // grossProfit - operatingExpenses - interestExpense
   tax: number;
   netProfitAfterTax: number;
   unitsSold: number;
+  // Cash-basis fields, for the Cash Flow Statement / Balance Sheet. These
+  // differ from the accrual fields above in one key way: inventory purchases
+  // hit cash when bought, not when the stock is later sold (COGS timing).
+  purchaseCash: number; // cash paid for inventory this month (at cost)
+  loanProceeds: number; // new loan cash received this month
+  principalRepayment: number; // loan principal repaid this month
+  capitalIn: number; // owner investment/reinvestment this month
+  capitalOut: number; // owner withdrawals this month
+  operatingCashFlow: number;
+  financingCashFlow: number;
+  netCashFlow: number; // operating + financing (no investing activity tracked yet)
+}
+
+function monthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+// Every calendar month from the earliest activity to "now", inclusive — not
+// just months that happen to contain a sale or a new expense. Without this,
+// a recurring expense (rent, a loan payment) silently disappears from the
+// P&L / cash flow in any month with no sales activity, which would also
+// throw off the Balance Sheet's cumulative cash figure.
+function fullMonthRange(startKey: string, endKey: string): string[] {
+  const months: string[] = [];
+  let [y, m] = startKey.split("-").map(Number);
+  const [ey, em] = endKey.split("-").map(Number);
+  while (y < ey || (y === ey && m <= em)) {
+    months.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return months;
 }
 
 export function computeMonthlyPnL(
   sales: Sale[],
   saleEconomics: SaleEconomics[],
   expenses: Expense[],
+  purchases: Purchase[],
+  loans: Loan[],
+  capitalEntries: CapitalEntry[],
   taxRatePct: number
 ): MonthlyPnL[] {
   const economicsBySaleId = new Map(saleEconomics.map((e) => [e.saleId, e]));
-  const monthKeys = new Set<string>();
+  const loanMonthlyTotals = computeLoanMonthlyTotals(loans);
 
-  for (const s of sales) monthKeys.add(s.date.slice(0, 7));
-  for (const e of expenses) {
-    monthKeys.add(e.startDate.slice(0, 7));
-    if (e.isRecurring) {
-      // ensure months up to "now" show recurring items even with no sales that month
-      const now = new Date();
-      const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      monthKeys.add(curKey);
-    }
-  }
+  const now = new Date();
+  const nowKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-  const months = Array.from(monthKeys).sort();
+  const candidateKeys: string[] = [nowKey];
+  for (const s of sales) candidateKeys.push(monthKey(s.date));
+  for (const p of purchases) candidateKeys.push(monthKey(p.date));
+  for (const e of expenses) candidateKeys.push(monthKey(e.startDate));
+  for (const c of capitalEntries) candidateKeys.push(monthKey(c.date));
+  for (const key of loanMonthlyTotals.keys()) candidateKeys.push(key);
+
+  if (candidateKeys.length === 0) return [];
+  candidateKeys.sort();
+  const months = fullMonthRange(candidateKeys[0], candidateKeys[candidateKeys.length - 1]);
   const result: MonthlyPnL[] = [];
 
   for (const month of months) {
-    const monthSales = sales.filter((s) => s.date.slice(0, 7) === month);
+    const monthSales = sales.filter((s) => monthKey(s.date) === month);
     let salesRevenue = 0;
     let cogs = 0;
     let variableCosts = 0;
@@ -304,9 +346,31 @@ export function computeMonthlyPnL(
     const { expenseTotal, recurringRevenueTotal } = expenseTotalsForMonth(expenses, month);
     const totalRevenue = salesRevenue + recurringRevenueTotal;
     const grossProfit = salesRevenue - cogs - variableCosts + recurringRevenueTotal;
-    const netProfitPreTax = grossProfit - expenseTotal;
+
+    const loanTotals = loanMonthlyTotals.get(month);
+    const interestExpense = loanTotals?.interest ?? 0;
+    const principalRepayment = loanTotals?.principal ?? 0;
+    const loanProceeds = loanTotals?.proceeds ?? 0;
+
+    const netProfitPreTax = grossProfit - expenseTotal - interestExpense;
     const tax = Math.max(netProfitPreTax, 0) * (taxRatePct / 100);
     const netProfitAfterTax = netProfitPreTax - tax;
+
+    const purchaseCash = purchases
+      .filter((p) => monthKey(p.date) === month)
+      .reduce((sum, p) => sum + p.qty * p.unitCost, 0);
+
+    const monthCapital = capitalEntries.filter((c) => monthKey(c.date) === month);
+    const capitalIn = monthCapital
+      .filter((c) => c.kind === "investment" || c.kind === "reinvestment")
+      .reduce((s, c) => s + c.amount, 0);
+    const capitalOut = monthCapital
+      .filter((c) => c.kind === "withdrawal")
+      .reduce((s, c) => s + c.amount, 0);
+
+    const operatingCashFlow =
+      salesRevenue + recurringRevenueTotal - purchaseCash - variableCosts - expenseTotal - interestExpense - tax;
+    const financingCashFlow = loanProceeds - principalRepayment + capitalIn - capitalOut;
 
     result.push({
       month,
@@ -317,10 +381,19 @@ export function computeMonthlyPnL(
       variableCosts,
       grossProfit,
       operatingExpenses: expenseTotal,
+      interestExpense,
       netProfitPreTax,
       tax,
       netProfitAfterTax,
       unitsSold,
+      purchaseCash,
+      loanProceeds,
+      principalRepayment,
+      capitalIn,
+      capitalOut,
+      operatingCashFlow,
+      financingCashFlow,
+      netCashFlow: operatingCashFlow + financingCashFlow,
     });
   }
 
@@ -654,4 +727,325 @@ export function monthlyPayrollCost(employees: Employee[]): number {
     total += monthlyNormalizedAmount(e.payRate, e.payFrequency);
   }
   return total;
+}
+
+// ---------------------------------------------------------------------------
+// Loans / debt amortization. Standard fixed-payment monthly amortizing loan
+// (the common shape for an SME bank/working-capital loan). First payment
+// falls one month after startDate (the disbursement date).
+//
+// payment = P * r(1+r)^n / ((1+r)^n - 1), r = monthly rate, n = termMonths.
+// Falls back to a straight-line split (P/n, no interest) when rate is 0.
+// ---------------------------------------------------------------------------
+
+function addMonthsIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + n, 1));
+  const daysInTargetMonth = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  const day = Math.min(d, daysInTargetMonth);
+  target.setUTCDate(day);
+  return target.toISOString().slice(0, 10);
+}
+
+export interface LoanPayment {
+  periodIndex: number; // 1-based
+  date: string; // ISO date
+  monthKey: string; // "YYYY-MM"
+  payment: number;
+  principal: number;
+  interest: number;
+  balance: number; // remaining balance after this payment
+}
+
+export function computeLoanSchedule(loan: Loan): LoanPayment[] {
+  const n = Math.max(0, Math.round(loan.termMonths));
+  if (n === 0 || loan.principal <= 0) return [];
+  const r = loan.annualInterestRatePct / 100 / 12;
+
+  const payment =
+    r === 0
+      ? loan.principal / n
+      : (loan.principal * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+
+  const schedule: LoanPayment[] = [];
+  let balance = loan.principal;
+  for (let i = 1; i <= n; i++) {
+    const interest = balance * r;
+    let principal = payment - interest;
+    if (i === n || principal > balance) principal = balance; // clear rounding drift on the final payment
+    balance = Math.max(0, balance - principal);
+    const date = addMonthsIso(loan.startDate, i);
+    schedule.push({
+      periodIndex: i,
+      date,
+      monthKey: date.slice(0, 7),
+      payment: principal + interest,
+      principal,
+      interest,
+      balance,
+    });
+  }
+  return schedule;
+}
+
+export interface LoanSummary {
+  monthlyPayment: number;
+  totalInterest: number;
+  totalPayments: number;
+  payoffDate: string | null;
+  currentBalance: number;
+  principalPaidToDate: number;
+  interestPaidToDate: number;
+  percentPaid: number; // 0..100, by principal
+  nextPaymentDate: string | null;
+  nextPaymentAmount: number | null;
+}
+
+export function computeLoanSummary(loan: Loan, asOfISO: string): LoanSummary {
+  const schedule = computeLoanSchedule(loan);
+  const monthlyPayment = schedule[0]?.payment ?? 0;
+  const totalInterest = schedule.reduce((s, p) => s + p.interest, 0);
+  const past = schedule.filter((p) => p.date <= asOfISO);
+  const future = schedule.filter((p) => p.date > asOfISO);
+  const principalPaidToDate = past.reduce((s, p) => s + p.principal, 0);
+  const interestPaidToDate = past.reduce((s, p) => s + p.interest, 0);
+  const currentBalance = past.length > 0 ? past[past.length - 1].balance : loan.principal;
+
+  return {
+    monthlyPayment,
+    totalInterest,
+    totalPayments: schedule.length,
+    payoffDate: schedule.length > 0 ? schedule[schedule.length - 1].date : null,
+    currentBalance,
+    principalPaidToDate,
+    interestPaidToDate,
+    percentPaid: loan.principal > 0 ? (principalPaidToDate / loan.principal) * 100 : 0,
+    nextPaymentDate: future[0]?.date ?? null,
+    nextPaymentAmount: future[0]?.payment ?? null,
+  };
+}
+
+export interface LoanMonthlyTotals {
+  interest: number;
+  principal: number;
+  proceeds: number; // cash borrowed, booked in the disbursement month
+  payment: number;
+}
+
+// Aggregates every loan's schedule (plus its disbursement) into per-month
+// totals across the whole portfolio — this is what feeds interest expense
+// into the Income Statement and principal/proceeds into the Cash Flow
+// Statement, month by month.
+export function computeLoanMonthlyTotals(loans: Loan[]): Map<string, LoanMonthlyTotals> {
+  const map = new Map<string, LoanMonthlyTotals>();
+  const bump = (key: string, delta: Partial<LoanMonthlyTotals>) => {
+    const cur = map.get(key) ?? { interest: 0, principal: 0, proceeds: 0, payment: 0 };
+    map.set(key, {
+      interest: cur.interest + (delta.interest ?? 0),
+      principal: cur.principal + (delta.principal ?? 0),
+      proceeds: cur.proceeds + (delta.proceeds ?? 0),
+      payment: cur.payment + (delta.payment ?? 0),
+    });
+  };
+  for (const loan of loans) {
+    bump(loan.startDate.slice(0, 7), { proceeds: loan.principal });
+    for (const p of computeLoanSchedule(loan)) {
+      bump(p.monthKey, { interest: p.interest, principal: p.principal, payment: p.payment });
+    }
+  }
+  return map;
+}
+
+export interface LoanPortfolioSummary {
+  loanCount: number;
+  totalOutstanding: number; // sum of current balances, active loans only
+  totalMonthlyPayment: number; // sum of monthly payment for loans not yet paid off
+  totalPrincipalPaidToDate: number;
+  totalInterestPaidToDate: number;
+  totalOriginalPrincipal: number;
+}
+
+export function computeLoanPortfolio(loans: Loan[], asOfISO: string): LoanPortfolioSummary {
+  let totalOutstanding = 0;
+  let totalMonthlyPayment = 0;
+  let totalPrincipalPaidToDate = 0;
+  let totalInterestPaidToDate = 0;
+  let totalOriginalPrincipal = 0;
+
+  for (const loan of loans) {
+    if (!loan.active) continue;
+    const summary = computeLoanSummary(loan, asOfISO);
+    totalOutstanding += summary.currentBalance;
+    if (summary.currentBalance > 0) totalMonthlyPayment += summary.monthlyPayment;
+    totalPrincipalPaidToDate += summary.principalPaidToDate;
+    totalInterestPaidToDate += summary.interestPaidToDate;
+    totalOriginalPrincipal += loan.principal;
+  }
+
+  return {
+    loanCount: loans.filter((l) => l.active).length,
+    totalOutstanding,
+    totalMonthlyPayment,
+    totalPrincipalPaidToDate,
+    totalInterestPaidToDate,
+    totalOriginalPrincipal,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Item-level (per-product/service) profitability. Aggregates sale economics
+// by product over an optional date range: units sold, revenue, cost behavior
+// (COGS driven by what was actually paid to the supplier per WAC, vs. the
+// selling price), gross/contribution margin, and what's still tied up as
+// inventory. This is the "is THIS item actually worth selling" view, as
+// opposed to the business-wide P&L.
+// ---------------------------------------------------------------------------
+
+export interface ProductProfitability {
+  productId: string;
+  name: string;
+  sku: string;
+  type: OfferingType;
+  unitsSold: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  grossMarginPct: number | null; // null when no revenue in range
+  avgSellingPrice: number;
+  avgUnitCost: number;
+  variableCost: number;
+  contributionMargin: number;
+  contributionMarginPct: number | null;
+  qtyOnHand: number;
+  inventoryValue: number;
+  wac: number;
+  // A rough pricing-power signal, not a rigorous market-structure model:
+  // thin margins tend to mean a commoditized/price-competitive item (many
+  // substitutes, buyers price-shop), fat margins tend to mean real
+  // differentiation or low buyer price-sensitivity. Useful as a prompt to
+  // ask "why", not a verdict.
+  marginBand: "thin" | "moderate" | "healthy" | "strong" | "n/a";
+}
+
+export function computeProductProfitability(
+  products: Product[],
+  sales: Sale[],
+  saleEconomics: SaleEconomics[],
+  ledgers: Map<string, ProductLedgerResult>,
+  dateFrom?: string,
+  dateTo?: string
+): ProductProfitability[] {
+  const economicsBySaleId = new Map(saleEconomics.map((e) => [e.saleId, e]));
+  const inRange = (d: string) => (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+
+  return products.map((p) => {
+    const productSales = sales.filter((s) => s.productId === p.id && inRange(s.date));
+    let revenue = 0;
+    let cogs = 0;
+    let variableCost = 0;
+    let unitsSold = 0;
+    for (const s of productSales) {
+      const econ = economicsBySaleId.get(s.id);
+      revenue += econ?.revenue ?? 0;
+      cogs += econ?.cogs ?? 0;
+      variableCost += econ?.variableCost ?? 0;
+      unitsSold += s.qty;
+    }
+    const grossProfit = revenue - cogs;
+    const contributionMargin = grossProfit - variableCost;
+    const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : null;
+
+    let marginBand: ProductProfitability["marginBand"] = "n/a";
+    if (grossMarginPct !== null) {
+      if (grossMarginPct < 10) marginBand = "thin";
+      else if (grossMarginPct < 25) marginBand = "moderate";
+      else if (grossMarginPct < 45) marginBand = "healthy";
+      else marginBand = "strong";
+    }
+
+    const ledger = ledgers.get(p.id);
+
+    return {
+      productId: p.id,
+      name: p.name,
+      sku: p.sku,
+      type: p.type,
+      unitsSold,
+      revenue,
+      cogs,
+      grossProfit,
+      grossMarginPct,
+      avgSellingPrice: unitsSold > 0 ? revenue / unitsSold : 0,
+      avgUnitCost: unitsSold > 0 ? cogs / unitsSold : ledger?.wac ?? 0,
+      variableCost,
+      contributionMargin,
+      contributionMarginPct: revenue > 0 ? (contributionMargin / revenue) * 100 : null,
+      qtyOnHand: ledger?.qtyOnHand ?? 0,
+      inventoryValue: ledger?.inventoryValue ?? 0,
+      wac: ledger?.wac ?? 0,
+      marginBand,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Balance Sheet, as of a given date (defaults to today — this build doesn't
+// reconstruct historical inventory/cash snapshots for a past date, since
+// that needs full point-in-time WAC replay; "as of today" is what an SME
+// actually checks day to day).
+//
+// Cash is derived, not stored: it's the cumulative net cash flow (operating
+// + financing) across every month up to `asOf`, using the same cash-basis
+// fields computeMonthlyPnL already produces. This keeps Assets = Liabilities
+// + Equity true by construction — nothing here is separately hand-entered.
+// ---------------------------------------------------------------------------
+
+export interface BalanceSheet {
+  asOf: string;
+  cash: number;
+  inventoryValue: number;
+  totalAssets: number;
+  loansPayable: number;
+  totalLiabilities: number;
+  ownersCapital: number; // net capital contributed (investment + reinvestment - withdrawals)
+  retainedEarnings: number; // cumulative net profit after tax, all time
+  totalEquity: number;
+  totalLiabilitiesAndEquity: number;
+  balances: boolean; // sanity check — should always be true within rounding
+}
+
+export function computeBalanceSheet(
+  monthlyPnL: MonthlyPnL[],
+  inventoryValue: number,
+  loans: Loan[],
+  capitalSummary: CapitalSummary,
+  asOfISO: string
+): BalanceSheet {
+  const toDate = monthlyPnL.filter((m) => m.month <= asOfISO.slice(0, 7));
+  const cash = toDate.reduce((s, m) => s + m.netCashFlow, 0);
+  const retainedEarnings = toDate.reduce((s, m) => s + m.netProfitAfterTax, 0);
+
+  const loansPayable = loans
+    .filter((l) => l.active)
+    .reduce((s, l) => s + computeLoanSummary(l, asOfISO).currentBalance, 0);
+
+  const totalAssets = cash + inventoryValue;
+  const totalLiabilities = loansPayable;
+  const ownersCapital = capitalSummary.netCapitalIn;
+  const totalEquity = ownersCapital + retainedEarnings;
+  const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+
+  return {
+    asOf: asOfISO,
+    cash,
+    inventoryValue,
+    totalAssets,
+    loansPayable,
+    totalLiabilities,
+    ownersCapital,
+    retainedEarnings,
+    totalEquity,
+    totalLiabilitiesAndEquity,
+    balances: Math.abs(totalAssets - totalLiabilitiesAndEquity) < 1,
+  };
 }

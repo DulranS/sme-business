@@ -30,6 +30,7 @@ export default function DashboardPage() {
     breakEven,
     openOrders,
     monthlyPayroll,
+    loanPortfolio,
   } = useData();
 
   const currency = settings.currency;
@@ -116,6 +117,13 @@ export default function DashboardPage() {
           sub={openOrders.openOrderCount > 0 ? `${openOrders.openOrderCount} open order(s)` : "nothing pending"}
         />
         <Stat label="Payroll / month" value={formatMoney(monthlyPayroll, currency)} tone={monthlyPayroll > 0 ? "bad" : "default"} />
+        <Stat
+          label="Total debt"
+          value={formatMoney(loanPortfolio.totalOutstanding, currency)}
+          tone={loanPortfolio.totalOutstanding > 0 ? "bad" : "default"}
+          sub={loanPortfolio.loanCount > 0 ? `${loanPortfolio.loanCount} loan(s)` : undefined}
+        />
+        <Stat label="Debt service / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
       </div>
 
       <Card className="mb-6">
@@ -206,9 +214,14 @@ export default function DashboardPage() {
                 : "Log some expenses to see overhead coverage."}
             </div>
           </div>
-          <Link href="/profitability" className="text-xs text-amber-soft shrink-0 ml-4">
-            Break-even &amp; ROI →
-          </Link>
+          <div className="flex flex-col items-end gap-1 shrink-0 ml-4">
+            <Link href="/profitability" className="text-xs text-amber-soft">
+              Break-even &amp; ROI →
+            </Link>
+            <Link href="/statements" className="text-xs text-amber-soft">
+              Financial statements →
+            </Link>
+          </div>
         </div>
       </Card>
     </>

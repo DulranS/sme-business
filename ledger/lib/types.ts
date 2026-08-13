@@ -152,6 +152,24 @@ export interface CapitalEntry {
   createdAt: number;
 }
 
+// A bank/supplier loan or other business debt. Monthly amortizing loan —
+// this is what SMEs actually take (working capital loan, equipment loan,
+// overdraft converted to term loan) — so the schedule assumes monthly
+// payments rather than modeling every possible frequency. startDate is the
+// disbursement date; the first payment falls one month after it.
+export interface Loan {
+  id: string;
+  name: string; // e.g. "BOC working capital loan"
+  lender?: string;
+  principal: number; // original amount borrowed
+  annualInterestRatePct: number; // nominal annual rate, e.g. 14 = 14%
+  termMonths: number; // number of monthly payments
+  startDate: string; // ISO date — disbursement date
+  notes?: string;
+  active: boolean; // false = closed/paid off early, kept for history but excluded from "current" liability views
+  createdAt: number;
+}
+
 export interface Settings {
   taxRatePct: number; // e.g. 15 = 15%
   currency: string; // e.g. "LKR", "USD", "AED"

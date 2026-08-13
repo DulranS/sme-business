@@ -1,0 +1,233 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useData } from "@/contexts/DataContext";
+import { formatMoney, formatMonth, todayIso } from "@/lib/format";
+import { Card, PageHeader, Select, Badge, EmptyState } from "@/components/ui";
+
+type Tab = "income" | "balance" | "cashflow";
+
+export default function StatementsPage() {
+  const { monthlyPnL, balanceSheet, settings } = useData();
+  const currency = settings.currency;
+  const [tab, setTab] = useState<Tab>("income");
+  const [monthKey, setMonthKey] = useState<string>(monthlyPnL[monthlyPnL.length - 1]?.month ?? "");
+
+  const selectedMonth = useMemo(
+    () => monthlyPnL.find((m) => m.month === monthKey) ?? monthlyPnL[monthlyPnL.length - 1],
+    [monthlyPnL, monthKey]
+  );
+
+  if (monthlyPnL.length === 0) {
+    return (
+      <>
+        <PageHeader title="Financial statements" />
+        <EmptyState
+          title="Not enough data yet"
+          body="Log some sales, purchases, and expenses first — the Income Statement, Balance Sheet, and Cash Flow Statement all build off that activity."
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader title="Financial statements" />
+
+      <div className="flex gap-1 border-b border-line mb-6 -mt-1">
+        {(
+          [
+            ["income", "Income statement"],
+            ["cashflow", "Cash flow"],
+            ["balance", "Balance sheet"],
+          ] as [Tab, string][]
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-3.5 py-2.5 text-sm border-b-2 -mb-px transition-colors ${
+              tab === key ? "border-amber text-fg font-medium" : "border-transparent text-muted hover:text-fg"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {(tab === "income" || tab === "cashflow") && (
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-xs text-muted">
+            {tab === "income"
+              ? "Revenue, expenses, and net profit for one month."
+              : "Actual cash moving in and out for one month (not the same as profit — inventory purchases hit cash before they hit COGS)."}
+          </div>
+          <Select
+            value={selectedMonth?.month ?? ""}
+            onChange={(e) => setMonthKey(e.target.value)}
+            className="w-40"
+          >
+            {[...monthlyPnL].reverse().map((m) => (
+              <option key={m.month} value={m.month}>
+                {formatMonth(m.month)}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
+      {tab === "income" && selectedMonth && <IncomeStatement m={selectedMonth} currency={currency} />}
+      {tab === "cashflow" && selectedMonth && <CashFlowStatement m={selectedMonth} currency={currency} />}
+      {tab === "balance" && <BalanceSheetView balanceSheet={balanceSheet} currency={currency} />}
+    </>
+  );
+}
+
+function Line({
+  label,
+  value,
+  currency,
+  bold,
+  indent,
+  muted,
+  negative,
+}: {
+  label: string;
+  value: number;
+  currency: string;
+  bold?: boolean;
+  indent?: boolean;
+  muted?: boolean;
+  negative?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-baseline justify-between py-2 ${bold ? "border-t border-line mt-1 pt-3" : "border-b border-line/60 last:border-0"}`}
+    >
+      <span className={`text-sm ${indent ? "pl-4 text-muted" : ""} ${bold ? "font-medium text-fg" : ""}`}>{label}</span>
+      <span className={`num text-sm ${bold ? "font-semibold text-base" : muted ? "text-muted" : ""}`}>
+        {negative && value !== 0 ? "(" : ""}
+        {formatMoney(Math.abs(value), currency)}
+        {negative && value !== 0 ? ")" : ""}
+      </span>
+    </div>
+  );
+}
+
+function IncomeStatement({
+  m,
+  currency,
+}: {
+  m: NonNullable<ReturnType<typeof useData>["monthlyPnL"][number]>;
+  currency: string;
+}) {
+  return (
+    <Card>
+      <div className="text-sm font-medium mb-0.5">Income statement — {formatMonth(m.month)}</div>
+      <div className="text-xs text-muted mb-4">Revenue, expenses, and net profit — over the period. Accrual basis.</div>
+
+      <Line label="Sales revenue" value={m.salesRevenue} currency={currency} />
+      <Line label="Recurring revenue" value={m.recurringRevenue} currency={currency} />
+      <Line label="Total revenue" value={m.totalRevenue} currency={currency} bold />
+
+      <div className="mt-4">
+        <Line label="Cost of goods sold" value={m.cogs} currency={currency} negative muted />
+        <Line label="Variable costs" value={m.variableCosts} currency={currency} negative muted />
+        <Line label="Gross profit" value={m.grossProfit} currency={currency} bold />
+      </div>
+
+      <div className="mt-4">
+        <Line label="Operating expenses" value={m.operatingExpenses} currency={currency} negative muted />
+        <Line label="Interest expense" value={m.interestExpense} currency={currency} negative muted />
+        <Line label="Net profit before tax" value={m.netProfitPreTax} currency={currency} bold />
+      </div>
+
+      <div className="mt-4">
+        <Line label="Tax" value={m.tax} currency={currency} negative muted />
+        <Line label="Net profit after tax" value={m.netProfitAfterTax} currency={currency} bold />
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2">
+        <span className="text-xs text-muted">Net margin:</span>
+        <Badge tone={m.netProfitAfterTax >= 0 ? "good" : "bad"}>
+          {m.totalRevenue > 0 ? ((m.netProfitAfterTax / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
+        </Badge>
+      </div>
+    </Card>
+  );
+}
+
+function CashFlowStatement({
+  m,
+  currency,
+}: {
+  m: NonNullable<ReturnType<typeof useData>["monthlyPnL"][number]>;
+  currency: string;
+}) {
+  const cashIn = m.salesRevenue + m.recurringRevenue;
+  return (
+    <Card>
+      <div className="text-sm font-medium mb-0.5">Cash flow statement — {formatMonth(m.month)}</div>
+      <div className="text-xs text-muted mb-4">Actual cash in and out — over the period. Cash basis.</div>
+
+      <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Operating activities</div>
+      <Line label="Cash from sales & recurring revenue" value={cashIn} currency={currency} />
+      <Line label="Cash paid for inventory / stock" value={m.purchaseCash} currency={currency} negative muted />
+      <Line label="Variable costs paid" value={m.variableCosts} currency={currency} negative muted />
+      <Line label="Operating expenses paid" value={m.operatingExpenses} currency={currency} negative muted />
+      <Line label="Interest paid" value={m.interestExpense} currency={currency} negative muted />
+      <Line label="Tax paid" value={m.tax} currency={currency} negative muted />
+      <Line label="Net cash from operating" value={m.operatingCashFlow} currency={currency} bold />
+
+      <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Financing activities</div>
+      <Line label="Loan proceeds received" value={m.loanProceeds} currency={currency} />
+      <Line label="Loan principal repaid" value={m.principalRepayment} currency={currency} negative muted />
+      <Line label="Owner capital contributed" value={m.capitalIn} currency={currency} />
+      <Line label="Owner withdrawals" value={m.capitalOut} currency={currency} negative muted />
+      <Line label="Net cash from financing" value={m.financingCashFlow} currency={currency} bold />
+
+      <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Investing activities</div>
+      <div className="text-xs text-muted py-1.5">Not tracked in this build (no fixed-asset/equipment purchases logged).</div>
+
+      <Line label="Net change in cash" value={m.netCashFlow} currency={currency} bold />
+    </Card>
+  );
+}
+
+function BalanceSheetView({
+  balanceSheet,
+  currency,
+}: {
+  balanceSheet: ReturnType<typeof useData>["balanceSheet"];
+  currency: string;
+}) {
+  const b = balanceSheet;
+  return (
+    <Card>
+      <div className="text-sm font-medium mb-0.5">Balance sheet — as of {b.asOf}</div>
+      <div className="text-xs text-muted mb-4">
+        A snapshot of what the business owns, owes, and is worth right now — always as of today.
+      </div>
+
+      <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Assets</div>
+      <Line label="Cash" value={b.cash} currency={currency} />
+      <Line label="Inventory" value={b.inventoryValue} currency={currency} />
+      <Line label="Total assets" value={b.totalAssets} currency={currency} bold />
+
+      <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Liabilities</div>
+      <Line label="Loans payable" value={b.loansPayable} currency={currency} />
+      <Line label="Total liabilities" value={b.totalLiabilities} currency={currency} bold />
+
+      <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Equity</div>
+      <Line label="Owner's capital (net of withdrawals)" value={b.ownersCapital} currency={currency} />
+      <Line label="Retained earnings" value={b.retainedEarnings} currency={currency} />
+      <Line label="Total equity" value={b.totalEquity} currency={currency} bold />
+
+      <Line label="Total liabilities + equity" value={b.totalLiabilitiesAndEquity} currency={currency} bold />
+
+      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2">
+        <Badge tone={b.balances ? "good" : "bad"}>{b.balances ? "Balanced" : "Out of balance"}</Badge>
+        <span className="text-xs text-muted">Assets should always equal Liabilities + Equity.</span>
+      </div>
+    </Card>
+  );
+}

@@ -131,9 +131,58 @@ Prophet-style models need many clean periodic points to beat a trend line — a
 solo ledger has few, noisy months, so a transparent, hand-verifiable trend is
 the better choice here.
 
+**Item-level profitability** (Profitability page) aggregates every sale by
+product/service over a chosen window (last 30/90 days, this month, or all
+time): units sold, average selling price vs. average unit cost, revenue,
+COGS, gross profit, gross margin %, and — for physical products — units still
+on hand and their inventory value. Ranked by gross profit so the best and
+worst performers surface immediately. Margin is also bucketed into a rough
+pricing-power signal (thin/moderate/healthy/strong) — thin margins usually
+mean a commoditized, price-competitive item with easy substitutes; strong
+margins usually mean real differentiation or low price-sensitivity. It's a
+prompt to investigate, not a verdict.
+
+**Loans & debt** (Loans page) model a standard fixed-payment monthly
+amortizing loan: `payment = P·r(1+r)^n / ((1+r)^n − 1)`, `r` = monthly rate,
+`n` = term in months, first payment one month after disbursement. Each
+month's split between principal and interest is computed from this schedule
+and flows automatically into the Income Statement (interest expense) and
+Cash Flow Statement (principal repayment, plus loan proceeds in the
+disbursement month) — nothing about a loan needs to be hand-entered as a
+separate expense.
+
+**Financial statements** (Statements page) — the three standard reports,
+built entirely from data already in the ledger:
+- **Income Statement**: revenue, COGS, variable costs, gross profit,
+  operating expenses, interest expense, tax, net profit — for one month,
+  accrual basis (same numbers as the dashboard's monthly P&L, just formally
+  laid out with subtotals).
+- **Cash Flow Statement**: actual cash in/out for one month, direct method.
+  This differs from the Income Statement in one important way: inventory
+  purchases hit cash when *bought*, not when the stock is later sold (COGS
+  timing) — so a month with heavy restocking can show strong accrual profit
+  and weak cash flow, which is exactly the kind of thing an SME needs to see
+  coming. Operating activities cover sales cash, inventory cash paid,
+  variable costs, opex, interest, and tax; financing activities cover loan
+  proceeds/repayments and owner capital in/out. Investing activities aren't
+  tracked in this build (no fixed-asset/equipment ledger yet).
+- **Balance Sheet**: always as of today (this build doesn't replay historical
+  WAC/cash state for an arbitrary past date). Assets = cash (the cumulative
+  net cash flow across every month to date) + inventory value. Liabilities =
+  outstanding loan balances. Equity = owner's capital (net of withdrawals) +
+  retained earnings (cumulative net profit after tax). Cash is *derived*,
+  never hand-entered, which is what keeps Assets = Liabilities + Equity true
+  by construction rather than something that can drift out of balance.
+
+Both the Income Statement's monthly figures and the Cash Flow/Balance Sheet
+derivation depend on the monthly P&L covering *every* calendar month from
+first activity to today — not just months that happen to contain a sale —
+so a recurring rent or loan payment in a quiet month doesn't silently vanish
+from either statement.
+
 ## 7. Architecture notes
 
-- **Data model**: `users/{uid}/{products|purchases|purchaseOrders|sales|expenses|variableCosts|capitalEntries|employees}`
+- **Data model**: `users/{uid}/{products|purchases|purchaseOrders|sales|expenses|variableCosts|capitalEntries|employees|loans}`
   subcollections + a `users/{uid}/meta/settings` doc. Firestore security rules
   restrict every subtree to its owner (`firestore.rules`).
 - **Caching / memory strategy**: Firestore is initialized once with

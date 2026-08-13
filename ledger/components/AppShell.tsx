@@ -14,7 +14,9 @@ const NAV = [
   { href: "/sales", label: "Sales", icon: UpIcon },
   { href: "/employees", label: "Employees", icon: PeopleIcon },
   { href: "/expenses", label: "Expenses", icon: RepeatIcon },
+  { href: "/loans", label: "Loans", icon: LoanIcon },
   { href: "/profitability", label: "Profitability", icon: TrendIcon },
+  { href: "/statements", label: "Statements", icon: StatementIcon },
   { href: "/import-export", label: "CSV", icon: FileIcon },
   { href: "/settings", label: "Settings", icon: GearIcon },
 ];
@@ -205,6 +207,24 @@ function FileIcon(props: React.SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
       <path d="M14 2v6h6" />
+    </svg>
+  );
+}
+function LoanIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9 15.5s.9 1.5 3 1.5 3-1.1 3-2.3c0-3-6-1.7-6-4.6C9 9 10.3 8 12 8s3 1 3 1" />
+      <path d="M12 6.5V8M12 16.5V18" />
+    </svg>
+  );
+}
+function StatementIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M6 2h9l4 4v16H6Z" />
+      <path d="M15 2v4h4" />
+      <path d="M8.5 12h7M8.5 15.5h7M8.5 8.5h3" />
     </svg>
   );
 }
