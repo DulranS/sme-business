@@ -10,10 +10,11 @@ html,
 body {
   background-color: #0b0e14;
   color: #e8e6e1;
-}
-
-body {
   font-family: var(--font-body), system-ui, sans-serif;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 ::selection {
@@ -21,8 +22,7 @@ body {
   color: #0b0e14;
 }
 
-/* Financial figures always use tabular (monospace-width) numerals so columns
-   of numbers align vertically — this is the app's one signature detail. */
+/* Financial figures always use tabular (monospace-width) numerals */
 .num {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
@@ -33,7 +33,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
 }
 
-/* Custom thin scrollbar for the app shell */
+/* Custom thin scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
