@@ -25,6 +25,8 @@ export interface Product {
 // For a product: a wholesale purchase (qty bought, unit cost).
 // For a service: a cost entry (capacity/hours delivered, cost per unit —
 // e.g. labor cost per hour or per job). Same shape, same WAC math either way.
+// This represents STOCK ALREADY IN HAND / cost already incurred — see
+// PurchaseOrder below for stock that's been ordered but not yet received.
 export interface Purchase {
   id: string;
   productId: string;
@@ -33,6 +35,32 @@ export interface Purchase {
   date: string; // ISO date (yyyy-mm-dd)
   supplier?: string; // product: supplier name. service: contractor/resource.
   notes?: string;
+  purchaseOrderId?: string; // set when this purchase was created by receiving a PO
+  createdAt: number;
+}
+
+export type OrderStatus = "ordered" | "in_transit" | "received" | "cancelled";
+
+// A wholesale order placed with a supplier — separate from Purchase, which
+// represents stock you already physically hold. A PurchaseOrder tracks the
+// commitment (what you ordered, when, from whom, expected when) through to
+// receipt. Marking one "received" generates the corresponding Purchase entry
+// (qty actually received, which can differ from qty ordered) so it flows
+// into the WAC/inventory ledger exactly once, at the moment stock actually
+// arrives — not when you merely placed the order.
+export interface PurchaseOrder {
+  id: string;
+  productId: string;
+  qtyOrdered: number;
+  unitCost: number; // quoted/expected unit cost at order time
+  orderDate: string; // ISO date
+  expectedDate?: string; // ISO date
+  supplier?: string;
+  notes?: string;
+  status: OrderStatus;
+  receivedDate?: string; // ISO date, set when received
+  qtyReceived?: number; // actual qty received, set when received (may differ from qtyOrdered)
+  receivedUnitCost?: number; // actual unit cost paid, set when received (may differ from quoted)
   createdAt: number;
 }
 
@@ -71,6 +99,30 @@ export interface Expense {
   recurrence: Recurrence;
   startDate: string; // ISO date
   endDate?: string; // ISO date, optional (ongoing if absent)
+  employeeId?: string; // set when this expense is the auto-managed payroll line for an Employee
+  createdAt: number;
+}
+
+// An employee/contractor on payroll. Adding one automatically books their pay
+// as a recurring expense (category "Payroll & labor") so it flows straight
+// into MRR, monthly P&L, and the spend-by-category breakdown — payroll is
+// just another recurring bill, bookkept the same way rent or a subscription
+// is, rather than a separate system. taxPct is the employee's own
+// withholding/PAYE rate: informational only (splits take-home vs. tax
+// remitted) and does NOT change what the business pays out — gross pay is
+// the real cash cost and is what's booked as the expense.
+export interface Employee {
+  id: string;
+  name: string;
+  role: string;
+  payRate: number; // gross pay per pay period
+  payFrequency: Exclude<Recurrence, "none">;
+  taxPct: number; // employee's personal tax/withholding %, for take-home reference only
+  startDate: string; // ISO date
+  endDate?: string; // ISO date, set when employee becomes inactive
+  active: boolean;
+  notes?: string;
+  linkedExpenseId?: string; // the auto-managed Expense doc this employee's pay is booked as
   createdAt: number;
 }
 

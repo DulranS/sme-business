@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import type { CapitalEntry, Expense, Product, Purchase, Sale, VariableCost } from "./types";
+import type { CapitalEntry, Employee, Expense, Product, Purchase, PurchaseOrder, Sale, VariableCost } from "./types";
 
 // ---------------------------------------------------------------------------
 // Export: flat CSV per entity. Kept as separate files (one per collection)
@@ -105,6 +105,42 @@ export function exportCapitalEntries(entries: CapitalEntry[]) {
     notes: c.notes ?? "",
   }));
   downloadCsv("capital_entries.csv", toCsv(rows));
+}
+
+export function exportPurchaseOrders(purchaseOrders: PurchaseOrder[], products: Product[]) {
+  const nameById = new Map(products.map((p) => [p.id, p.name]));
+  const rows = purchaseOrders.map((po) => ({
+    id: po.id,
+    product: nameById.get(po.productId) ?? po.productId,
+    productId: po.productId,
+    qtyOrdered: po.qtyOrdered,
+    unitCost: po.unitCost,
+    orderDate: po.orderDate,
+    expectedDate: po.expectedDate ?? "",
+    supplier: po.supplier ?? "",
+    status: po.status,
+    receivedDate: po.receivedDate ?? "",
+    qtyReceived: po.qtyReceived ?? "",
+    receivedUnitCost: po.receivedUnitCost ?? "",
+    notes: po.notes ?? "",
+  }));
+  downloadCsv("purchase_orders.csv", toCsv(rows));
+}
+
+export function exportEmployees(employees: Employee[]) {
+  const rows = employees.map((e) => ({
+    id: e.id,
+    name: e.name,
+    role: e.role,
+    payRate: e.payRate,
+    payFrequency: e.payFrequency,
+    taxPct: e.taxPct,
+    startDate: e.startDate,
+    endDate: e.endDate ?? "",
+    active: e.active,
+    notes: e.notes ?? "",
+  }));
+  downloadCsv("employees.csv", toCsv(rows));
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +318,32 @@ export async function importCapitalEntries(
       kind,
       amount: num(r.amount, "amount", row, errors),
       date: isoDate(r.date, "date", row, errors),
+      notes: (r.notes ?? "").trim() || undefined,
+    };
+  });
+  return { rows, errors };
+}
+
+export async function importEmployees(
+  file: File
+): Promise<ImportResult<Omit<Employee, "id" | "createdAt" | "linkedExpenseId">>> {
+  const { data } = await parseCsvFile(file);
+  const errors: ImportError[] = [];
+  const rows = data.map((r, i) => {
+    const row = i + 2;
+    const payFrequency = ["weekly", "monthly", "yearly"].includes((r.payFrequency ?? "").trim())
+      ? (r.payFrequency!.trim() as Employee["payFrequency"])
+      : "monthly";
+    const active = r.active === undefined ? true : String(r.active).toLowerCase() !== "false";
+    return {
+      name: requiredStr(r.name, "name", row, errors),
+      role: (r.role ?? "").trim(),
+      payRate: num(r.payRate, "payRate", row, errors),
+      payFrequency,
+      taxPct: r.taxPct ? Number(r.taxPct) : 0,
+      startDate: isoDate(r.startDate, "startDate", row, errors),
+      endDate: r.endDate?.trim() || undefined,
+      active,
       notes: (r.notes ?? "").trim() || undefined,
     };
   });

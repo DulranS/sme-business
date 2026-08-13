@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import {
   ResponsiveContainer,
   LineChart,
@@ -29,6 +28,8 @@ export default function DashboardPage() {
     settings,
     ledgers,
     breakEven,
+    openOrders,
+    monthlyPayroll,
   } = useData();
 
   const currency = settings.currency;
@@ -85,7 +86,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat
           label="This month revenue"
           value={formatMoney(latest?.totalRevenue ?? 0, currency)}
@@ -102,13 +103,19 @@ export default function DashboardPage() {
           tone={latest && latest.netProfitAfterTax >= 0 ? "good" : "bad"}
           sub={`tax rate ${settings.taxRatePct}%`}
         />
-        <Stat label="Inventory value" value={formatMoney(inventoryValue, currency)} tone="amber" />
-        <Stat label="Units on hand" value={formatNumber(inventoryUnits)} />
         <Stat
           label="Recurring net (MRR)"
           value={formatMoney(mrr.mrrRevenue - mrr.mrrExpense, currency)}
           sub={`${formatMoney(mrr.mrrRevenue, currency)} in / ${formatMoney(mrr.mrrExpense, currency)} out`}
         />
+        <Stat label="Inventory value" value={formatMoney(inventoryValue, currency)} tone="amber" />
+        <Stat label="Units on hand" value={formatNumber(inventoryUnits)} />
+        <Stat
+          label="On order (committed)"
+          value={formatMoney(openOrders.openOrderValue, currency)}
+          sub={openOrders.openOrderCount > 0 ? `${openOrders.openOrderCount} open order(s)` : "nothing pending"}
+        />
+        <Stat label="Payroll / month" value={formatMoney(monthlyPayroll, currency)} tone={monthlyPayroll > 0 ? "bad" : "default"} />
       </div>
 
       <Card className="mb-6">

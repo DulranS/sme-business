@@ -9,8 +9,10 @@ import { useAuth } from "@/contexts/AuthContext";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: GridIcon },
   { href: "/products", label: "Products", icon: BoxIcon },
+  { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon },
   { href: "/purchases", label: "Purchases", icon: DownIcon },
   { href: "/sales", label: "Sales", icon: UpIcon },
+  { href: "/employees", label: "Employees", icon: PeopleIcon },
   { href: "/expenses", label: "Expenses", icon: RepeatIcon },
   { href: "/profitability", label: "Profitability", icon: TrendIcon },
   { href: "/import-export", label: "CSV", icon: FileIcon },
@@ -142,6 +144,16 @@ function BoxIcon(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+function ClipboardIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <rect x="5" y="4" width="14" height="17" rx="1.5" />
+      <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M9 11h6" />
+      <path d="M9 15h6" />
+    </svg>
+  );
+}
 function DownIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
@@ -175,6 +187,16 @@ function TrendIcon(props: React.SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
       <path d="M3 17l6-6 4 4 8-8" />
       <path d="M15 7h6v6" />
+    </svg>
+  );
+}
+function PeopleIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M2.5 20c.7-3.4 3.3-5.5 6.5-5.5s5.8 2.1 6.5 5.5" />
+      <circle cx="17.5" cy="8.5" r="2.3" />
+      <path d="M16 14.6c2.4.4 4.2 2.2 4.7 4.6" />
     </svg>
   );
 }

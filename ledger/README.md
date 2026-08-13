@@ -1,10 +1,11 @@
 # Ledger — solo bookkeeping for product, service, or hybrid SMEs
 
 Next.js 14 (App Router) + Firebase (Auth + Firestore). Tracks wholesale
-purchases/service delivery costs, sales, inventory, unit economics, EOQ
-reorder planning, recurring revenue/expenses (incl. marketing/overhead),
-break-even & overhead coverage, capital/ROI, and a growth forecast — for a
-single operator, no team/multi-tenant auth needed.
+orders through to receipt, purchases/service delivery costs, sales,
+inventory, unit economics, EOQ reorder planning, employee payroll, recurring
+revenue/expenses (incl. marketing/overhead), break-even & overhead coverage,
+capital/ROI, and a growth forecast — for a single operator, no team/
+multi-tenant auth needed.
 
 ## 1. Set up Firebase
 
@@ -43,7 +44,35 @@ hybrid business (e.g. selling parts *and* billing labor) gets one unified P&L,
 inventory view, and forecast instead of two separate systems. EOQ / reorder
 planning only applies to `type: product` — services have nothing to reorder.
 
-## 4. How the numbers are calculated
+## 4. Wholesale orders vs. purchases
+
+**Purchases** (the Purchases page) is the log of stock/cost you already have
+in hand — it's what actually feeds the WAC/inventory ledger. **Orders** (the
+Orders page) is a separate, optional layer on top of that for products:
+place a wholesale order with a supplier, track it (ordered → in transit →
+received/cancelled), and see committed spend before anything arrives. Marking
+an order "received" — with the actual quantity and cost, which can differ
+from what was ordered — automatically creates the matching Purchase entry, so
+inventory updates at the moment stock actually lands, not when you merely
+placed the order. Units already on order are also subtracted from the
+reorder-point check on the Products page, so a pending delivery doesn't get
+double-flagged as "reorder now".
+
+## 5. Employees & payroll
+
+Adding an employee (Employees page) — name, role, gross pay, pay cadence, and
+their own tax/withholding % — automatically books their pay as a recurring
+expense (category "Payroll & labor"), the same mechanism as rent or a
+subscription. That's the one and only source of truth: editing an employee's
+pay or cadence updates the linked expense in the same batch write; marking
+them inactive ends the recurring cost going forward without deleting the
+historical record. The employee's tax % is purely a take-home reference (est.
+net pay = gross × (1 − tax%)) — it does not change what the business pays
+out, since the full gross pay is the actual cash cost regardless of how it
+later splits between the employee and the tax authority. This is separate
+from the business's own corporate tax rate in Settings.
+
+## 6. How the numbers are calculated
 
 **Inventory costing — Weighted Average Cost (WAC).** Every purchase/cost entry
 re-averages the offering's cost: `newWAC = (qtyOnHand*oldWAC + boughtQty*unitCost) / (qtyOnHand+boughtQty)`.
@@ -79,6 +108,11 @@ operating expenses — above 1× means overhead is actually being covered).
 withdrawals separately from operating P&L, so payback progress and net cash
 position are visible alongside month-to-month profit.
 
+**Payroll** is booked as a normal recurring Expense (see §5) so its cost
+already flows through MRR / monthly P&L / spend-by-category untouched — the
+Employees page just adds the staff-facing view (net pay estimate, total
+monthly payroll run-rate for active staff).
+
 **Monthly P&L:**
 `Net profit (pre-tax) = gross profit − operating expenses (incl. recurring, monthly-normalized)`
 `Tax = max(net pre-tax, 0) × tax rate` → `Net profit (after tax) = pre-tax − tax`
@@ -97,9 +131,9 @@ Prophet-style models need many clean periodic points to beat a trend line — a
 solo ledger has few, noisy months, so a transparent, hand-verifiable trend is
 the better choice here.
 
-## 4. Architecture notes
+## 7. Architecture notes
 
-- **Data model**: `users/{uid}/{products|purchases|sales|expenses|variableCosts|capitalEntries}`
+- **Data model**: `users/{uid}/{products|purchases|purchaseOrders|sales|expenses|variableCosts|capitalEntries|employees}`
   subcollections + a `users/{uid}/meta/settings` doc. Firestore security rules
   restrict every subtree to its owner (`firestore.rules`).
 - **Caching / memory strategy**: Firestore is initialized once with
@@ -121,16 +155,20 @@ the better choice here.
   Authentication (email/password) purely to keep the ledger private to you —
   there's no multi-user/team layer, sharing, or roles.
 
-## 5. CSV formats
+## 8. CSV formats
 
 | File | Columns |
 |---|---|
 | products.csv | `name, sku, category, type (product/service), active, orderingCost, holdingCostPct, leadTimeDays` |
 | purchases.csv | `product` (name or SKU) or `productId`, `qty, unitCost, date, supplier, notes` |
+| purchase_orders.csv | export-only — `product, qtyOrdered, unitCost, orderDate, expectedDate, supplier, status, receivedDate, qtyReceived, receivedUnitCost, notes` |
 | sales.csv | `product` (name or SKU) or `productId`, `qty, unitPrice, date, customer, notes` |
 | expenses.csv | `name, amount, category, kind (expense/revenue), isRecurring (true/false), recurrence (weekly/monthly/yearly), startDate, endDate` |
 | capital_entries.csv | `kind (investment/reinvestment/withdrawal), amount, date, notes` |
+| employees.csv | `name, role, payRate, payFrequency (weekly/monthly/yearly), taxPct, startDate, endDate, active, notes` — importing books each row's pay as a recurring expense automatically |
 
 `date`/`startDate`/`endDate` are `YYYY-MM-DD`. Re-import your own export of
 `products.csv` first if importing `purchases.csv`/`sales.csv` into a fresh
-project, so product name/SKU lookups resolve.
+project, so product name/SKU lookups resolve. `purchase_orders.csv` is
+export-only — orders are placed and received through the Orders page so the
+resulting Purchase entry is created correctly.

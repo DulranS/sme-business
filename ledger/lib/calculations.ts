@@ -1,4 +1,15 @@
-import type { CapitalEntry, Expense, Product, Purchase, Recurrence, Sale, Settings, VariableCost } from "./types";
+import type {
+  CapitalEntry,
+  Employee,
+  Expense,
+  Product,
+  Purchase,
+  PurchaseOrder,
+  Recurrence,
+  Sale,
+  Settings,
+  VariableCost,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Inventory costing: Weighted Average Cost (WAC).
@@ -587,4 +598,60 @@ export function computeCapitalSummary(
     paybackReached: netCapitalIn <= 0 || cumulativeNetProfit >= netCapitalIn,
     roiPct: netCapitalIn > 0 ? (cumulativeNetProfit / netCapitalIn) * 100 : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Wholesale orders in flight — quantity ordered but not yet received, per
+// product. Cancelled and already-received orders don't count. This is what
+// makes "on order" visible separately from "on hand" (which only reflects
+// stock that has actually arrived, via Purchases/the WAC ledger).
+// ---------------------------------------------------------------------------
+
+export function computeOnOrderByProduct(purchaseOrders: PurchaseOrder[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const po of purchaseOrders) {
+    if (po.status !== "ordered" && po.status !== "in_transit") continue;
+    map.set(po.productId, (map.get(po.productId) ?? 0) + po.qtyOrdered);
+  }
+  return map;
+}
+
+export interface OpenOrderValue {
+  openOrderCount: number;
+  openOrderUnits: number;
+  openOrderValue: number; // committed spend on orders not yet received
+}
+
+export function computeOpenOrderValue(purchaseOrders: PurchaseOrder[]): OpenOrderValue {
+  let openOrderCount = 0;
+  let openOrderUnits = 0;
+  let openOrderValue = 0;
+  for (const po of purchaseOrders) {
+    if (po.status !== "ordered" && po.status !== "in_transit") continue;
+    openOrderCount += 1;
+    openOrderUnits += po.qtyOrdered;
+    openOrderValue += po.qtyOrdered * po.unitCost;
+  }
+  return { openOrderCount, openOrderUnits, openOrderValue };
+}
+
+// ---------------------------------------------------------------------------
+// Employees / payroll. The actual cost to the business (gross pay) is booked
+// as a normal recurring Expense (see DataContext), so it already flows
+// through computeMRR / computeMonthlyPnL / expenseTotalsForMonth untouched.
+// This just adds the employee-facing view: estimated take-home after their
+// personal tax %, and a total monthly payroll run-rate for active staff.
+// ---------------------------------------------------------------------------
+
+export function estimateNetPay(payRate: number, taxPct: number): number {
+  return payRate * (1 - taxPct / 100);
+}
+
+export function monthlyPayrollCost(employees: Employee[]): number {
+  let total = 0;
+  for (const e of employees) {
+    if (!e.active) continue;
+    total += monthlyNormalizedAmount(e.payRate, e.payFrequency);
+  }
+  return total;
 }

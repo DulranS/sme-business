@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { formatMoney, formatNumber } from "@/lib/format";
 import type { OfferingType, Product, VariableCost } from "@/lib/types";
@@ -246,7 +247,7 @@ function ProductForm({
 }
 
 function ReorderPlanningSection() {
-  const { products, ledgers, eoqByProduct, settings } = useData();
+  const { products, ledgers, eoqByProduct, onOrderByProduct, settings } = useData();
   const currency = settings.currency;
   const stockProducts = useMemo(() => products.filter((p) => p.type === "product" && p.active), [products]);
 
@@ -254,16 +255,25 @@ function ReorderPlanningSection() {
 
   return (
     <Card className="mt-6">
-      <div className="text-sm font-medium">Reorder planning (EOQ)</div>
-      <div className="text-xs text-muted mt-0.5 mb-4">
-        Economic order quantity — the batch size that minimizes ordering + holding cost, based on your last 90 days
-        of sales. Set ordering cost / holding % / lead time per-product for accuracy, or use the Settings defaults.
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium">Reorder planning (EOQ)</div>
+          <div className="text-xs text-muted mt-0.5 mb-4">
+            Economic order quantity — the batch size that minimizes ordering + holding cost, based on your last 90
+            days of sales. Set ordering cost / holding % / lead time per-product for accuracy, or use the Settings
+            defaults.
+          </div>
+        </div>
+        <Link href="/purchase-orders" className="text-xs text-amber-soft shrink-0">
+          Place order →
+        </Link>
       </div>
       <Table>
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
             <th className="py-2 pr-3 font-medium">Product</th>
             <th className="py-2 px-3 font-medium text-right">On hand</th>
+            <th className="py-2 px-3 font-medium text-right">On order</th>
             <th className="py-2 px-3 font-medium text-right">Annual demand</th>
             <th className="py-2 px-3 font-medium text-right">EOQ</th>
             <th className="py-2 px-3 font-medium text-right">Reorder point</th>
@@ -274,11 +284,15 @@ function ReorderPlanningSection() {
           {stockProducts.map((p) => {
             const eoq = eoqByProduct.get(p.id);
             const qty = ledgers.get(p.id)?.qtyOnHand ?? 0;
-            const needsReorder = eoq && eoq.reorderPoint > 0 && qty <= eoq.reorderPoint;
+            const onOrder = onOrderByProduct.get(p.id) ?? 0;
+            // Stock already on order counts toward the reorder point, so a
+            // pending delivery doesn't get double-flagged as "reorder now".
+            const needsReorder = eoq && eoq.reorderPoint > 0 && qty + onOrder <= eoq.reorderPoint;
             return (
               <tr key={p.id} className="border-b border-line last:border-0">
                 <td className="py-2.5 pr-3 font-medium">{p.name}</td>
                 <td className="py-2.5 px-3 num text-right">{formatNumber(qty)}</td>
+                <td className="py-2.5 px-3 num text-right text-muted">{onOrder > 0 ? formatNumber(onOrder) : "—"}</td>
                 <td className="py-2.5 px-3 num text-right text-muted">{formatNumber(eoq?.annualDemand ?? 0)}</td>
                 <td className="py-2.5 px-3 num text-right">
                   {eoq && eoq.eoq > 0 ? formatNumber(Math.ceil(eoq.eoq)) : "—"}

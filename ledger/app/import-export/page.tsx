@@ -4,12 +4,15 @@ import { useRef, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import {
   exportCapitalEntries,
+  exportEmployees,
   exportExpenses,
   exportProducts,
+  exportPurchaseOrders,
   exportPurchases,
   exportSales,
   exportVariableCosts,
   importCapitalEntries,
+  importEmployees,
   importExpenses,
   importProducts,
   importPurchases,
@@ -18,7 +21,7 @@ import {
 } from "@/lib/csv";
 import { Button, Card, PageHeader } from "@/components/ui";
 
-type Entity = "products" | "purchases" | "sales" | "expenses" | "capitalEntries";
+type Entity = "products" | "purchases" | "sales" | "expenses" | "capitalEntries" | "employees";
 
 export default function ImportExportPage() {
   const data = useData();
@@ -30,6 +33,7 @@ export default function ImportExportPage() {
     sales: useRef<HTMLInputElement>(null),
     expenses: useRef<HTMLInputElement>(null),
     capitalEntries: useRef<HTMLInputElement>(null),
+    employees: useRef<HTMLInputElement>(null),
   };
 
   async function handleImport(entity: Entity, file: File) {
@@ -52,10 +56,16 @@ export default function ImportExportPage() {
         const { rows, errors } = await importExpenses(file);
         if (errors.length === 0) await data.bulkAddExpenses(rows);
         setResult({ entity, added: errors.length === 0 ? rows.length : 0, errors });
-      } else {
+      } else if (entity === "capitalEntries") {
         const { rows, errors } = await importCapitalEntries(file);
         if (errors.length === 0) {
           for (const row of rows) await data.addCapitalEntry(row);
+        }
+        setResult({ entity, added: errors.length === 0 ? rows.length : 0, errors });
+      } else {
+        const { rows, errors } = await importEmployees(file);
+        if (errors.length === 0) {
+          for (const row of rows) await data.addEmployee(row);
         }
         setResult({ entity, added: errors.length === 0 ? rows.length : 0, errors });
       }
@@ -106,6 +116,13 @@ export default function ImportExportPage() {
       columns: "kind (investment/reinvestment/withdrawal), amount, date (YYYY-MM-DD), notes",
       onExport: () => exportCapitalEntries(data.capitalEntries),
     },
+    {
+      entity: "employees",
+      label: "Employees & payroll",
+      description: "Staff/contractors — importing books each one's pay as a recurring expense automatically.",
+      columns: "name, role, payRate, payFrequency (weekly/monthly/yearly), taxPct, startDate, endDate, active, notes",
+      onExport: () => exportEmployees(data.employees),
+    },
   ];
 
   return (
@@ -137,7 +154,10 @@ export default function ImportExportPage() {
                 />
                 <Button
                   variant="ghost"
-                  disabled={busy === row.entity || (row.entity !== "products" && row.entity !== "capitalEntries" && data.products.length === 0)}
+                  disabled={
+                    busy === row.entity ||
+                    (row.entity !== "products" && row.entity !== "capitalEntries" && row.entity !== "employees" && data.products.length === 0)
+                  }
                   onClick={() => inputRefs[row.entity].current?.click()}
                 >
                   {busy === row.entity ? "Importing…" : "Import CSV"}
@@ -166,6 +186,18 @@ export default function ImportExportPage() {
             )}
           </Card>
         ))}
+
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Wholesale orders</div>
+              <div className="text-xs text-muted mt-0.5">Export only — place and receive orders on the Orders page.</div>
+            </div>
+            <Button variant="ghost" onClick={() => exportPurchaseOrders(data.purchaseOrders, data.products)}>
+              Export CSV
+            </Button>
+          </div>
+        </Card>
 
         <Card>
           <div className="flex items-center justify-between">

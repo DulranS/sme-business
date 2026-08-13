@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { computeMRR, monthlyNormalizedAmount } from "@/lib/calculations";
 import { formatMoney, todayIso } from "@/lib/format";
@@ -93,7 +94,14 @@ export default function ExpensesPage() {
                 <tr key={e.id} className="border-b border-line last:border-0">
                   <td className="py-2.5 pr-3 font-medium">
                     {e.name}
-                    <div className="text-xs text-muted font-normal">{e.category}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-xs text-muted font-normal">{e.category}</span>
+                      {e.employeeId && (
+                        <span>
+                          <Badge tone="amber">payroll</Badge>
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2.5 px-3">
                     <Badge tone={e.kind === "revenue" ? "good" : "default"}>{e.kind}</Badge>
@@ -105,9 +113,15 @@ export default function ExpensesPage() {
                   </td>
                   <td className="py-2.5 px-3 text-muted num">{e.startDate}</td>
                   <td className="py-2.5 pl-3 text-right">
-                    <button onClick={() => deleteExpense(e.id)} className="text-xs text-muted hover:text-bad">
-                      Delete
-                    </button>
+                    {e.employeeId ? (
+                      <Link href="/employees" className="text-xs text-amber-soft hover:underline">
+                        Edit in Employees
+                      </Link>
+                    ) : (
+                      <button onClick={() => deleteExpense(e.id)} className="text-xs text-muted hover:text-bad">
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

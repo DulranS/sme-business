@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { formatMoney, todayIso } from "@/lib/format";
 import type { Product } from "@/lib/types";
@@ -34,6 +35,19 @@ export default function PurchasesPage() {
         }
       />
 
+      <Card className="mb-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs text-muted">
+            This is the log of stock/cost already in hand. Placing a wholesale order with a supplier and tracking
+            it until delivery happens on the <span className="text-fg font-medium">Orders</span> page — receiving
+            an order creates the matching entry here automatically.
+          </div>
+          <Link href="/purchase-orders" className="text-xs text-amber-soft shrink-0">
+            Go to Orders →
+          </Link>
+        </div>
+      </Card>
+
       {!loading && products.length === 0 && (
         <EmptyState title="Add an offering first" body="You need at least one product or service before logging a cost against it." />
       )}
@@ -41,7 +55,7 @@ export default function PurchasesPage() {
       {!loading && products.length > 0 && purchases.length === 0 && (
         <EmptyState
           title="Nothing logged yet"
-          body="For products: log a wholesale buy (qty + unit cost). For services: log what it costs you to deliver — labor, contractor fees, materials per job."
+          body="For products: log a wholesale buy (qty + unit cost), or place a wholesale order on the Orders page. For services: log what it costs you to deliver — labor, contractor fees, materials per job."
         />
       )}
 
@@ -70,6 +84,11 @@ export default function PurchasesPage() {
                       {product?.type === "service" && (
                         <span className="ml-1.5">
                           <Badge tone="amber">service</Badge>
+                        </span>
+                      )}
+                      {p.purchaseOrderId && (
+                        <span className="ml-1.5">
+                          <Badge tone="good">from order</Badge>
                         </span>
                       )}
                     </td>
