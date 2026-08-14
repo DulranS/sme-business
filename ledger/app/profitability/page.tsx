@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
 import { computeProductProfitability } from "@/lib/calculations";
 import type { CapitalEntry } from "@/lib/types";
@@ -52,6 +53,7 @@ export default function ProfitabilityPage() {
     saleEconomics,
     ledgers,
   } = useData();
+  const toast = useToast();
   const currency = settings.currency;
   const [modalOpen, setModalOpen] = useState(false);
   const [period, setPeriod] = useState<PeriodFilter>("90");
@@ -102,7 +104,7 @@ export default function ProfitabilityPage() {
           <div className="text-xs text-muted py-6 text-center">No products or services set up yet.</div>
         ) : (
           <div className="overflow-x-auto -mx-4 sm:-mx-5 mt-4">
-            <div className="px-4 sm:px-5 min-w-[900px]">
+            <div className="px-4 sm:px-5 min-w-[1000px]">
               <Table>
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -114,6 +116,10 @@ export default function ProfitabilityPage() {
                     <th className="py-2 px-3 font-medium text-right">COGS</th>
                     <th className="py-2 px-3 font-medium text-right">Gross profit</th>
                     <th className="py-2 px-3 font-medium text-right">Margin</th>
+                    <th className="py-2 px-3 font-medium text-right">
+                      Fully-loaded
+                      <div className="text-[9px] normal-case font-normal text-muted/70">after labor</div>
+                    </th>
                     <th className="py-2 px-3 font-medium text-right">On hand</th>
                     <th className="py-2 pl-3 font-medium text-right">Inventory value</th>
                   </tr>
@@ -141,6 +147,15 @@ export default function ProfitabilityPage() {
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3 num text-right text-muted">
+                        {p.laborCost > 0 ? (
+                          <span className={p.fullyLoadedGrossProfit >= 0 ? "text-good" : "text-bad"}>
+                            {p.fullyLoadedMarginPct !== null ? `${p.fullyLoadedMarginPct.toFixed(0)}%` : "—"}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 num text-right text-muted">
                         {p.type === "service" ? "—" : formatNumber(p.qtyOnHand)}
                       </td>
                       <td className="py-2.5 pl-3 num text-right text-muted">
@@ -153,6 +168,11 @@ export default function ProfitabilityPage() {
             </div>
           </div>
         )}
+        <div className="text-[11px] text-muted mt-3">
+          &quot;Fully-loaded&quot; nets out the labor cost you&apos;ve set on an offering (Products page) — for a
+          service an employee delivers, their pay already sits in payroll rather than COGS, so this is the number
+          that shows the real margin instead of an inflated one. Blank means no labor cost is set for that item.
+        </div>
         <div className="text-[11px] text-muted mt-3">
           Margin band is a rough pricing-power signal, not a verdict — thin margins often mean a commoditized,
           price-competitive item (easy substitutes, buyers shop around); strong margins often mean real
@@ -266,7 +286,15 @@ export default function ProfitabilityPage() {
                         <td className="py-2.5 px-3 num text-right">{formatMoney(c.amount, currency)}</td>
                         <td className="py-2.5 px-3 text-muted">{c.notes || "—"}</td>
                         <td className="py-2.5 pl-3 text-right">
-                          <button onClick={() => deleteCapitalEntry(c.id)} className="text-xs text-muted hover:text-bad">
+                          <button
+                            onClick={() => {
+                              if (!confirm("Delete this capital entry? This can't be undone.")) return;
+                              deleteCapitalEntry(c.id)
+                                .then(() => toast.success("Deleted"))
+                                .catch(() => toast.error("Couldn't delete"));
+                            }}
+                            className="text-xs text-muted hover:text-bad"
+                          >
                             Delete
                           </button>
                         </td>
@@ -284,8 +312,13 @@ export default function ProfitabilityPage() {
         <CapitalForm
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
-            await addCapitalEntry(values);
-            setModalOpen(false);
+            try {
+              await addCapitalEntry(values);
+              toast.success("Capital entry added", formatMoney(values.amount, currency));
+              setModalOpen(false);
+            } catch (err) {
+              toast.error("Couldn't save", toastableErrorMessage(err));
+            }
           }}
         />
       </Modal>

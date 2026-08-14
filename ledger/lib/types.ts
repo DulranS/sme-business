@@ -19,6 +19,23 @@ export interface Product {
   orderingCost?: number; // fixed cost to place one order (S)
   holdingCostPct?: number; // annual holding cost as % of unit cost (used to derive H)
   leadTimeDays?: number; // supplier lead time, for reorder point
+  // Default prices — optional convenience fields. Pre-fill the unit
+  // cost/price on new Purchase/Sale entries so they don't need to be
+  // retyped every time, and drive the live margin preview on this form and
+  // the quick stock/sell actions on the Products page. The actual WAC/COGS
+  // engine still only ever uses what's entered on each Purchase/Sale — these
+  // are just sensible starting values, not a source of truth.
+  defaultCostPrice?: number;
+  defaultSellPrice?: number;
+  // For service-type offerings especially: the labor cost that goes into
+  // delivering one unit (an employee's time, not a logged Purchase/contractor
+  // fee). Doesn't touch COGS or the WAC ledger — a service delivered by an
+  // employee already has that employee's pay sitting in operating expenses,
+  // so folding it into COGS too would double-count it. This is a separate,
+  // clearly-labeled "fully-loaded" view so a service's true per-unit margin
+  // isn't overstated just because payroll happens to live in a different
+  // bucket than COGS.
+  laborCostPerUnit?: number;
   createdAt: number;
 }
 
@@ -177,6 +194,12 @@ export interface Settings {
   defaultOrderingCost: number; // fallback S for EOQ when a product doesn't set its own
   defaultHoldingCostPct: number; // fallback annual holding-cost % of unit cost
   defaultLeadTimeDays: number; // fallback supplier lead time in days
+  // Imputed monthly cost of the owner's own labor — what you'd have to pay
+  // someone to do your job if you weren't doing it. Not a real transaction
+  // and never touches the accounting statements; purely a decision-support
+  // number so "we're profitable" isn't an illusion built on nobody paying
+  // themselves for the hours they put in.
+  monthlyOwnerDraw?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -152,6 +152,19 @@ function IncomeStatement({
           {m.totalRevenue > 0 ? ((m.netProfitAfterTax / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
         </Badge>
       </div>
+
+      {m.economicProfit !== m.netProfitAfterTax && (
+        <div className="mt-5 pt-4 border-t border-dashed border-line">
+          <div className="text-[11px] uppercase tracking-wider text-muted font-medium mb-2">
+            Informational — not part of the accounting statement above
+          </div>
+          <Line label="True profit (after paying yourself)" value={m.economicProfit} currency={currency} bold />
+          <div className="text-[11px] text-muted mt-2">
+            Nets your imputed monthly pay (set in Settings) out of net profit after tax — a decision-support number
+            for whether the business is actually worth running, not a GAAP figure.
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

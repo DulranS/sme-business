@@ -34,6 +34,9 @@ export function exportProducts(products: Product[]) {
     orderingCost: p.orderingCost ?? "",
     holdingCostPct: p.holdingCostPct ?? "",
     leadTimeDays: p.leadTimeDays ?? "",
+    defaultCostPrice: p.defaultCostPrice ?? "",
+    defaultSellPrice: p.defaultSellPrice ?? "",
+    laborCostPerUnit: p.laborCostPerUnit ?? "",
   }));
   downloadCsv("products.csv", toCsv(rows));
 }
@@ -210,6 +213,9 @@ export async function importProducts(file: File): Promise<ImportResult<Omit<Prod
       orderingCost: r.orderingCost ? Number(r.orderingCost) : undefined,
       holdingCostPct: r.holdingCostPct ? Number(r.holdingCostPct) : undefined,
       leadTimeDays: r.leadTimeDays ? Number(r.leadTimeDays) : undefined,
+      defaultCostPrice: r.defaultCostPrice ? Number(r.defaultCostPrice) : undefined,
+      defaultSellPrice: r.defaultSellPrice ? Number(r.defaultSellPrice) : undefined,
+      laborCostPerUnit: r.laborCostPerUnit ? Number(r.laborCostPerUnit) : undefined,
     };
   });
   return { rows, errors };

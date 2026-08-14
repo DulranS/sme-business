@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, todayIso } from "@/lib/format";
 import type { Product } from "@/lib/types";
 import {
@@ -21,8 +22,16 @@ import {
 
 export default function PurchasesPage() {
   const { products, purchases, addPurchase, deletePurchase, settings, loading } = useData();
+  const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const currency = settings.currency;
+
+  function handleDelete(id: string) {
+    if (!confirm("Delete this purchase/cost entry? This can't be undone and will reduce recorded stock accordingly.")) return;
+    deletePurchase(id)
+      .then(() => toast.success("Entry deleted"))
+      .catch(() => toast.error("Couldn't delete the entry"));
+  }
 
   return (
     <>
@@ -97,7 +106,7 @@ export default function PurchasesPage() {
                     <td className="py-2.5 px-3 num text-right">{formatMoney(p.qty * p.unitCost, currency)}</td>
                     <td className="py-2.5 px-3 text-muted">{p.supplier || "—"}</td>
                     <td className="py-2.5 pl-3 text-right">
-                      <button onClick={() => deletePurchase(p.id)} className="text-xs text-muted hover:text-bad">
+                      <button onClick={() => handleDelete(p.id)} className="text-xs text-muted hover:text-bad">
                         Delete
                       </button>
                     </td>
@@ -114,8 +123,13 @@ export default function PurchasesPage() {
           products={products}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
-            await addPurchase(values);
-            setModalOpen(false);
+            try {
+              await addPurchase(values);
+              toast.success("Purchase logged", `${values.qty} × ${formatMoney(values.unitCost, currency)}`);
+              setModalOpen(false);
+            } catch (err) {
+              toast.error("Couldn't save the entry", toastableErrorMessage(err));
+            }
           }}
         />
       </Modal>
@@ -141,7 +155,7 @@ function PurchaseForm({
 }) {
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [qty, setQty] = useState("");
-  const [unitCost, setUnitCost] = useState("");
+  const [unitCost, setUnitCost] = useState(products[0]?.defaultCostPrice?.toString() ?? "");
   const [date, setDate] = useState(todayIso());
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
@@ -149,6 +163,12 @@ function PurchaseForm({
 
   const selected = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
   const isService = selected?.type === "service";
+
+  function handleProductChange(id: string) {
+    setProductId(id);
+    const p = products.find((pr) => pr.id === id);
+    if (p?.defaultCostPrice !== undefined) setUnitCost(p.defaultCostPrice.toString());
+  }
 
   return (
     <form
@@ -162,7 +182,7 @@ function PurchaseForm({
     >
       <Field>
         <Label>Offering</Label>
-        <Select required value={productId} onChange={(e) => setProductId(e.target.value)}>
+        <Select required value={productId} onChange={(e) => handleProductChange(e.target.value)}>
           {products.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} {p.type === "service" ? "(service)" : ""}

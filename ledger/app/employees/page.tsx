@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { estimateNetPay, monthlyNormalizedAmount } from "@/lib/calculations";
 import { formatMoney, todayIso } from "@/lib/format";
 import type { Employee, Recurrence } from "@/lib/types";
@@ -22,6 +23,7 @@ import {
 
 export default function EmployeesPage() {
   const { employees, addEmployee, updateEmployee, deleteEmployee, monthlyPayroll, settings } = useData();
+  const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const currency = settings.currency;
@@ -111,15 +113,26 @@ export default function EmployeesPage() {
           initial={editing}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
-            if (editing) await updateEmployee(editing.id, values);
-            else await addEmployee(values);
-            setModalOpen(false);
+            try {
+              if (editing) await updateEmployee(editing.id, values);
+              else await addEmployee(values);
+              toast.success(editing ? "Employee updated" : "Employee added", values.name);
+              setModalOpen(false);
+            } catch (err) {
+              toast.error("Couldn't save", toastableErrorMessage(err));
+            }
           }}
           onDelete={
             editing
               ? async () => {
-                  await deleteEmployee(editing.id);
-                  setModalOpen(false);
+                  if (!confirm(`Remove "${editing.name}"? Their linked payroll expense will be removed too.`)) return;
+                  try {
+                    await deleteEmployee(editing.id);
+                    toast.success("Employee removed", editing.name);
+                    setModalOpen(false);
+                  } catch (err) {
+                    toast.error("Couldn't remove employee", toastableErrorMessage(err));
+                  }
                 }
               : undefined
           }

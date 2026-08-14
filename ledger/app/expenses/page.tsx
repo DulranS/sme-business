@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { computeMRR, monthlyNormalizedAmount } from "@/lib/calculations";
 import { formatMoney, todayIso } from "@/lib/format";
 import type { Expense, Recurrence } from "@/lib/types";
@@ -24,8 +25,16 @@ import {
 
 export default function ExpensesPage() {
   const { expenses, addExpense, deleteExpense, settings } = useData();
+  const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const currency = settings.currency;
+
+  function handleDelete(id: string, name: string) {
+    if (!confirm(`Delete "${name}"? This can't be undone.`)) return;
+    deleteExpense(id)
+      .then(() => toast.success("Deleted", name))
+      .catch(() => toast.error("Couldn't delete"));
+  }
 
   const mrr = useMemo(() => computeMRR(expenses, todayIso()), [expenses]);
 
@@ -118,7 +127,7 @@ export default function ExpensesPage() {
                         Edit in Employees
                       </Link>
                     ) : (
-                      <button onClick={() => deleteExpense(e.id)} className="text-xs text-muted hover:text-bad">
+                      <button onClick={() => handleDelete(e.id, e.name)} className="text-xs text-muted hover:text-bad">
                         Delete
                       </button>
                     )}
@@ -135,8 +144,13 @@ export default function ExpensesPage() {
         <ExpenseForm
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
-            await addExpense(values);
-            setModalOpen(false);
+            try {
+              await addExpense(values);
+              toast.success("Added", values.name);
+              setModalOpen(false);
+            } catch (err) {
+              toast.error("Couldn't save", toastableErrorMessage(err));
+            }
           }}
         />
       </Modal>

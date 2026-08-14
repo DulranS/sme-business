@@ -2,28 +2,25 @@
 
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
-import { formatMoney, todayIso } from "@/lib/format";
-import type { Product } from "@/lib/types";
-import {
-  Badge,
-  Button,
-  Card,
-  Field,
-  Input,
-  Label,
-  Modal,
-  PageHeader,
-  Select,
-  Table,
-  EmptyState,
-} from "@/components/ui";
+import { useToast } from "@/contexts/ToastContext";
+import { formatMoney } from "@/lib/format";
+import { QuickSaleForm } from "@/components/QuickForms";
+import { Badge, Button, Card, Modal, PageHeader, Table, EmptyState } from "@/components/ui";
 
 export default function SalesPage() {
-  const { products, sales, saleEconomics, addSale, deleteSale, settings, loading } = useData();
+  const { products, sales, saleEconomics, deleteSale, settings, loading } = useData();
+  const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const currency = settings.currency;
 
   const econById = useMemo(() => new Map(saleEconomics.map((e) => [e.saleId, e])), [saleEconomics]);
+
+  function handleDelete(saleId: string) {
+    if (!confirm("Delete this sale? This can't be undone and will restore the units to inventory.")) return;
+    deleteSale(saleId)
+      .then(() => toast.success("Sale deleted"))
+      .catch(() => toast.error("Couldn't delete the sale"));
+  }
 
   return (
     <>
@@ -91,7 +88,7 @@ export default function SalesPage() {
                       {formatMoney(econ?.contributionMargin ?? 0, currency)}
                     </td>
                     <td className="py-2.5 pl-3 text-right">
-                      <button onClick={() => deleteSale(s.id)} className="text-xs text-muted hover:text-bad">
+                      <button onClick={() => handleDelete(s.id)} className="text-xs text-muted hover:text-bad">
                         Delete
                       </button>
                     </td>
@@ -104,96 +101,8 @@ export default function SalesPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Log sale">
-        <SaleForm
-          products={products}
-          onCancel={() => setModalOpen(false)}
-          onSave={async (values) => {
-            await addSale(values);
-            setModalOpen(false);
-          }}
-        />
+        <QuickSaleForm onDone={() => setModalOpen(false)} />
       </Modal>
     </>
-  );
-}
-
-function SaleForm({
-  products,
-  onSave,
-  onCancel,
-}: {
-  products: Product[];
-  onSave: (values: {
-    productId: string;
-    qty: number;
-    unitPrice: number;
-    date: string;
-    customer?: string;
-    notes?: string;
-  }) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
-  const [qty, setQty] = useState("");
-  const [unitPrice, setUnitPrice] = useState("");
-  const [date, setDate] = useState(todayIso());
-  const [customer, setCustomer] = useState("");
-  const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const selected = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
-  const isService = selected?.type === "service";
-
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        await onSave({ productId, qty: Number(qty), unitPrice: Number(unitPrice), date, customer, notes });
-        setBusy(false);
-      }}
-      className="space-y-4"
-    >
-      <Field>
-        <Label>Offering</Label>
-        <Select required value={productId} onChange={(e) => setProductId(e.target.value)}>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} {p.type === "service" ? "(service)" : ""}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field>
-          <Label>{isService ? "Hours / jobs sold" : "Quantity sold"}</Label>
-          <Input required type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
-        </Field>
-        <Field>
-          <Label>{isService ? "Rate per hour / job" : "Sale price / unit"}</Label>
-          <Input required type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
-        </Field>
-      </div>
-      <Field>
-        <Label>Date</Label>
-        <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      </Field>
-      <Field>
-        <Label>Customer (optional)</Label>
-        <Input value={customer} onChange={(e) => setCustomer(e.target.value)} />
-      </Field>
-      <Field>
-        <Label>Notes (optional)</Label>
-        <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </Field>
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Save sale"}
-        </Button>
-      </div>
-    </form>
   );
 }

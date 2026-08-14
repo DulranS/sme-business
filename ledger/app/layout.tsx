@@ -3,6 +3,7 @@ import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
+import { ToastProvider } from "@/contexts/ToastContext";
 import AppShell from "@/components/AppShell";
 
 const display = Space_Grotesk({
@@ -38,7 +39,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthProvider>
           <DataProvider>
-            <AppShell>{children}</AppShell>
+            <ToastProvider>
+              <AppShell>{children}</AppShell>
+            </ToastProvider>
           </DataProvider>
         </AuthProvider>
       </body>

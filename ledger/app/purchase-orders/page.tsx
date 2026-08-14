@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
 import type { OrderStatus, Product } from "@/lib/types";
 import {
@@ -39,9 +40,24 @@ export default function PurchaseOrdersPage() {
     settings,
     loading,
   } = useData();
+  const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const currency = settings.currency;
+
+  function handleCancel(id: string) {
+    if (!confirm("Cancel this order? You can still delete it afterward if it was a mistake.")) return;
+    cancelPurchaseOrder(id)
+      .then(() => toast.success("Order cancelled"))
+      .catch(() => toast.error("Couldn't cancel the order"));
+  }
+
+  function handleDelete(id: string) {
+    if (!confirm("Delete this order from history? This can't be undone.")) return;
+    deletePurchaseOrder(id)
+      .then(() => toast.success("Order deleted"))
+      .catch(() => toast.error("Couldn't delete the order"));
+  }
 
   const stockProducts = useMemo(() => products.filter((p) => p.type === "product"), [products]);
   const openList = useMemo(
@@ -118,7 +134,7 @@ export default function PurchaseOrdersPage() {
                       <button onClick={() => setReceivingId(po.id)} className="text-xs text-good hover:underline mr-3">
                         Receive
                       </button>
-                      <button onClick={() => cancelPurchaseOrder(po.id)} className="text-xs text-muted hover:text-bad">
+                      <button onClick={() => handleCancel(po.id)} className="text-xs text-muted hover:text-bad">
                         Cancel
                       </button>
                     </td>
@@ -157,7 +173,7 @@ export default function PurchaseOrdersPage() {
                       <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
                     </td>
                     <td className="py-2.5 pl-3 text-right">
-                      <button onClick={() => deletePurchaseOrder(po.id)} className="text-xs text-muted hover:text-bad">
+                      <button onClick={() => handleDelete(po.id)} className="text-xs text-muted hover:text-bad">
                         Delete
                       </button>
                     </td>
@@ -174,8 +190,13 @@ export default function PurchaseOrdersPage() {
           products={stockProducts}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
-            await addPurchaseOrder(values);
-            setModalOpen(false);
+            try {
+              await addPurchaseOrder(values);
+              toast.success("Order placed");
+              setModalOpen(false);
+            } catch (err) {
+              toast.error("Couldn't place the order", toastableErrorMessage(err));
+            }
           }}
         />
       </Modal>
@@ -186,8 +207,13 @@ export default function PurchaseOrdersPage() {
             po={purchaseOrders.find((p) => p.id === receivingId)!}
             onCancel={() => setReceivingId(null)}
             onSave={async (receipt) => {
-              await receivePurchaseOrder(receivingId, receipt);
-              setReceivingId(null);
+              try {
+                await receivePurchaseOrder(receivingId, receipt);
+                toast.success("Order received", "Stock updated");
+                setReceivingId(null);
+              } catch (err) {
+                toast.error("Couldn't receive the order", toastableErrorMessage(err));
+              }
             }}
           />
         )}

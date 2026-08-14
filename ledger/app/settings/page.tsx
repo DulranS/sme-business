@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [defaultOrderingCost, setDefaultOrderingCost] = useState(settings.defaultOrderingCost.toString());
   const [defaultHoldingCostPct, setDefaultHoldingCostPct] = useState(settings.defaultHoldingCostPct.toString());
   const [defaultLeadTimeDays, setDefaultLeadTimeDays] = useState(settings.defaultLeadTimeDays.toString());
+  const [monthlyOwnerDraw, setMonthlyOwnerDraw] = useState(settings.monthlyOwnerDraw?.toString() ?? "");
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -29,6 +30,7 @@ export default function SettingsPage() {
       defaultOrderingCost: Number(defaultOrderingCost),
       defaultHoldingCostPct: Number(defaultHoldingCostPct),
       defaultLeadTimeDays: Number(defaultLeadTimeDays),
+      monthlyOwnerDraw: monthlyOwnerDraw ? Number(monthlyOwnerDraw) : undefined,
     });
     setBusy(false);
     setSaved(true);
@@ -110,6 +112,27 @@ export default function SettingsPage() {
                 />
               </Field>
             </div>
+          </div>
+
+          <div className="border-t border-line pt-4">
+            <div className="text-xs font-medium text-muted mb-1">Your own labor cost (optional)</div>
+            <div className="text-xs text-muted mb-3">
+              What would you pay someone else to do your job? This doesn&apos;t create a real transaction or change
+              any of the financial statements — it just powers a separate &quot;true profitability&quot; figure on
+              the Dashboard, so the business looking profitable isn&apos;t secretly built on nobody paying you for
+              the hours you put in.
+            </div>
+            <Field>
+              <Label>Imputed owner pay / month</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={monthlyOwnerDraw}
+                onChange={(e) => setMonthlyOwnerDraw(e.target.value)}
+                placeholder="e.g. 150000"
+              />
+            </Field>
           </div>
 
           <div className="flex items-center gap-3 pt-2">

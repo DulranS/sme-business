@@ -3,8 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
-import { formatMoney, formatNumber } from "@/lib/format";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
+import { formatMoney, formatNumber, todayIso } from "@/lib/format";
 import type { OfferingType, Product, VariableCost } from "@/lib/types";
+import { QuickStockForm, QuickSaleForm } from "@/components/QuickForms";
 import {
   Button,
   Card,
@@ -21,8 +23,11 @@ import {
 
 export default function ProductsPage() {
   const { products, ledgers, settings, deleteProduct, addProduct, updateProduct, loading } = useData();
+  const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [stockTarget, setStockTarget] = useState<Product | null>(null);
+  const [sellTarget, setSellTarget] = useState<Product | null>(null);
 
   const currency = settings.currency;
 
@@ -56,6 +61,7 @@ export default function ProductsPage() {
                 <th className="py-2 px-3 font-medium">Type</th>
                 <th className="py-2 px-3 font-medium text-right">On hand</th>
                 <th className="py-2 px-3 font-medium text-right">Avg. cost</th>
+                <th className="py-2 px-3 font-medium text-right">Sell @</th>
                 <th className="py-2 px-3 font-medium text-right">Value</th>
                 <th className="py-2 pl-3 font-medium text-right">Actions</th>
               </tr>
@@ -88,6 +94,9 @@ export default function ProductsPage() {
                     <td className="py-2.5 px-3 num text-right text-muted">
                       {formatMoney(l?.wac ?? 0, currency)}
                     </td>
+                    <td className="py-2.5 px-3 num text-right text-muted">
+                      {p.defaultSellPrice ? formatMoney(p.defaultSellPrice, currency) : "—"}
+                    </td>
                     <td className="py-2.5 px-3 num text-right">
                       {p.type === "service" ? (
                         <span className="text-muted">—</span>
@@ -95,7 +104,15 @@ export default function ProductsPage() {
                         formatMoney(l?.inventoryValue ?? 0, currency)
                       )}
                     </td>
-                    <td className="py-2.5 pl-3 text-right">
+                    <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                      {p.type === "product" && (
+                        <button onClick={() => setStockTarget(p)} className="text-xs text-amber-soft hover:underline mr-3">
+                          + Stock
+                        </button>
+                      )}
+                      <button onClick={() => setSellTarget(p)} className="text-xs text-amber-soft hover:underline mr-3">
+                        Sell
+                      </button>
                       <button onClick={() => openEdit(p)} className="text-xs text-muted hover:text-fg">
                         Edit
                       </button>
@@ -114,21 +131,41 @@ export default function ProductsPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit offering" : "Add offering"}>
         <ProductForm
           initial={editing}
+          currency={currency}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
-            if (editing) await updateProduct(editing.id, values);
-            else await addProduct(values);
-            setModalOpen(false);
+            try {
+              if (editing) await updateProduct(editing.id, values);
+              else await addProduct(values);
+              toast.success(editing ? "Offering updated" : "Offering added", values.name);
+              setModalOpen(false);
+            } catch (err) {
+              toast.error("Couldn't save", toastableErrorMessage(err));
+            }
           }}
           onDelete={
             editing
               ? async () => {
-                  await deleteProduct(editing.id);
-                  setModalOpen(false);
+                  if (!confirm(`Delete "${editing.name}"? This can't be undone — past sales/purchases for it stay on record, but you won't be able to log new ones.`)) return;
+                  try {
+                    await deleteProduct(editing.id);
+                    toast.success("Offering deleted", editing.name);
+                    setModalOpen(false);
+                  } catch (err) {
+                    toast.error("Couldn't delete", toastableErrorMessage(err));
+                  }
                 }
               : undefined
           }
         />
+      </Modal>
+
+      <Modal open={!!stockTarget} onClose={() => setStockTarget(null)} title={stockTarget ? `Add stock — ${stockTarget.name}` : "Add stock"}>
+        {stockTarget && <QuickStockForm fixedProduct={stockTarget} onDone={() => setStockTarget(null)} />}
+      </Modal>
+
+      <Modal open={!!sellTarget} onClose={() => setSellTarget(null)} title={sellTarget ? `Log sale — ${sellTarget.name}` : "Log sale"}>
+        {sellTarget && <QuickSaleForm fixedProduct={sellTarget} onDone={() => setSellTarget(null)} />}
       </Modal>
     </>
   );
@@ -136,11 +173,13 @@ export default function ProductsPage() {
 
 function ProductForm({
   initial,
+  currency,
   onSave,
   onCancel,
   onDelete,
 }: {
   initial: Product | null;
+  currency: string;
   onSave: (values: Omit<Product, "id" | "createdAt">) => Promise<void>;
   onCancel: () => void;
   onDelete?: () => Promise<void>;
@@ -153,7 +192,18 @@ function ProductForm({
   const [orderingCost, setOrderingCost] = useState(initial?.orderingCost?.toString() ?? "");
   const [holdingCostPct, setHoldingCostPct] = useState(initial?.holdingCostPct?.toString() ?? "");
   const [leadTimeDays, setLeadTimeDays] = useState(initial?.leadTimeDays?.toString() ?? "");
+  const [defaultCostPrice, setDefaultCostPrice] = useState(initial?.defaultCostPrice?.toString() ?? "");
+  const [defaultSellPrice, setDefaultSellPrice] = useState(initial?.defaultSellPrice?.toString() ?? "");
+  const [laborCostPerUnit, setLaborCostPerUnit] = useState(initial?.laborCostPerUnit?.toString() ?? "");
   const [busy, setBusy] = useState(false);
+
+  const cost = Number(defaultCostPrice) || 0;
+  const sell = Number(defaultSellPrice) || 0;
+  const labor = Number(laborCostPerUnit) || 0;
+  const marginPerUnit = sell - cost;
+  const marginPct = sell > 0 ? (marginPerUnit / sell) * 100 : null;
+  const fullyLoadedMarginPerUnit = sell - cost - labor;
+  const fullyLoadedMarginPct = sell > 0 ? (fullyLoadedMarginPerUnit / sell) * 100 : null;
 
   return (
     <form
@@ -169,6 +219,9 @@ function ProductForm({
           orderingCost: orderingCost ? Number(orderingCost) : undefined,
           holdingCostPct: holdingCostPct ? Number(holdingCostPct) : undefined,
           leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
+          defaultCostPrice: defaultCostPrice ? Number(defaultCostPrice) : undefined,
+          defaultSellPrice: defaultSellPrice ? Number(defaultSellPrice) : undefined,
+          laborCostPerUnit: laborCostPerUnit ? Number(laborCostPerUnit) : undefined,
         });
         setBusy(false);
       }}
@@ -199,6 +252,73 @@ function ProductForm({
           <Label>Category</Label>
           <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="optional" />
         </Field>
+      </div>
+
+      <div className="border border-line rounded-md p-3 space-y-3">
+        <div className="text-xs font-medium text-muted">
+          Default pricing (optional — pre-fills the quick +Stock/Sell actions and Purchase/Sale forms; you can
+          still override per transaction)
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field>
+            <Label>{type === "service" ? "Default cost per hour/job" : "Default buying price"}</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={defaultCostPrice}
+              onChange={(e) => setDefaultCostPrice(e.target.value)}
+            />
+          </Field>
+          <Field>
+            <Label>{type === "service" ? "Default rate" : "Default selling price"}</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={defaultSellPrice}
+              onChange={(e) => setDefaultSellPrice(e.target.value)}
+            />
+          </Field>
+        </div>
+        <Field>
+          <Label>Labor cost / unit (optional)</Label>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={laborCostPerUnit}
+            onChange={(e) => setLaborCostPerUnit(e.target.value)}
+            placeholder="e.g. an employee's time to deliver one unit"
+          />
+          <div className="text-[11px] text-muted mt-1">
+            Only if an employee (not a logged purchase/contractor cost) does the work — their pay already sits in
+            payroll, so this doesn&apos;t change COGS, it just shows the &quot;fully-loaded&quot; margin on the
+            Profitability page so it isn&apos;t overstated.
+          </div>
+        </Field>
+        {(cost > 0 || sell > 0) && (
+          <div className="space-y-1 pt-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted">Margin per unit at these defaults</span>
+              <span className={`num font-medium ${marginPerUnit >= 0 ? "text-good" : "text-bad"}`}>
+                {formatMoney(marginPerUnit, currency)}
+                {marginPct !== null && <span className="text-muted font-normal ml-1">({marginPct.toFixed(0)}%)</span>}
+              </span>
+            </div>
+            {labor > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted">Fully-loaded (after labor)</span>
+                <span className={`num font-medium ${fullyLoadedMarginPerUnit >= 0 ? "text-good" : "text-bad"}`}>
+                  {formatMoney(fullyLoadedMarginPerUnit, currency)}
+                  {fullyLoadedMarginPct !== null && (
+                    <span className="text-muted font-normal ml-1">({fullyLoadedMarginPct.toFixed(0)}%)</span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {type === "product" && (
@@ -404,7 +524,7 @@ function VariableCostsSection() {
                     {product ? product.name : "all offerings"})
                   </span>
                 </div>
-                <button onClick={() => deleteVariableCost(v.id)} className="text-xs text-muted hover:text-bad">
+                <button onClick={() => { if (confirm("Delete this variable cost?")) deleteVariableCost(v.id); }} className="text-xs text-muted hover:text-bad">
                   Remove
                 </button>
               </div>

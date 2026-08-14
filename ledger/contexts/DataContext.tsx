@@ -267,8 +267,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [sales, ledgers, variableCosts]
   );
   const monthlyPnL = useMemo(
-    () => computeMonthlyPnL(sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct),
-    [sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct]
+    () =>
+      computeMonthlyPnL(
+        sales,
+        saleEconomics,
+        expenses,
+        purchases,
+        loans,
+        capitalEntries,
+        settings.taxRatePct,
+        settings.monthlyOwnerDraw ?? 0
+      ),
+    [sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct, settings.monthlyOwnerDraw]
   );
   const inventoryValue = useMemo(() => currentInventoryValue(ledgers), [ledgers]);
   const inventoryUnits = useMemo(() => currentInventoryUnits(ledgers), [ledgers]);

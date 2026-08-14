@@ -16,6 +16,7 @@ import { useData } from "@/contexts/DataContext";
 import { forecastRevenue, computeMRR } from "@/lib/calculations";
 import { formatMoney, formatMonth, formatNumber, todayIso } from "@/lib/format";
 import { Card, PageHeader, Stat, Table, Badge, EmptyState } from "@/components/ui";
+import QuickActionBar from "@/components/QuickActionBar";
 
 export default function DashboardPage() {
   const {
@@ -31,6 +32,8 @@ export default function DashboardPage() {
     openOrders,
     monthlyPayroll,
     loanPortfolio,
+    eoqByProduct,
+    onOrderByProduct,
   } = useData();
 
   const currency = settings.currency;
@@ -50,6 +53,26 @@ export default function DashboardPage() {
     return items;
   }, [products, ledgers]);
 
+  // Below-reorder-point products, net of anything already on order. This is
+  // the single most common way an SME loses a sale it should've had —
+  // finding out you're out of stock only when a customer asks. Surfacing it
+  // on the dashboard (rather than only on the Products page, one click
+  // deeper) is the point.
+  const reorderAlerts = useMemo(() => {
+    const items: { id: string; name: string; qtyOnHand: number; reorderPoint: number; onOrder: number; eoq: number }[] = [];
+    for (const p of products) {
+      if (!p.active || p.type !== "product") continue;
+      const l = ledgers.get(p.id);
+      const eoq = eoqByProduct.get(p.id);
+      if (!l || !eoq || eoq.reorderPoint <= 0) continue;
+      const onOrder = onOrderByProduct.get(p.id) ?? 0;
+      if (l.qtyOnHand + onOrder <= eoq.reorderPoint) {
+        items.push({ id: p.id, name: p.name, qtyOnHand: l.qtyOnHand, reorderPoint: eoq.reorderPoint, onOrder, eoq: eoq.eoq });
+      }
+    }
+    return items.sort((a, b) => a.qtyOnHand - b.qtyOnHand);
+  }, [products, ledgers, eoqByProduct, onOrderByProduct]);
+
   if (loading) {
     return <div className="text-sm text-muted">Loading your numbers…</div>;
   }
@@ -62,6 +85,11 @@ export default function DashboardPage() {
           title="Nothing set up yet"
           body="Add your first product or service, then log a purchase/cost entry and a sale — this page fills in automatically."
         />
+        <div className="flex justify-center mt-4">
+          <Link href="/products" className="text-sm text-amber-soft hover:underline">
+            Add your first product or service →
+          </Link>
+        </div>
       </>
     );
   }
@@ -73,9 +101,17 @@ export default function DashboardPage() {
     "3-mo avg": f.movingAvg !== null ? Math.round(f.movingAvg) : null,
   }));
 
+  const marginChartData = monthlyPnL.map((m) => ({
+    month: formatMonth(m.month),
+    "Gross margin": m.grossMarginPct !== null ? Math.round(m.grossMarginPct * 10) / 10 : null,
+    "Net margin": m.netMarginPct !== null ? Math.round(m.netMarginPct * 10) / 10 : null,
+  }));
+
   return (
     <>
       <PageHeader title="Dashboard" />
+
+      <QuickActionBar />
 
       {oversold.length > 0 && (
         <Card className="mb-5 border-bad/30">
@@ -84,6 +120,31 @@ export default function DashboardPage() {
             {oversold.map((o) => `${o.name} (${o.qty} on hand)`).join(", ")} — recorded sales exceed
             recorded purchases. Check your entries in Purchases/Sales.
           </div>
+        </Card>
+      )}
+
+      {reorderAlerts.length > 0 && (
+        <Card className="mb-5 border-amber-dim/40">
+          <div className="text-sm font-medium text-amber-soft mb-1">Time to reorder</div>
+          <div className="text-xs text-muted mb-3">
+            These are at or below their reorder point — factoring in supplier lead time, you risk running out before
+            new stock arrives.
+          </div>
+          <div className="space-y-2">
+            {reorderAlerts.map((r) => (
+              <div key={r.id} className="flex items-center justify-between text-xs">
+                <span className="text-fg font-medium">{r.name}</span>
+                <span className="text-muted">
+                  {formatNumber(r.qtyOnHand)} on hand
+                  {r.onOrder > 0 ? ` (+${formatNumber(r.onOrder)} on order)` : ""} · reorder ~
+                  {formatNumber(Math.round(r.eoq))} units
+                </span>
+              </div>
+            ))}
+          </div>
+          <Link href="/purchase-orders" className="text-xs text-amber-soft mt-3 inline-block">
+            Create a purchase order →
+          </Link>
         </Card>
       )}
 
@@ -124,6 +185,20 @@ export default function DashboardPage() {
           sub={loanPortfolio.loanCount > 0 ? `${loanPortfolio.loanCount} loan(s)` : undefined}
         />
         <Stat label="Debt service / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
+        {settings.monthlyOwnerDraw ? (
+          <Stat
+            label="True profit (after paying yourself)"
+            value={formatMoney((latest?.economicProfit ?? 0), currency)}
+            tone={(latest?.economicProfit ?? 0) >= 0 ? "good" : "bad"}
+            sub={`after ${formatMoney(settings.monthlyOwnerDraw, currency)}/mo imputed owner pay`}
+          />
+        ) : (
+          <Stat
+            label="True profit (after paying yourself)"
+            value="—"
+            sub="set your monthly pay in Settings"
+          />
+        )}
       </div>
 
       <Card className="mb-6">
@@ -160,6 +235,40 @@ export default function DashboardPage() {
                 <Line type="monotone" dataKey="Actual" stroke="#E0A467" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
                 <Line type="monotone" dataKey="Trend" stroke="#5B87C9" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
                 <Line type="monotone" dataKey="3-mo avg" stroke="#4C9A6A" strokeWidth={1.5} dot={false} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
+
+      <Card className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-sm font-medium">Margin trend</div>
+            <div className="text-xs text-muted mt-0.5">
+              Gross margin vs. net margin, month by month — revenue can grow while margins quietly erode, and this
+              is what would show it.
+            </div>
+          </div>
+        </div>
+        {monthlyPnL.length < 2 ? (
+          <div className="text-xs text-muted py-8 text-center">
+            Log sales across at least two months to see a margin trend.
+          </div>
+        ) : (
+          <div className="h-64 sm:h-80 -ml-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={marginChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#262C3A" />
+                <XAxis dataKey="month" stroke="#8A92A6" fontSize={11} tickLine={false} />
+                <YAxis stroke="#8A92A6" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} width={48} />
+                <Tooltip
+                  contentStyle={{ background: "#171C28", border: "1px solid #262C3A", borderRadius: 6, fontSize: 12 }}
+                  formatter={(v: number) => `${v.toFixed(1)}%`}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="Gross margin" stroke="#E0A467" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <Line type="monotone" dataKey="Net margin" stroke="#5B87C9" strokeWidth={2} dot={{ r: 3 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, todayIso } from "@/lib/format";
 import { computeLoanSummary } from "@/lib/calculations";
 import type { Loan } from "@/lib/types";
@@ -21,6 +22,7 @@ import {
 
 export default function LoansPage() {
   const { loans, loanPortfolio, addLoan, updateLoan, deleteLoan, settings } = useData();
+  const toast = useToast();
   const currency = settings.currency;
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Loan | null>(null);
@@ -119,15 +121,26 @@ export default function LoansPage() {
           initial={editing}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
-            if (editing) await updateLoan(editing.id, values);
-            else await addLoan(values);
-            setModalOpen(false);
+            try {
+              if (editing) await updateLoan(editing.id, values);
+              else await addLoan(values);
+              toast.success(editing ? "Loan updated" : "Loan added", values.name);
+              setModalOpen(false);
+            } catch (err) {
+              toast.error("Couldn't save the loan", toastableErrorMessage(err));
+            }
           }}
           onDelete={
             editing
               ? async () => {
-                  await deleteLoan(editing.id);
-                  setModalOpen(false);
+                  if (!confirm(`Delete "${editing.name}"? This can't be undone.`)) return;
+                  try {
+                    await deleteLoan(editing.id);
+                    toast.success("Loan deleted", editing.name);
+                    setModalOpen(false);
+                  } catch (err) {
+                    toast.error("Couldn't delete the loan", toastableErrorMessage(err));
+                  }
                 }
               : undefined
           }

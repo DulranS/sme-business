@@ -259,12 +259,20 @@ export interface MonthlyPnL {
   cogs: number;
   variableCosts: number;
   grossProfit: number;
+  grossMarginPct: number | null; // grossProfit / totalRevenue, null when no revenue
   operatingExpenses: number; // rent, payroll, subscriptions, etc — excludes loan interest
   interestExpense: number; // loan interest for the month
   netProfitPreTax: number; // grossProfit - operatingExpenses - interestExpense
   tax: number;
   netProfitAfterTax: number;
+  netMarginPct: number | null; // netProfitAfterTax / totalRevenue, null when no revenue
   unitsSold: number;
+  // Decision-support only — not a real transaction, never flows into the
+  // Income Statement/Balance Sheet/Cash Flow Statement. Nets the owner's
+  // imputed monthly labor cost (Settings.monthlyOwnerDraw) out of accounting
+  // net profit, so "the business is profitable" isn't quietly built on
+  // nobody paying themselves for the hours worked.
+  economicProfit: number;
   // Cash-basis fields, for the Cash Flow Statement / Balance Sheet. These
   // differ from the accrual fields above in one key way: inventory purchases
   // hit cash when bought, not when the stock is later sold (COGS timing).
@@ -309,7 +317,8 @@ export function computeMonthlyPnL(
   purchases: Purchase[],
   loans: Loan[],
   capitalEntries: CapitalEntry[],
-  taxRatePct: number
+  taxRatePct: number,
+  monthlyOwnerDraw = 0
 ): MonthlyPnL[] {
   const economicsBySaleId = new Map(saleEconomics.map((e) => [e.saleId, e]));
   const loanMonthlyTotals = computeLoanMonthlyTotals(loans);
@@ -355,6 +364,7 @@ export function computeMonthlyPnL(
     const netProfitPreTax = grossProfit - expenseTotal - interestExpense;
     const tax = Math.max(netProfitPreTax, 0) * (taxRatePct / 100);
     const netProfitAfterTax = netProfitPreTax - tax;
+    const economicProfit = netProfitAfterTax - monthlyOwnerDraw;
 
     const purchaseCash = purchases
       .filter((p) => monthKey(p.date) === month)
@@ -380,12 +390,15 @@ export function computeMonthlyPnL(
       cogs,
       variableCosts,
       grossProfit,
+      grossMarginPct: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : null,
       operatingExpenses: expenseTotal,
       interestExpense,
       netProfitPreTax,
       tax,
       netProfitAfterTax,
+      netMarginPct: totalRevenue > 0 ? (netProfitAfterTax / totalRevenue) * 100 : null,
       unitsSold,
+      economicProfit,
       purchaseCash,
       loanProceeds,
       principalRepayment,
@@ -925,6 +938,15 @@ export interface ProductProfitability {
   // differentiation or low buyer price-sensitivity. Useful as a prompt to
   // ask "why", not a verdict.
   marginBand: "thin" | "moderate" | "healthy" | "strong" | "n/a";
+  // Fully-loaded view: COGS plus the labor that went into delivering each
+  // unit (Product.laborCostPerUnit), for offerings — usually services —
+  // where the person doing the work is an employee whose pay already sits
+  // in operating expenses rather than in a logged Purchase. Without this,
+  // a service's COGS-only margin can look much better than it really is.
+  laborCost: number;
+  fullyLoadedCost: number; // avgUnitCost + laborCostPerUnit
+  fullyLoadedGrossProfit: number; // grossProfit - laborCost
+  fullyLoadedMarginPct: number | null;
 }
 
 export function computeProductProfitability(
@@ -964,6 +986,10 @@ export function computeProductProfitability(
     }
 
     const ledger = ledgers.get(p.id);
+    const laborCost = (p.laborCostPerUnit ?? 0) * unitsSold;
+    const fullyLoadedCost = (unitsSold > 0 ? cogs / unitsSold : ledger?.wac ?? 0) + (p.laborCostPerUnit ?? 0);
+    const fullyLoadedGrossProfit = grossProfit - laborCost;
+    const fullyLoadedMarginPct = revenue > 0 ? (fullyLoadedGrossProfit / revenue) * 100 : null;
 
     return {
       productId: p.id,
@@ -984,6 +1010,10 @@ export function computeProductProfitability(
       inventoryValue: ledger?.inventoryValue ?? 0,
       wac: ledger?.wac ?? 0,
       marginBand,
+      laborCost,
+      fullyLoadedCost,
+      fullyLoadedGrossProfit,
+      fullyLoadedMarginPct,
     };
   });
 }
