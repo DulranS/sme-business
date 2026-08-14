@@ -29,14 +29,6 @@ const MARGIN_BAND_TONE = {
   "n/a": "default",
 } as const;
 
-const MARGIN_BAND_LABEL = {
-  thin: "thin (price-competitive)",
-  moderate: "moderate",
-  healthy: "healthy",
-  strong: "strong (differentiated)",
-  "n/a": "no sales yet",
-} as const;
-
 type PeriodFilter = "all" | "30" | "90" | "month";
 
 export default function ProfitabilityPage() {
@@ -80,16 +72,15 @@ export default function ProfitabilityPage() {
 
   return (
     <>
-      <PageHeader title="Profitability" />
+      <PageHeader title="My Profit" />
 
       <Card className="mb-6">
         <div className="flex items-center justify-between mb-1">
           <div>
-            <div className="text-sm font-medium">Item-level profitability</div>
+            <div className="text-sm font-medium">Profit by item</div>
             <div className="text-xs text-muted mt-0.5">
-              Per product/service: units sold, selling price vs. wholesale cost, gross profit, and what&apos;s still
-              tied up as inventory. Cost of goods sold moves with each unit sold (weighted-average cost), not with
-              what you happen to be holding.
+              For each thing you sell: how many you sold, what you charged vs. what it cost you, and how much profit
+              that made. What&apos;s left in stock is valued at what you actually paid for it.
             </div>
           </div>
           <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="w-36 shrink-0">
@@ -101,7 +92,7 @@ export default function ProfitabilityPage() {
         </div>
 
         {rankedProfitability.length === 0 ? (
-          <div className="text-xs text-muted py-6 text-center">No products or services set up yet.</div>
+          <div className="text-xs text-muted py-6 text-center">Nothing set up yet — add something you sell first.</div>
         ) : (
           <div className="overflow-x-auto -mx-4 sm:-mx-5 mt-4">
             <div className="px-4 sm:px-5 min-w-[1000px]">
@@ -109,19 +100,19 @@ export default function ProfitabilityPage() {
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                     <th className="py-2 pr-3 font-medium">Item</th>
-                    <th className="py-2 px-3 font-medium text-right">Qty sold</th>
-                    <th className="py-2 px-3 font-medium text-right">Avg. price</th>
-                    <th className="py-2 px-3 font-medium text-right">Avg. unit cost</th>
-                    <th className="py-2 px-3 font-medium text-right">Revenue</th>
-                    <th className="py-2 px-3 font-medium text-right">COGS</th>
-                    <th className="py-2 px-3 font-medium text-right">Gross profit</th>
+                    <th className="py-2 px-3 font-medium text-right">How many sold</th>
+                    <th className="py-2 px-3 font-medium text-right">You charged</th>
+                    <th className="py-2 px-3 font-medium text-right">It cost you</th>
+                    <th className="py-2 px-3 font-medium text-right">Money in</th>
+                    <th className="py-2 px-3 font-medium text-right">Total cost</th>
+                    <th className="py-2 px-3 font-medium text-right">Profit</th>
                     <th className="py-2 px-3 font-medium text-right">Margin</th>
                     <th className="py-2 px-3 font-medium text-right">
                       Fully-loaded
                       <div className="text-[9px] normal-case font-normal text-muted/70">after labor</div>
                     </th>
-                    <th className="py-2 px-3 font-medium text-right">On hand</th>
-                    <th className="py-2 pl-3 font-medium text-right">Inventory value</th>
+                    <th className="py-2 px-3 font-medium text-right">Left in stock</th>
+                    <th className="py-2 pl-3 font-medium text-right">Stock is worth</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -169,44 +160,44 @@ export default function ProfitabilityPage() {
           </div>
         )}
         <div className="text-[11px] text-muted mt-3">
-          &quot;Fully-loaded&quot; nets out the labor cost you&apos;ve set on an offering (Products page) — for a
-          service an employee delivers, their pay already sits in payroll rather than COGS, so this is the number
-          that shows the real margin instead of an inflated one. Blank means no labor cost is set for that item.
+          &quot;Fully-loaded&quot; also counts an employee&apos;s time (set on the Items page) — useful for a service,
+          where their pay already sits elsewhere and can make the profit look better than it really is. A dash
+          means no time cost is set for that item.
         </div>
         <div className="text-[11px] text-muted mt-3">
-          Margin band is a rough pricing-power signal, not a verdict — thin margins often mean a commoditized,
-          price-competitive item (easy substitutes, buyers shop around); strong margins often mean real
-          differentiation or low price-sensitivity. Worth asking why for any item at either extreme.
+          The color is just a quick read, not a verdict — red usually means people can easily buy it cheaper
+          elsewhere, green usually means it&apos;s harder to find elsewhere or people don&apos;t mind the price.
+          Worth asking why for anything at either end.
         </div>
       </Card>
 
       {!hasData ? (
         <EmptyState
           title="Not enough data yet"
-          body="Log some sales and expenses first — break-even, overhead coverage, and ROI all build off your monthly P&L."
+          body="Log some sales and bills first — the numbers below fill in automatically once you have."
         />
       ) : (
         <>
           <Card className="mb-6">
-            <div className="text-sm font-medium mb-1">Break-even &amp; overhead coverage</div>
+            <div className="text-sm font-medium mb-1">Are You Covering Your Costs?</div>
             <div className="text-xs text-muted mb-4">
-              Blended contribution margin across your last 3 months of sales, applied to this month&apos;s fixed
-              costs (rent, salaries, subscriptions, marketing, etc).
+              Based on your last 3 months of sales and this month&apos;s regular costs (rent, salaries, subscriptions,
+              and so on).
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <Stat
-                label="Contribution margin"
+                label="Profit per sale"
                 value={`${(breakEven.contributionMarginRatio * 100).toFixed(1)}%`}
-                sub="of revenue, after COGS + variable costs"
+                sub="of every dollar, after what it cost you"
               />
-              <Stat label="Fixed costs / mo" value={formatMoney(breakEven.monthlyFixedCosts, currency)} />
+              <Stat label="Your costs each month" value={formatMoney(breakEven.monthlyFixedCosts, currency)} />
               <Stat
-                label="Break-even revenue"
+                label="You need to sell this much"
                 value={Number.isFinite(breakEven.breakEvenRevenue) ? formatMoney(breakEven.breakEvenRevenue, currency) : "—"}
-                sub="needed per month to cover fixed costs"
+                sub="each month, just to cover your costs"
               />
               <Stat
-                label="Margin of safety"
+                label="Cushion above that"
                 value={breakEven.marginOfSafetyPct !== null ? `${breakEven.marginOfSafetyPct.toFixed(1)}%` : "—"}
                 tone={
                   breakEven.marginOfSafetyPct !== null
@@ -215,19 +206,19 @@ export default function ProfitabilityPage() {
                       : "bad"
                     : "default"
                 }
-                sub="how far actual revenue is above/below break-even"
+                sub="how far above (or below) that you actually are"
               />
             </div>
             {breakEven.overheadCoverageRatio !== null && (
               <div className="mt-4 pt-4 border-t border-line flex items-center gap-3">
-                <span className="text-xs text-muted">Overhead coverage ratio (gross profit ÷ operating expenses):</span>
+                <span className="text-xs text-muted">For every $1 of costs, your profit covers:</span>
                 <Badge tone={breakEven.overheadCoverageRatio >= 1 ? "good" : "bad"}>
                   {breakEven.overheadCoverageRatio.toFixed(2)}×
                 </Badge>
                 <span className="text-xs text-muted">
                   {breakEven.overheadCoverageRatio >= 1
-                    ? "gross profit is covering overhead"
-                    : "gross profit is not yet covering overhead"}
+                    ? "you're covering your costs"
+                    : "you're not quite covering your costs yet"}
                 </span>
               </div>
             )}
@@ -236,19 +227,19 @@ export default function ProfitabilityPage() {
           <Card>
             <div className="flex items-center justify-between mb-1">
               <div>
-                <div className="text-sm font-medium">Capital &amp; ROI</div>
+                <div className="text-sm font-medium">Money You Put In</div>
                 <div className="text-xs text-muted mt-0.5">
-                  Initial investment, reinvestment, and withdrawals — tracked separately from operating P&amp;L.
+                  Money you (or an investor) put into the business, took out, and how it&apos;s doing compared to that.
                 </div>
               </div>
-              <Button onClick={() => setModalOpen(true)}>+ Add entry</Button>
+              <Button onClick={() => setModalOpen(true)}>+ Add money in/out</Button>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-4">
-              <Stat label="Total invested" value={formatMoney(capitalSummary.totalInvested, currency)} />
-              <Stat label="Total withdrawn" value={formatMoney(capitalSummary.totalWithdrawn, currency)} />
+              <Stat label="Put in" value={formatMoney(capitalSummary.totalInvested, currency)} />
+              <Stat label="Taken out" value={formatMoney(capitalSummary.totalWithdrawn, currency)} />
               <Stat
-                label="Cumulative net profit"
+                label="Profit made so far"
                 value={formatMoney(capitalSummary.cumulativeNetProfit, currency)}
                 tone={capitalSummary.cumulativeNetProfit >= 0 ? "good" : "bad"}
               />
@@ -260,7 +251,7 @@ export default function ProfitabilityPage() {
                     : formatMoney(capitalSummary.netPosition, currency)
                 }
                 tone={capitalSummary.paybackReached ? "good" : "amber"}
-                sub={capitalSummary.roiPct !== null ? "return on invested capital" : undefined}
+                sub={capitalSummary.roiPct !== null ? "how much you've made back, as a %" : undefined}
               />
             </div>
 
@@ -288,7 +279,7 @@ export default function ProfitabilityPage() {
                         <td className="py-2.5 pl-3 text-right">
                           <button
                             onClick={() => {
-                              if (!confirm("Delete this capital entry? This can't be undone.")) return;
+                              if (!confirm("Delete this entry? This can't be undone.")) return;
                               deleteCapitalEntry(c.id)
                                 .then(() => toast.success("Deleted"))
                                 .catch(() => toast.error("Couldn't delete"));

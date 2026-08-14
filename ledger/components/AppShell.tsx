@@ -7,16 +7,16 @@ import clsx from "clsx";
 import { useAuth } from "@/contexts/AuthContext";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: GridIcon },
-  { href: "/products", label: "Products", icon: BoxIcon },
+  { href: "/dashboard", label: "Home", icon: GridIcon },
+  { href: "/products", label: "Items", icon: BoxIcon },
   { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon },
-  { href: "/purchases", label: "Purchases", icon: DownIcon },
-  { href: "/sales", label: "Sales", icon: UpIcon },
+  { href: "/purchases", label: "Buying", icon: DownIcon },
+  { href: "/sales", label: "Selling", icon: UpIcon },
   { href: "/employees", label: "Employees", icon: PeopleIcon },
-  { href: "/expenses", label: "Expenses", icon: RepeatIcon },
+  { href: "/expenses", label: "Bills", icon: RepeatIcon },
   { href: "/loans", label: "Loans", icon: LoanIcon },
-  { href: "/profitability", label: "Profitability", icon: TrendIcon },
-  { href: "/statements", label: "Statements", icon: StatementIcon },
+  { href: "/profitability", label: "Profit", icon: TrendIcon },
+  { href: "/statements", label: "Reports", icon: StatementIcon },
   { href: "/import-export", label: "CSV", icon: FileIcon },
   { href: "/settings", label: "Settings", icon: GearIcon },
 ];

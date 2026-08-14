@@ -68,12 +68,12 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
         try {
           await addSale({ productId, qty: qtyNum, unitPrice: priceNum, date, customer: customer || undefined, notes: notes || undefined });
           toast.success(
-            "Sale logged",
+            "Sold!",
             `${product.name}: ${formatMoney(revenue, currency)} revenue, ${formatMoney(profit, currency)} profit${marginPct !== null ? ` (${marginPct.toFixed(0)}%)` : ""}`
           );
           onDone();
         } catch (err) {
-          toast.error("Couldn't save the sale", toastableErrorMessage(err));
+          toast.error("Couldn't save that sale", toastableErrorMessage(err));
         } finally {
           setBusy(false);
         }
@@ -82,7 +82,7 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
     >
       {!fixedProduct && (
         <Field>
-          <Label>What sold?</Label>
+          <Label>What did you sell?</Label>
           <Select required value={productId} onChange={(e) => handleProductChange(e.target.value)}>
             {sellable.map((p) => (
               <option key={p.id} value={p.id}>
@@ -94,11 +94,11 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
       )}
       <div className="grid grid-cols-2 gap-3">
         <Field>
-          <Label>{isProduct ? "Quantity sold" : "Hours / jobs sold"}</Label>
+          <Label>{isProduct ? "How many did you sell?" : "How many hours / jobs?"}</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
         </Field>
         <Field>
-          <Label>{isProduct ? "Selling price / unit" : "Rate per hour / job"}</Label>
+          <Label>{isProduct ? "Price for each one" : "Price for each hour / job"}</Label>
           <Input required type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
         </Field>
       </div>
@@ -119,17 +119,17 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
 
       {qtyNum > 0 && (
         <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 space-y-1.5">
-          <SummaryRow label="Revenue" value={revenue} currency={currency} />
-          {isProduct && <SummaryRow label={`COGS (at ${formatMoney(wac, currency)}/unit)`} value={cogs} currency={currency} muted />}
+          <SummaryRow label="Money coming in" value={revenue} currency={currency} />
+          {isProduct && <SummaryRow label={`What it cost you (${formatMoney(wac, currency)} each)`} value={cogs} currency={currency} muted />}
           <div className="flex items-center justify-between text-sm pt-1.5 border-t border-line">
-            <span className="font-medium">Gross profit</span>
+            <span className="font-medium">Your profit</span>
             <span className={`num font-semibold ${profit >= 0 ? "text-good" : "text-bad"}`}>
               {formatMoney(profit, currency)}
               {marginPct !== null && <span className="text-xs font-normal text-muted ml-1.5">({marginPct.toFixed(0)}%)</span>}
             </span>
           </div>
           {oversell && (
-            <div className="text-xs text-bad pt-1">Only {formatNumber(qtyOnHand)} on hand — this will oversell.</div>
+            <div className="text-xs text-bad pt-1">You only have {formatNumber(qtyOnHand)} left — this is more than you have.</div>
           )}
         </div>
       )}
@@ -139,7 +139,7 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
           Cancel
         </Button>
         <Button type="submit" disabled={busy || !productId}>
-          {busy ? "Saving…" : "Log sale"}
+          {busy ? "Saving…" : "Sell"}
         </Button>
       </div>
     </form>
@@ -169,7 +169,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
     if (p?.defaultCostPrice !== undefined) setUnitCost(p.defaultCostPrice.toString());
   }
 
-  if (!product) return <div className="text-sm text-muted">Add a product first — services don&apos;t carry stock.</div>;
+  if (!product) return <div className="text-sm text-muted">Add something to sell first — services don&apos;t have stock.</div>;
 
   return (
     <form
@@ -185,10 +185,10 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
             supplier: supplier || undefined,
             notes: notes || undefined,
           });
-          toast.success("Stock added", `${product.name}: +${qty} units at ${formatMoney(Number(unitCost), currency)} each`);
+          toast.success("Added to your stock", `${product.name}: +${qty} at ${formatMoney(Number(unitCost), currency)} each`);
           onDone();
         } catch (err) {
-          toast.error("Couldn't add stock", toastableErrorMessage(err));
+          toast.error("Couldn't add that stock", toastableErrorMessage(err));
         } finally {
           setBusy(false);
         }
@@ -197,7 +197,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
     >
       {!fixedProduct && (
         <Field>
-          <Label>Which product?</Label>
+          <Label>What are you buying?</Label>
           <Select required value={productId} onChange={(e) => handleProductChange(e.target.value)}>
             {restockable.map((p) => (
               <option key={p.id} value={p.id}>
@@ -209,11 +209,11 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
       )}
       <div className="grid grid-cols-2 gap-3">
         <Field>
-          <Label>Quantity received</Label>
+          <Label>How many did you buy?</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
         </Field>
         <Field>
-          <Label>Buying price / unit</Label>
+          <Label>Price you paid for each one</Label>
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
@@ -233,7 +233,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
       </Field>
 
       <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 flex items-center justify-between">
-        <span className="text-xs text-muted">Total cost this batch</span>
+        <span className="text-xs text-muted">Total you paid</span>
         <span className="num text-sm font-medium">{formatMoney(total, currency)}</span>
       </div>
 
@@ -242,7 +242,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           Cancel
         </Button>
         <Button type="submit" disabled={busy || !productId}>
-          {busy ? "Saving…" : "Add stock"}
+          {busy ? "Saving…" : "Buy"}
         </Button>
       </div>
     </form>

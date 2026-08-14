@@ -83,7 +83,7 @@ export default function PurchaseOrdersPage() {
       <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Open orders" value={formatNumber(openOrders.openOrderCount)} />
         <Stat label="Units on order" value={formatNumber(openOrders.openOrderUnits)} />
-        <Stat label="Committed spend" value={formatMoney(openOrders.openOrderValue, currency)} tone="amber" />
+        <Stat label="Already committed to spend" value={formatMoney(openOrders.openOrderValue, currency)} tone="amber" />
       </div>
 
       {!loading && stockProducts.length === 0 && (

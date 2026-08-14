@@ -115,76 +115,77 @@ export default function DashboardPage() {
 
       {oversold.length > 0 && (
         <Card className="mb-5 border-bad/30">
-          <div className="text-sm font-medium text-bad mb-1">Oversold inventory</div>
+          <div className="text-sm font-medium text-bad mb-1">You&apos;ve sold more than you have</div>
           <div className="text-xs text-muted">
-            {oversold.map((o) => `${o.name} (${o.qty} on hand)`).join(", ")} — recorded sales exceed
-            recorded purchases. Check your entries in Purchases/Sales.
+            {oversold.map((o) => `${o.name} (${o.qty} in stock)`).join(", ")} — you&apos;ve recorded selling more
+            than you&apos;ve recorded buying. Double-check your entries in Buying/Selling.
           </div>
         </Card>
       )}
 
       {reorderAlerts.length > 0 && (
         <Card className="mb-5 border-amber-dim/40">
-          <div className="text-sm font-medium text-amber-soft mb-1">Time to reorder</div>
+          <div className="text-sm font-medium text-amber-soft mb-1">Running low — buy more soon</div>
           <div className="text-xs text-muted mb-3">
-            These are at or below their reorder point — factoring in supplier lead time, you risk running out before
-            new stock arrives.
+            You&apos;re getting close to running out of these — order more now so you don&apos;t sell out before
+            the new stock arrives.
           </div>
           <div className="space-y-2">
             {reorderAlerts.map((r) => (
               <div key={r.id} className="flex items-center justify-between text-xs">
                 <span className="text-fg font-medium">{r.name}</span>
                 <span className="text-muted">
-                  {formatNumber(r.qtyOnHand)} on hand
-                  {r.onOrder > 0 ? ` (+${formatNumber(r.onOrder)} on order)` : ""} · reorder ~
-                  {formatNumber(Math.round(r.eoq))} units
+                  {formatNumber(r.qtyOnHand)} left
+                  {r.onOrder > 0 ? ` (+${formatNumber(r.onOrder)} on the way)` : ""} · buy about
+                  {" "}
+                  {formatNumber(Math.round(r.eoq))}
                 </span>
               </div>
             ))}
           </div>
           <Link href="/purchase-orders" className="text-xs text-amber-soft mt-3 inline-block">
-            Create a purchase order →
+            Order more stock →
           </Link>
         </Card>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat
-          label="This month revenue"
+          label="Money in this month"
           value={formatMoney(latest?.totalRevenue ?? 0, currency)}
           sub={latest ? `${formatNumber(latest.unitsSold)} units sold` : undefined}
         />
         <Stat
-          label="Gross profit"
+          label="Profit this month"
           value={formatMoney(latest?.grossProfit ?? 0, currency)}
           tone={latest && latest.grossProfit >= 0 ? "good" : "bad"}
         />
         <Stat
-          label="Net profit (after tax)"
+          label="What's really left (after tax)"
           value={formatMoney(latest?.netProfitAfterTax ?? 0, currency)}
           tone={latest && latest.netProfitAfterTax >= 0 ? "good" : "bad"}
           sub={`tax rate ${settings.taxRatePct}%`}
         />
         <Stat
-          label="Recurring net (MRR)"
+          label="Regular money in/out"
           value={formatMoney(mrr.mrrRevenue - mrr.mrrExpense, currency)}
           sub={`${formatMoney(mrr.mrrRevenue, currency)} in / ${formatMoney(mrr.mrrExpense, currency)} out`}
         />
-        <Stat label="Inventory value" value={formatMoney(inventoryValue, currency)} tone="amber" />
-        <Stat label="Units on hand" value={formatNumber(inventoryUnits)} />
+        <Stat label="Stock is worth" value={formatMoney(inventoryValue, currency)} tone="amber" />
+        <Stat label="Items in stock" value={formatNumber(inventoryUnits)} />
         <Stat
-          label="On order (committed)"
+          label="On the way (ordered)"
           value={formatMoney(openOrders.openOrderValue, currency)}
           sub={openOrders.openOrderCount > 0 ? `${openOrders.openOrderCount} open order(s)` : "nothing pending"}
         />
-        <Stat label="Payroll / month" value={formatMoney(monthlyPayroll, currency)} tone={monthlyPayroll > 0 ? "bad" : "default"} />
+        <Stat label="Staff pay / month" value={formatMoney(monthlyPayroll, currency)} tone={monthlyPayroll > 0 ? "bad" : "default"} />
         <Stat
-          label="Total debt"
+          label="You owe"
           value={formatMoney(loanPortfolio.totalOutstanding, currency)}
           tone={loanPortfolio.totalOutstanding > 0 ? "bad" : "default"}
           sub={loanPortfolio.loanCount > 0 ? `${loanPortfolio.loanCount} loan(s)` : undefined}
         />
-        <Stat label="Debt service / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
+        <Stat label="Loan payments / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
         {settings.monthlyOwnerDraw ? (
           <Stat
             label="True profit (after paying yourself)"
@@ -276,7 +277,7 @@ export default function DashboardPage() {
       </Card>
 
       <Card>
-        <div className="text-sm font-medium mb-4">Monthly P&amp;L</div>
+        <div className="text-sm font-medium mb-4">Money by month</div>
         {monthlyPnL.length === 0 ? (
           <div className="text-xs text-muted py-6 text-center">No sales or expenses recorded yet.</div>
         ) : (
@@ -284,11 +285,11 @@ export default function DashboardPage() {
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Month</th>
-                <th className="py-2 px-3 font-medium text-right">Revenue</th>
-                <th className="py-2 px-3 font-medium text-right">COGS</th>
-                <th className="py-2 px-3 font-medium text-right">Gross</th>
-                <th className="py-2 px-3 font-medium text-right">OpEx</th>
-                <th className="py-2 pl-3 font-medium text-right">Net (after tax)</th>
+                <th className="py-2 px-3 font-medium text-right">Money in</th>
+                <th className="py-2 px-3 font-medium text-right">Cost of what sold</th>
+                <th className="py-2 px-3 font-medium text-right">Profit</th>
+                <th className="py-2 px-3 font-medium text-right">Bills &amp; running costs</th>
+                <th className="py-2 pl-3 font-medium text-right">Left over (after tax)</th>
               </tr>
             </thead>
             <tbody>

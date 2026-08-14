@@ -22,31 +22,31 @@ export default function QuickActionBar() {
           className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2"
         >
           <span className="text-xl">💰</span>
-          <span className="text-xs font-medium">Log a sale</span>
+          <span className="text-xs font-medium">I sold something</span>
         </button>
         <button
           onClick={() => setActive("stock")}
           className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2"
         >
           <span className="text-xl">📦</span>
-          <span className="text-xs font-medium">Add stock</span>
+          <span className="text-xs font-medium">I bought stock</span>
         </button>
         <button
           onClick={() => setActive("expense")}
           className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2"
         >
           <span className="text-xl">🧾</span>
-          <span className="text-xs font-medium">Add expense</span>
+          <span className="text-xs font-medium">I paid a bill</span>
         </button>
       </div>
 
-      <Modal open={active === "sale"} onClose={() => setActive(null)} title="Log a sale">
+      <Modal open={active === "sale"} onClose={() => setActive(null)} title="I sold something">
         <QuickSaleForm onDone={() => setActive(null)} />
       </Modal>
-      <Modal open={active === "stock"} onClose={() => setActive(null)} title="Add stock">
+      <Modal open={active === "stock"} onClose={() => setActive(null)} title="I bought stock">
         <QuickStockForm onDone={() => setActive(null)} />
       </Modal>
-      <Modal open={active === "expense"} onClose={() => setActive(null)} title="Add expense">
+      <Modal open={active === "expense"} onClose={() => setActive(null)} title="I paid a bill">
         <QuickExpenseForm onDone={() => setActive(null)} />
       </Modal>
     </>

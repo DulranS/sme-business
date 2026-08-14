@@ -16,7 +16,7 @@ export default function SalesPage() {
   const econById = useMemo(() => new Map(saleEconomics.map((e) => [e.saleId, e])), [saleEconomics]);
 
   function handleDelete(saleId: string) {
-    if (!confirm("Delete this sale? This can't be undone and will restore the units to inventory.")) return;
+    if (!confirm("Delete this sale? This can't be undone — it'll put the stock back.")) return;
     deleteSale(saleId)
       .then(() => toast.success("Sale deleted"))
       .catch(() => toast.error("Couldn't delete the sale"));
@@ -25,20 +25,20 @@ export default function SalesPage() {
   return (
     <>
       <PageHeader
-        title="Sales"
+        title="Things You Sold"
         action={
           <Button onClick={() => setModalOpen(true)} disabled={products.length === 0}>
-            + Log sale
+            + I sold something
           </Button>
         }
       />
 
       {!loading && products.length === 0 && (
-        <EmptyState title="Add an offering first" body="You need at least one product or service before logging a sale." />
+        <EmptyState title="Add something to sell first" body="Add a product or service before you record a sale." />
       )}
 
       {!loading && products.length > 0 && sales.length === 0 && (
-        <EmptyState title="No sales logged" body="Log a sale to see gross profit and contribution margin calculated automatically." />
+        <EmptyState title="Nothing sold yet" body="Record a sale and we'll work out your profit for you, automatically." />
       )}
 
       {sales.length > 0 && (
@@ -47,12 +47,12 @@ export default function SalesPage() {
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Date</th>
-                <th className="py-2 px-3 font-medium">Offering</th>
-                <th className="py-2 px-3 font-medium text-right">Qty</th>
-                <th className="py-2 px-3 font-medium text-right">Price</th>
-                <th className="py-2 px-3 font-medium text-right">Revenue</th>
-                <th className="py-2 px-3 font-medium text-right">Gross profit</th>
-                <th className="py-2 px-3 font-medium text-right">Contribution</th>
+                <th className="py-2 px-3 font-medium">Item</th>
+                <th className="py-2 px-3 font-medium text-right">How many</th>
+                <th className="py-2 px-3 font-medium text-right">Price each</th>
+                <th className="py-2 px-3 font-medium text-right">Money in</th>
+                <th className="py-2 px-3 font-medium text-right">Profit</th>
+                <th className="py-2 px-3 font-medium text-right">After extra costs</th>
                 <th className="py-2 pl-3 font-medium text-right">·</th>
               </tr>
             </thead>
@@ -100,7 +100,7 @@ export default function SalesPage() {
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Log sale">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="I sold something">
         <QuickSaleForm onDone={() => setModalOpen(false)} />
       </Modal>
     </>

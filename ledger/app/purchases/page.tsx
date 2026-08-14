@@ -27,7 +27,7 @@ export default function PurchasesPage() {
   const currency = settings.currency;
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this purchase/cost entry? This can't be undone and will reduce recorded stock accordingly.")) return;
+    if (!confirm("Delete this? This can't be undone and will take it back out of your stock.")) return;
     deletePurchase(id)
       .then(() => toast.success("Entry deleted"))
       .catch(() => toast.error("Couldn't delete the entry"));
@@ -36,10 +36,10 @@ export default function PurchasesPage() {
   return (
     <>
       <PageHeader
-        title="Purchases &amp; cost entries"
+        title="Things You Bought"
         action={
           <Button onClick={() => setModalOpen(true)} disabled={products.length === 0}>
-            + Log entry
+            + I bought something
           </Button>
         }
       />
@@ -47,9 +47,9 @@ export default function PurchasesPage() {
       <Card className="mb-5">
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-muted">
-            This is the log of stock/cost already in hand. Placing a wholesale order with a supplier and tracking
-            it until delivery happens on the <span className="text-fg font-medium">Orders</span> page — receiving
-            an order creates the matching entry here automatically.
+            This is what you&apos;ve already paid for and have in hand. Want to place an order with a supplier and track
+            it until it arrives? Use the <span className="text-fg font-medium">Orders</span> page instead — once it
+            arrives, it shows up here automatically.
           </div>
           <Link href="/purchase-orders" className="text-xs text-amber-soft shrink-0">
             Go to Orders →
@@ -58,13 +58,13 @@ export default function PurchasesPage() {
       </Card>
 
       {!loading && products.length === 0 && (
-        <EmptyState title="Add an offering first" body="You need at least one product or service before logging a cost against it." />
+        <EmptyState title="Add something first" body="Add a product or service before you log what it cost you." />
       )}
 
       {!loading && products.length > 0 && purchases.length === 0 && (
         <EmptyState
-          title="Nothing logged yet"
-          body="For products: log a wholesale buy (qty + unit cost), or place a wholesale order on the Orders page. For services: log what it costs you to deliver — labor, contractor fees, materials per job."
+          title="Nothing bought yet"
+          body="Buying stock? Log how many and what you paid each. Doing a service? Log what it costs you to deliver it — your time, a contractor, materials."
         />
       )}
 
@@ -74,11 +74,11 @@ export default function PurchasesPage() {
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Date</th>
-                <th className="py-2 px-3 font-medium">Offering</th>
-                <th className="py-2 px-3 font-medium text-right">Qty</th>
-                <th className="py-2 px-3 font-medium text-right">Unit cost</th>
-                <th className="py-2 px-3 font-medium text-right">Total</th>
-                <th className="py-2 px-3 font-medium">Supplier / resource</th>
+                <th className="py-2 px-3 font-medium">Item</th>
+                <th className="py-2 px-3 font-medium text-right">How many</th>
+                <th className="py-2 px-3 font-medium text-right">Price each</th>
+                <th className="py-2 px-3 font-medium text-right">Total paid</th>
+                <th className="py-2 px-3 font-medium">From</th>
                 <th className="py-2 pl-3 font-medium text-right">·</th>
               </tr>
             </thead>
@@ -118,17 +118,17 @@ export default function PurchasesPage() {
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Log purchase / cost entry">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="I bought something">
         <PurchaseForm
           products={products}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
               await addPurchase(values);
-              toast.success("Purchase logged", `${values.qty} × ${formatMoney(values.unitCost, currency)}`);
+              toast.success("Logged", `${values.qty} × ${formatMoney(values.unitCost, currency)} each`);
               setModalOpen(false);
             } catch (err) {
-              toast.error("Couldn't save the entry", toastableErrorMessage(err));
+              toast.error("Couldn't save that", toastableErrorMessage(err));
             }
           }}
         />
@@ -181,7 +181,7 @@ function PurchaseForm({
       className="space-y-4"
     >
       <Field>
-        <Label>Offering</Label>
+        <Label>What did you buy?</Label>
         <Select required value={productId} onChange={(e) => handleProductChange(e.target.value)}>
           {products.map((p) => (
             <option key={p.id} value={p.id}>
@@ -192,11 +192,11 @@ function PurchaseForm({
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field>
-          <Label>{isService ? "Hours / jobs delivered" : "Quantity bought"}</Label>
+          <Label>{isService ? "How many hours / jobs?" : "How many did you buy?"}</Label>
           <Input required type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
         </Field>
         <Field>
-          <Label>{isService ? "Cost per hour / job" : "Unit cost"}</Label>
+          <Label>{isService ? "Price you paid per hour / job" : "Price you paid for each"}</Label>
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
@@ -205,7 +205,7 @@ function PurchaseForm({
         <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </Field>
       <Field>
-        <Label>{isService ? "Contractor / resource (optional)" : "Supplier (optional)"}</Label>
+        <Label>{isService ? "Who did the work (optional)" : "Bought from (optional)"}</Label>
         <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} />
       </Field>
       <Field>

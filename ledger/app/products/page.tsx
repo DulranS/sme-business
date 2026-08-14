@@ -43,14 +43,14 @@ export default function ProductsPage() {
   return (
     <>
       <PageHeader
-        title="Products &amp; services"
-        action={<Button onClick={openNew}>+ Add offering</Button>}
+        title="What You Sell"
+        action={<Button onClick={openNew}>+ Add something new</Button>}
       />
 
       {!loading && products.length === 0 ? (
         <EmptyState
           title="Nothing set up yet"
-          body="Add a physical product (wholesale-bought, held as stock) or a service (labor/time-based, no inventory) to start logging activity against it."
+          body="Add something you sell — a physical item you buy and keep in stock, or a service where you sell your time."
         />
       ) : (
         <Card>
@@ -59,10 +59,10 @@ export default function ProductsPage() {
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Name</th>
                 <th className="py-2 px-3 font-medium">Type</th>
-                <th className="py-2 px-3 font-medium text-right">On hand</th>
-                <th className="py-2 px-3 font-medium text-right">Avg. cost</th>
-                <th className="py-2 px-3 font-medium text-right">Sell @</th>
-                <th className="py-2 px-3 font-medium text-right">Value</th>
+                <th className="py-2 px-3 font-medium text-right">You have</th>
+                <th className="py-2 px-3 font-medium text-right">What you paid</th>
+                <th className="py-2 px-3 font-medium text-right">You sell for</th>
+                <th className="py-2 px-3 font-medium text-right">Worth</th>
                 <th className="py-2 pl-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
@@ -107,7 +107,7 @@ export default function ProductsPage() {
                     <td className="py-2.5 pl-3 text-right whitespace-nowrap">
                       {p.type === "product" && (
                         <button onClick={() => setStockTarget(p)} className="text-xs text-amber-soft hover:underline mr-3">
-                          + Stock
+                          Buy more
                         </button>
                       )}
                       <button onClick={() => setSellTarget(p)} className="text-xs text-amber-soft hover:underline mr-3">
@@ -128,7 +128,7 @@ export default function ProductsPage() {
       <ReorderPlanningSection />
       <VariableCostsSection />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit offering" : "Add offering"}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this" : "Add something new"}>
         <ProductForm
           initial={editing}
           currency={currency}
@@ -146,7 +146,7 @@ export default function ProductsPage() {
           onDelete={
             editing
               ? async () => {
-                  if (!confirm(`Delete "${editing.name}"? This can't be undone — past sales/purchases for it stay on record, but you won't be able to log new ones.`)) return;
+                  if (!confirm(`Delete "${editing.name}"? This can't be undone — old sales and buys for it stay on record, but you won't be able to log new ones.`)) return;
                   try {
                     await deleteProduct(editing.id);
                     toast.success("Offering deleted", editing.name);
@@ -230,8 +230,8 @@ function ProductForm({
       <Field>
         <Label>Type</Label>
         <Select value={type} onChange={(e) => setType(e.target.value as OfferingType)}>
-          <option value="product">Product (physical, held as inventory)</option>
-          <option value="service">Service / labor (no inventory)</option>
+          <option value="product">Something I buy and keep in stock</option>
+          <option value="service">Something I do (a service — no stock)</option>
         </Select>
       </Field>
       <Field>
@@ -256,12 +256,12 @@ function ProductForm({
 
       <div className="border border-line rounded-md p-3 space-y-3">
         <div className="text-xs font-medium text-muted">
-          Default pricing (optional — pre-fills the quick +Stock/Sell actions and Purchase/Sale forms; you can
-          still override per transaction)
+          Usual prices (optional) — fills these in for you every time you buy or sell this, so you don&apos;t have
+          to type them again. You can always change them for a one-off deal.
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field>
-            <Label>{type === "service" ? "Default cost per hour/job" : "Default buying price"}</Label>
+            <Label>{type === "service" ? "What it usually costs you" : "What you usually pay for one"}</Label>
             <Input
               type="number"
               min="0"
@@ -271,7 +271,7 @@ function ProductForm({
             />
           </Field>
           <Field>
-            <Label>{type === "service" ? "Default rate" : "Default selling price"}</Label>
+            <Label>{type === "service" ? "What you usually charge" : "What you usually sell it for"}</Label>
             <Input
               type="number"
               min="0"
@@ -282,25 +282,25 @@ function ProductForm({
           </Field>
         </div>
         <Field>
-          <Label>Labor cost / unit (optional)</Label>
+          <Label>Your own time on this (optional)</Label>
           <Input
             type="number"
             min="0"
             step="0.01"
             value={laborCostPerUnit}
             onChange={(e) => setLaborCostPerUnit(e.target.value)}
-            placeholder="e.g. an employee's time to deliver one unit"
+            placeholder="e.g. what an employee's time is worth to make/deliver one"
           />
           <div className="text-[11px] text-muted mt-1">
-            Only if an employee (not a logged purchase/contractor cost) does the work — their pay already sits in
-            payroll, so this doesn&apos;t change COGS, it just shows the &quot;fully-loaded&quot; margin on the
-            Profitability page so it isn&apos;t overstated.
+            Only fill this in if a paid employee does the work themselves (not a contractor you already log as a
+            purchase). It won&apos;t change the price you paid — it just shows you the real profit after their time
+            is counted too, on the Profit page.
           </div>
         </Field>
         {(cost > 0 || sell > 0) && (
           <div className="space-y-1 pt-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted">Margin per unit at these defaults</span>
+              <span className="text-muted">You&apos;d make per one</span>
               <span className={`num font-medium ${marginPerUnit >= 0 ? "text-good" : "text-bad"}`}>
                 {formatMoney(marginPerUnit, currency)}
                 {marginPct !== null && <span className="text-muted font-normal ml-1">({marginPct.toFixed(0)}%)</span>}
@@ -308,7 +308,7 @@ function ProductForm({
             </div>
             {labor > 0 && (
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted">Fully-loaded (after labor)</span>
+                <span className="text-muted">...after your time too</span>
                 <span className={`num font-medium ${fullyLoadedMarginPerUnit >= 0 ? "text-good" : "text-bad"}`}>
                   {formatMoney(fullyLoadedMarginPerUnit, currency)}
                   {fullyLoadedMarginPct !== null && (
