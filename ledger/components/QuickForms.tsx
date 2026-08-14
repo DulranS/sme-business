@@ -92,7 +92,7 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>{isProduct ? "How many did you sell?" : "How many hours / jobs?"}</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -102,7 +102,7 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
           <Input required type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -134,7 +134,7 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-2 pt-2 flex-wrap">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
         </Button>
@@ -207,7 +207,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>How many did you buy?</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -217,7 +217,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -237,7 +237,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
         <span className="num text-sm font-medium">{formatMoney(total, currency)}</span>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-2 pt-2 flex-wrap">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
         </Button>
@@ -293,7 +293,7 @@ export function QuickExpenseForm({ onDone }: { onDone: () => void }) {
         <Label>What is it?</Label>
         <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse rent" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Amount</Label>
           <Input required type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
@@ -318,7 +318,7 @@ export function QuickExpenseForm({ onDone }: { onDone: () => void }) {
         <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="accent-amber" />
         Repeats every month (uncheck for a one-off cost)
       </label>
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-2 pt-2 flex-wrap">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
         </Button>

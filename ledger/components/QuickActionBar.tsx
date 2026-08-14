@@ -16,27 +16,27 @@ export default function QuickActionBar() {
 
   return (
     <>
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <button
           onClick={() => setActive("sale")}
-          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2"
+          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2 min-h-[80px]"
         >
-          <span className="text-xl">💰</span>
-          <span className="text-xs font-medium">I sold something</span>
+          <span className="text-xl sm:text-2xl">💰</span>
+          <span className="text-xs sm:text-sm font-medium">I sold something</span>
         </button>
         <button
           onClick={() => setActive("stock")}
-          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2"
+          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2 min-h-[80px]"
         >
-          <span className="text-xl">📦</span>
-          <span className="text-xs font-medium">I bought stock</span>
+          <span className="text-xl sm:text-2xl">📦</span>
+          <span className="text-xs sm:text-sm font-medium">I bought stock</span>
         </button>
         <button
           onClick={() => setActive("expense")}
-          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2"
+          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel hover:border-amber-dim hover:bg-panel2 transition-colors py-4 px-2 min-h-[80px]"
         >
-          <span className="text-xl">🧾</span>
-          <span className="text-xs font-medium">I paid a bill</span>
+          <span className="text-xl sm:text-2xl">🧾</span>
+          <span className="text-xs sm:text-sm font-medium">I paid a bill</span>
         </button>
       </div>
 
