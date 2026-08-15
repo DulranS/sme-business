@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
-import type { OrderStatus, Product } from "@/lib/types";
+import type { OrderStatus, Product, PurchaseOrder } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -42,8 +42,18 @@ export default function PurchaseOrdersPage() {
   } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<PurchaseOrder | null>(null);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const currency = settings.currency;
+
+  function openNew() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+  function openEdit(po: PurchaseOrder) {
+    setEditing(po);
+    setModalOpen(true);
+  }
 
   function handleCancel(id: string) {
     if (!confirm("Cancel this order? You can still delete it afterward if it was a mistake.")) return;
@@ -74,7 +84,7 @@ export default function PurchaseOrdersPage() {
       <PageHeader
         title="Wholesale orders"
         action={
-          <Button onClick={() => setModalOpen(true)} disabled={stockProducts.length === 0}>
+          <Button onClick={openNew} disabled={stockProducts.length === 0}>
             + Place order
           </Button>
         }
@@ -134,6 +144,9 @@ export default function PurchaseOrdersPage() {
                       <button onClick={() => setReceivingId(po.id)} className="text-xs text-good hover:underline mr-3">
                         Receive
                       </button>
+                      <button onClick={() => openEdit(po)} className="text-xs text-muted hover:text-fg mr-3">
+                        Edit
+                      </button>
                       <button onClick={() => handleCancel(po.id)} className="text-xs text-muted hover:text-bad">
                         Cancel
                       </button>
@@ -185,17 +198,23 @@ export default function PurchaseOrdersPage() {
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Place wholesale order">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit order" : "Place wholesale order"}>
         <OrderForm
           products={stockProducts}
+          initial={editing}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
-              await addPurchaseOrder(values);
-              toast.success("Order placed");
+              if (editing) {
+                await updatePurchaseOrder(editing.id, values);
+                toast.success("Order updated");
+              } else {
+                await addPurchaseOrder(values);
+                toast.success("Order placed");
+              }
               setModalOpen(false);
             } catch (err) {
-              toast.error("Couldn't place the order", toastableErrorMessage(err));
+              toast.error(editing ? "Couldn't update the order" : "Couldn't place the order", toastableErrorMessage(err));
             }
           }}
         />
@@ -224,10 +243,12 @@ export default function PurchaseOrdersPage() {
 
 function OrderForm({
   products,
+  initial,
   onSave,
   onCancel,
 }: {
   products: Product[];
+  initial?: PurchaseOrder | null;
   onSave: (values: {
     productId: string;
     qtyOrdered: number;
@@ -239,13 +260,13 @@ function OrderForm({
   }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
-  const [qtyOrdered, setQtyOrdered] = useState("");
-  const [unitCost, setUnitCost] = useState("");
-  const [orderDate, setOrderDate] = useState(todayIso());
-  const [expectedDate, setExpectedDate] = useState("");
-  const [supplier, setSupplier] = useState("");
-  const [notes, setNotes] = useState("");
+  const [productId, setProductId] = useState(initial?.productId ?? products[0]?.id ?? "");
+  const [qtyOrdered, setQtyOrdered] = useState(initial?.qtyOrdered?.toString() ?? "");
+  const [unitCost, setUnitCost] = useState(initial?.unitCost?.toString() ?? "");
+  const [orderDate, setOrderDate] = useState(initial?.orderDate ?? todayIso());
+  const [expectedDate, setExpectedDate] = useState(initial?.expectedDate ?? "");
+  const [supplier, setSupplier] = useState(initial?.supplier ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
 
   return (
@@ -309,7 +330,7 @@ function OrderForm({
           Cancel
         </Button>
         <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Place order"}
+          {busy ? "Saving…" : initial ? "Save changes" : "Place order"}
         </Button>
       </div>
     </form>
