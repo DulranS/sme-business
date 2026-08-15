@@ -42,7 +42,7 @@ export function Button({
   variant = "primary",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
-  const base = "px-3.5 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const base = "px-3.5 py-2.5 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px] min-w-[44px]";
   const variants = {
     primary: "bg-amber text-ink hover:bg-amber-soft",
     ghost: "bg-transparent border border-line text-fg hover:border-muted",
@@ -56,7 +56,7 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={clsx(
-        "w-full bg-panel2 border border-line rounded-md px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:border-amber-dim",
+        "w-full bg-panel2 border border-line rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted focus:outline-none focus:border-amber-dim min-h-[44px]",
         props.className
       )}
     />
@@ -68,7 +68,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={clsx(
-        "w-full bg-panel2 border border-line rounded-md px-3 py-2 text-sm text-fg focus:outline-none focus:border-amber-dim",
+        "w-full bg-panel2 border border-line rounded-md px-3 py-2.5 text-sm text-fg focus:outline-none focus:border-amber-dim min-h-[44px]",
         props.className
       )}
     />
@@ -85,7 +85,7 @@ export function Field({ children }: { children: ReactNode }) {
 
 export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between mb-5 sm:mb-6">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 sm:mb-6">
       <h1 className="font-display text-xl sm:text-2xl font-medium">{title}</h1>
       {action}
     </div>
