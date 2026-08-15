@@ -28,8 +28,6 @@ body {
 
 body {
   font-family: var(--font-body), system-ui, sans-serif;
-  font-size: clamp(14px, 2vw, 16px);
-  line-height: 1.5;
 }
 
 ::selection {
@@ -62,87 +60,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border-radius: 8px;
 }
 
-/* Touch-friendly button sizing */
-button,
-a {
-  min-height: 44px;
-  min-width: 44px;
-}
-
-/* Responsive table container */
-.table-container {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-@media (max-width: 640px) {
-  .table-container {
-    margin-left: -1rem;
-    margin-right: -1rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-}
-
-/* Fluid spacing utilities */
-.fluid-padding-sm {
-  padding: clamp(8px, 1.5vw, 12px);
-}
-
-.fluid-padding-md {
-  padding: clamp(12px, 2vw, 20px);
-}
-
-.fluid-padding-lg {
-  padding: clamp(16px, 3vw, 24px);
-}
-
-.fluid-gap-sm {
-  gap: clamp(8px, 1.5vw, 12px);
-}
-
-.fluid-gap-md {
-  gap: clamp(12px, 2vw, 20px);
-}
-
-.fluid-gap-lg {
-  gap: clamp(16px, 3vw, 24px);
-}
-
-/* Responsive typography */
-.text-fluid-xl {
-  font-size: clamp(20px, 3vw, 28px);
-}
-
-.text-fluid-lg {
-  font-size: clamp(18px, 2.5vw, 24px);
-}
-
-.text-fluid-md {
-  font-size: clamp(16px, 2vw, 20px);
-}
-
-.text-fluid-sm {
-  font-size: clamp(14px, 1.5vw, 16px);
-}
-
-.text-fluid-xs {
-  font-size: clamp(12px, 1vw, 14px);
-}
-
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
-  }
-}
-
-@media (hover: none) {
-  /* Remove hover effects on touch devices */
-  .hover\:bg-panel2:hover {
-    background-color: transparent;
-  }
-  .hover\:text-fg:hover {
-    color: inherit;
   }
 }

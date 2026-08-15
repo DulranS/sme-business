@@ -149,7 +149,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat
           label="Money in this month"
           value={formatMoney(latest?.totalRevenue ?? 0, currency)}
@@ -216,7 +216,7 @@ export default function DashboardPage() {
             Log sales across at least two months to see a trend line.
           </div>
         ) : (
-          <div className="h-56 sm:h-64 md:h-72 lg:h-80 -ml-3">
+          <div className="h-64 sm:h-80 -ml-3">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#262C3A" />
@@ -257,7 +257,7 @@ export default function DashboardPage() {
             Log sales across at least two months to see a margin trend.
           </div>
         ) : (
-          <div className="h-56 sm:h-64 md:h-72 lg:h-80 -ml-3">
+          <div className="h-64 sm:h-80 -ml-3">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={marginChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#262C3A" />
@@ -281,18 +281,17 @@ export default function DashboardPage() {
         {monthlyPnL.length === 0 ? (
           <div className="text-xs text-muted py-6 text-center">No sales or expenses recorded yet.</div>
         ) : (
-          <div className="table-container">
-            <Table>
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
-                  <th className="py-2 pr-3 font-medium">Month</th>
-                  <th className="py-2 px-3 font-medium text-right">Money in</th>
-                  <th className="py-2 px-3 font-medium text-right">Cost of what sold</th>
-                  <th className="py-2 px-3 font-medium text-right">Profit</th>
-                  <th className="py-2 px-3 font-medium text-right">Bills &amp; running costs</th>
-                  <th className="py-2 pl-3 font-medium text-right">Left over (after tax)</th>
-                </tr>
-              </thead>
+          <Table>
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
+                <th className="py-2 pr-3 font-medium">Month</th>
+                <th className="py-2 px-3 font-medium text-right">Money in</th>
+                <th className="py-2 px-3 font-medium text-right">Cost of what sold</th>
+                <th className="py-2 px-3 font-medium text-right">Profit</th>
+                <th className="py-2 px-3 font-medium text-right">Bills &amp; running costs</th>
+                <th className="py-2 pl-3 font-medium text-right">Left over (after tax)</th>
+              </tr>
+            </thead>
             <tbody>
               {[...monthlyPnL].reverse().map((m) => (
                 <tr key={m.month} className="border-b border-line last:border-0">
@@ -310,7 +309,6 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </Table>
-          </div>
         )}
       </Card>
 
@@ -326,7 +324,7 @@ export default function DashboardPage() {
                 : "Log some expenses to see overhead coverage."}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0 ml-2 sm:ml-4">
+          <div className="flex flex-col items-end gap-1 shrink-0 ml-4">
             <Link href="/profitability" className="text-xs text-amber-soft">
               Break-even &amp; ROI →
             </Link>

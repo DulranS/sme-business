@@ -6,6 +6,7 @@ import {
   exportCapitalEntries,
   exportEmployees,
   exportExpenses,
+  exportLoans,
   exportProducts,
   exportPurchaseOrders,
   exportPurchases,
@@ -14,14 +15,16 @@ import {
   importCapitalEntries,
   importEmployees,
   importExpenses,
+  importLoans,
   importProducts,
+  importPurchaseOrders,
   importPurchases,
   importSales,
   type ImportError,
 } from "@/lib/csv";
 import { Button, Card, PageHeader } from "@/components/ui";
 
-type Entity = "products" | "purchases" | "sales" | "expenses" | "capitalEntries" | "employees";
+type Entity = "products" | "purchases" | "sales" | "expenses" | "capitalEntries" | "employees" | "loans" | "purchaseOrders";
 
 export default function ImportExportPage() {
   const data = useData();
@@ -34,6 +37,8 @@ export default function ImportExportPage() {
     expenses: useRef<HTMLInputElement>(null),
     capitalEntries: useRef<HTMLInputElement>(null),
     employees: useRef<HTMLInputElement>(null),
+    loans: useRef<HTMLInputElement>(null),
+    purchaseOrders: useRef<HTMLInputElement>(null),
   };
 
   async function handleImport(entity: Entity, file: File) {
@@ -62,11 +67,19 @@ export default function ImportExportPage() {
           for (const row of rows) await data.addCapitalEntry(row);
         }
         setResult({ entity, added: errors.length === 0 ? rows.length : 0, errors });
-      } else {
+      } else if (entity === "employees") {
         const { rows, errors } = await importEmployees(file);
         if (errors.length === 0) {
           for (const row of rows) await data.addEmployee(row);
         }
+        setResult({ entity, added: errors.length === 0 ? rows.length : 0, errors });
+      } else if (entity === "loans") {
+        const { rows, errors } = await importLoans(file);
+        if (errors.length === 0) await data.bulkAddLoans(rows);
+        setResult({ entity, added: errors.length === 0 ? rows.length : 0, errors });
+      } else {
+        const { rows, errors } = await importPurchaseOrders(file, data.products);
+        if (errors.length === 0) await data.bulkAddPurchaseOrders(rows.map((r) => ({ ...r, status: "ordered" as const })));
         setResult({ entity, added: errors.length === 0 ? rows.length : 0, errors });
       }
     } finally {
@@ -83,45 +96,59 @@ export default function ImportExportPage() {
   }[] = [
     {
       entity: "products",
-      label: "Products & services",
-      description: "Your catalog — physical items and service/labor offerings.",
-      columns: "name, sku, category, type (product/service), active, orderingCost, holdingCostPct, leadTimeDays",
+      label: "What you sell",
+      description: "Your items and services — what you buy and keep in stock, or what you do as a service.",
+      columns: "name, sku, category, type (product/service), active, orderingCost, holdingCostPct, leadTimeDays, defaultCostPrice, defaultSellPrice, laborCostPerUnit",
       onExport: () => exportProducts(data.products),
     },
     {
       entity: "purchases",
-      label: "Purchases & cost entries",
-      description: "Wholesale buys for products, or delivery cost entries for services.",
-      columns: "product (or productId), qty, unitCost, date (YYYY-MM-DD), supplier, notes",
+      label: "Things you bought",
+      description: "Wholesale buys for items, or delivery cost entries for services.",
+      columns: "product (or productId), qty, unitCost, date (e.g. 2026-01-05 or 1/5/2026), supplier, notes",
       onExport: () => exportPurchases(data.purchases, data.products),
     },
     {
       entity: "sales",
-      label: "Sales",
-      description: "What you sold, quantity and unit price.",
-      columns: "product (or productId), qty, unitPrice, date (YYYY-MM-DD), customer, notes",
+      label: "Things you sold",
+      description: "What you sold, how many, and for how much each.",
+      columns: "product (or productId), qty, unitPrice, date (e.g. 2026-01-05 or 1/5/2026), customer, notes",
       onExport: () => exportSales(data.sales, data.products),
     },
     {
       entity: "expenses",
-      label: "Expenses & recurring revenue",
-      description: "Operating costs (incl. marketing, rent, payroll) and recurring income.",
+      label: "Bills & recurring income",
+      description: "Running costs (marketing, rent, payroll) and any recurring income.",
       columns: "name, amount, category, kind (expense/revenue), isRecurring (true/false), recurrence (weekly/monthly/yearly), startDate, endDate",
       onExport: () => exportExpenses(data.expenses),
     },
     {
       entity: "capitalEntries",
-      label: "Capital entries",
+      label: "Money put in / taken out",
       description: "Initial investment, reinvestment, and owner withdrawals.",
-      columns: "kind (investment/reinvestment/withdrawal), amount, date (YYYY-MM-DD), notes",
+      columns: "kind (investment/reinvestment/withdrawal), amount, date (e.g. 2026-01-05 or 1/5/2026), notes",
       onExport: () => exportCapitalEntries(data.capitalEntries),
     },
     {
       entity: "employees",
       label: "Employees & payroll",
-      description: "Staff/contractors — importing books each one's pay as a recurring expense automatically.",
+      description: "Staff/contractors — importing books each one's pay as a recurring bill automatically.",
       columns: "name, role, payRate, payFrequency (weekly/monthly/yearly), taxPct, startDate, endDate, active, notes",
       onExport: () => exportEmployees(data.employees),
+    },
+    {
+      entity: "loans",
+      label: "Loans & debt",
+      description: "Bank/supplier loans — monthly payment and interest are worked out for you automatically.",
+      columns: "name, lender, principal, annualInterestRatePct, termMonths, startDate, active, notes",
+      onExport: () => exportLoans(data.loans),
+    },
+    {
+      entity: "purchaseOrders",
+      label: "Wholesale orders",
+      description: "Orders placed with a supplier that haven't arrived yet. Importing always creates a new open order — receiving one still happens on the Orders page, so your stock stays accurate.",
+      columns: "product (or productId), qtyOrdered, unitCost, orderDate, expectedDate, supplier, notes",
+      onExport: () => exportPurchaseOrders(data.purchaseOrders, data.products),
     },
   ];
 
@@ -156,7 +183,7 @@ export default function ImportExportPage() {
                   variant="ghost"
                   disabled={
                     busy === row.entity ||
-                    (row.entity !== "products" && row.entity !== "capitalEntries" && row.entity !== "employees" && data.products.length === 0)
+                    (["purchases", "sales", "purchaseOrders"].includes(row.entity) && data.products.length === 0)
                   }
                   onClick={() => inputRefs[row.entity].current?.click()}
                 >
@@ -168,10 +195,10 @@ export default function ImportExportPage() {
             {result?.entity === row.entity && (
               <div className="mt-3 text-xs">
                 {result.errors.length === 0 ? (
-                  <div className="text-good">Imported {result.added} rows successfully.</div>
+                  <div className="text-good">Added {result.added} rows.</div>
                 ) : (
                   <div className="text-bad space-y-1">
-                    <div>{result.errors.length} row(s) failed — nothing was imported. Fix and retry:</div>
+                    <div>{result.errors.length} row(s) had a problem — nothing was added yet. Fix these and try again:</div>
                     <ul className="list-disc list-inside text-muted">
                       {result.errors.slice(0, 10).map((err, i) => (
                         <li key={i}>
@@ -190,20 +217,8 @@ export default function ImportExportPage() {
         <Card>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium">Wholesale orders</div>
-              <div className="text-xs text-muted mt-0.5">Export only — place and receive orders on the Orders page.</div>
-            </div>
-            <Button variant="ghost" onClick={() => exportPurchaseOrders(data.purchaseOrders, data.products)}>
-              Export CSV
-            </Button>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium">Variable costs</div>
-              <div className="text-xs text-muted mt-0.5">Export only — manage these on the Products page.</div>
+              <div className="text-sm font-medium">Extra costs per sale</div>
+              <div className="text-xs text-muted mt-0.5">Export only — set these up on the Items page.</div>
             </div>
             <Button variant="ghost" onClick={() => exportVariableCosts(data.variableCosts, data.products)}>
               Export CSV

@@ -53,7 +53,7 @@ export default function ExpensesPage() {
     <>
       <PageHeader title="Expenses" action={<Button onClick={() => setModalOpen(true)}>+ Add item</Button>} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Recurring revenue / mo" value={formatMoney(mrr.mrrRevenue, currency)} tone="good" />
         <Stat label="Recurring expenses / mo" value={formatMoney(mrr.mrrExpense, currency)} tone="bad" />
         <Stat label="Recurring net / mo" value={formatMoney(mrr.mrrRevenue - mrr.mrrExpense, currency)} tone="amber" />
@@ -73,8 +73,8 @@ export default function ExpensesPage() {
                 {categoryBreakdown.map(([cat, amount]) => {
                   const max = categoryBreakdown[0][1];
                   return (
-                    <div key={cat} className="flex items-center gap-2 sm:gap-3 text-xs">
-                      <div className="w-24 sm:w-32 shrink-0 text-muted truncate">{cat}</div>
+                    <div key={cat} className="flex items-center gap-3 text-xs">
+                      <div className="w-32 shrink-0 text-muted truncate">{cat}</div>
                       <div className="flex-1 h-2 bg-panel2 rounded-full overflow-hidden">
                         <div className="h-full bg-amber-dim" style={{ width: `${max > 0 ? (amount / max) * 100 : 0}%` }} />
                       </div>
@@ -86,8 +86,7 @@ export default function ExpensesPage() {
             </Card>
           )}
           <Card>
-          <div className="table-container">
-            <Table>
+          <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Name</th>
@@ -137,7 +136,6 @@ export default function ExpensesPage() {
               ))}
             </tbody>
           </Table>
-          </div>
         </Card>
         </>
       )}
@@ -200,7 +198,7 @@ function ExpenseForm({
         <Label>Name</Label>
         <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse rent" />
       </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Kind</Label>
           <Select value={kind} onChange={(e) => setKind(e.target.value as Expense["kind"])}>
@@ -239,7 +237,7 @@ function ExpenseForm({
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>{isRecurring ? "Starts" : "Date"}</Label>
           <Input required type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -251,7 +249,7 @@ function ExpenseForm({
           </Field>
         )}
       </div>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

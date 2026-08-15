@@ -45,7 +45,7 @@ export default function PurchasesPage() {
       />
 
       <Card className="mb-5">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-muted">
             This is what you&apos;ve already paid for and have in hand. Want to place an order with a supplier and track
             it until it arrives? Use the <span className="text-fg font-medium">Orders</span> page instead — once it
@@ -70,8 +70,7 @@ export default function PurchasesPage() {
 
       {purchases.length > 0 && (
         <Card>
-          <div className="table-container">
-            <Table>
+          <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Date</th>
@@ -116,7 +115,6 @@ export default function PurchasesPage() {
               })}
             </tbody>
           </Table>
-          </div>
         </Card>
       )}
 
@@ -192,7 +190,7 @@ function PurchaseForm({
           ))}
         </Select>
       </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>{isService ? "How many hours / jobs?" : "How many did you buy?"}</Label>
           <Input required type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -214,7 +212,7 @@ function PurchaseForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

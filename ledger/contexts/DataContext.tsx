@@ -138,6 +138,7 @@ interface DataContextValue {
   addLoan: (l: Omit<Loan, "id" | "createdAt">) => Promise<void>;
   updateLoan: (id: string, l: Partial<Loan>) => Promise<void>;
   deleteLoan: (id: string) => Promise<void>;
+  bulkAddLoans: (rows: Omit<Loan, "id" | "createdAt">[]) => Promise<void>;
 
   updateSettings: (s: Partial<Settings>) => Promise<void>;
 }
@@ -583,6 +584,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       await deleteDoc(doc(db, "users", id, "loans", docId));
     },
+    bulkAddLoans: (rows) => chunkedBatchAdd("loans", rows),
 
     updateSettings: async (s) => {
       const id = requireUid();

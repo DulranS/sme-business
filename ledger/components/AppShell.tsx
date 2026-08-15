@@ -50,11 +50,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-56 lg:w-64 shrink-0 border-r border-line flex-col justify-between h-screen sticky top-0">
+      <aside className="hidden sm:flex w-56 shrink-0 border-r border-line flex-col justify-between h-screen sticky top-0">
         <div>
           <div className="px-5 py-5 border-b border-line">
-            <div className="font-display text-fluid-lg font-bold tracking-tight">Ledger</div>
-            <div className="text-fluid-xs text-muted mt-0.5">solo SME finance</div>
+            <div className="font-display text-base font-bold tracking-tight">Ledger</div>
+            <div className="text-[11px] text-muted mt-0.5">solo SME finance</div>
           </div>
           <nav className="p-2.5 space-y-0.5">
             {NAV.map((item) => {
@@ -65,7 +65,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={clsx(
-                    "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm transition-colors border-l-2 min-h-[44px]",
+                    "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors border-l-2",
                     active
                       ? "bg-panel2 text-fg border-amber font-medium"
                       : "text-muted border-transparent hover:text-fg hover:bg-panel2"
@@ -82,7 +82,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="text-xs text-muted truncate px-1 mb-2">{user.email}</div>
           <button
             onClick={() => signOut()}
-            className="w-full text-left text-sm text-muted hover:text-fg px-3 py-2.5 rounded-md hover:bg-panel2 min-h-[44px]"
+            className="w-full text-left text-sm text-muted hover:text-fg px-3 py-2 rounded-md hover:bg-panel2"
           >
             Sign out
           </button>
@@ -91,19 +91,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Mobile top bar */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3.5 border-b border-line sticky top-0 bg-ink z-30">
-          <div className="font-display text-fluid-base font-bold">Ledger</div>
-          <button onClick={() => signOut()} className="text-xs text-muted min-h-[44px] min-w-[44px] flex items-center">
+        <header className="sm:hidden flex items-center justify-between px-4 py-3.5 border-b border-line sticky top-0 bg-ink z-30">
+          <div className="font-display text-base font-bold">Ledger</div>
+          <button onClick={() => signOut()} className="text-xs text-muted">
             Sign out
           </button>
         </header>
 
-        <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 pb-24 md:pb-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 px-4 py-5 sm:px-8 sm:py-8 pb-24 sm:pb-8 max-w-6xl w-full mx-auto">
           {children}
         </main>
 
         {/* Mobile bottom nav — horizontally scrollable since there are more items than fit one screen */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 bg-panel border-t border-line flex overflow-x-auto z-30 safe-area-bottom">
+        <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-panel border-t border-line flex overflow-x-auto z-30">
           {NAV.map((item) => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
@@ -112,7 +112,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={clsx(
-                  "flex flex-col items-center gap-1 py-2.5 px-3.5 text-[10px] shrink-0 min-w-[64px] min-h-[60px]",
+                  "flex flex-col items-center gap-1 py-2.5 px-3.5 text-[10px] shrink-0",
                   active ? "text-amber-soft" : "text-muted"
                 )}
               >
