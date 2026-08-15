@@ -149,7 +149,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat
           label="Money in this month"
           value={formatMoney(latest?.totalRevenue ?? 0, currency)}
@@ -281,7 +281,8 @@ export default function DashboardPage() {
         {monthlyPnL.length === 0 ? (
           <div className="text-xs text-muted py-6 text-center">No sales or expenses recorded yet.</div>
         ) : (
-          <Table>
+          <div className="table-container">
+            <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Month</th>
@@ -309,11 +310,12 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </Table>
+          </div>
         )}
       </Card>
 
       <Card className="mt-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <div className="text-sm font-medium">Is the business actually profitable?</div>
             <div className="text-xs text-muted mt-0.5">
@@ -324,7 +326,7 @@ export default function DashboardPage() {
                 : "Log some expenses to see overhead coverage."}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0 ml-4">
+          <div className="flex flex-col sm:items-end gap-1 shrink-0">
             <Link href="/profitability" className="text-xs text-amber-soft">
               Break-even &amp; ROI →
             </Link>
