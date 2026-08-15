@@ -80,7 +80,7 @@ export default function PurchaseOrdersPage() {
         }
       />
 
-      <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Open orders" value={formatNumber(openOrders.openOrderCount)} />
         <Stat label="Units on order" value={formatNumber(openOrders.openOrderUnits)} />
         <Stat label="Already committed to spend" value={formatMoney(openOrders.openOrderValue, currency)} tone="amber" />
@@ -103,7 +103,8 @@ export default function PurchaseOrdersPage() {
       {openList.length > 0 && (
         <Card className="mb-6">
           <div className="text-sm font-medium mb-3">Open orders</div>
-          <Table>
+          <div className="table-container">
+            <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Ordered</th>
@@ -143,13 +144,15 @@ export default function PurchaseOrdersPage() {
               })}
             </tbody>
           </Table>
+          </div>
         </Card>
       )}
 
       {closedList.length > 0 && (
         <Card>
           <div className="text-sm font-medium mb-3">Order history</div>
-          <Table>
+          <div className="table-container">
+            <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Ordered</th>
@@ -182,6 +185,7 @@ export default function PurchaseOrdersPage() {
               })}
             </tbody>
           </Table>
+          </div>
         </Card>
       )}
 
@@ -276,7 +280,7 @@ function OrderForm({
           ))}
         </Select>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Quantity ordered</Label>
           <Input required type="number" min="0" step="1" value={qtyOrdered} onChange={(e) => setQtyOrdered(e.target.value)} />
@@ -286,7 +290,7 @@ function OrderForm({
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Order date</Label>
           <Input required type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
@@ -304,7 +308,7 @@ function OrderForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-2 pt-2 flex-wrap">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
@@ -348,7 +352,7 @@ function ReceiveForm({
         Confirm what actually arrived — this creates the inventory entry. Quantity or cost can differ from what was
         originally ordered.
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Quantity received</Label>
           <Input required type="number" min="0" step="1" value={qtyReceived} onChange={(e) => setQtyReceived(e.target.value)} />
@@ -362,7 +366,7 @@ function ReceiveForm({
         <Label>Received date</Label>
         <Input required type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-2 pt-2 flex-wrap">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

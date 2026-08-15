@@ -34,7 +34,7 @@ export default function StatementsPage() {
     <>
       <PageHeader title="Financial statements" />
 
-      <div className="flex gap-1 border-b border-line mb-6 -mt-1">
+      <div className="flex gap-1 border-b border-line mb-6 -mt-1 overflow-x-auto">
         {(
           [
             ["income", "Income statement"],
@@ -55,7 +55,7 @@ export default function StatementsPage() {
       </div>
 
       {(tab === "income" || tab === "cashflow") && (
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
           <div className="text-xs text-muted">
             {tab === "income"
               ? "Revenue, expenses, and net profit for one month."
@@ -64,7 +64,7 @@ export default function StatementsPage() {
           <Select
             value={selectedMonth?.month ?? ""}
             onChange={(e) => setMonthKey(e.target.value)}
-            className="w-40"
+            className="w-full sm:w-40"
           >
             {[...monthlyPnL].reverse().map((m) => (
               <option key={m.month} value={m.month}>

@@ -215,7 +215,7 @@ export default function ImportExportPage() {
         ))}
 
         <Card>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:items-center sm:justify-between gap-3">
             <div>
               <div className="text-sm font-medium">Extra costs per sale</div>
               <div className="text-xs text-muted mt-0.5">Export only — set these up on the Items page.</div>

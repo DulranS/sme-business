@@ -27,7 +27,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="font-display text-2xl font-bold tracking-tight">Ledger</div>

@@ -48,7 +48,7 @@ export default function LoansPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <Stat label="Outstanding balance" value={formatMoney(loanPortfolio.totalOutstanding, currency)} tone="bad" />
             <Stat label="Debt service / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
             <Stat label="Interest paid to date" value={formatMoney(loanPortfolio.totalInterestPaidToDate, currency)} sub="the true cost of borrowing" />
@@ -56,7 +56,8 @@ export default function LoansPage() {
           </div>
 
           <Card>
-            <Table>
+            <div className="table-container">
+              <Table>
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                   <th className="py-2 pr-3 font-medium">Loan</th>
@@ -104,6 +105,7 @@ export default function LoansPage() {
                 })}
               </tbody>
             </Table>
+            </div>
             <div className="text-[11px] text-muted mt-3">
               Interest and principal are split automatically each month using a standard amortization schedule and
               flow into the Income Statement (interest expense) and Cash Flow Statement (principal repayment) on the{" "}
@@ -196,7 +198,7 @@ function LoanForm({
         <Label>Loan name</Label>
         <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Working capital loan" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Lender (optional)</Label>
           <Input value={lender} onChange={(e) => setLender(e.target.value)} placeholder="e.g. Bank of Ceylon" />
@@ -206,7 +208,7 @@ function LoanForm({
           <Input required type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Field>
           <Label>Principal ({"amount"})</Label>
           <Input required type="number" min="0" step="0.01" value={principal} onChange={(e) => setPrincipal(e.target.value)} />
@@ -238,7 +240,7 @@ function LoanForm({
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="accent-amber" />
         Active (uncheck if closed/paid off early — kept for history, excluded from current liabilities)
       </label>
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
         <div>
           {onDelete && (
             <Button type="button" variant="danger" onClick={onDelete}>
