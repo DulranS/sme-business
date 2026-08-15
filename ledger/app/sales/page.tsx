@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useToast } from "@/contexts/ToastContext";
 import { formatMoney } from "@/lib/format";
+import type { Sale } from "@/lib/types";
 import { QuickSaleForm } from "@/components/QuickForms";
 import { Badge, Button, Card, Modal, PageHeader, Table, EmptyState } from "@/components/ui";
 
@@ -11,9 +12,19 @@ export default function SalesPage() {
   const { products, sales, saleEconomics, deleteSale, settings, loading } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Sale | null>(null);
   const currency = settings.currency;
 
   const econById = useMemo(() => new Map(saleEconomics.map((e) => [e.saleId, e])), [saleEconomics]);
+
+  function openNew() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+  function openEdit(s: Sale) {
+    setEditing(s);
+    setModalOpen(true);
+  }
 
   function handleDelete(saleId: string) {
     if (!confirm("Delete this sale? This can't be undone — it'll put the stock back.")) return;
@@ -27,7 +38,7 @@ export default function SalesPage() {
       <PageHeader
         title="Things You Sold"
         action={
-          <Button onClick={() => setModalOpen(true)} disabled={products.length === 0}>
+          <Button onClick={openNew} disabled={products.length === 0}>
             + I sold something
           </Button>
         }
@@ -87,7 +98,10 @@ export default function SalesPage() {
                     <td className="py-2.5 px-3 num text-right text-muted">
                       {formatMoney(econ?.contributionMargin ?? 0, currency)}
                     </td>
-                    <td className="py-2.5 pl-3 text-right">
+                    <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                      <button onClick={() => openEdit(s)} className="text-xs text-muted hover:text-fg mr-3">
+                        Edit
+                      </button>
                       <button onClick={() => handleDelete(s.id)} className="text-xs text-muted hover:text-bad">
                         Delete
                       </button>
@@ -100,8 +114,8 @@ export default function SalesPage() {
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="I sold something">
-        <QuickSaleForm onDone={() => setModalOpen(false)} />
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this sale" : "I sold something"}>
+        <QuickSaleForm existingSale={editing ?? undefined} onDone={() => setModalOpen(false)} />
       </Modal>
     </>
   );

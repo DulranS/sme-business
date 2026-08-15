@@ -75,7 +75,7 @@ export default function ProfitabilityPage() {
       <PageHeader title="My Profit" />
 
       <Card className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+        <div className="flex items-center justify-between mb-1">
           <div>
             <div className="text-sm font-medium">Profit by item</div>
             <div className="text-xs text-muted mt-0.5">
@@ -83,7 +83,7 @@ export default function ProfitabilityPage() {
               that made. What&apos;s left in stock is valued at what you actually paid for it.
             </div>
           </div>
-          <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="w-full sm:w-36 shrink-0">
+          <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="w-36 shrink-0">
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
             <option value="month">This month</option>
@@ -94,67 +94,69 @@ export default function ProfitabilityPage() {
         {rankedProfitability.length === 0 ? (
           <div className="text-xs text-muted py-6 text-center">Nothing set up yet — add something you sell first.</div>
         ) : (
-          <div className="table-container mt-4">
-            <Table>
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
-                  <th className="py-2 pr-3 font-medium">Item</th>
-                  <th className="py-2 px-3 font-medium text-right">How many sold</th>
-                  <th className="py-2 px-3 font-medium text-right">You charged</th>
-                  <th className="py-2 px-3 font-medium text-right">It cost you</th>
-                  <th className="py-2 px-3 font-medium text-right">Money in</th>
-                  <th className="py-2 px-3 font-medium text-right">Total cost</th>
-                  <th className="py-2 px-3 font-medium text-right">Profit</th>
-                  <th className="py-2 px-3 font-medium text-right">Margin</th>
-                  <th className="py-2 px-3 font-medium text-right">
-                    Fully-loaded
-                    <div className="text-[9px] normal-case font-normal text-muted/70">after labor</div>
-                  </th>
-                  <th className="py-2 px-3 font-medium text-right">Left in stock</th>
-                  <th className="py-2 pl-3 font-medium text-right">Stock is worth</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankedProfitability.map((p) => (
-                  <tr key={p.productId} className="border-b border-line last:border-0">
-                    <td className="py-2.5 pr-3">
-                      <div className="font-medium">{p.name}</div>
-                      {p.sku && <div className="text-xs text-muted">{p.sku}</div>}
-                    </td>
-                    <td className="py-2.5 px-3 num text-right">{formatNumber(p.unitsSold)}</td>
-                    <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.avgSellingPrice, currency)}</td>
-                    <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.avgUnitCost, currency)}</td>
-                    <td className="py-2.5 px-3 num text-right">{formatMoney(p.revenue, currency)}</td>
-                    <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.cogs, currency)}</td>
-                    <td className="py-2.5 px-3 num text-right">
-                      <span className={p.grossProfit >= 0 ? "text-good" : "text-bad"}>
-                        {formatMoney(p.grossProfit, currency)}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right">
-                      <Badge tone={MARGIN_BAND_TONE[p.marginBand]}>
-                        {p.grossMarginPct !== null ? `${p.grossMarginPct.toFixed(0)}%` : "—"}
-                      </Badge>
-                    </td>
-                    <td className="py-2.5 px-3 num text-right text-muted">
-                      {p.laborCost > 0 ? (
-                        <span className={p.fullyLoadedGrossProfit >= 0 ? "text-good" : "text-bad"}>
-                          {p.fullyLoadedMarginPct !== null ? `${p.fullyLoadedMarginPct.toFixed(0)}%` : "—"}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 num text-right text-muted">
-                      {p.type === "service" ? "—" : formatNumber(p.qtyOnHand)}
-                    </td>
-                    <td className="py-2.5 pl-3 num text-right text-muted">
-                      {p.type === "service" ? "—" : formatMoney(p.inventoryValue, currency)}
-                    </td>
+          <div className="overflow-x-auto -mx-4 sm:-mx-5 mt-4">
+            <div className="px-4 sm:px-5 min-w-[1000px]">
+              <Table>
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
+                    <th className="py-2 pr-3 font-medium">Item</th>
+                    <th className="py-2 px-3 font-medium text-right">How many sold</th>
+                    <th className="py-2 px-3 font-medium text-right">You charged</th>
+                    <th className="py-2 px-3 font-medium text-right">It cost you</th>
+                    <th className="py-2 px-3 font-medium text-right">Money in</th>
+                    <th className="py-2 px-3 font-medium text-right">Total cost</th>
+                    <th className="py-2 px-3 font-medium text-right">Profit</th>
+                    <th className="py-2 px-3 font-medium text-right">Margin</th>
+                    <th className="py-2 px-3 font-medium text-right">
+                      Fully-loaded
+                      <div className="text-[9px] normal-case font-normal text-muted/70">after labor</div>
+                    </th>
+                    <th className="py-2 px-3 font-medium text-right">Left in stock</th>
+                    <th className="py-2 pl-3 font-medium text-right">Stock is worth</th>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
+                </thead>
+                <tbody>
+                  {rankedProfitability.map((p) => (
+                    <tr key={p.productId} className="border-b border-line last:border-0">
+                      <td className="py-2.5 pr-3">
+                        <div className="font-medium">{p.name}</div>
+                        {p.sku && <div className="text-xs text-muted">{p.sku}</div>}
+                      </td>
+                      <td className="py-2.5 px-3 num text-right">{formatNumber(p.unitsSold)}</td>
+                      <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.avgSellingPrice, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.avgUnitCost, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right">{formatMoney(p.revenue, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(p.cogs, currency)}</td>
+                      <td className="py-2.5 px-3 num text-right">
+                        <span className={p.grossProfit >= 0 ? "text-good" : "text-bad"}>
+                          {formatMoney(p.grossProfit, currency)}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <Badge tone={MARGIN_BAND_TONE[p.marginBand]}>
+                          {p.grossMarginPct !== null ? `${p.grossMarginPct.toFixed(0)}%` : "—"}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 px-3 num text-right text-muted">
+                        {p.laborCost > 0 ? (
+                          <span className={p.fullyLoadedGrossProfit >= 0 ? "text-good" : "text-bad"}>
+                            {p.fullyLoadedMarginPct !== null ? `${p.fullyLoadedMarginPct.toFixed(0)}%` : "—"}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 num text-right text-muted">
+                        {p.type === "service" ? "—" : formatNumber(p.qtyOnHand)}
+                      </td>
+                      <td className="py-2.5 pl-3 num text-right text-muted">
+                        {p.type === "service" ? "—" : formatMoney(p.inventoryValue, currency)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
           </div>
         )}
         <div className="text-[11px] text-muted mt-3">
@@ -182,7 +184,7 @@ export default function ProfitabilityPage() {
               Based on your last 3 months of sales and this month&apos;s regular costs (rent, salaries, subscriptions,
               and so on).
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <Stat
                 label="Profit per sale"
                 value={`${(breakEven.contributionMarginRatio * 100).toFixed(1)}%`}
@@ -208,7 +210,7 @@ export default function ProfitabilityPage() {
               />
             </div>
             {breakEven.overheadCoverageRatio !== null && (
-              <div className="mt-4 pt-4 border-t border-line flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="mt-4 pt-4 border-t border-line flex items-center gap-3">
                 <span className="text-xs text-muted">For every $1 of costs, your profit covers:</span>
                 <Badge tone={breakEven.overheadCoverageRatio >= 1 ? "good" : "bad"}>
                   {breakEven.overheadCoverageRatio.toFixed(2)}×
@@ -223,7 +225,7 @@ export default function ProfitabilityPage() {
           </Card>
 
           <Card>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+            <div className="flex items-center justify-between mb-1">
               <div>
                 <div className="text-sm font-medium">Money You Put In</div>
                 <div className="text-xs text-muted mt-0.5">
@@ -254,7 +256,7 @@ export default function ProfitabilityPage() {
             </div>
 
             {capitalEntries.length > 0 && (
-              <div className="table-container mt-5">
+              <div className="mt-5">
                 <Table>
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -358,7 +360,7 @@ function CapitalForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

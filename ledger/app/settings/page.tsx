@@ -80,7 +80,7 @@ export default function SettingsPage() {
             <div className="text-xs font-medium text-muted mb-3">
               EOQ / reorder planning defaults — used for any product that doesn&apos;t set its own
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <Field>
                 <Label>Ordering cost</Label>
                 <Input
@@ -135,7 +135,7 @@ export default function SettingsPage() {
             </Field>
           </div>
 
-          <div className="flex items-center gap-3 pt-2 flex-wrap">
+          <div className="flex items-center gap-3 pt-2">
             <Button type="submit" disabled={busy}>
               {busy ? "Saving…" : "Save settings"}
             </Button>
