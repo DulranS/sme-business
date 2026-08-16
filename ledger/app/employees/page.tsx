@@ -43,7 +43,7 @@ export default function EmployeesPage() {
     <>
       <PageHeader title="Employees &amp; payroll" action={<Button onClick={openNew}>+ Add employee</Button>} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Active staff" value={activeEmployees.length.toString()} />
         <Stat label="Payroll / month" value={formatMoney(monthlyPayroll, currency)} tone="bad" sub="booked as a recurring expense" />
         <Stat
@@ -63,7 +63,8 @@ export default function EmployeesPage() {
         />
       ) : (
         <Card>
-          <Table>
+          <div className="table-container">
+            <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Name</th>
@@ -99,6 +100,7 @@ export default function EmployeesPage() {
               ))}
             </tbody>
           </Table>
+          </div>
         </Card>
       )}
 
@@ -191,7 +193,7 @@ function EmployeeForm({
         <Label>Role (optional)</Label>
         <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Mechanic, Sales" />
       </Field>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Field>
           <Label>Gross pay</Label>
           <Input required type="number" min="0" step="0.01" value={payRate} onChange={(e) => setPayRate(e.target.value)} />
@@ -221,7 +223,7 @@ function EmployeeForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
         <div>
           {onDelete && (
             <Button type="button" variant="danger" onClick={onDelete}>

@@ -36,7 +36,7 @@ export default function StatementsPage() {
     <>
       <PageHeader title="Financial statements" />
 
-      <div className="flex gap-1 border-b border-line mb-6 -mt-1">
+      <div className="flex gap-1 border-b border-line mb-6 -mt-1 overflow-x-auto">
         {(
           [
             ["income", "Income statement"],
@@ -57,7 +57,7 @@ export default function StatementsPage() {
       </div>
 
       {(tab === "income" || tab === "cashflow") && (
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div className="text-xs text-muted">
             {tab === "income"
               ? "Revenue, expenses, and net profit for one month."
@@ -66,7 +66,7 @@ export default function StatementsPage() {
           <Select
             value={selectedMonth?.month ?? ""}
             onChange={(e) => setMonthKey(e.target.value)}
-            className="w-40"
+            className="w-full sm:w-40 shrink-0"
           >
             {[...monthlyPnL].reverse().map((m) => (
               <option key={m.month} value={m.month}>
@@ -148,7 +148,7 @@ function IncomeStatement({
         <Line label="Net profit after tax" value={m.netProfitAfterTax} currency={currency} bold />
       </div>
 
-      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2">
+      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2 flex-wrap">
         <span className="text-xs text-muted">Net margin:</span>
         <Badge tone={m.netProfitAfterTax >= 0 ? "good" : "bad"}>
           {m.totalRevenue > 0 ? ((m.netProfitAfterTax / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
@@ -239,7 +239,7 @@ function BalanceSheetView({
 
       <Line label="Total liabilities + equity" value={b.totalLiabilitiesAndEquity} currency={currency} bold />
 
-      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2">
+      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2 flex-wrap">
         <Badge tone={b.balances ? "good" : "bad"}>{b.balances ? "Balanced" : "Out of balance"}</Badge>
         <span className="text-xs text-muted">Assets should always equal Liabilities + Equity.</span>
       </div>

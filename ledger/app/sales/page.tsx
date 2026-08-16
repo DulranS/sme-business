@@ -43,7 +43,8 @@ export default function SalesPage() {
 
       {sales.length > 0 && (
         <Card>
-          <Table>
+          <div className="table-container">
+            <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Date</th>
@@ -97,6 +98,7 @@ export default function SalesPage() {
               })}
             </tbody>
           </Table>
+          </div>
         </Card>
       )}
 
