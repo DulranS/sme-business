@@ -54,8 +54,7 @@ export default function ProductsPage() {
         />
       ) : (
         <Card>
-          <div className="table-container">
-            <Table>
+          <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Name</th>
@@ -123,7 +122,6 @@ export default function ProductsPage() {
               })}
             </tbody>
           </Table>
-          </div>
         </Card>
       )}
 
@@ -245,7 +243,7 @@ function ProductForm({
           placeholder={type === "service" ? "e.g. Interior detailing" : "e.g. Suzuki Alto GF"}
         />
       </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>SKU / reference</Label>
           <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="optional" />
@@ -261,7 +259,7 @@ function ProductForm({
           Usual prices (optional) — fills these in for you every time you buy or sell this, so you don&apos;t have
           to type them again. You can always change them for a one-off deal.
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <Field>
             <Label>{type === "service" ? "What it usually costs you" : "What you usually pay for one"}</Label>
             <Input
@@ -326,7 +324,7 @@ function ProductForm({
       {type === "product" && (
         <div className="border border-line rounded-md p-3 space-y-3">
           <div className="text-xs font-medium text-muted">Reorder planning (optional — falls back to Settings defaults)</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Field>
               <Label>Ordering cost</Label>
               <Input type="number" min="0" step="0.01" value={orderingCost} onChange={(e) => setOrderingCost(e.target.value)} />
@@ -347,7 +345,7 @@ function ProductForm({
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="accent-amber" />
         Active
       </label>
-      <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
+      <div className="flex items-center justify-between pt-2">
         <div>
           {onDelete && (
             <Button type="button" variant="danger" onClick={onDelete}>
@@ -377,7 +375,7 @@ function ReorderPlanningSection() {
 
   return (
     <Card className="mt-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-center justify-between">
         <div>
           <div className="text-sm font-medium">Reorder planning (EOQ)</div>
           <div className="text-xs text-muted mt-0.5 mb-4">
@@ -468,7 +466,7 @@ function VariableCostsSection() {
 
   return (
     <Card className="mt-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+      <div className="flex items-center justify-between mb-1">
         <div>
           <div className="text-sm font-medium">Variable costs per unit</div>
           <div className="text-xs text-muted mt-0.5">
@@ -482,7 +480,7 @@ function VariableCostsSection() {
       </div>
 
       {open && (
-        <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4 items-end">
+        <form onSubmit={submit} className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 items-end">
           <Field>
             <Label>Name</Label>
             <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Payment fee" />

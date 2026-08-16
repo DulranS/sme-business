@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, todayIso } from "@/lib/format";
-import type { Product, Purchase } from "@/lib/types";
+import type { Product } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -21,20 +21,10 @@ import {
 } from "@/components/ui";
 
 export default function PurchasesPage() {
-  const { products, purchases, addPurchase, updatePurchase, deletePurchase, settings, loading } = useData();
+  const { products, purchases, addPurchase, deletePurchase, settings, loading } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Purchase | null>(null);
   const currency = settings.currency;
-
-  function openNew() {
-    setEditing(null);
-    setModalOpen(true);
-  }
-  function openEdit(p: Purchase) {
-    setEditing(p);
-    setModalOpen(true);
-  }
 
   function handleDelete(id: string) {
     if (!confirm("Delete this? This can't be undone and will take it back out of your stock.")) return;
@@ -48,7 +38,7 @@ export default function PurchasesPage() {
       <PageHeader
         title="Things You Bought"
         action={
-          <Button onClick={openNew} disabled={products.length === 0}>
+          <Button onClick={() => setModalOpen(true)} disabled={products.length === 0}>
             + I bought something
           </Button>
         }
@@ -115,10 +105,7 @@ export default function PurchasesPage() {
                     <td className="py-2.5 px-3 num text-right">{formatMoney(p.unitCost, currency)}</td>
                     <td className="py-2.5 px-3 num text-right">{formatMoney(p.qty * p.unitCost, currency)}</td>
                     <td className="py-2.5 px-3 text-muted">{p.supplier || "—"}</td>
-                    <td className="py-2.5 pl-3 text-right whitespace-nowrap">
-                      <button onClick={() => openEdit(p)} className="text-xs text-muted hover:text-fg mr-3">
-                        Edit
-                      </button>
+                    <td className="py-2.5 pl-3 text-right">
                       <button onClick={() => handleDelete(p.id)} className="text-xs text-muted hover:text-bad">
                         Delete
                       </button>
@@ -131,20 +118,14 @@ export default function PurchasesPage() {
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this" : "I bought something"}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="I bought something">
         <PurchaseForm
           products={products}
-          initial={editing}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
-              if (editing) {
-                await updatePurchase(editing.id, values);
-                toast.success("Updated");
-              } else {
-                await addPurchase(values);
-                toast.success("Logged", `${values.qty} × ${formatMoney(values.unitCost, currency)} each`);
-              }
+              await addPurchase(values);
+              toast.success("Logged", `${values.qty} × ${formatMoney(values.unitCost, currency)} each`);
               setModalOpen(false);
             } catch (err) {
               toast.error("Couldn't save that", toastableErrorMessage(err));
@@ -158,12 +139,10 @@ export default function PurchasesPage() {
 
 function PurchaseForm({
   products,
-  initial,
   onSave,
   onCancel,
 }: {
   products: Product[];
-  initial?: Purchase | null;
   onSave: (values: {
     productId: string;
     qty: number;
@@ -174,14 +153,12 @@ function PurchaseForm({
   }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [productId, setProductId] = useState(initial?.productId ?? products[0]?.id ?? "");
-  const [qty, setQty] = useState(initial?.qty?.toString() ?? "");
-  const [unitCost, setUnitCost] = useState(
-    initial?.unitCost?.toString() ?? products[0]?.defaultCostPrice?.toString() ?? ""
-  );
-  const [date, setDate] = useState(initial?.date ?? todayIso());
-  const [supplier, setSupplier] = useState(initial?.supplier ?? "");
-  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [productId, setProductId] = useState(products[0]?.id ?? "");
+  const [qty, setQty] = useState("");
+  const [unitCost, setUnitCost] = useState(products[0]?.defaultCostPrice?.toString() ?? "");
+  const [date, setDate] = useState(todayIso());
+  const [supplier, setSupplier] = useState("");
+  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
   const selected = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
@@ -240,7 +217,7 @@ function PurchaseForm({
           Cancel
         </Button>
         <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : initial ? "Save changes" : "Save"}
+          {busy ? "Saving…" : "Save"}
         </Button>
       </div>
     </form>

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
-import type { Product, Sale } from "@/lib/types";
+import type { Product } from "@/lib/types";
 import { EXPENSE_CATEGORIES } from "@/lib/types";
 import { Button, Field, Input, Label, Select } from "@/components/ui";
 
@@ -25,28 +25,19 @@ function SummaryRow({ label, value, currency, muted }: { label: string; value: n
   );
 }
 
-export function QuickSaleForm({
-  fixedProduct,
-  existingSale,
-  onDone,
-}: {
-  fixedProduct?: Product;
-  existingSale?: Sale;
-  onDone: () => void;
-}) {
-  const { products, ledgers, addSale, updateSale, settings } = useData();
+export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product; onDone: () => void }) {
+  const { products, ledgers, addSale, settings } = useData();
   const toast = useToast();
   const currency = settings.currency;
   const sellable = useMemo(() => products.filter((p) => p.active), [products]);
 
-  const lockedProduct = fixedProduct ?? (existingSale ? products.find((p) => p.id === existingSale.productId) : undefined);
-  const [productId, setProductId] = useState(lockedProduct?.id ?? existingSale?.productId ?? sellable[0]?.id ?? "");
-  const product = lockedProduct ?? products.find((p) => p.id === productId);
-  const [qty, setQty] = useState(existingSale?.qty?.toString() ?? "");
-  const [unitPrice, setUnitPrice] = useState(existingSale?.unitPrice?.toString() ?? product?.defaultSellPrice?.toString() ?? "");
-  const [date, setDate] = useState(existingSale?.date ?? todayIso());
-  const [customer, setCustomer] = useState(existingSale?.customer ?? "");
-  const [notes, setNotes] = useState(existingSale?.notes ?? "");
+  const [productId, setProductId] = useState(fixedProduct?.id ?? sellable[0]?.id ?? "");
+  const product = fixedProduct ?? products.find((p) => p.id === productId);
+  const [qty, setQty] = useState("");
+  const [unitPrice, setUnitPrice] = useState(product?.defaultSellPrice?.toString() ?? "");
+  const [date, setDate] = useState(todayIso());
+  const [customer, setCustomer] = useState("");
+  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
   const wac = ledgers.get(productId)?.wac ?? 0;
@@ -59,11 +50,7 @@ export function QuickSaleForm({
   const cogs = isProduct ? qtyNum * wac : 0;
   const profit = revenue - cogs;
   const marginPct = revenue > 0 ? (profit / revenue) * 100 : null;
-  // When editing a past sale, the units it already took out of stock are
-  // still reflected in the current on-hand count, so the true "room" for
-  // this sale is what's on hand plus what it already used.
-  const availableForThisSale = isProduct ? qtyOnHand + (existingSale?.qty ?? 0) : Infinity;
-  const oversell = isProduct && qtyNum > availableForThisSale;
+  const oversell = isProduct && qtyNum > qtyOnHand;
 
   function handleProductChange(id: string) {
     setProductId(id);
@@ -79,17 +66,11 @@ export function QuickSaleForm({
         e.preventDefault();
         setBusy(true);
         try {
-          const values = { productId, qty: qtyNum, unitPrice: priceNum, date, customer: customer || undefined, notes: notes || undefined };
-          if (existingSale) {
-            await updateSale(existingSale.id, values);
-            toast.success("Updated", `${product.name}: ${formatMoney(revenue, currency)} revenue`);
-          } else {
-            await addSale(values);
-            toast.success(
-              "Sold!",
-              `${product.name}: ${formatMoney(revenue, currency)} revenue, ${formatMoney(profit, currency)} profit${marginPct !== null ? ` (${marginPct.toFixed(0)}%)` : ""}`
-            );
-          }
+          await addSale({ productId, qty: qtyNum, unitPrice: priceNum, date, customer: customer || undefined, notes: notes || undefined });
+          toast.success(
+            "Sold!",
+            `${product.name}: ${formatMoney(revenue, currency)} revenue, ${formatMoney(profit, currency)} profit${marginPct !== null ? ` (${marginPct.toFixed(0)}%)` : ""}`
+          );
           onDone();
         } catch (err) {
           toast.error("Couldn't save that sale", toastableErrorMessage(err));
@@ -99,7 +80,7 @@ export function QuickSaleForm({
       }}
       className="space-y-4"
     >
-      {!lockedProduct && (
+      {!fixedProduct && (
         <Field>
           <Label>What did you sell?</Label>
           <Select required value={productId} onChange={(e) => handleProductChange(e.target.value)}>
@@ -111,7 +92,7 @@ export function QuickSaleForm({
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>{isProduct ? "How many did you sell?" : "How many hours / jobs?"}</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -121,7 +102,7 @@ export function QuickSaleForm({
           <Input required type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -148,17 +129,17 @@ export function QuickSaleForm({
             </span>
           </div>
           {oversell && (
-            <div className="text-xs text-bad pt-1">You only have {formatNumber(availableForThisSale)} left — this is more than you have.</div>
+            <div className="text-xs text-bad pt-1">You only have {formatNumber(qtyOnHand)} left — this is more than you have.</div>
           )}
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" disabled={busy || !productId}>
-          {busy ? "Saving…" : existingSale ? "Save changes" : "Sell"}
+          {busy ? "Saving…" : "Sell"}
         </Button>
       </div>
     </form>
@@ -226,7 +207,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>How many did you buy?</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -236,7 +217,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -256,7 +237,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
         <span className="num text-sm font-medium">{formatMoney(total, currency)}</span>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
         </Button>
@@ -312,7 +293,7 @@ export function QuickExpenseForm({ onDone }: { onDone: () => void }) {
         <Label>What is it?</Label>
         <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse rent" />
       </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Amount</Label>
           <Input required type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
@@ -337,7 +318,7 @@ export function QuickExpenseForm({ onDone }: { onDone: () => void }) {
         <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="accent-amber" />
         Repeats every month (uncheck for a one-off cost)
       </label>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
         </Button>

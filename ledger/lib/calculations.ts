@@ -331,7 +331,17 @@ export function computeMonthlyPnL(
   for (const p of purchases) candidateKeys.push(monthKey(p.date));
   for (const e of expenses) candidateKeys.push(monthKey(e.startDate));
   for (const c of capitalEntries) candidateKeys.push(monthKey(c.date));
-  for (const key of loanMonthlyTotals.keys()) candidateKeys.push(key);
+  // Loan schedules run for the loan's full term (often 12-36+ months), which
+  // is almost always well past "now". Letting those future months extend the
+  // P&L range breaks every piece of code that treats the last entry in this
+  // array as "the current month" (Dashboard KPIs, break-even, the Statements
+  // default month, the revenue forecast baseline) — they'd silently pick up
+  // a mostly-empty future month instead. Past/current loan months still need
+  // to land in the range (that's how interest expense reaches the month it
+  // was actually incurred in), so only future ones are excluded here.
+  for (const key of loanMonthlyTotals.keys()) {
+    if (key <= nowKey) candidateKeys.push(key);
+  }
 
   if (candidateKeys.length === 0) return [];
   candidateKeys.sort();

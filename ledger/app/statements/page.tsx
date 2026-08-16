@@ -11,7 +11,9 @@ export default function StatementsPage() {
   const { monthlyPnL, balanceSheet, settings } = useData();
   const currency = settings.currency;
   const [tab, setTab] = useState<Tab>("income");
-  const [monthKey, setMonthKey] = useState<string>(monthlyPnL[monthlyPnL.length - 1]?.month ?? "");
+  const [monthKey, setMonthKey] = useState<string>(
+    () => monthlyPnL.find((m) => m.month === todayIso().slice(0, 7))?.month ?? monthlyPnL[monthlyPnL.length - 1]?.month ?? ""
+  );
 
   const selectedMonth = useMemo(
     () => monthlyPnL.find((m) => m.month === monthKey) ?? monthlyPnL[monthlyPnL.length - 1],

@@ -15,6 +15,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   setDoc,
   getDoc,
   writeBatch,
@@ -296,10 +297,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return map;
   }, [products, sales, ledgers, settings]);
 
-  const breakEven = useMemo(
-    () => computeBreakEven(monthlyPnL[monthlyPnL.length - 1], monthlyPnL),
-    [monthlyPnL]
-  );
+  const breakEven = useMemo(() => {
+    // Prefer the row for the actual current month over "last item in the
+    // array" — see the comment in computeMonthlyPnL for why those aren't
+    // always the same thing.
+    const currentMonth =
+      monthlyPnL.find((m) => m.month === todayIso().slice(0, 7)) ?? monthlyPnL[monthlyPnL.length - 1];
+    return computeBreakEven(currentMonth, monthlyPnL);
+  }, [monthlyPnL]);
   const capitalSummary = useMemo(
     () => computeCapitalSummary(capitalEntries, monthlyPnL),
     [capitalEntries, monthlyPnL]
@@ -316,6 +321,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
   function requireUid(): string {
     if (!uid) throw new Error("Not signed in");
     return uid;
+  }
+
+  // Firestore is configured with `ignoreUndefinedProperties: true` (see
+  // lib/firebase.ts) so forms can freely send `undefined` for a blank
+  // optional field when CREATING a doc via addDoc/set — the key is just
+  // omitted, which is exactly "unset". But that same setting means an
+  // `undefined` value in an updateDoc()/batch.update() call is *dropped from
+  // the write entirely* rather than clearing the field — so editing a
+  // record and blanking out a previously-set optional field (an ordering
+  // cost, a loan's lender, an employee's end date on reactivation, etc.)
+  // looks like it worked in the UI but silently leaves the old value sitting
+  // in Firestore forever. Every partial update must go through this so
+  // `undefined` becomes Firestore's deleteField() sentinel instead.
+  function sanitizeUpdate<T extends Record<string, unknown>>(patch: T): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      out[k] = v === undefined ? deleteField() : v;
+    }
+    return out;
   }
 
   async function chunkedBatchAdd<T extends Record<string, unknown>>(
@@ -369,7 +393,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateProduct: async (docId, p) => {
       const id = requireUid();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "products", docId), p);
+      await updateDoc(doc(db, "users", id, "products", docId), sanitizeUpdate(p));
     },
     deleteProduct: async (docId) => {
       const id = requireUid();
@@ -386,7 +410,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updatePurchase: async (docId, p) => {
       const id = requireUid();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "purchases", docId), p);
+      await updateDoc(doc(db, "users", id, "purchases", docId), sanitizeUpdate(p));
     },
     deletePurchase: async (docId) => {
       const id = requireUid();
@@ -407,7 +431,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updatePurchaseOrder: async (docId, po) => {
       const id = requireUid();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "purchaseOrders", docId), po);
+      await updateDoc(doc(db, "users", id, "purchaseOrders", docId), sanitizeUpdate(po));
     },
     cancelPurchaseOrder: async (docId) => {
       const id = requireUid();
@@ -461,7 +485,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateSale: async (docId, s) => {
       const id = requireUid();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "sales", docId), s);
+      await updateDoc(doc(db, "users", id, "sales", docId), sanitizeUpdate(s));
     },
     deleteSale: async (docId) => {
       const id = requireUid();
@@ -478,7 +502,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateExpense: async (docId, e) => {
       const id = requireUid();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "expenses", docId), e);
+      await updateDoc(doc(db, "users", id, "expenses", docId), sanitizeUpdate(e));
     },
     deleteExpense: async (docId) => {
       const id = requireUid();
@@ -540,20 +564,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const existing = employees.find((emp) => emp.id === docId);
       const employeeRef = doc(db, "users", id, "employees", docId);
       const batch = writeBatch(db);
-      batch.update(employeeRef, e);
+      batch.update(employeeRef, sanitizeUpdate(e));
 
       if (existing?.linkedExpenseId) {
         const merged = { ...existing, ...e };
         const expenseRef = doc(db, "users", id, "expenses", existing.linkedExpenseId);
-        batch.update(expenseRef, {
-          name: `Payroll — ${merged.name}`,
-          amount: merged.payRate,
-          recurrence: merged.payFrequency,
-          startDate: merged.startDate,
-          // Deactivating an employee stops the recurring cost going forward
-          // without deleting the historical expense record.
-          endDate: merged.active ? undefined : merged.endDate ?? todayIso(),
-        });
+        batch.update(
+          expenseRef,
+          sanitizeUpdate({
+            name: `Payroll — ${merged.name}`,
+            amount: merged.payRate,
+            recurrence: merged.payFrequency,
+            startDate: merged.startDate,
+            // Deactivating an employee stops the recurring cost going
+            // forward without deleting the historical expense record.
+            // Reactivating clears it back out — sanitizeUpdate() is what
+            // makes that `undefined` actually clear the field in Firestore
+            // instead of being silently dropped from the write.
+            endDate: merged.active ? undefined : merged.endDate ?? todayIso(),
+          })
+        );
       }
       await batch.commit();
     },
@@ -577,7 +607,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateLoan: async (docId, l) => {
       const id = requireUid();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "loans", docId), l);
+      await updateDoc(doc(db, "users", id, "loans", docId), sanitizeUpdate(l));
     },
     deleteLoan: async (docId) => {
       const id = requireUid();
@@ -591,7 +621,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       const ref = doc(db, "users", id, "meta", "settings");
       const snap = await getDoc(ref);
-      if (snap.exists()) await updateDoc(ref, s);
+      if (snap.exists()) await updateDoc(ref, sanitizeUpdate(s));
       else await setDoc(ref, { ...DEFAULT_SETTINGS, ...s });
     },
   };
