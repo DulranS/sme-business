@@ -119,6 +119,12 @@ Shows you at a glance:
 - Net profit (what you actually made)
 - Cash on hand
 - Forecast (what's coming based on trends)
+- **Growth rates** (month-over-month and year-over-year percentages)
+- **Average order value** (how much customers spend per sale)
+- **Revenue per employee** (if you have staff)
+- **Inventory turnover** (how fast you're selling stock)
+- **Days of inventory on hand** (how long current stock will last)
+- **Cash runway** (how many months you can operate at current burn rate)
 
 ### Products Page
 - **Stock level:** How many you have
@@ -204,6 +210,15 @@ Configure your business:
 
 **Q: Is my data safe?**
 - A: Yes. Data is stored in Firebase with security rules that only you can access. It's backed up in the cloud.
+
+**Q: What do the new strategic metrics mean?**
+- A: 
+  - **Growth rates**: Shows how much revenue/profit changed vs last month or last year (as %)
+  - **Average order value**: How much customers spend per sale on average
+  - **Revenue per employee**: How much revenue each active employee generates monthly
+  - **Inventory turnover**: How many times you sell through your entire stock per year (higher = faster sales)
+  - **Days of inventory on hand**: How long current stock will last at current sales rate
+  - **Cash runway**: How many months you can operate before running out of cash at current burn rate
 
 ---
 

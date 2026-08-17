@@ -1054,6 +1054,122 @@ export interface BalanceSheet {
   balances: boolean; // sanity check — should always be true within rounding
 }
 
+// ---------------------------------------------------------------------------
+// Strategic business metrics for better decision-making
+// ---------------------------------------------------------------------------
+
+export interface GrowthRates {
+  momRevenuePct: number | null; // month-over-month revenue growth %
+  yoyRevenuePct: number | null; // year-over-year revenue growth %
+  momProfitPct: number | null; // month-over-month profit growth %
+  yoyProfitPct: number | null; // year-over-year profit growth %
+  trendDirection: "up" | "down" | "flat" | "insufficient-data";
+}
+
+export function computeGrowthRates(monthlyPnL: MonthlyPnL[]): GrowthRates {
+  if (monthlyPnL.length < 2) {
+    return {
+      momRevenuePct: null,
+      yoyRevenuePct: null,
+      momProfitPct: null,
+      yoyProfitPct: null,
+      trendDirection: "insufficient-data",
+    };
+  }
+
+  const current = monthlyPnL[monthlyPnL.length - 1];
+  const previous = monthlyPnL[monthlyPnL.length - 2];
+  const yearAgo = monthlyPnL.find((pnl) => {
+    const [y, m] = pnl.month.split("-").map(Number);
+    const [cy, cm] = current.month.split("-").map(Number);
+    return y === cy - 1 && m === cm;
+  });
+
+  const momRevenuePct =
+    previous.totalRevenue > 0 ? ((current.totalRevenue - previous.totalRevenue) / previous.totalRevenue) * 100 : null;
+  const momProfitPct =
+    previous.netProfitAfterTax > 0
+      ? ((current.netProfitAfterTax - previous.netProfitAfterTax) / previous.netProfitAfterTax) * 100
+      : null;
+
+  const yoyRevenuePct =
+    yearAgo && yearAgo.totalRevenue > 0
+      ? ((current.totalRevenue - yearAgo.totalRevenue) / yearAgo.totalRevenue) * 100
+      : null;
+  const yoyProfitPct =
+    yearAgo && yearAgo.netProfitAfterTax > 0
+      ? ((current.netProfitAfterTax - yearAgo.netProfitAfterTax) / yearAgo.netProfitAfterTax) * 100
+      : null;
+
+  let trendDirection: GrowthRates["trendDirection"] = "flat";
+  if (momRevenuePct !== null) {
+    if (momRevenuePct > 2) trendDirection = "up";
+    else if (momRevenuePct < -2) trendDirection = "down";
+  }
+
+  return {
+    momRevenuePct,
+    yoyRevenuePct,
+    momProfitPct,
+    yoyProfitPct,
+    trendDirection,
+  };
+}
+
+export interface OperationalMetrics {
+  averageOrderValue: number; // revenue / number of sales
+  revenuePerEmployee: number | null; // revenue / active employee count
+  inventoryTurnoverRate: number | null; // COGS / average inventory value
+  daysOfInventoryOnHand: number | null; // 365 / turnover rate
+  cashRunwayMonths: number | null; // cash / monthly burn rate
+  monthlyBurnRate: number; // average monthly cash outflow (last 3 months)
+}
+
+export function computeOperationalMetrics(
+  monthlyPnL: MonthlyPnL[],
+  sales: Sale[],
+  inventoryValue: number,
+  activeEmployeeCount: number,
+  cash: number
+): OperationalMetrics {
+  // Average Order Value (AOV)
+  const currentMonthSales = sales.filter((s) => s.date.startsWith(monthlyPnL[monthlyPnL.length - 1]?.month ?? ""));
+  const aov = currentMonthSales.length > 0
+    ? currentMonthSales.reduce((sum, s) => sum + s.unitPrice * s.qty, 0) / currentMonthSales.length
+    : 0;
+
+  // Revenue per Employee
+  const currentRevenue = monthlyPnL[monthlyPnL.length - 1]?.totalRevenue ?? 0;
+  const revenuePerEmployee = activeEmployeeCount > 0 ? currentRevenue / activeEmployeeCount : null;
+
+  // Inventory Turnover Rate = COGS / Average Inventory Value
+  // Using current month COGS and current inventory value as approximation
+  const currentCogs = monthlyPnL[monthlyPnL.length - 1]?.cogs ?? 0;
+  const inventoryTurnoverRate = inventoryValue > 0 ? currentCogs / inventoryValue : null;
+
+  // Days of Inventory on Hand = 365 / Turnover Rate
+  const daysOfInventoryOnHand =
+    inventoryTurnoverRate && inventoryTurnoverRate > 0 ? 365 / inventoryTurnoverRate : null;
+
+  // Cash Runway = Cash / Monthly Burn Rate
+  // Burn rate = average monthly cash outflow (last 3 months)
+  const last3Months = monthlyPnL.slice(-3);
+  const monthlyBurnRate =
+    last3Months.length > 0
+      ? last3Months.reduce((sum, m) => sum + Math.abs(Math.min(0, m.netCashFlow)), 0) / last3Months.length
+      : 0;
+  const cashRunwayMonths = monthlyBurnRate > 0 ? cash / monthlyBurnRate : null;
+
+  return {
+    averageOrderValue: aov,
+    revenuePerEmployee,
+    inventoryTurnoverRate,
+    daysOfInventoryOnHand,
+    cashRunwayMonths,
+    monthlyBurnRate,
+  };
+}
+
 export function computeBalanceSheet(
   monthlyPnL: MonthlyPnL[],
   inventoryValue: number,

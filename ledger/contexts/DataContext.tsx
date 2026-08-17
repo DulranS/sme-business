@@ -52,6 +52,8 @@ import {
   monthlyPayrollCost,
   computeLoanPortfolio,
   computeBalanceSheet,
+  computeGrowthRates,
+  computeOperationalMetrics,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -61,6 +63,8 @@ import {
   type OpenOrderValue,
   type LoanPortfolioSummary,
   type BalanceSheet,
+  type GrowthRates,
+  type OperationalMetrics,
 } from "@/lib/calculations";
 import { todayIso } from "@/lib/format";
 
@@ -90,6 +94,8 @@ interface DataContextValue {
   monthlyPayroll: number;
   loanPortfolio: LoanPortfolioSummary;
   balanceSheet: BalanceSheet;
+  growthRates: GrowthRates;
+  operationalMetrics: OperationalMetrics;
 
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
@@ -317,6 +323,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     () => computeBalanceSheet(monthlyPnL, inventoryValue, loans, capitalSummary, todayIso()),
     [monthlyPnL, inventoryValue, loans, capitalSummary]
   );
+  const growthRates = useMemo(() => computeGrowthRates(monthlyPnL), [monthlyPnL]);
+  const operationalMetrics = useMemo(
+    () =>
+      computeOperationalMetrics(
+        monthlyPnL,
+        sales,
+        inventoryValue,
+        employees.filter((e) => e.active).length,
+        balanceSheet.cash
+      ),
+    [monthlyPnL, sales, inventoryValue, employees, balanceSheet.cash]
+  );
 
   function requireUid(): string {
     if (!uid) throw new Error("Not signed in");
@@ -384,6 +402,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     monthlyPayroll,
     loanPortfolio,
     balanceSheet,
+    growthRates,
+    operationalMetrics,
 
     addProduct: async (p) => {
       const id = requireUid();
