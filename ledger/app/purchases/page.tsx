@@ -21,10 +21,16 @@ import {
 } from "@/components/ui";
 
 export default function PurchasesPage() {
-  const { products, purchases, addPurchase, deletePurchase, settings, loading } = useData();
+  const { products, purchases, addPurchase, deletePurchase, settings, loading, projects } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<string>("all");
   const currency = settings.currency;
+
+  const filteredPurchases = useMemo(() => {
+    if (selectedProject === "all") return purchases;
+    return purchases.filter((p) => p.projectId === selectedProject);
+  }, [purchases, selectedProject]);
 
   function handleDelete(id: string) {
     if (!confirm("Delete this? This can't be undone and will take it back out of your stock.")) return;
@@ -44,6 +50,23 @@ export default function PurchasesPage() {
         }
       />
 
+      {projects.length > 0 && (
+        <div className="mb-4">
+          <Select
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            className="max-w-xs"
+          >
+            <option value="all">All Projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
       <Card className="mb-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-xs text-muted">
@@ -61,6 +84,10 @@ export default function PurchasesPage() {
         <EmptyState title="Add something first" body="Add a product or service before you log what it cost you." />
       )}
 
+      {!loading && products.length > 0 && filteredPurchases.length === 0 && purchases.length > 0 && (
+        <EmptyState title="No purchases for this project" body="Select a different project or add purchases to this project." />
+      )}
+
       {!loading && products.length > 0 && purchases.length === 0 && (
         <EmptyState
           title="Nothing bought yet"
@@ -68,7 +95,7 @@ export default function PurchasesPage() {
         />
       )}
 
-      {purchases.length > 0 && (
+      {filteredPurchases.length > 0 && (
         <Card>
           <div className="table-container">
             <Table>
@@ -84,7 +111,7 @@ export default function PurchasesPage() {
               </tr>
             </thead>
             <tbody>
-              {purchases.map((p) => {
+              {filteredPurchases.map((p) => {
                 const product = products.find((pr) => pr.id === p.productId);
                 return (
                   <tr key={p.id} className="border-b border-line last:border-0">

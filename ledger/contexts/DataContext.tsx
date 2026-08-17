@@ -35,6 +35,8 @@ import type {
   Employee,
   Loan,
   Settings,
+  Project,
+  TeamMember,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import {
@@ -80,6 +82,8 @@ interface DataContextValue {
   employees: Employee[];
   loans: Loan[];
   settings: Settings;
+  projects: Project[];
+  teamMembers: TeamMember[];
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -147,6 +151,14 @@ interface DataContextValue {
   deleteLoan: (id: string) => Promise<void>;
   bulkAddLoans: (rows: Omit<Loan, "id" | "createdAt">[]) => Promise<void>;
 
+  addProject: (p: Omit<Project, "id" | "createdAt">) => Promise<void>;
+  updateProject: (id: string, p: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+
+  addTeamMember: (tm: Omit<TeamMember, "id" | "invitedAt">) => Promise<void>;
+  updateTeamMember: (id: string, tm: Partial<TeamMember>) => Promise<void>;
+  deleteTeamMember: (id: string) => Promise<void>;
+
   updateSettings: (s: Partial<Settings>) => Promise<void>;
 }
 
@@ -168,6 +180,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loadedFlags, setLoadedFlags] = useState({
     products: false,
@@ -179,6 +193,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     capitalEntries: false,
     employees: false,
     loans: false,
+    projects: false,
+    teamMembers: false,
     settings: false,
   });
 
@@ -198,6 +214,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setCapitalEntries([]);
       setEmployees([]);
       setLoans([]);
+      setProjects([]);
+      setTeamMembers([]);
       setSettings(DEFAULT_SETTINGS);
       return;
     }
@@ -252,6 +270,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setLoadedFlags((f) => ({ ...f, loans: true }));
         }
       ),
+      onSnapshot(query(collection(db, "users", uid, "projects"), orderBy("createdAt", "desc")), (snap) => {
+        setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
+        setLoadedFlags((f) => ({ ...f, projects: true }));
+      }),
+      onSnapshot(collection(db, "users", uid, "teamMembers"), (snap) => {
+        setTeamMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TeamMember)));
+        setLoadedFlags((f) => ({ ...f, teamMembers: true }));
+      }),
       onSnapshot(doc(db, "users", uid, "meta", "settings"), (snap) => {
         if (snap.exists()) setSettings({ ...DEFAULT_SETTINGS, ...(snap.data() as Settings) });
         setLoadedFlags((f) => ({ ...f, settings: true }));
@@ -389,6 +415,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     employees,
     loans,
     settings,
+    projects,
+    teamMembers,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -635,6 +663,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await deleteDoc(doc(db, "users", id, "loans", docId));
     },
     bulkAddLoans: (rows) => chunkedBatchAdd("loans", rows),
+
+    addProject: async (p) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await addDoc(collection(db, "users", id, "projects"), { ...p, createdAt: Date.now() });
+    },
+    updateProject: async (docId, p) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", id, "projects", docId), sanitizeUpdate(p));
+    },
+    deleteProject: async (docId) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", id, "projects", docId));
+    },
+
+    addTeamMember: async (tm) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await addDoc(collection(db, "users", id, "teamMembers"), { ...tm, invitedAt: Date.now() });
+    },
+    updateTeamMember: async (docId, tm) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", id, "teamMembers", docId), sanitizeUpdate(tm));
+    },
+    deleteTeamMember: async (docId) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", id, "teamMembers", docId));
+    },
 
     updateSettings: async (s) => {
       const id = requireUid();

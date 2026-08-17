@@ -1205,3 +1205,43 @@ export function computeBalanceSheet(
     balances: Math.abs(totalAssets - totalLiabilitiesAndEquity) < 1,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Project-specific P&L calculations
+// ---------------------------------------------------------------------------
+
+export function computeProjectPnL(
+  projectId: string,
+  sales: Sale[],
+  purchases: Purchase[],
+  expenses: Expense[],
+  products: Product[],
+  variableCosts: VariableCost[],
+  loans: Loan[],
+  capitalEntries: CapitalEntry[],
+  settings: Settings
+): MonthlyPnL[] {
+  // Filter data by project
+  const projectSales = sales.filter((s) => s.projectId === projectId);
+  const projectPurchases = purchases.filter((p) => p.projectId === projectId);
+  const projectExpenses = expenses.filter((e) => e.projectId === projectId);
+
+  // Compute ledgers for project purchases
+  const projectLedgers = computeAllLedgers(products, projectPurchases, projectSales);
+
+  // Compute sale economics for project sales
+  const projectSaleEconomics = computeSaleEconomics(projectSales, projectLedgers, variableCosts);
+
+  // Use existing monthly PnL computation with project-filtered data
+  // Note: loans and capitalEntries are not project-specific, so we pass all of them
+  return computeMonthlyPnL(
+    projectSales,
+    projectSaleEconomics,
+    projectExpenses,
+    projectPurchases,
+    loans,
+    capitalEntries,
+    settings.taxRatePct,
+    settings.monthlyOwnerDraw
+  );
+}

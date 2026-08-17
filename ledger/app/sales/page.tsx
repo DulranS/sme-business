@@ -5,15 +5,21 @@ import { useData } from "@/contexts/DataContext";
 import { useToast } from "@/contexts/ToastContext";
 import { formatMoney } from "@/lib/format";
 import { QuickSaleForm } from "@/components/QuickForms";
-import { Badge, Button, Card, Modal, PageHeader, Table, EmptyState } from "@/components/ui";
+import { Badge, Button, Card, Modal, PageHeader, Table, EmptyState, Select } from "@/components/ui";
 
 export default function SalesPage() {
-  const { products, sales, saleEconomics, deleteSale, settings, loading } = useData();
+  const { products, sales, saleEconomics, deleteSale, settings, loading, projects } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<string>("all");
   const currency = settings.currency;
 
   const econById = useMemo(() => new Map(saleEconomics.map((e) => [e.saleId, e])), [saleEconomics]);
+
+  const filteredSales = useMemo(() => {
+    if (selectedProject === "all") return sales;
+    return sales.filter((s) => s.projectId === selectedProject);
+  }, [sales, selectedProject]);
 
   function handleDelete(saleId: string) {
     if (!confirm("Delete this sale? This can't be undone — it'll put the stock back.")) return;
@@ -33,15 +39,36 @@ export default function SalesPage() {
         }
       />
 
+      {projects.length > 0 && (
+        <div className="mb-4">
+          <Select
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            className="max-w-xs"
+          >
+            <option value="all">All Projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
       {!loading && products.length === 0 && (
         <EmptyState title="Add something to sell first" body="Add a product or service before you record a sale." />
+      )}
+
+      {!loading && products.length > 0 && filteredSales.length === 0 && sales.length > 0 && (
+        <EmptyState title="No sales for this project" body="Select a different project or add sales to this project." />
       )}
 
       {!loading && products.length > 0 && sales.length === 0 && (
         <EmptyState title="Nothing sold yet" body="Record a sale and we'll work out your profit for you, automatically." />
       )}
 
-      {sales.length > 0 && (
+      {filteredSales.length > 0 && (
         <Card>
           <div className="table-container">
             <Table>
@@ -58,7 +85,7 @@ export default function SalesPage() {
               </tr>
             </thead>
             <tbody>
-              {sales.map((s) => {
+              {filteredSales.map((s) => {
                 const product = products.find((p) => p.id === s.productId);
                 const econ = econById.get(s.id);
                 return (

@@ -2,6 +2,33 @@ export type Recurrence = "weekly" | "monthly" | "yearly" | "none";
 
 export type OfferingType = "product" | "service";
 
+export type ProjectStatus = "active" | "completed" | "on_hold";
+
+export type TeamRole = "owner" | "admin" | "editor" | "viewer";
+
+// A project for tracking revenue, expenses, and profitability by initiative/client
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  status: ProjectStatus;
+  startDate?: string; // ISO date
+  endDate?: string; // ISO date
+  budget?: number; // optional budget for the project
+  createdAt: number;
+}
+
+// A team member with role-based access control
+export interface TeamMember {
+  id: string;
+  email: string;
+  name: string;
+  role: TeamRole;
+  invitedAt: number;
+  joinedAt?: number; // set when they accept the invite
+  active: boolean;
+}
+
 // A "Product" can be a physical item (wholesale-bought, held as inventory)
 // or a service/labor offering (no physical stock — its "cost" is what it
 // costs you to deliver one unit, logged the same way a purchase is logged
@@ -53,6 +80,7 @@ export interface Purchase {
   supplier?: string; // product: supplier name. service: contractor/resource.
   notes?: string;
   purchaseOrderId?: string; // set when this purchase was created by receiving a PO
+  projectId?: string; // optional project assignment for project-based accounting
   createdAt: number;
 }
 
@@ -89,6 +117,7 @@ export interface Sale {
   date: string; // ISO date
   customer?: string;
   notes?: string;
+  projectId?: string; // optional project assignment for project-based accounting
   createdAt: number;
 }
 
@@ -117,6 +146,7 @@ export interface Expense {
   startDate: string; // ISO date
   endDate?: string; // ISO date, optional (ongoing if absent)
   employeeId?: string; // set when this expense is the auto-managed payroll line for an Employee
+  projectId?: string; // optional project assignment for project-based accounting
   createdAt: number;
 }
 

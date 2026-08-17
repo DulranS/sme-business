@@ -24,10 +24,16 @@ import {
 } from "@/components/ui";
 
 export default function ExpensesPage() {
-  const { expenses, addExpense, deleteExpense, settings } = useData();
+  const { expenses, addExpense, deleteExpense, settings, projects } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<string>("all");
   const currency = settings.currency;
+
+  const filteredExpenses = useMemo(() => {
+    if (selectedProject === "all") return expenses;
+    return expenses.filter((e) => e.projectId === selectedProject);
+  }, [expenses, selectedProject]);
 
   function handleDelete(id: string, name: string) {
     if (!confirm(`Delete "${name}"? This can't be undone.`)) return;
@@ -40,24 +46,48 @@ export default function ExpensesPage() {
 
   const categoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
-    for (const e of expenses) {
+    for (const e of filteredExpenses) {
       if (e.kind !== "expense") continue;
       const monthly = e.isRecurring ? monthlyNormalizedAmount(e.amount, e.recurrence) : e.amount;
       const key = e.category || "Uncategorized";
       map.set(key, (map.get(key) ?? 0) + monthly);
     }
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [expenses]);
+  }, [filteredExpenses]);
 
   return (
     <>
       <PageHeader title="Expenses" action={<Button onClick={() => setModalOpen(true)}>+ Add item</Button>} />
+
+      {projects.length > 0 && (
+        <div className="mb-4">
+          <Select
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            className="max-w-xs"
+          >
+            <option value="all">All Projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Recurring revenue / mo" value={formatMoney(mrr.mrrRevenue, currency)} tone="good" />
         <Stat label="Recurring expenses / mo" value={formatMoney(mrr.mrrExpense, currency)} tone="bad" />
         <Stat label="Recurring net / mo" value={formatMoney(mrr.mrrRevenue - mrr.mrrExpense, currency)} tone="amber" />
       </div>
+
+      {filteredExpenses.length === 0 && expenses.length > 0 && (
+        <EmptyState
+          title="No expenses for this project"
+          body="Select a different project or add expenses to this project."
+        />
+      )}
 
       {expenses.length === 0 ? (
         <EmptyState
@@ -100,7 +130,7 @@ export default function ExpensesPage() {
               </tr>
             </thead>
             <tbody>
-              {expenses.map((e) => (
+              {filteredExpenses.map((e) => (
                 <tr key={e.id} className="border-b border-line last:border-0">
                   <td className="py-2.5 pr-3 font-medium">
                     {e.name}
