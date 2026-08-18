@@ -29,6 +29,11 @@ Ledger is a simple financial system for small businesses. It tells you exactly w
 - Import/export your data easily
 - Works on any device — phone, tablet, or desktop
 
+**You can grow past "just you."**
+- Bring on a manager or till staff without handing over your margins
+- Staff can log sales and count cash — they never see cost prices or reports
+- Every action is enforced by the database itself, not just hidden buttons
+
 ## Who It's For
 
 Solo entrepreneurs and small businesses (1-10 employees) who sell products, services, or both. Anyone who needs professional financial tracking without hiring an accountant.

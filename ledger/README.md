@@ -1,11 +1,16 @@
-# Ledger — solo bookkeeping for product, service, or hybrid SMEs
+# Ledger — bookkeeping for product, service, or hybrid SMEs
 
 Next.js 14 (App Router) + Firebase (Auth + Firestore). Tracks wholesale
 orders through to receipt, purchases/service delivery costs, sales,
 inventory, unit economics, EOQ reorder planning, employee payroll, recurring
 revenue/expenses (incl. marketing/overhead), break-even & overhead coverage,
-capital/ROI, and a growth forecast — for a single operator, no team/
-multi-tenant auth needed.
+capital/ROI, and a growth forecast — for an owner running solo or with a
+small team. Every business gets three roles out of the box: **Owner** (full
+access), **Manager** (day-to-day operations, no delete/payroll/settings),
+and **Staff** (log sales, count cash, record customer payments — nothing
+else). The owner invites people from the Team page with a shareable link;
+there's no shared login, and every permission is enforced server-side in
+`firestore.rules`, not just hidden in the UI.
 
 ## 1. Set up Firebase
 
@@ -31,7 +36,9 @@ npm run dev
 ```
 
 Open http://localhost:3000, create an account (email/password — this is the
-Firebase Auth user, not a shared login), and start adding products or services.
+Firebase Auth user, not a shared login — you're the Owner by default), and
+start adding products or services. Invite a Manager or Staff member later
+from the Team page once you have data worth sharing.
 
 ## 3. Products vs. services
 
@@ -200,9 +207,18 @@ from either statement.
   this is financial data, partial imports would be worse than a blocked one.
   Bulk writes are chunked into Firestore batches of ≤400 to stay under the
   500-write batch limit.
-- **No auth** was the original ask; this revision uses Firebase
-  Authentication (email/password) purely to keep the ledger private to you —
-  there's no multi-user/team layer, sharing, or roles.
+- **Team & roles**: `users/{businessId}/members/{uid}` holds one doc per
+  person with access (role, active/removed) — the single source of truth
+  both the client (`lib/permissions.ts`) and `firestore.rules` read for
+  every permission decision. `memberships/{uid}` is a top-level pointer,
+  written once at signup or invite-acceptance, so a signed-in client can
+  find its own business with one doc read. Owners invite from the Team
+  page; the link (`/join?biz=...&invite=...`) is shared out-of-band
+  (WhatsApp, in person) and the invitee creates their own login — nothing
+  is ever created on their behalf, since the client SDK only holds one
+  session at a time. See the role matrix at the top of `firestore.rules`
+  and in `lib/permissions.ts` (kept in sync manually — if you add a
+  permission, update both).
 
 ## 8. CSV formats
 
