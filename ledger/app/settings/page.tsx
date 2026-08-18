@@ -211,8 +211,14 @@ export default function SettingsPage() {
 
       <Card className="max-w-2xl mt-6">
         <div className="flex items-center justify-between mb-4">
-          <div className="text-sm font-medium">Team Members</div>
-          <Button onClick={() => handleOpenTeamModal()}>+ Add Member</Button>
+          <div>
+            <div className="text-sm font-medium">Team Contacts</div>
+            <div className="text-xs text-muted mt-0.5">
+              A reference list only — this doesn&apos;t grant login access. The app is single-account, so
+              adding someone here just keeps track of who&apos;s who; it doesn&apos;t let them sign in or see this data.
+            </div>
+          </div>
+          <Button onClick={() => handleOpenTeamModal()}>+ Add Contact</Button>
         </div>
         <div className="table-container">
           <table className="w-full text-sm">
@@ -228,7 +234,7 @@ export default function SettingsPage() {
               {teamMembers.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-muted">
-                    No team members yet. Add team members to collaborate.
+                    No contacts yet.
                   </td>
                 </tr>
               ) : (

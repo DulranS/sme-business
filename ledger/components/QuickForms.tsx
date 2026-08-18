@@ -38,6 +38,8 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
   const [date, setDate] = useState(todayIso());
   const [customer, setCustomer] = useState("");
   const [notes, setNotes] = useState("");
+  const [onCredit, setOnCredit] = useState(false);
+  const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
 
   const wac = ledgers.get(productId)?.wac ?? 0;
@@ -66,7 +68,16 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
         e.preventDefault();
         setBusy(true);
         try {
-          await addSale({ productId, qty: qtyNum, unitPrice: priceNum, date, customer: customer || undefined, notes: notes || undefined });
+          await addSale({
+            productId,
+            qty: qtyNum,
+            unitPrice: priceNum,
+            date,
+            customer: customer || undefined,
+            notes: notes || undefined,
+            paymentStatus: onCredit ? "unpaid" : undefined,
+            dueDate: onCredit && dueDate ? dueDate : undefined,
+          });
           toast.success(
             "Sold!",
             `${product.name}: ${formatMoney(revenue, currency)} revenue, ${formatMoney(profit, currency)} profit${marginPct !== null ? ` (${marginPct.toFixed(0)}%)` : ""}`
@@ -116,10 +127,20 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" checked={onCredit} onChange={(e) => setOnCredit(e.target.checked)} className="accent-amber" />
+        Sold on credit — not paid yet
+      </label>
+      {onCredit && (
+        <Field>
+          <Label>Due date (optional)</Label>
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+      )}
 
       {qtyNum > 0 && (
         <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 space-y-1.5">
-          <SummaryRow label="Money coming in" value={revenue} currency={currency} />
+          <SummaryRow label={onCredit ? "Invoice amount (not yet received)" : "Money coming in"} value={revenue} currency={currency} />
           {isProduct && <SummaryRow label={`What it cost you (${formatMoney(wac, currency)} each)`} value={cogs} currency={currency} muted />}
           <div className="flex items-center justify-between text-sm pt-1.5 border-t border-line">
             <span className="font-medium">Your profit</span>
@@ -159,6 +180,8 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
   const [date, setDate] = useState(todayIso());
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
+  const [onCredit, setOnCredit] = useState(false);
+  const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
 
   const total = (Number(qty) || 0) * (Number(unitCost) || 0);
@@ -184,6 +207,8 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
             date,
             supplier: supplier || undefined,
             notes: notes || undefined,
+            paymentStatus: onCredit ? "unpaid" : undefined,
+            dueDate: onCredit && dueDate ? dueDate : undefined,
           });
           toast.success("Added to your stock", `${product.name}: +${qty} at ${formatMoney(Number(unitCost), currency)} each`);
           onDone();
@@ -231,9 +256,19 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" checked={onCredit} onChange={(e) => setOnCredit(e.target.checked)} className="accent-amber" />
+        Bought on credit — not paid yet
+      </label>
+      {onCredit && (
+        <Field>
+          <Label>Due date (optional)</Label>
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+      )}
 
       <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 flex items-center justify-between">
-        <span className="text-xs text-muted">Total you paid</span>
+        <span className="text-xs text-muted">{onCredit ? "Total owed" : "Total you paid"}</span>
         <span className="num text-sm font-medium">{formatMoney(total, currency)}</span>
       </div>
 

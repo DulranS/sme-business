@@ -6,6 +6,19 @@ export type ProjectStatus = "active" | "completed" | "on_hold";
 
 export type TeamRole = "owner" | "admin" | "editor" | "viewer";
 
+export type PaymentStatus = "paid" | "unpaid" | "partial";
+
+// Shared shape for the payment fields on Sale/Purchase. All optional and
+// absent-by-default — an existing or newly-quick-added record with none of
+// these set behaves exactly as before (cash settled in full on `date`).
+// Only set these when the sale/purchase is actually on credit terms.
+export interface PaymentFields {
+  paymentStatus?: PaymentStatus;
+  amountPaid?: number; // cumulative amount paid so far (for "partial"; ignored/full for "paid")
+  paidDate?: string; // ISO date cash actually moved — drives Cash Flow timing, not `date`
+  dueDate?: string; // ISO date payment is due — drives AR/AP aging
+}
+
 // A project for tracking revenue, expenses, and profitability by initiative/client
 export interface Project {
   id: string;
@@ -18,7 +31,12 @@ export interface Project {
   createdAt: number;
 }
 
-// A team member with role-based access control
+// A named contact with an informal role label for your own reference (e.g.
+// "who's the accountant", "who handles supplier calls"). NOT an access
+// control system: this app is single-owner (see firestore.rules — every
+// document is scoped to one Firebase Auth uid), so adding someone here does
+// not grant them a login or any ability to view or edit this data. Purely a
+// roster.
 export interface TeamMember {
   id: string;
   email: string;
@@ -71,7 +89,7 @@ export interface Product {
 // e.g. labor cost per hour or per job). Same shape, same WAC math either way.
 // This represents STOCK ALREADY IN HAND / cost already incurred — see
 // PurchaseOrder below for stock that's been ordered but not yet received.
-export interface Purchase {
+export interface Purchase extends PaymentFields {
   id: string;
   productId: string;
   qty: number;
@@ -83,6 +101,7 @@ export interface Purchase {
   projectId?: string; // optional project assignment for project-based accounting
   createdAt: number;
 }
+
 
 export type OrderStatus = "ordered" | "in_transit" | "received" | "cancelled";
 
@@ -109,7 +128,7 @@ export interface PurchaseOrder {
   createdAt: number;
 }
 
-export interface Sale {
+export interface Sale extends PaymentFields {
   id: string;
   productId: string;
   qty: number;
@@ -214,6 +233,27 @@ export interface Loan {
   startDate: string; // ISO date — disbursement date
   notes?: string;
   active: boolean; // false = closed/paid off early, kept for history but excluded from "current" liability views
+  createdAt: number;
+}
+
+// A capital asset the business owns and uses over time (machinery, a
+// vehicle, equipment, fixtures) — as opposed to inventory (held for resale)
+// or a one-off Expense (consumed immediately). Depreciated straight-line
+// over its useful life; the monthly depreciation charge flows into the
+// Income Statement as a non-cash expense, and net book value sits on the
+// Balance Sheet as an asset. The cash cost hits Investing Cash Flow once, on
+// `purchaseDate` — not spread out like depreciation.
+export interface FixedAsset {
+  id: string;
+  name: string; // e.g. "PP Spunbond fabric machine"
+  category: string;
+  purchaseDate: string; // ISO date
+  cost: number; // original cost, incl. installation/setup if capitalized
+  usefulLifeMonths: number; // straight-line depreciation period
+  salvageValue?: number; // estimated residual value at end of useful life (default 0)
+  disposalDate?: string; // ISO date, set when sold/scrapped
+  disposalAmount?: number; // cash received on disposal, set alongside disposalDate
+  notes?: string;
   createdAt: number;
 }
 

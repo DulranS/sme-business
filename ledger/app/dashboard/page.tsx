@@ -13,7 +13,7 @@ import {
   Legend,
 } from "recharts";
 import { useData } from "@/contexts/DataContext";
-import { forecastRevenue, computeMRR } from "@/lib/calculations";
+import { forecastRevenue, computeMRR, computeFixedAssetsNetValue } from "@/lib/calculations";
 import { formatMoney, formatMonth, formatNumber, todayIso } from "@/lib/format";
 import { Card, PageHeader, Stat, Table, Badge, EmptyState } from "@/components/ui";
 import QuickActionBar from "@/components/QuickActionBar";
@@ -36,9 +36,16 @@ export default function DashboardPage() {
     onOrderByProduct,
     growthRates,
     operationalMetrics,
+    receivables,
+    payables,
+    fixedAssets,
   } = useData();
 
   const currency = settings.currency;
+  const assetsNetBookValue = useMemo(
+    () => computeFixedAssetsNetValue(fixedAssets, todayIso()),
+    [fixedAssets]
+  );
   const forecast = useMemo(
     () => forecastRevenue(monthlyPnL, settings.forecastMonths),
     [monthlyPnL, settings.forecastMonths]
@@ -175,6 +182,22 @@ export default function DashboardPage() {
         />
         <Stat label="Stock is worth" value={formatMoney(inventoryValue, currency)} tone="amber" />
         <Stat label="Items in stock" value={formatNumber(inventoryUnits)} />
+        <Link href="/receivables-payables">
+          <Stat
+            label="Customers owe you"
+            value={formatMoney(receivables.totalOutstanding, currency)}
+            tone={receivables.overdueTotal > 0 ? "bad" : receivables.totalOutstanding > 0 ? "amber" : "default"}
+            sub={receivables.overdueTotal > 0 ? `${formatMoney(receivables.overdueTotal, currency)} overdue` : undefined}
+          />
+        </Link>
+        <Link href="/receivables-payables">
+          <Stat
+            label="You owe suppliers"
+            value={formatMoney(payables.totalOutstanding, currency)}
+            tone={payables.overdueTotal > 0 ? "bad" : payables.totalOutstanding > 0 ? "amber" : "default"}
+            sub={payables.overdueTotal > 0 ? `${formatMoney(payables.overdueTotal, currency)} overdue` : undefined}
+          />
+        </Link>
         <Stat
           label="On the way (ordered)"
           value={formatMoney(openOrders.openOrderValue, currency)}
@@ -188,6 +211,11 @@ export default function DashboardPage() {
           sub={loanPortfolio.loanCount > 0 ? `${loanPortfolio.loanCount} loan(s)` : undefined}
         />
         <Stat label="Loan payments / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
+        {fixedAssets.length > 0 && (
+          <Link href="/assets">
+            <Stat label="Equipment & assets" value={formatMoney(assetsNetBookValue, currency)} sub="net book value" />
+          </Link>
+        )}
         {operationalMetrics.averageOrderValue > 0 && (
           <Stat
             label="Avg order value"

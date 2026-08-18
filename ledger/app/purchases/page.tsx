@@ -128,6 +128,13 @@ export default function PurchasesPage() {
                           <Badge tone="good">from order</Badge>
                         </span>
                       )}
+                      {(p.paymentStatus === "unpaid" || p.paymentStatus === "partial") && (
+                        <span className="ml-1.5">
+                          <Link href="/receivables-payables">
+                            <Badge tone="bad">{p.paymentStatus === "unpaid" ? "unpaid" : "partial"}</Badge>
+                          </Link>
+                        </span>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 num text-right">{p.qty}</td>
                     <td className="py-2.5 px-3 num text-right">{formatMoney(p.unitCost, currency)}</td>
@@ -179,6 +186,8 @@ function PurchaseForm({
     date: string;
     supplier?: string;
     notes?: string;
+    paymentStatus?: "paid" | "unpaid" | "partial";
+    dueDate?: string;
   }) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -188,6 +197,8 @@ function PurchaseForm({
   const [date, setDate] = useState(todayIso());
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
+  const [onCredit, setOnCredit] = useState(false);
+  const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
 
   const selected = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
@@ -204,7 +215,16 @@ function PurchaseForm({
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        await onSave({ productId, qty: Number(qty), unitCost: Number(unitCost), date, supplier, notes });
+        await onSave({
+          productId,
+          qty: Number(qty),
+          unitCost: Number(unitCost),
+          date,
+          supplier,
+          notes,
+          paymentStatus: onCredit ? "unpaid" : undefined,
+          dueDate: onCredit && dueDate ? dueDate : undefined,
+        });
         setBusy(false);
       }}
       className="space-y-4"
@@ -241,6 +261,16 @@ function PurchaseForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" checked={onCredit} onChange={(e) => setOnCredit(e.target.checked)} className="accent-amber" />
+        Bought on credit — not paid yet
+      </label>
+      {onCredit && (
+        <Field>
+          <Label>Due date (optional)</Label>
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+      )}
       <div className="flex justify-end gap-2 pt-2 flex-wrap">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel

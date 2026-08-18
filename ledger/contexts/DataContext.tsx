@@ -37,6 +37,7 @@ import type {
   Settings,
   Project,
   TeamMember,
+  FixedAsset,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import {
@@ -56,6 +57,10 @@ import {
   computeBalanceSheet,
   computeGrowthRates,
   computeOperationalMetrics,
+  computeReceivables,
+  computePayables,
+  computeFinancialRatios,
+  computeCustomerMetrics,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -67,6 +72,9 @@ import {
   type BalanceSheet,
   type GrowthRates,
   type OperationalMetrics,
+  type AgingSummary,
+  type FinancialRatios,
+  type CustomerMetrics,
 } from "@/lib/calculations";
 import { todayIso } from "@/lib/format";
 
@@ -84,6 +92,7 @@ interface DataContextValue {
   settings: Settings;
   projects: Project[];
   teamMembers: TeamMember[];
+  fixedAssets: FixedAsset[];
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -100,6 +109,10 @@ interface DataContextValue {
   balanceSheet: BalanceSheet;
   growthRates: GrowthRates;
   operationalMetrics: OperationalMetrics;
+  receivables: AgingSummary;
+  payables: AgingSummary;
+  financialRatios: FinancialRatios;
+  customerMetrics: CustomerMetrics;
 
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
@@ -151,6 +164,10 @@ interface DataContextValue {
   deleteLoan: (id: string) => Promise<void>;
   bulkAddLoans: (rows: Omit<Loan, "id" | "createdAt">[]) => Promise<void>;
 
+  addFixedAsset: (a: Omit<FixedAsset, "id" | "createdAt">) => Promise<void>;
+  updateFixedAsset: (id: string, a: Partial<FixedAsset>) => Promise<void>;
+  deleteFixedAsset: (id: string) => Promise<void>;
+
   addProject: (p: Omit<Project, "id" | "createdAt">) => Promise<void>;
   updateProject: (id: string, p: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
@@ -182,6 +199,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loadedFlags, setLoadedFlags] = useState({
     products: false,
@@ -195,6 +213,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     loans: false,
     projects: false,
     teamMembers: false,
+    fixedAssets: false,
     settings: false,
   });
 
@@ -216,6 +235,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setLoans([]);
       setProjects([]);
       setTeamMembers([]);
+      setFixedAssets([]);
       setSettings(DEFAULT_SETTINGS);
       return;
     }
@@ -278,6 +298,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setTeamMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TeamMember)));
         setLoadedFlags((f) => ({ ...f, teamMembers: true }));
       }),
+      onSnapshot(
+        query(collection(db, "users", uid, "fixedAssets"), orderBy("purchaseDate", "desc")),
+        (snap) => {
+          setFixedAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FixedAsset)));
+          setLoadedFlags((f) => ({ ...f, fixedAssets: true }));
+        }
+      ),
       onSnapshot(doc(db, "users", uid, "meta", "settings"), (snap) => {
         if (snap.exists()) setSettings({ ...DEFAULT_SETTINGS, ...(snap.data() as Settings) });
         setLoadedFlags((f) => ({ ...f, settings: true }));
@@ -310,9 +337,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         loans,
         capitalEntries,
         settings.taxRatePct,
-        settings.monthlyOwnerDraw ?? 0
+        settings.monthlyOwnerDraw ?? 0,
+        fixedAssets
       ),
-    [sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct, settings.monthlyOwnerDraw]
+    [
+      sales,
+      saleEconomics,
+      expenses,
+      purchases,
+      loans,
+      capitalEntries,
+      settings.taxRatePct,
+      settings.monthlyOwnerDraw,
+      fixedAssets,
+    ]
   );
   const inventoryValue = useMemo(() => currentInventoryValue(ledgers), [ledgers]);
   const inventoryUnits = useMemo(() => currentInventoryUnits(ledgers), [ledgers]);
@@ -346,8 +384,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const monthlyPayroll = useMemo(() => monthlyPayrollCost(employees), [employees]);
   const loanPortfolio = useMemo(() => computeLoanPortfolio(loans, todayIso()), [loans]);
   const balanceSheet = useMemo(
-    () => computeBalanceSheet(monthlyPnL, inventoryValue, loans, capitalSummary, todayIso()),
-    [monthlyPnL, inventoryValue, loans, capitalSummary]
+    () =>
+      computeBalanceSheet(
+        monthlyPnL,
+        inventoryValue,
+        loans,
+        capitalSummary,
+        todayIso(),
+        sales,
+        purchases,
+        fixedAssets
+      ),
+    [monthlyPnL, inventoryValue, loans, capitalSummary, sales, purchases, fixedAssets]
+  );
+  const receivables = useMemo(() => computeReceivables(sales, todayIso()), [sales]);
+  const payables = useMemo(() => computePayables(purchases, todayIso()), [purchases]);
+  const financialRatios = useMemo(
+    () => computeFinancialRatios(monthlyPnL, balanceSheet, loans, todayIso()),
+    [monthlyPnL, balanceSheet, loans]
+  );
+  const customerMetrics = useMemo(
+    () => computeCustomerMetrics(sales, expenses, todayIso().slice(0, 7)),
+    [sales, expenses]
   );
   const growthRates = useMemo(() => computeGrowthRates(monthlyPnL), [monthlyPnL]);
   const operationalMetrics = useMemo(
@@ -417,6 +475,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     settings,
     projects,
     teamMembers,
+    fixedAssets,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -432,6 +491,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     balanceSheet,
     growthRates,
     operationalMetrics,
+    receivables,
+    payables,
+    financialRatios,
+    customerMetrics,
 
     addProduct: async (p) => {
       const id = requireUid();
@@ -663,6 +726,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await deleteDoc(doc(db, "users", id, "loans", docId));
     },
     bulkAddLoans: (rows) => chunkedBatchAdd("loans", rows),
+
+    addFixedAsset: async (a) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await addDoc(collection(db, "users", id, "fixedAssets"), { ...a, createdAt: Date.now() });
+    },
+    updateFixedAsset: async (docId, a) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", id, "fixedAssets", docId), sanitizeUpdate(a));
+    },
+    deleteFixedAsset: async (docId) => {
+      const id = requireUid();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", id, "fixedAssets", docId));
+    },
 
     addProject: async (p) => {
       const id = requireUid();

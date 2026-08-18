@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { useToast } from "@/contexts/ToastContext";
 import { formatMoney } from "@/lib/format";
@@ -101,6 +102,13 @@ export default function SalesPage() {
                       {econ?.oversold && (
                         <span className="ml-1.5">
                           <Badge tone="bad">oversold</Badge>
+                        </span>
+                      )}
+                      {(s.paymentStatus === "unpaid" || s.paymentStatus === "partial") && (
+                        <span className="ml-1.5">
+                          <Link href="/receivables-payables">
+                            <Badge tone="bad">{s.paymentStatus === "unpaid" ? "unpaid" : "partial"}</Badge>
+                          </Link>
                         </span>
                       )}
                     </td>

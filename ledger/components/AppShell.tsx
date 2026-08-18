@@ -12,11 +12,14 @@ const NAV = [
   { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon },
   { href: "/purchases", label: "Buying", icon: DownIcon },
   { href: "/sales", label: "Selling", icon: UpIcon },
+  { href: "/receivables-payables", label: "Money Owed", icon: HandCoinIcon },
   { href: "/projects", label: "Projects", icon: ProjectIcon },
   { href: "/employees", label: "Employees", icon: PeopleIcon },
   { href: "/expenses", label: "Bills", icon: RepeatIcon },
   { href: "/loans", label: "Loans", icon: LoanIcon },
+  { href: "/assets", label: "Assets", icon: AssetIcon },
   { href: "/profitability", label: "Profit", icon: TrendIcon },
+  { href: "/health", label: "Ratios", icon: PulseIcon },
   { href: "/statements", label: "Reports", icon: StatementIcon },
   { href: "/import-export", label: "CSV", icon: FileIcon },
   { href: "/settings", label: "Settings", icon: GearIcon },
@@ -242,6 +245,32 @@ function ProjectIcon(props: React.SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
       <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 00-3-3H2z" />
       <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  );
+}
+function HandCoinIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <circle cx="12" cy="8" r="4.5" />
+      <path d="M9.7 6.8h1.6a1.1 1.1 0 0 1 0 2.2h-1a1.1 1.1 0 0 0 0 2.2h1.7" />
+      <path d="M12 5.8v.8M12 10.8v.8" />
+      <path d="M3 19s2-1.5 4-1.5 3 1 5 1 3-1.2 5-1.2 4 1.7 4 1.7" />
+    </svg>
+  );
+}
+function AssetIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M3 21V9l9-6 9 6v12" />
+      <path d="M7 21v-7h10v7" />
+      <path d="M7 21h10" />
+    </svg>
+  );
+}
+function PulseIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M3 12h4l2.5-7 4 14 2.5-7H21" strokeLinejoin="round" />
     </svg>
   );
 }
