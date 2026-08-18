@@ -77,6 +77,7 @@ import {
   type ReceivablesAging,
   type PayablesAging,
 } from "@/lib/calculations";
+import { generateAllNotifications } from "@/lib/notification-automation";
 import { todayIso } from "@/lib/format";
 
 interface DataContextValue {
@@ -481,6 +482,54 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     return total / 30;
   }, [sales, saleEconomics]);
+
+  // Auto-generate notifications based on business state
+  useEffect(() => {
+    if (role !== "owner" && role !== "manager") return;
+    if (!businessId) return;
+    if (!loadedFlags["receivables"] || !loadedFlags["payablePayments"] || !loadedFlags["products"]) return;
+
+    const generated = generateAllNotifications({
+      receivables: receivablesAging.lines,
+      payables: payablesAging.lines,
+      products,
+      ledgers,
+      eoqByProduct,
+      expenses,
+      loans,
+    });
+
+    // Deduplicate: only add notifications that don't already exist
+    const existingKeys = new Set(notifications.map((n) => `${n.type}-${n.entityId}-${n.entityType}`));
+    const newNotifications = generated.filter(
+      (n) => !existingKeys.has(`${n.type}-${n.entityId}-${n.entityType}`)
+    );
+
+    // Add new notifications to Firestore
+    newNotifications.forEach(async (n) => {
+      try {
+        const { db } = getFirebase();
+        await addDoc(collection(db, "users", businessId, "notifications"), {
+          ...n,
+          createdAt: Date.now(),
+        });
+      } catch (err) {
+        console.error("Failed to create notification:", err);
+      }
+    });
+  }, [
+    role,
+    businessId,
+    loadedFlags,
+    receivablesAging.lines,
+    payablesAging.lines,
+    products,
+    ledgers,
+    eoqByProduct,
+    expenses,
+    loans,
+    notifications,
+  ]);
 
   function requireBusiness(): { businessId: string; uid: string } {
     if (!businessId || !uid) throw new Error("Not signed in");
