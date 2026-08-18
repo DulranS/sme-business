@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
+import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
 import { computeProductProfitability } from "@/lib/calculations";
 import type { CapitalEntry } from "@/lib/types";
@@ -32,6 +33,7 @@ const MARGIN_BAND_TONE = {
 type PeriodFilter = "all" | "30" | "90" | "month";
 
 export default function ProfitabilityPage() {
+  const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
   const {
     breakEven,
     capitalSummary,
@@ -70,12 +72,14 @@ export default function ProfitabilityPage() {
     [productProfitability]
   );
 
+  if (guardLoading || !allowed) return null;
+
   return (
     <>
       <PageHeader title="My Profit" />
 
       <Card className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+        <div className="flex items-center justify-between mb-1">
           <div>
             <div className="text-sm font-medium">Profit by item</div>
             <div className="text-xs text-muted mt-0.5">
@@ -83,7 +87,7 @@ export default function ProfitabilityPage() {
               that made. What&apos;s left in stock is valued at what you actually paid for it.
             </div>
           </div>
-          <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="w-full sm:w-36 shrink-0">
+          <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="w-36 shrink-0">
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
             <option value="month">This month</option>
@@ -184,7 +188,7 @@ export default function ProfitabilityPage() {
               Based on your last 3 months of sales and this month&apos;s regular costs (rent, salaries, subscriptions,
               and so on).
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <Stat
                 label="Profit per sale"
                 value={`${(breakEven.contributionMarginRatio * 100).toFixed(1)}%`}
@@ -210,7 +214,7 @@ export default function ProfitabilityPage() {
               />
             </div>
             {breakEven.overheadCoverageRatio !== null && (
-              <div className="mt-4 pt-4 border-t border-line flex items-center gap-3 flex-wrap">
+              <div className="mt-4 pt-4 border-t border-line flex items-center gap-3">
                 <span className="text-xs text-muted">For every $1 of costs, your profit covers:</span>
                 <Badge tone={breakEven.overheadCoverageRatio >= 1 ? "good" : "bad"}>
                   {breakEven.overheadCoverageRatio.toFixed(2)}×
@@ -225,7 +229,7 @@ export default function ProfitabilityPage() {
           </Card>
 
           <Card>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+            <div className="flex items-center justify-between mb-1">
               <div>
                 <div className="text-sm font-medium">Money You Put In</div>
                 <div className="text-xs text-muted mt-0.5">
@@ -235,7 +239,7 @@ export default function ProfitabilityPage() {
               <Button onClick={() => setModalOpen(true)}>+ Add money in/out</Button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-4">
               <Stat label="Put in" value={formatMoney(capitalSummary.totalInvested, currency)} />
               <Stat label="Taken out" value={formatMoney(capitalSummary.totalWithdrawn, currency)} />
               <Stat
@@ -257,8 +261,7 @@ export default function ProfitabilityPage() {
 
             {capitalEntries.length > 0 && (
               <div className="mt-5">
-                <div className="table-container">
-                  <Table>
+                <Table>
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                       <th className="py-2 pr-3 font-medium">Date</th>
@@ -294,7 +297,6 @@ export default function ProfitabilityPage() {
                     ))}
                   </tbody>
                 </Table>
-                </div>
               </div>
             )}
           </Card>
@@ -362,7 +364,7 @@ function CapitalForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

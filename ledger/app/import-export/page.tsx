@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { useRequireRole } from "@/lib/roleGuard";
 import {
   exportCapitalEntries,
   exportEmployees,
@@ -27,6 +28,7 @@ import { Button, Card, PageHeader } from "@/components/ui";
 type Entity = "products" | "purchases" | "sales" | "expenses" | "capitalEntries" | "employees" | "loans" | "purchaseOrders";
 
 export default function ImportExportPage() {
+  const { allowed, loading: guardLoading } = useRequireRole(["owner"]);
   const data = useData();
   const [result, setResult] = useState<{ entity: Entity; added: number; errors: ImportError[] } | null>(null);
   const [busy, setBusy] = useState<Entity | null>(null);
@@ -151,6 +153,8 @@ export default function ImportExportPage() {
       onExport: () => exportPurchaseOrders(data.purchaseOrders, data.products),
     },
   ];
+
+  if (guardLoading || !allowed) return null;
 
   return (
     <>

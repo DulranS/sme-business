@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
+import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
-import type { OrderStatus, Product } from "@/lib/types";
+import type { OrderStatus, Product, PurchaseOrder } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -28,6 +29,7 @@ const STATUS_TONE: Record<OrderStatus, "default" | "good" | "bad" | "amber"> = {
 };
 
 export default function PurchaseOrdersPage() {
+  const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
   const {
     products,
     purchaseOrders,
@@ -42,8 +44,18 @@ export default function PurchaseOrdersPage() {
   } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<PurchaseOrder | null>(null);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const currency = settings.currency;
+
+  function openNew() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+  function openEdit(po: PurchaseOrder) {
+    setEditing(po);
+    setModalOpen(true);
+  }
 
   function handleCancel(id: string) {
     if (!confirm("Cancel this order? You can still delete it afterward if it was a mistake.")) return;
@@ -69,18 +81,20 @@ export default function PurchaseOrdersPage() {
     [purchaseOrders]
   );
 
+  if (guardLoading || !allowed) return null;
+
   return (
     <>
       <PageHeader
         title="Wholesale orders"
         action={
-          <Button onClick={() => setModalOpen(true)} disabled={stockProducts.length === 0}>
+          <Button onClick={openNew} disabled={stockProducts.length === 0}>
             + Place order
           </Button>
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Open orders" value={formatNumber(openOrders.openOrderCount)} />
         <Stat label="Units on order" value={formatNumber(openOrders.openOrderUnits)} />
         <Stat label="Already committed to spend" value={formatMoney(openOrders.openOrderValue, currency)} tone="amber" />
@@ -103,8 +117,7 @@ export default function PurchaseOrdersPage() {
       {openList.length > 0 && (
         <Card className="mb-6">
           <div className="text-sm font-medium mb-3">Open orders</div>
-          <div className="table-container">
-            <Table>
+          <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Ordered</th>
@@ -135,6 +148,9 @@ export default function PurchaseOrdersPage() {
                       <button onClick={() => setReceivingId(po.id)} className="text-xs text-good hover:underline mr-3">
                         Receive
                       </button>
+                      <button onClick={() => openEdit(po)} className="text-xs text-muted hover:text-fg mr-3">
+                        Edit
+                      </button>
                       <button onClick={() => handleCancel(po.id)} className="text-xs text-muted hover:text-bad">
                         Cancel
                       </button>
@@ -144,15 +160,13 @@ export default function PurchaseOrdersPage() {
               })}
             </tbody>
           </Table>
-          </div>
         </Card>
       )}
 
       {closedList.length > 0 && (
         <Card>
           <div className="text-sm font-medium mb-3">Order history</div>
-          <div className="table-container">
-            <Table>
+          <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Ordered</th>
@@ -185,21 +199,26 @@ export default function PurchaseOrdersPage() {
               })}
             </tbody>
           </Table>
-          </div>
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Place wholesale order">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit order" : "Place wholesale order"}>
         <OrderForm
           products={stockProducts}
+          initial={editing}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
-              await addPurchaseOrder(values);
-              toast.success("Order placed");
+              if (editing) {
+                await updatePurchaseOrder(editing.id, values);
+                toast.success("Order updated");
+              } else {
+                await addPurchaseOrder(values);
+                toast.success("Order placed");
+              }
               setModalOpen(false);
             } catch (err) {
-              toast.error("Couldn't place the order", toastableErrorMessage(err));
+              toast.error(editing ? "Couldn't update the order" : "Couldn't place the order", toastableErrorMessage(err));
             }
           }}
         />
@@ -228,10 +247,12 @@ export default function PurchaseOrdersPage() {
 
 function OrderForm({
   products,
+  initial,
   onSave,
   onCancel,
 }: {
   products: Product[];
+  initial?: PurchaseOrder | null;
   onSave: (values: {
     productId: string;
     qtyOrdered: number;
@@ -243,13 +264,13 @@ function OrderForm({
   }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
-  const [qtyOrdered, setQtyOrdered] = useState("");
-  const [unitCost, setUnitCost] = useState("");
-  const [orderDate, setOrderDate] = useState(todayIso());
-  const [expectedDate, setExpectedDate] = useState("");
-  const [supplier, setSupplier] = useState("");
-  const [notes, setNotes] = useState("");
+  const [productId, setProductId] = useState(initial?.productId ?? products[0]?.id ?? "");
+  const [qtyOrdered, setQtyOrdered] = useState(initial?.qtyOrdered?.toString() ?? "");
+  const [unitCost, setUnitCost] = useState(initial?.unitCost?.toString() ?? "");
+  const [orderDate, setOrderDate] = useState(initial?.orderDate ?? todayIso());
+  const [expectedDate, setExpectedDate] = useState(initial?.expectedDate ?? "");
+  const [supplier, setSupplier] = useState(initial?.supplier ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
 
   return (
@@ -280,7 +301,7 @@ function OrderForm({
           ))}
         </Select>
       </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Quantity ordered</Label>
           <Input required type="number" min="0" step="1" value={qtyOrdered} onChange={(e) => setQtyOrdered(e.target.value)} />
@@ -290,7 +311,7 @@ function OrderForm({
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Order date</Label>
           <Input required type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
@@ -308,12 +329,12 @@ function OrderForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Place order"}
+          {busy ? "Saving…" : initial ? "Save changes" : "Place order"}
         </Button>
       </div>
     </form>
@@ -352,7 +373,7 @@ function ReceiveForm({
         Confirm what actually arrived — this creates the inventory entry. Quantity or cost can differ from what was
         originally ordered.
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Quantity received</Label>
           <Input required type="number" min="0" step="1" value={qtyReceived} onChange={(e) => setQtyReceived(e.target.value)} />
@@ -366,7 +387,7 @@ function ReceiveForm({
         <Label>Received date</Label>
         <Input required type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

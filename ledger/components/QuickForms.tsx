@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
-import type { Product } from "@/lib/types";
+import type { PaymentMethod, Product, Sale } from "@/lib/types";
 import { EXPENSE_CATEGORIES } from "@/lib/types";
 import { Button, Field, Input, Label, Select } from "@/components/ui";
 
@@ -25,21 +26,46 @@ function SummaryRow({ label, value, currency, muted }: { label: string; value: n
   );
 }
 
-export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product; onDone: () => void }) {
-  const { products, ledgers, addSale, settings } = useData();
+export function QuickSaleForm({
+  fixedProduct,
+  existingSale,
+  onDone,
+}: {
+  fixedProduct?: Product;
+  existingSale?: Sale;
+  onDone: () => void;
+}) {
+  const { products, catalog, ledgers, addSale, updateSale, settings } = useData();
+  const { role } = useAuth();
   const toast = useToast();
   const currency = settings.currency;
-  const sellable = useMemo(() => products.filter((p) => p.active), [products]);
+  const isStaff = role === "staff";
 
-  const [productId, setProductId] = useState(fixedProduct?.id ?? sellable[0]?.id ?? "");
-  const product = fixedProduct ?? products.find((p) => p.id === productId);
-  const [qty, setQty] = useState("");
-  const [unitPrice, setUnitPrice] = useState(product?.defaultSellPrice?.toString() ?? "");
-  const [date, setDate] = useState(todayIso());
-  const [customer, setCustomer] = useState("");
-  const [notes, setNotes] = useState("");
-  const [onCredit, setOnCredit] = useState(false);
-  const [dueDate, setDueDate] = useState("");
+  // Staff never has read access to `products` (it carries cost prices) —
+  // the picker for that role is built from `catalog`, a cost-stripped
+  // mirror. Everyone else uses the real product list, cost preview and all.
+  const sellable = useMemo(() => {
+    if (isStaff) {
+      return catalog
+        .filter((c) => c.active)
+        .map((c) => ({ id: c.id, name: c.name, type: c.type, defaultSellPrice: c.sellPrice }));
+    }
+    return products.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name, type: p.type, defaultSellPrice: p.defaultSellPrice }));
+  }, [isStaff, catalog, products]);
+
+  const lockedProduct = fixedProduct ?? (existingSale ? products.find((p) => p.id === existingSale.productId) : undefined);
+  const [productId, setProductId] = useState(lockedProduct?.id ?? existingSale?.productId ?? sellable[0]?.id ?? "");
+  const product = lockedProduct ?? sellable.find((p) => p.id === productId);
+  const [qty, setQty] = useState(existingSale?.qty?.toString() ?? "");
+  const [unitPrice, setUnitPrice] = useState(existingSale?.unitPrice?.toString() ?? product?.defaultSellPrice?.toString() ?? "");
+  const [date, setDate] = useState(existingSale?.date ?? todayIso());
+  const [customer, setCustomer] = useState(existingSale?.customer ?? "");
+  const [customerContact, setCustomerContact] = useState(existingSale?.customerContact ?? "");
+  const [notes, setNotes] = useState(existingSale?.notes ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(existingSale?.paymentMethod ?? "cash");
+  const [creditTermDays, setCreditTermDays] = useState(
+    (existingSale?.creditTermDays ?? settings.defaultCreditTermDays).toString()
+  );
   const [busy, setBusy] = useState(false);
 
   const wac = ledgers.get(productId)?.wac ?? 0;
@@ -52,11 +78,17 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
   const cogs = isProduct ? qtyNum * wac : 0;
   const profit = revenue - cogs;
   const marginPct = revenue > 0 ? (profit / revenue) * 100 : null;
-  const oversell = isProduct && qtyNum > qtyOnHand;
+  // When editing a past sale, the units it already took out of stock are
+  // still reflected in the current on-hand count, so the true "room" for
+  // this sale is what's on hand plus what it already used. Staff can't
+  // reach the edit path at all (only Owner/Manager can), so this only ever
+  // applies to a role that already has full stock visibility.
+  const availableForThisSale = isProduct ? qtyOnHand + (existingSale?.qty ?? 0) : Infinity;
+  const oversell = isProduct && !isStaff && qtyNum > availableForThisSale;
 
   function handleProductChange(id: string) {
     setProductId(id);
-    const p = products.find((pr) => pr.id === id);
+    const p = sellable.find((pr) => pr.id === id);
     if (p?.defaultSellPrice !== undefined) setUnitPrice(p.defaultSellPrice.toString());
   }
 
@@ -68,20 +100,29 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
         e.preventDefault();
         setBusy(true);
         try {
-          await addSale({
+          const values = {
             productId,
             qty: qtyNum,
             unitPrice: priceNum,
             date,
             customer: customer || undefined,
+            customerContact: customerContact || undefined,
             notes: notes || undefined,
-            paymentStatus: onCredit ? "unpaid" : undefined,
-            dueDate: onCredit && dueDate ? dueDate : undefined,
-          });
-          toast.success(
-            "Sold!",
-            `${product.name}: ${formatMoney(revenue, currency)} revenue, ${formatMoney(profit, currency)} profit${marginPct !== null ? ` (${marginPct.toFixed(0)}%)` : ""}`
-          );
+            paymentMethod,
+            creditTermDays: paymentMethod === "credit" ? Number(creditTermDays) || settings.defaultCreditTermDays : undefined,
+          };
+          if (existingSale) {
+            await updateSale(existingSale.id, values);
+            toast.success("Updated", `${product.name}: ${formatMoney(revenue, currency)} revenue`);
+          } else {
+            await addSale(values);
+            toast.success(
+              "Sold!",
+              isStaff
+                ? `${product.name}: ${formatMoney(revenue, currency)}${paymentMethod === "credit" ? " (on credit)" : ""}`
+                : `${product.name}: ${formatMoney(revenue, currency)} revenue, ${formatMoney(profit, currency)} profit${marginPct !== null ? ` (${marginPct.toFixed(0)}%)` : ""}`
+            );
+          }
           onDone();
         } catch (err) {
           toast.error("Couldn't save that sale", toastableErrorMessage(err));
@@ -91,7 +132,7 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
       }}
       className="space-y-4"
     >
-      {!fixedProduct && (
+      {!lockedProduct && (
         <Field>
           <Label>What did you sell?</Label>
           <Select required value={productId} onChange={(e) => handleProductChange(e.target.value)}>
@@ -119,38 +160,60 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <Field>
-          <Label>Customer (optional)</Label>
-          <Input value={customer} onChange={(e) => setCustomer(e.target.value)} />
+          <Label>How did they pay?</Label>
+          <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
+            <option value="cash">Cash</option>
+            <option value="card">Card</option>
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="credit">Credit — they&apos;ll pay later</option>
+          </Select>
         </Field>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field>
+          <Label>Customer {paymentMethod === "credit" ? "" : "(optional)"}</Label>
+          <Input required={paymentMethod === "credit"} value={customer} onChange={(e) => setCustomer(e.target.value)} />
+        </Field>
+        {paymentMethod === "credit" ? (
+          <Field>
+            <Label>Days until due</Label>
+            <Input required type="number" min="1" step="1" value={creditTermDays} onChange={(e) => setCreditTermDays(e.target.value)} />
+          </Field>
+        ) : (
+          <Field>
+            <Label>Phone (optional)</Label>
+            <Input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} />
+          </Field>
+        )}
+      </div>
+      {paymentMethod === "credit" && (
+        <Field>
+          <Label>Their phone / contact (so you can chase this)</Label>
+          <Input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} />
+        </Field>
+      )}
       <Field>
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <input type="checkbox" checked={onCredit} onChange={(e) => setOnCredit(e.target.checked)} className="accent-amber" />
-        Sold on credit — not paid yet
-      </label>
-      {onCredit && (
-        <Field>
-          <Label>Due date (optional)</Label>
-          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </Field>
-      )}
 
       {qtyNum > 0 && (
         <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 space-y-1.5">
-          <SummaryRow label={onCredit ? "Invoice amount (not yet received)" : "Money coming in"} value={revenue} currency={currency} />
-          {isProduct && <SummaryRow label={`What it cost you (${formatMoney(wac, currency)} each)`} value={cogs} currency={currency} muted />}
-          <div className="flex items-center justify-between text-sm pt-1.5 border-t border-line">
-            <span className="font-medium">Your profit</span>
-            <span className={`num font-semibold ${profit >= 0 ? "text-good" : "text-bad"}`}>
-              {formatMoney(profit, currency)}
-              {marginPct !== null && <span className="text-xs font-normal text-muted ml-1.5">({marginPct.toFixed(0)}%)</span>}
-            </span>
-          </div>
+          <SummaryRow label={paymentMethod === "credit" ? "Owed to you" : "Money coming in"} value={revenue} currency={currency} />
+          {isProduct && !isStaff && (
+            <SummaryRow label={`What it cost you (${formatMoney(wac, currency)} each)`} value={cogs} currency={currency} muted />
+          )}
+          {!isStaff && (
+            <div className="flex items-center justify-between text-sm pt-1.5 border-t border-line">
+              <span className="font-medium">Your profit</span>
+              <span className={`num font-semibold ${profit >= 0 ? "text-good" : "text-bad"}`}>
+                {formatMoney(profit, currency)}
+                {marginPct !== null && <span className="text-xs font-normal text-muted ml-1.5">({marginPct.toFixed(0)}%)</span>}
+              </span>
+            </div>
+          )}
           {oversell && (
-            <div className="text-xs text-bad pt-1">You only have {formatNumber(qtyOnHand)} left — this is more than you have.</div>
+            <div className="text-xs text-bad pt-1">You only have {formatNumber(availableForThisSale)} left — this is more than you have.</div>
           )}
         </div>
       )}
@@ -160,7 +223,7 @@ export function QuickSaleForm({ fixedProduct, onDone }: { fixedProduct?: Product
           Cancel
         </Button>
         <Button type="submit" disabled={busy || !productId}>
-          {busy ? "Saving…" : "Sell"}
+          {busy ? "Saving…" : existingSale ? "Save changes" : "Sell"}
         </Button>
       </div>
     </form>
@@ -180,8 +243,6 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
   const [date, setDate] = useState(todayIso());
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
-  const [onCredit, setOnCredit] = useState(false);
-  const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
 
   const total = (Number(qty) || 0) * (Number(unitCost) || 0);
@@ -207,8 +268,6 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
             date,
             supplier: supplier || undefined,
             notes: notes || undefined,
-            paymentStatus: onCredit ? "unpaid" : undefined,
-            dueDate: onCredit && dueDate ? dueDate : undefined,
           });
           toast.success("Added to your stock", `${product.name}: +${qty} at ${formatMoney(Number(unitCost), currency)} each`);
           onDone();
@@ -256,19 +315,9 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <input type="checkbox" checked={onCredit} onChange={(e) => setOnCredit(e.target.checked)} className="accent-amber" />
-        Bought on credit — not paid yet
-      </label>
-      {onCredit && (
-        <Field>
-          <Label>Due date (optional)</Label>
-          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </Field>
-      )}
 
       <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 flex items-center justify-between">
-        <span className="text-xs text-muted">{onCredit ? "Total owed" : "Total you paid"}</span>
+        <span className="text-xs text-muted">Total you paid</span>
         <span className="num text-sm font-medium">{formatMoney(total, currency)}</span>
       </div>
 

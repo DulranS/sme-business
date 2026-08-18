@@ -13,12 +13,14 @@ import {
   Legend,
 } from "recharts";
 import { useData } from "@/contexts/DataContext";
-import { forecastRevenue, computeMRR, computeFixedAssetsNetValue } from "@/lib/calculations";
+import { useRequireRole } from "@/lib/roleGuard";
+import { forecastRevenue, computeMRR } from "@/lib/calculations";
 import { formatMoney, formatMonth, formatNumber, todayIso } from "@/lib/format";
 import { Card, PageHeader, Stat, Table, Badge, EmptyState } from "@/components/ui";
 import QuickActionBar from "@/components/QuickActionBar";
 
 export default function DashboardPage() {
+  const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
   const {
     loading,
     products,
@@ -34,25 +36,16 @@ export default function DashboardPage() {
     loanPortfolio,
     eoqByProduct,
     onOrderByProduct,
-    growthRates,
-    operationalMetrics,
-    receivables,
-    payables,
-    fixedAssets,
   } = useData();
 
   const currency = settings.currency;
-  const assetsNetBookValue = useMemo(
-    () => computeFixedAssetsNetValue(fixedAssets, todayIso()),
-    [fixedAssets]
-  );
   const forecast = useMemo(
     () => forecastRevenue(monthlyPnL, settings.forecastMonths),
     [monthlyPnL, settings.forecastMonths]
   );
   const mrr = useMemo(() => computeMRR(expenses, todayIso()), [expenses]);
 
-  const latest = monthlyPnL.find((m) => m.month === todayIso().slice(0, 7)) ?? monthlyPnL[monthlyPnL.length - 1];
+  const latest = monthlyPnL[monthlyPnL.length - 1];
   const oversold = useMemo(() => {
     const items: { name: string; qty: number }[] = [];
     for (const p of products) {
@@ -81,6 +74,8 @@ export default function DashboardPage() {
     }
     return items.sort((a, b) => a.qtyOnHand - b.qtyOnHand);
   }, [products, ledgers, eoqByProduct, onOrderByProduct]);
+
+  if (guardLoading || !allowed) return null;
 
   if (loading) {
     return <div className="text-sm text-muted">Loading your numbers…</div>;
@@ -182,22 +177,6 @@ export default function DashboardPage() {
         />
         <Stat label="Stock is worth" value={formatMoney(inventoryValue, currency)} tone="amber" />
         <Stat label="Items in stock" value={formatNumber(inventoryUnits)} />
-        <Link href="/receivables-payables">
-          <Stat
-            label="Customers owe you"
-            value={formatMoney(receivables.totalOutstanding, currency)}
-            tone={receivables.overdueTotal > 0 ? "bad" : receivables.totalOutstanding > 0 ? "amber" : "default"}
-            sub={receivables.overdueTotal > 0 ? `${formatMoney(receivables.overdueTotal, currency)} overdue` : undefined}
-          />
-        </Link>
-        <Link href="/receivables-payables">
-          <Stat
-            label="You owe suppliers"
-            value={formatMoney(payables.totalOutstanding, currency)}
-            tone={payables.overdueTotal > 0 ? "bad" : payables.totalOutstanding > 0 ? "amber" : "default"}
-            sub={payables.overdueTotal > 0 ? `${formatMoney(payables.overdueTotal, currency)} overdue` : undefined}
-          />
-        </Link>
         <Stat
           label="On the way (ordered)"
           value={formatMoney(openOrders.openOrderValue, currency)}
@@ -211,48 +190,6 @@ export default function DashboardPage() {
           sub={loanPortfolio.loanCount > 0 ? `${loanPortfolio.loanCount} loan(s)` : undefined}
         />
         <Stat label="Loan payments / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
-        {fixedAssets.length > 0 && (
-          <Link href="/assets">
-            <Stat label="Equipment & assets" value={formatMoney(assetsNetBookValue, currency)} sub="net book value" />
-          </Link>
-        )}
-        {operationalMetrics.averageOrderValue > 0 && (
-          <Stat
-            label="Avg order value"
-            value={formatMoney(operationalMetrics.averageOrderValue, currency)}
-            sub="per sale this month"
-          />
-        )}
-        {operationalMetrics.revenuePerEmployee !== null && operationalMetrics.revenuePerEmployee > 0 && (
-          <Stat
-            label="Revenue per employee"
-            value={formatMoney(operationalMetrics.revenuePerEmployee, currency)}
-            sub="monthly"
-          />
-        )}
-        {operationalMetrics.inventoryTurnoverRate !== null && operationalMetrics.inventoryTurnoverRate > 0 && (
-          <Stat
-            label="Inventory turnover"
-            value={operationalMetrics.inventoryTurnoverRate.toFixed(1)}
-            sub="times per year"
-          />
-        )}
-        {operationalMetrics.daysOfInventoryOnHand !== null && operationalMetrics.daysOfInventoryOnHand > 0 && (
-          <Stat
-            label="Days of inventory"
-            value={Math.round(operationalMetrics.daysOfInventoryOnHand).toString()}
-            sub="on hand"
-            tone={operationalMetrics.daysOfInventoryOnHand > 90 ? "bad" : operationalMetrics.daysOfInventoryOnHand > 60 ? "amber" : "good"}
-          />
-        )}
-        {operationalMetrics.cashRunwayMonths !== null && operationalMetrics.cashRunwayMonths > 0 && (
-          <Stat
-            label="Cash runway"
-            value={`${Math.round(operationalMetrics.cashRunwayMonths)} months`}
-            sub="at current burn rate"
-            tone={operationalMetrics.cashRunwayMonths < 3 ? "bad" : operationalMetrics.cashRunwayMonths < 6 ? "amber" : "good"}
-          />
-        )}
         {settings.monthlyOwnerDraw ? (
           <Stat
             label="True profit (after paying yourself)"
@@ -270,25 +207,13 @@ export default function DashboardPage() {
       </div>
 
       <Card className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <div className="text-sm font-medium">Revenue trend &amp; forecast</div>
             <div className="text-xs text-muted mt-0.5">
               Linear trend + {settings.forecastMonths}-month projection
             </div>
           </div>
-          {growthRates.momRevenuePct !== null && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge tone={growthRates.momRevenuePct >= 0 ? "good" : "bad"}>
-                {growthRates.momRevenuePct >= 0 ? "+" : ""}{growthRates.momRevenuePct.toFixed(1)}% vs last month
-              </Badge>
-              {growthRates.yoyRevenuePct !== null && (
-                <Badge tone={growthRates.yoyRevenuePct >= 0 ? "good" : "bad"}>
-                  {growthRates.yoyRevenuePct >= 0 ? "+" : ""}{growthRates.yoyRevenuePct.toFixed(1)}% vs last year
-                </Badge>
-              )}
-            </div>
-          )}
         </div>
         {monthlyPnL.length < 2 ? (
           <div className="text-xs text-muted py-8 text-center">

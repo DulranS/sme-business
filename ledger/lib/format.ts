@@ -10,9 +10,10 @@ const SYMBOLS: Record<string, string> = {
 export function formatMoney(amount: number, currency: string): string {
   const symbol = SYMBOLS[currency] ?? currency;
   const negative = amount < 0;
-  const rounded = Math.round(Math.abs(amount));
-  const formatted = rounded.toLocaleString(undefined, {
-    maximumFractionDigits: 0,
+  const abs = Math.abs(amount);
+  const formatted = abs.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
   return `${negative ? "-" : ""}${symbol} ${formatted}`;
 }

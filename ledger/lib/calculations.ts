@@ -2,14 +2,13 @@ import type {
   CapitalEntry,
   Employee,
   Expense,
-  FixedAsset,
   Loan,
   OfferingType,
-  PaymentFields,
   Product,
   Purchase,
   PurchaseOrder,
   Recurrence,
+  ReceivablePayment,
   Sale,
   Settings,
   VariableCost,
@@ -275,304 +274,22 @@ export interface MonthlyPnL {
   // net profit, so "the business is profitable" isn't quietly built on
   // nobody paying themselves for the hours worked.
   economicProfit: number;
-  depreciationExpense: number; // straight-line, non-cash — see computeFixedAssetSchedule
-  disposalGainLoss: number; // gain/(loss) recognized when a fixed asset is disposed — see computeDisposalGainLossByMonth
   // Cash-basis fields, for the Cash Flow Statement / Balance Sheet. These
-  // differ from the accrual fields above in two ways: (1) inventory
-  // purchases hit cash when bought, not when the stock is later sold (COGS
-  // timing), and (2) sales/purchases on credit terms (see PaymentFields)
-  // hit cash when actually paid — via paidDate — not on the accrual `date`.
-  // An unpaid or partial sale/purchase contributes its accrual figures to
-  // salesRevenue/cogs/purchaseCash as usual but only its *received/paid*
-  // amount here.
-  salesCash: number; // actual cash received from sales this month
-  purchaseCash: number; // actual cash paid for inventory this month
+  // differ from the accrual fields above in one key way: inventory purchases
+  // hit cash when bought, not when the stock is later sold (COGS timing).
+  purchaseCash: number; // cash paid for inventory this month (at cost)
   loanProceeds: number; // new loan cash received this month
   principalRepayment: number; // loan principal repaid this month
   capitalIn: number; // owner investment/reinvestment this month
   capitalOut: number; // owner withdrawals this month
-  assetPurchaseCash: number; // cash paid for fixed assets this month
-  assetDisposalCash: number; // cash received from disposing fixed assets this month
   operatingCashFlow: number;
   financingCashFlow: number;
-  investingCashFlow: number;
-  netCashFlow: number; // operating + financing + investing
+  netCashFlow: number; // operating + financing (no investing activity tracked yet)
 }
 
 function monthKey(iso: string): string {
   return iso.slice(0, 7);
 }
-
-// ---------------------------------------------------------------------------
-// Accounts Receivable / Accounts Payable
-//
-// A sale or purchase with no paymentStatus set is treated as "paid" in full
-// on its `date` — this is the pre-AR/AP default and keeps every existing
-// record's cash timing exactly as it was before these fields existed.
-// Only records explicitly marked "unpaid"/"partial" (i.e. sold/bought on
-// credit terms) behave differently.
-// ---------------------------------------------------------------------------
-
-interface CashEvent {
-  date: string | null; // null = no cash has moved yet (fully unpaid)
-  amount: number; // cash amount that moved on `date`
-  outstanding: number; // remaining balance still owed as of now
-}
-
-function resolveCashEvent(entry: PaymentFields, fullAmount: number, entryDate: string): CashEvent {
-  const status = entry.paymentStatus ?? "paid";
-  if (status === "paid") {
-    const amount = entry.amountPaid ?? fullAmount;
-    return { date: entry.paidDate ?? entryDate, amount, outstanding: Math.max(fullAmount - amount, 0) };
-  }
-  if (status === "partial") {
-    const amount = entry.amountPaid ?? 0;
-    return { date: amount > 0 ? entry.paidDate ?? entryDate : null, amount, outstanding: Math.max(fullAmount - amount, 0) };
-  }
-  // unpaid
-  return { date: null, amount: 0, outstanding: fullAmount };
-}
-
-function cashByMonth(events: CashEvent[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const ev of events) {
-    if (!ev.date || ev.amount === 0) continue;
-    const key = monthKey(ev.date);
-    map.set(key, (map.get(key) ?? 0) + ev.amount);
-  }
-  return map;
-}
-
-export type AgingBucket = "current" | "1-30" | "31-60" | "61-90" | "90+";
-
-export interface AgingLineItem {
-  id: string;
-  label: string; // customer/supplier name, or product name fallback
-  date: string; // transaction date
-  dueDate: string | null;
-  fullAmount: number;
-  amountPaid: number;
-  outstanding: number;
-  daysOverdue: number; // negative = not yet due
-  bucket: AgingBucket;
-}
-
-function agingBucket(daysOverdue: number): AgingBucket {
-  if (daysOverdue <= 0) return "current";
-  if (daysOverdue <= 30) return "1-30";
-  if (daysOverdue <= 60) return "31-60";
-  if (daysOverdue <= 90) return "61-90";
-  return "90+";
-}
-
-function daysBetween(fromISO: string, toISO: string): number {
-  const from = new Date(fromISO + "T00:00:00Z").getTime();
-  const to = new Date(toISO + "T00:00:00Z").getTime();
-  return Math.round((to - from) / 86400000);
-}
-
-export interface AgingSummary {
-  items: AgingLineItem[];
-  totalOutstanding: number;
-  overdueTotal: number;
-  byBucket: Record<AgingBucket, number>;
-}
-
-function summarizeAging(items: AgingLineItem[]): AgingSummary {
-  const byBucket: Record<AgingBucket, number> = { current: 0, "1-30": 0, "31-60": 0, "61-90": 0, "90+": 0 };
-  let totalOutstanding = 0;
-  let overdueTotal = 0;
-  for (const item of items) {
-    byBucket[item.bucket] += item.outstanding;
-    totalOutstanding += item.outstanding;
-    if (item.bucket !== "current") overdueTotal += item.outstanding;
-  }
-  return { items, totalOutstanding, overdueTotal, byBucket };
-}
-
-// Money customers owe you. Only sales with something still outstanding
-// (unpaid or partial) show up here.
-export function computeReceivables(sales: Sale[], asOfISO: string): AgingSummary {
-  const items: AgingLineItem[] = [];
-  for (const s of sales) {
-    const fullAmount = s.unitPrice * s.qty;
-    const cash = resolveCashEvent(s, fullAmount, s.date);
-    if (cash.outstanding <= 0) continue;
-    const dueDate = s.dueDate ?? null;
-    // No due date set on a credit sale: assume net-30 from the sale date, a
-    // reasonable default term, so it still ages sensibly instead of being
-    // permanently "current".
-    const daysOverdue = dueDate ? daysBetween(dueDate, asOfISO) : daysBetween(s.date, asOfISO) - 30;
-    items.push({
-      id: s.id,
-      label: s.customer || "Unnamed customer",
-      date: s.date,
-      dueDate,
-      fullAmount,
-      amountPaid: cash.amount,
-      outstanding: cash.outstanding,
-      daysOverdue,
-      bucket: agingBucket(daysOverdue),
-    });
-  }
-  items.sort((a, b) => b.daysOverdue - a.daysOverdue);
-  return summarizeAging(items);
-}
-
-// Money you owe suppliers. Only purchases with something still outstanding
-// (unpaid or partial) show up here.
-export function computePayables(purchases: Purchase[], asOfISO: string): AgingSummary {
-  const items: AgingLineItem[] = [];
-  for (const p of purchases) {
-    const fullAmount = p.qty * p.unitCost;
-    const cash = resolveCashEvent(p, fullAmount, p.date);
-    if (cash.outstanding <= 0) continue;
-    const dueDate = p.dueDate ?? null;
-    const daysOverdue = dueDate ? daysBetween(dueDate, asOfISO) : daysBetween(p.date, asOfISO) - 30;
-    items.push({
-      id: p.id,
-      label: p.supplier || "Unnamed supplier",
-      date: p.date,
-      dueDate,
-      fullAmount,
-      amountPaid: cash.amount,
-      outstanding: cash.outstanding,
-      daysOverdue,
-      bucket: agingBucket(daysOverdue),
-    });
-  }
-  items.sort((a, b) => b.daysOverdue - a.daysOverdue);
-  return summarizeAging(items);
-}
-
-// ---------------------------------------------------------------------------
-// Fixed assets — straight-line depreciation.
-// ---------------------------------------------------------------------------
-
-export interface FixedAssetStatus {
-  asset: FixedAsset;
-  monthlyDepreciation: number;
-  accumulatedDepreciation: number;
-  netBookValue: number;
-  fullyDepreciated: boolean;
-  disposed: boolean;
-}
-
-function addMonthsToKey(key: string, n: number): string {
-  let [y, m] = key.split("-").map(Number);
-  m += n;
-  while (m > 12) {
-    m -= 12;
-    y += 1;
-  }
-  while (m < 1) {
-    m += 12;
-    y -= 1;
-  }
-  return `${y}-${String(m).padStart(2, "0")}`;
-}
-
-export function computeFixedAssetStatus(asset: FixedAsset, asOfISO: string): FixedAssetStatus {
-  const salvage = asset.salvageValue ?? 0;
-  const depreciable = Math.max(asset.cost - salvage, 0);
-  const monthlyDepreciation = asset.usefulLifeMonths > 0 ? depreciable / asset.usefulLifeMonths : 0;
-
-  const endKey = asset.disposalDate
-    ? monthKey(asset.disposalDate) < monthKey(asOfISO)
-      ? monthKey(asset.disposalDate)
-      : monthKey(asOfISO)
-    : monthKey(asOfISO);
-  const purchaseKey = monthKey(asset.purchaseDate);
-
-  let monthsElapsed = 0;
-  if (endKey >= purchaseKey) {
-    let [py, pm] = purchaseKey.split("-").map(Number);
-    let [ey, em] = endKey.split("-").map(Number);
-    monthsElapsed = (ey - py) * 12 + (em - pm) + 1; // depreciation starts the month of purchase
-  }
-  monthsElapsed = Math.max(0, Math.min(monthsElapsed, asset.usefulLifeMonths));
-
-  const accumulatedDepreciation = monthlyDepreciation * monthsElapsed;
-  const netBookValue = Math.max(asset.cost - accumulatedDepreciation, salvage);
-
-  return {
-    asset,
-    monthlyDepreciation,
-    accumulatedDepreciation,
-    netBookValue,
-    fullyDepreciated: monthsElapsed >= asset.usefulLifeMonths,
-    disposed: !!asset.disposalDate && asset.disposalDate <= asOfISO,
-  };
-}
-
-// Total net book value across all non-disposed assets, as of a date — the
-// Balance Sheet's "Fixed assets (net)" line.
-export function computeFixedAssetsNetValue(assets: FixedAsset[], asOfISO: string): number {
-  return assets.reduce((sum, a) => {
-    if (a.disposalDate && a.disposalDate <= asOfISO) return sum;
-    return sum + computeFixedAssetStatus(a, asOfISO).netBookValue;
-  }, 0);
-}
-
-// Monthly depreciation expense (for the Income Statement) keyed by "YYYY-MM".
-function computeDepreciationByMonth(assets: FixedAsset[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const a of assets) {
-    const salvage = a.salvageValue ?? 0;
-    const monthlyDepreciation = a.usefulLifeMonths > 0 ? Math.max(a.cost - salvage, 0) / a.usefulLifeMonths : 0;
-    if (monthlyDepreciation <= 0) continue;
-    const purchaseKey = monthKey(a.purchaseDate);
-    const lastKey = a.disposalDate ? monthKey(a.disposalDate) : addMonthsToKey(purchaseKey, a.usefulLifeMonths - 1);
-    let key = purchaseKey;
-    let count = 0;
-    while (key <= lastKey && count < a.usefulLifeMonths) {
-      map.set(key, (map.get(key) ?? 0) + monthlyDepreciation);
-      key = addMonthsToKey(key, 1);
-      count += 1;
-    }
-  }
-  return map;
-}
-
-// Investing cash flow, keyed by "YYYY-MM": -cost on purchase, +proceeds on disposal.
-function computeAssetCashByMonth(assets: FixedAsset[]): {
-  out: Map<string, number>;
-  in: Map<string, number>;
-} {
-  const out = new Map<string, number>();
-  const inMap = new Map<string, number>();
-  for (const a of assets) {
-    const pKey = monthKey(a.purchaseDate);
-    out.set(pKey, (out.get(pKey) ?? 0) + a.cost);
-    if (a.disposalDate && a.disposalAmount) {
-      const dKey = monthKey(a.disposalDate);
-      inMap.set(dKey, (inMap.get(dKey) ?? 0) + a.disposalAmount);
-    }
-  }
-  return { out, in: inMap };
-}
-
-// Disposing an asset removes its remaining net book value from the Balance
-// Sheet entirely (computeFixedAssetsNetValue excludes disposed assets
-// outright, regardless of how much book value was left). If that removal
-// isn't booked as a gain or loss somewhere, equity doesn't move to match —
-// the Balance Sheet silently stops balancing by exactly the leftover book
-// value. This is the accrual-side entry that keeps it correct: proceeds
-// received minus the asset's net book value on its disposal date, landing
-// in the month of disposal. A scrapped asset (no/low proceeds) shows a
-// loss; selling above book value shows a gain.
-function computeDisposalGainLossByMonth(assets: FixedAsset[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const a of assets) {
-    if (!a.disposalDate) continue;
-    const nbvAtDisposal = computeFixedAssetStatus(a, a.disposalDate).netBookValue;
-    const gainLoss = (a.disposalAmount ?? 0) - nbvAtDisposal;
-    const dKey = monthKey(a.disposalDate);
-    map.set(dKey, (map.get(dKey) ?? 0) + gainLoss);
-  }
-  return map;
-}
-
 
 // Every calendar month from the earliest activity to "now", inclusive — not
 // just months that happen to contain a sale or a new expense. Without this,
@@ -602,25 +319,10 @@ export function computeMonthlyPnL(
   loans: Loan[],
   capitalEntries: CapitalEntry[],
   taxRatePct: number,
-  monthlyOwnerDraw = 0,
-  fixedAssets: FixedAsset[] = []
+  monthlyOwnerDraw = 0
 ): MonthlyPnL[] {
   const economicsBySaleId = new Map(saleEconomics.map((e) => [e.saleId, e]));
   const loanMonthlyTotals = computeLoanMonthlyTotals(loans);
-  const depreciationByMonth = computeDepreciationByMonth(fixedAssets);
-  const disposalGainLossByMonth = computeDisposalGainLossByMonth(fixedAssets);
-  const assetCash = computeAssetCashByMonth(fixedAssets);
-
-  // Cash timing for sales/purchases: accrual figures (salesRevenue, cogs,
-  // purchase cost) are always booked in the transaction's own month below,
-  // regardless of payment status. Cash only moves in the month it was
-  // actually received/paid — see resolveCashEvent.
-  const salesCashByMonth = cashByMonth(
-    sales.map((s) => resolveCashEvent(s, s.unitPrice * s.qty, s.date))
-  );
-  const purchaseCashByMonth = cashByMonth(
-    purchases.map((p) => resolveCashEvent(p, p.qty * p.unitCost, p.date))
-  );
 
   const now = new Date();
   const nowKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -630,18 +332,7 @@ export function computeMonthlyPnL(
   for (const p of purchases) candidateKeys.push(monthKey(p.date));
   for (const e of expenses) candidateKeys.push(monthKey(e.startDate));
   for (const c of capitalEntries) candidateKeys.push(monthKey(c.date));
-  for (const a of fixedAssets) candidateKeys.push(monthKey(a.purchaseDate));
-  // Loan schedules run for the loan's full term (often 12-36+ months), which
-  // is almost always well past "now". Letting those future months extend the
-  // P&L range breaks every piece of code that treats the last entry in this
-  // array as "the current month" (Dashboard KPIs, break-even, the Statements
-  // default month, the revenue forecast baseline) — they'd silently pick up
-  // a mostly-empty future month instead. Past/current loan months still need
-  // to land in the range (that's how interest expense reaches the month it
-  // was actually incurred in), so only future ones are excluded here.
-  for (const key of loanMonthlyTotals.keys()) {
-    if (key <= nowKey) candidateKeys.push(key);
-  }
+  for (const key of loanMonthlyTotals.keys()) candidateKeys.push(key);
 
   if (candidateKeys.length === 0) return [];
   candidateKeys.sort();
@@ -670,16 +361,15 @@ export function computeMonthlyPnL(
     const interestExpense = loanTotals?.interest ?? 0;
     const principalRepayment = loanTotals?.principal ?? 0;
     const loanProceeds = loanTotals?.proceeds ?? 0;
-    const depreciationExpense = depreciationByMonth.get(month) ?? 0;
-    const disposalGainLoss = disposalGainLossByMonth.get(month) ?? 0;
 
-    const netProfitPreTax = grossProfit - expenseTotal - interestExpense - depreciationExpense + disposalGainLoss;
+    const netProfitPreTax = grossProfit - expenseTotal - interestExpense;
     const tax = Math.max(netProfitPreTax, 0) * (taxRatePct / 100);
     const netProfitAfterTax = netProfitPreTax - tax;
     const economicProfit = netProfitAfterTax - monthlyOwnerDraw;
 
-    const salesCash = salesCashByMonth.get(month) ?? 0;
-    const purchaseCash = purchaseCashByMonth.get(month) ?? 0;
+    const purchaseCash = purchases
+      .filter((p) => monthKey(p.date) === month)
+      .reduce((sum, p) => sum + p.qty * p.unitCost, 0);
 
     const monthCapital = capitalEntries.filter((c) => monthKey(c.date) === month);
     const capitalIn = monthCapital
@@ -689,15 +379,9 @@ export function computeMonthlyPnL(
       .filter((c) => c.kind === "withdrawal")
       .reduce((s, c) => s + c.amount, 0);
 
-    const assetPurchaseCash = assetCash.out.get(month) ?? 0;
-    const assetDisposalCash = assetCash.in.get(month) ?? 0;
-
-    // Depreciation is non-cash by design — it's excluded here; the actual
-    // cash cost hit Investing when the asset was purchased/disposed.
     const operatingCashFlow =
-      salesCash + recurringRevenueTotal - purchaseCash - variableCosts - expenseTotal - interestExpense - tax;
+      salesRevenue + recurringRevenueTotal - purchaseCash - variableCosts - expenseTotal - interestExpense - tax;
     const financingCashFlow = loanProceeds - principalRepayment + capitalIn - capitalOut;
-    const investingCashFlow = assetDisposalCash - assetPurchaseCash;
 
     result.push({
       month,
@@ -716,20 +400,14 @@ export function computeMonthlyPnL(
       netMarginPct: totalRevenue > 0 ? (netProfitAfterTax / totalRevenue) * 100 : null,
       unitsSold,
       economicProfit,
-      depreciationExpense,
-      disposalGainLoss,
-      salesCash,
       purchaseCash,
       loanProceeds,
       principalRepayment,
       capitalIn,
       capitalOut,
-      assetPurchaseCash,
-      assetDisposalCash,
       operatingCashFlow,
       financingCashFlow,
-      investingCashFlow,
-      netCashFlow: operatingCashFlow + financingCashFlow + investingCashFlow,
+      netCashFlow: operatingCashFlow + financingCashFlow,
     });
   }
 
@@ -1357,11 +1035,8 @@ export interface BalanceSheet {
   asOf: string;
   cash: number;
   inventoryValue: number;
-  accountsReceivable: number; // money owed to you by customers
-  fixedAssetsNet: number; // cost less accumulated depreciation, across all held assets
   totalAssets: number;
   loansPayable: number;
-  accountsPayable: number; // money you owe suppliers
   totalLiabilities: number;
   ownersCapital: number; // net capital contributed (investment + reinvestment - withdrawals)
   retainedEarnings: number; // cumulative net profit after tax, all time
@@ -1370,131 +1045,12 @@ export interface BalanceSheet {
   balances: boolean; // sanity check — should always be true within rounding
 }
 
-// ---------------------------------------------------------------------------
-// Strategic business metrics for better decision-making
-// ---------------------------------------------------------------------------
-
-export interface GrowthRates {
-  momRevenuePct: number | null; // month-over-month revenue growth %
-  yoyRevenuePct: number | null; // year-over-year revenue growth %
-  momProfitPct: number | null; // month-over-month profit growth %
-  yoyProfitPct: number | null; // year-over-year profit growth %
-  trendDirection: "up" | "down" | "flat" | "insufficient-data";
-}
-
-export function computeGrowthRates(monthlyPnL: MonthlyPnL[]): GrowthRates {
-  if (monthlyPnL.length < 2) {
-    return {
-      momRevenuePct: null,
-      yoyRevenuePct: null,
-      momProfitPct: null,
-      yoyProfitPct: null,
-      trendDirection: "insufficient-data",
-    };
-  }
-
-  const current = monthlyPnL[monthlyPnL.length - 1];
-  const previous = monthlyPnL[monthlyPnL.length - 2];
-  const yearAgo = monthlyPnL.find((pnl) => {
-    const [y, m] = pnl.month.split("-").map(Number);
-    const [cy, cm] = current.month.split("-").map(Number);
-    return y === cy - 1 && m === cm;
-  });
-
-  const momRevenuePct =
-    previous.totalRevenue > 0 ? ((current.totalRevenue - previous.totalRevenue) / previous.totalRevenue) * 100 : null;
-  const momProfitPct =
-    previous.netProfitAfterTax > 0
-      ? ((current.netProfitAfterTax - previous.netProfitAfterTax) / previous.netProfitAfterTax) * 100
-      : null;
-
-  const yoyRevenuePct =
-    yearAgo && yearAgo.totalRevenue > 0
-      ? ((current.totalRevenue - yearAgo.totalRevenue) / yearAgo.totalRevenue) * 100
-      : null;
-  const yoyProfitPct =
-    yearAgo && yearAgo.netProfitAfterTax > 0
-      ? ((current.netProfitAfterTax - yearAgo.netProfitAfterTax) / yearAgo.netProfitAfterTax) * 100
-      : null;
-
-  let trendDirection: GrowthRates["trendDirection"] = "flat";
-  if (momRevenuePct !== null) {
-    if (momRevenuePct > 2) trendDirection = "up";
-    else if (momRevenuePct < -2) trendDirection = "down";
-  }
-
-  return {
-    momRevenuePct,
-    yoyRevenuePct,
-    momProfitPct,
-    yoyProfitPct,
-    trendDirection,
-  };
-}
-
-export interface OperationalMetrics {
-  averageOrderValue: number; // revenue / number of sales
-  revenuePerEmployee: number | null; // revenue / active employee count
-  inventoryTurnoverRate: number | null; // COGS / average inventory value
-  daysOfInventoryOnHand: number | null; // 365 / turnover rate
-  cashRunwayMonths: number | null; // cash / monthly burn rate
-  monthlyBurnRate: number; // average monthly cash outflow (last 3 months)
-}
-
-export function computeOperationalMetrics(
-  monthlyPnL: MonthlyPnL[],
-  sales: Sale[],
-  inventoryValue: number,
-  activeEmployeeCount: number,
-  cash: number
-): OperationalMetrics {
-  // Average Order Value (AOV)
-  const currentMonthSales = sales.filter((s) => s.date.startsWith(monthlyPnL[monthlyPnL.length - 1]?.month ?? ""));
-  const aov = currentMonthSales.length > 0
-    ? currentMonthSales.reduce((sum, s) => sum + s.unitPrice * s.qty, 0) / currentMonthSales.length
-    : 0;
-
-  // Revenue per Employee
-  const currentRevenue = monthlyPnL[monthlyPnL.length - 1]?.totalRevenue ?? 0;
-  const revenuePerEmployee = activeEmployeeCount > 0 ? currentRevenue / activeEmployeeCount : null;
-
-  // Inventory Turnover Rate = COGS / Average Inventory Value
-  // Using current month COGS and current inventory value as approximation
-  const currentCogs = monthlyPnL[monthlyPnL.length - 1]?.cogs ?? 0;
-  const inventoryTurnoverRate = inventoryValue > 0 ? currentCogs / inventoryValue : null;
-
-  // Days of Inventory on Hand = 365 / Turnover Rate
-  const daysOfInventoryOnHand =
-    inventoryTurnoverRate && inventoryTurnoverRate > 0 ? 365 / inventoryTurnoverRate : null;
-
-  // Cash Runway = Cash / Monthly Burn Rate
-  // Burn rate = average monthly cash outflow (last 3 months)
-  const last3Months = monthlyPnL.slice(-3);
-  const monthlyBurnRate =
-    last3Months.length > 0
-      ? last3Months.reduce((sum, m) => sum + Math.abs(Math.min(0, m.netCashFlow)), 0) / last3Months.length
-      : 0;
-  const cashRunwayMonths = monthlyBurnRate > 0 ? cash / monthlyBurnRate : null;
-
-  return {
-    averageOrderValue: aov,
-    revenuePerEmployee,
-    inventoryTurnoverRate,
-    daysOfInventoryOnHand,
-    cashRunwayMonths,
-    monthlyBurnRate,
-  };
-}
-
 export function computeBalanceSheet(
   monthlyPnL: MonthlyPnL[],
   inventoryValue: number,
   loans: Loan[],
   capitalSummary: CapitalSummary,
-  asOfISO: string,
-  sales: Sale[] = [],
-  purchases: Purchase[] = [],
-  fixedAssets: FixedAsset[] = []
+  asOfISO: string
 ): BalanceSheet {
   const toDate = monthlyPnL.filter((m) => m.month <= asOfISO.slice(0, 7));
   const cash = toDate.reduce((s, m) => s + m.netCashFlow, 0);
@@ -1504,12 +1060,8 @@ export function computeBalanceSheet(
     .filter((l) => l.active)
     .reduce((s, l) => s + computeLoanSummary(l, asOfISO).currentBalance, 0);
 
-  const accountsReceivable = computeReceivables(sales, asOfISO).totalOutstanding;
-  const accountsPayable = computePayables(purchases, asOfISO).totalOutstanding;
-  const fixedAssetsNet = computeFixedAssetsNetValue(fixedAssets, asOfISO);
-
-  const totalAssets = cash + inventoryValue + accountsReceivable + fixedAssetsNet;
-  const totalLiabilities = loansPayable + accountsPayable;
+  const totalAssets = cash + inventoryValue;
+  const totalLiabilities = loansPayable;
   const ownersCapital = capitalSummary.netCapitalIn;
   const totalEquity = ownersCapital + retainedEarnings;
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
@@ -1518,11 +1070,8 @@ export function computeBalanceSheet(
     asOf: asOfISO,
     cash,
     inventoryValue,
-    accountsReceivable,
-    fixedAssetsNet,
     totalAssets,
     loansPayable,
-    accountsPayable,
     totalLiabilities,
     ownersCapital,
     retainedEarnings,
@@ -1533,228 +1082,274 @@ export function computeBalanceSheet(
 }
 
 // ---------------------------------------------------------------------------
-// Project-specific P&L calculations
+// Accounts receivable aging. A credit sale is money you've already booked as
+// revenue but haven't actually collected — this buckets every still-open
+// credit sale by how overdue it is, which is what "90-day receivables" in
+// the Sri Lankan SME sense actually means day to day: not a policy, a list
+// of specific customers who owe specific amounts, some of them for longer
+// than they should.
 // ---------------------------------------------------------------------------
 
-export function computeProjectPnL(
-  projectId: string,
-  sales: Sale[],
-  purchases: Purchase[],
-  expenses: Expense[],
+function daysBetween(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split("-").map(Number);
+  const [ty, tm, td] = toIso.split("-").map(Number);
+  const from = Date.UTC(fy, fm - 1, fd);
+  const to = Date.UTC(ty, tm - 1, td);
+  return Math.round((to - from) / 86400000);
+}
+
+export type ReceivableBucket = "current" | "1-30" | "31-60" | "61-90" | "90+";
+
+export interface ReceivableLine {
+  saleId: string;
+  productId: string;
+  productName: string;
+  customer: string;
+  customerContact?: string;
+  date: string; // sale date
+  dueDate: string;
+  amountDue: number; // full sale value
+  amountPaid: number;
+  amountOutstanding: number;
+  daysOverdue: number; // negative = not yet due
+  bucket: ReceivableBucket;
+  createdByName?: string;
+}
+
+export interface ReceivablesAging {
+  asOf: string;
+  totalOutstanding: number;
+  byBucket: Record<ReceivableBucket, number>;
+  lines: ReceivableLine[];
+}
+
+export function computeReceivablesAging(
   products: Product[],
-  variableCosts: VariableCost[],
-  loans: Loan[],
-  capitalEntries: CapitalEntry[],
-  settings: Settings
-): MonthlyPnL[] {
-  // Filter data by project
-  const projectSales = sales.filter((s) => s.projectId === projectId);
-  const projectPurchases = purchases.filter((p) => p.projectId === projectId);
-  const projectExpenses = expenses.filter((e) => e.projectId === projectId);
+  sales: Sale[],
+  saleEconomics: SaleEconomics[],
+  payments: ReceivablePayment[],
+  asOfISO: string
+): ReceivablesAging {
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const econBySaleId = new Map(saleEconomics.map((e) => [e.saleId, e]));
+  const paidBySale = new Map<string, number>();
+  for (const p of payments) paidBySale.set(p.saleId, (paidBySale.get(p.saleId) ?? 0) + p.amount);
 
-  // Compute ledgers for project purchases
-  const projectLedgers = computeAllLedgers(products, projectPurchases, projectSales);
+  const lines: ReceivableLine[] = [];
+  for (const s of sales) {
+    if (s.paymentMethod !== "credit") continue;
+    const amountDue = econBySaleId.get(s.id)?.revenue ?? s.qty * s.unitPrice;
+    const amountPaid = paidBySale.get(s.id) ?? 0;
+    const amountOutstanding = amountDue - amountPaid;
+    if (amountOutstanding <= 0.005) continue; // fully collected
 
-  // Compute sale economics for project sales
-  const projectSaleEconomics = computeSaleEconomics(projectSales, projectLedgers, variableCosts);
+    const dueDate = s.dueDate ?? s.date;
+    const daysOverdue = daysBetween(dueDate, asOfISO);
+    let bucket: ReceivableBucket = "current";
+    if (daysOverdue > 90) bucket = "90+";
+    else if (daysOverdue > 60) bucket = "61-90";
+    else if (daysOverdue > 30) bucket = "31-60";
+    else if (daysOverdue > 0) bucket = "1-30";
 
-  // Use existing monthly PnL computation with project-filtered data
-  // Note: loans and capitalEntries are not project-specific, so we pass all of them
-  return computeMonthlyPnL(
-    projectSales,
-    projectSaleEconomics,
-    projectExpenses,
-    projectPurchases,
-    loans,
-    capitalEntries,
-    settings.taxRatePct,
-    settings.monthlyOwnerDraw
-  );
+    lines.push({
+      saleId: s.id,
+      productId: s.productId,
+      productName: productById.get(s.productId)?.name ?? "—",
+      customer: s.customer ?? "Unnamed customer",
+      customerContact: s.customerContact,
+      date: s.date,
+      dueDate,
+      amountDue,
+      amountPaid,
+      amountOutstanding,
+      daysOverdue,
+      bucket,
+      createdByName: s.createdByName,
+    });
+  }
+  lines.sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  const byBucket: Record<ReceivableBucket, number> = { current: 0, "1-30": 0, "31-60": 0, "61-90": 0, "90+": 0 };
+  let totalOutstanding = 0;
+  for (const l of lines) {
+    byBucket[l.bucket] += l.amountOutstanding;
+    totalOutstanding += l.amountOutstanding;
+  }
+
+  return { asOf: asOfISO, totalOutstanding, byBucket, lines };
 }
 
 // ---------------------------------------------------------------------------
-// Financial ratios — the standard set a bank, investor, or accountant asks
-// for (profitability beyond net margin, returns, liquidity, leverage). All
-// derived from data already tracked elsewhere (monthlyPnL, the Balance
-// Sheet, loan schedules) — nothing new to enter.
-//
-// Everything here is computed over a trailing window (default 12 months, or
-// however much history exists) rather than a single month, since ratios
-// like ROE/ROA/interest coverage are conventionally annualized — a single
-// month is too noisy and not what a lender would ask to see.
+// Cash runway / "can I make rent" projection. Starts from today's actual
+// cash position (the same derived cash figure the Balance Sheet uses, so
+// this is never a second, disagreeing source of truth) and walks forward
+// day by day to a target date, applying every scheduled cash movement that
+// has an actual date attached — loan payments (exact, from the
+// amortization schedule), rent and recurring expenses/payroll (projected
+// onto the specific days they recur on), and expected receivable
+// collections (assumed to land on their due date, which is optimistic but
+// is the only defensible assumption without a track record of how late
+// customers actually pay). A flat estimated daily cash-sales inflow fills
+// the gaps — this is a planning tool, not a guarantee.
 // ---------------------------------------------------------------------------
 
-export interface FinancialRatios {
-  windowMonths: number; // how many months of history this is actually based on
-  revenue: number;
-  ebit: number; // operating profit: gross profit − opex − depreciation (excludes interest, tax, disposal gains)
-  ebitda: number; // ebit + depreciation added back
-  operatingMarginPct: number | null; // ebit / revenue
-  ebitdaMarginPct: number | null;
-  netProfit: number;
-  returnOnSalesPct: number | null; // net profit / revenue
-  freeCashFlow: number; // operating cash flow − capex
-  roePct: number | null; // net profit / shareholders' equity
-  roaPct: number | null; // net profit / total assets
-  rocePct: number | null; // ebit / capital employed (equity + net debt)
-  currentRatio: number | null; // (cash + AR + inventory) / current liabilities
-  quickRatio: number | null; // (cash + AR) / current liabilities
-  netDebt: number; // total loan balance − cash (negative = net cash position)
-  interestCoverage: number | null; // ebit / interest expense
-  debtServiceCoveragePct: number | null; // ebitda / (interest + principal due), as a ratio (>1 = covers it)
+function addDaysIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return dt.toISOString().slice(0, 10);
 }
 
-// Principal due within the next 12 months, across active loans — the
-// "current portion of long-term debt" a real balance sheet would split out.
-function currentPortionOfDebt(loans: Loan[], asOfISO: string): number {
-  const cutoffKey = addMonthsToKey(asOfISO.slice(0, 7), 12);
-  let total = 0;
-  for (const loan of loans) {
-    if (!loan.active) continue;
-    for (const p of computeLoanSchedule(loan)) {
-      if (p.date > asOfISO && p.monthKey <= cutoffKey) total += p.principal;
+// Does a recurring item (rent, payroll, a recurring expense) land on this
+// specific calendar day, given the day-of-month/week it started on? Handles
+// the month-end edge case (e.g. something that starts on the 31st falls on
+// the last day of shorter months) the same way computeLoanSchedule's
+// addMonthsIso does.
+function recurrenceLandsOn(anchorIso: string, recurrence: Recurrence, targetIso: string): boolean {
+  if (targetIso < anchorIso) return false;
+  const [ay, am, ad] = anchorIso.split("-").map(Number);
+  const [ty, tm, td] = targetIso.split("-").map(Number);
+  switch (recurrence) {
+    case "monthly": {
+      const lastDayOfTargetMonth = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
+      const effectiveDay = Math.min(ad, lastDayOfTargetMonth);
+      return td === effectiveDay;
+    }
+    case "weekly": {
+      const anchorDow = new Date(Date.UTC(ay, am - 1, ad)).getUTCDay();
+      const targetDow = new Date(Date.UTC(ty, tm - 1, td)).getUTCDay();
+      return anchorDow === targetDow;
+    }
+    case "yearly":
+      return am === tm && ad === td;
+    case "none":
+      return anchorIso === targetIso;
+  }
+}
+
+export interface CashRunwayDay {
+  date: string;
+  inflow: number;
+  outflow: number;
+  balance: number;
+  events: string[]; // human-readable line items that moved cash this day
+}
+
+export interface CashRunwayResult {
+  asOf: string;
+  startingCash: number;
+  rentDueDate: string;
+  rentAmount: number;
+  days: CashRunwayDay[];
+  cashAtRentDue: number;
+  canMakeRent: boolean;
+  shortfall: number; // 0 if canMakeRent, else how much short
+  lowestBalance: number;
+  lowestBalanceDate: string;
+}
+
+export function computeCashRunway(params: {
+  asOf: string;
+  startingCash: number;
+  horizonDays: number;
+  estimatedDailyCashSales: number; // trailing-average baseline, projected forward
+  rentAmount: number;
+  rentDueDayOfMonth: number;
+  loans: Loan[];
+  employees: Employee[];
+  expenses: Expense[];
+  receivables: ReceivableLine[];
+  currency: string;
+}): CashRunwayResult {
+  const { asOf, startingCash, horizonDays, estimatedDailyCashSales, rentAmount, rentDueDayOfMonth, loans, employees, expenses, receivables } = params;
+
+  // Next occurrence of the rent due day, strictly after today. Walks forward
+  // day by day (at most ~31 iterations) rather than doing month arithmetic,
+  // so the "clamp to the last day of a short month" edge case (rent due day
+  // 31, checking February) falls out for free: day 31 just never matches
+  // and the search rolls into the next month, same as a calendar would.
+  let rentDueDate = addDaysIso(asOf, 1);
+  for (let i = 1; i <= 31; i++) {
+    const candidate = addDaysIso(asOf, i);
+    const [, , cd] = candidate.split("-").map(Number);
+    const daysInThisMonth = new Date(Date.UTC(Number(candidate.slice(0, 4)), Number(candidate.slice(5, 7)), 0)).getUTCDate();
+    const targetDay = Math.min(rentDueDayOfMonth, daysInThisMonth);
+    if (cd === targetDay) {
+      rentDueDate = candidate;
+      break;
     }
   }
-  return total;
-}
 
-export function computeFinancialRatios(
-  monthlyPnL: MonthlyPnL[],
-  balanceSheet: BalanceSheet,
-  loans: Loan[],
-  asOfISO: string,
-  windowMonths = 12
-): FinancialRatios {
-  const toDate = monthlyPnL.filter((m) => m.month <= asOfISO.slice(0, 7));
-  const window = toDate.slice(-windowMonths);
+  const allLoanPayments = loans.filter((l) => l.active).flatMap((l) => computeLoanSchedule(l).map((p) => ({ ...p, loanName: l.name })));
 
-  const revenue = window.reduce((s, m) => s + m.totalRevenue, 0);
-  const grossProfit = window.reduce((s, m) => s + m.grossProfit, 0);
-  const operatingExpenses = window.reduce((s, m) => s + m.operatingExpenses, 0);
-  const depreciation = window.reduce((s, m) => s + m.depreciationExpense, 0);
-  const interestExpense = window.reduce((s, m) => s + m.interestExpense, 0);
-  const netProfit = window.reduce((s, m) => s + m.netProfitAfterTax, 0);
-  const operatingCashFlow = window.reduce((s, m) => s + m.operatingCashFlow, 0);
-  const capex = window.reduce((s, m) => s + m.assetPurchaseCash, 0);
-  const principalRepayment = window.reduce((s, m) => s + m.principalRepayment, 0);
+  const days: CashRunwayDay[] = [];
+  let balance = startingCash;
+  let lowestBalance = startingCash;
+  let lowestBalanceDate = asOf;
 
-  const ebit = grossProfit - operatingExpenses - depreciation;
-  const ebitda = ebit + depreciation;
-  const freeCashFlow = operatingCashFlow - capex;
+  for (let i = 1; i <= horizonDays; i++) {
+    const date = addDaysIso(asOf, i);
+    const events: string[] = [];
+    let inflow = estimatedDailyCashSales;
+    let outflow = 0;
 
-  const netDebt = balanceSheet.loansPayable - balanceSheet.cash;
-  const capitalEmployed = balanceSheet.totalEquity + netDebt;
+    for (const r of receivables) {
+      if (r.dueDate === date) {
+        inflow += r.amountOutstanding;
+        events.push(`${r.customer} payment due (${r.amountOutstanding.toLocaleString()})`);
+      }
+    }
 
-  const currentLiabilities = balanceSheet.accountsPayable + currentPortionOfDebt(loans, asOfISO);
-  const currentAssets = balanceSheet.cash + balanceSheet.accountsReceivable + balanceSheet.inventoryValue;
+    for (const lp of allLoanPayments) {
+      if (lp.date === date) {
+        outflow += lp.payment;
+        events.push(`${lp.loanName} installment`);
+      }
+    }
 
-  const debtService = interestExpense + principalRepayment;
+    for (const e of employees) {
+      if (!e.active) continue;
+      if (recurrenceLandsOn(e.startDate, e.payFrequency, date)) {
+        outflow += e.payRate;
+        events.push(`Payroll: ${e.name}`);
+      }
+    }
+
+    for (const ex of expenses) {
+      if (ex.kind !== "expense" || !ex.isRecurring || ex.recurrence === "none") continue;
+      if (ex.endDate && date > ex.endDate) continue;
+      if (recurrenceLandsOn(ex.startDate, ex.recurrence, date)) {
+        outflow += ex.amount;
+        events.push(ex.name);
+      }
+    }
+
+    if (date === rentDueDate && rentAmount > 0) {
+      outflow += rentAmount;
+      events.push("Rent");
+    }
+
+    balance = balance + inflow - outflow;
+    if (balance < lowestBalance) {
+      lowestBalance = balance;
+      lowestBalanceDate = date;
+    }
+    days.push({ date, inflow, outflow, balance, events });
+  }
+
+  const rentDueDay = days.find((d) => d.date === rentDueDate);
+  const cashAtRentDue = rentDueDay ? rentDueDay.balance : balance;
+  const canMakeRent = cashAtRentDue >= 0;
 
   return {
-    windowMonths: window.length,
-    revenue,
-    ebit,
-    ebitda,
-    operatingMarginPct: revenue > 0 ? (ebit / revenue) * 100 : null,
-    ebitdaMarginPct: revenue > 0 ? (ebitda / revenue) * 100 : null,
-    netProfit,
-    returnOnSalesPct: revenue > 0 ? (netProfit / revenue) * 100 : null,
-    freeCashFlow,
-    // ROE with negative equity is a classic trap: a lossmaking business with
-    // negative equity divides two negatives into a large *positive*
-    // percentage — which looks like an exceptional return but actually
-    // signals insolvency on a book-equity basis. Suppressing it here (rather
-    // than showing a misleadingly attractive number) is standard practice.
-    roePct: balanceSheet.totalEquity > 0 ? (netProfit / balanceSheet.totalEquity) * 100 : null,
-    roaPct: balanceSheet.totalAssets > 0 ? (netProfit / balanceSheet.totalAssets) * 100 : null,
-    rocePct: capitalEmployed > 0 ? (ebit / capitalEmployed) * 100 : null,
-    currentRatio: currentLiabilities > 0 ? currentAssets / currentLiabilities : null,
-    quickRatio: currentLiabilities > 0 ? (currentAssets - balanceSheet.inventoryValue) / currentLiabilities : null,
-    netDebt,
-    interestCoverage: interestExpense > 0 ? ebit / interestExpense : null,
-    debtServiceCoveragePct: debtService > 0 ? (ebitda / debtService) * 100 : null,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Customer acquisition cost & customer value — the two "essential KPIs"
-// that need grouping sales by customer name rather than reading straight off
-// a single table. `customer` is free text, not a structured entity, so
-// matching is by trimmed, case-insensitive name; blank/anonymous sales are
-// excluded (there's no name to group them by).
-// ---------------------------------------------------------------------------
-
-export interface CustomerMetrics {
-  newCustomersThisMonth: number;
-  marketingSpendThisMonth: number;
-  cac: number | null; // marketing spend this month / new customers acquired this month
-  distinctCustomerCount: number; // all-time, named customers only
-  averageCustomerValue: number; // all-time revenue / distinct named customers
-  topCustomers: { name: string; revenue: number; orders: number }[];
-}
-
-function marketingSpendForMonth(expenses: Expense[], monthKeyStr: string): number {
-  const monthStart = `${monthKeyStr}-01`;
-  const [y, m] = monthKeyStr.split("-").map(Number);
-  const nextMonth = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
-  let total = 0;
-  for (const e of expenses) {
-    if (e.kind !== "expense" || e.category !== "Marketing") continue;
-    if (e.isRecurring) {
-      const started = e.startDate < nextMonth;
-      const notEnded = !e.endDate || e.endDate >= monthStart;
-      if (started && notEnded) total += monthlyNormalizedAmount(e.amount, e.recurrence);
-    } else if (e.startDate >= monthStart && e.startDate < nextMonth) {
-      total += e.amount;
-    }
-  }
-  return total;
-}
-
-export function computeCustomerMetrics(sales: Sale[], expenses: Expense[], monthKeyStr: string): CustomerMetrics {
-  const byCustomer = new Map<string, { firstMonth: string; revenue: number; orders: number }>();
-  for (const s of sales) {
-    const name = (s.customer ?? "").trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    const revenue = s.unitPrice * s.qty;
-    const existing = byCustomer.get(key);
-    const saleMonth = monthKey(s.date);
-    if (!existing) {
-      byCustomer.set(key, { firstMonth: saleMonth, revenue, orders: 1 });
-    } else {
-      existing.revenue += revenue;
-      existing.orders += 1;
-      if (saleMonth < existing.firstMonth) existing.firstMonth = saleMonth;
-    }
-  }
-
-  const customers = Array.from(byCustomer.values());
-  const newCustomersThisMonth = customers.filter((c) => c.firstMonth === monthKeyStr).length;
-  const marketingSpendThisMonth = marketingSpendForMonth(expenses, monthKeyStr);
-
-  const distinctCustomerCount = customers.length;
-  const totalRevenue = customers.reduce((s, c) => s + c.revenue, 0);
-
-  // Top customers by revenue, with original-cased names (byCustomer is keyed
-  // lowercase for matching, so recover the display name separately).
-  const nameByKey = new Map<string, string>();
-  for (const s of sales) {
-    const name = (s.customer ?? "").trim();
-    if (!name) continue;
-    nameByKey.set(name.toLowerCase(), name);
-  }
-  const topCustomersNamed = Array.from(byCustomer.entries())
-    .sort((a, b) => b[1].revenue - a[1].revenue)
-    .slice(0, 5)
-    .map(([key, v]) => ({ name: nameByKey.get(key) ?? key, revenue: v.revenue, orders: v.orders }));
-
-  return {
-    newCustomersThisMonth,
-    marketingSpendThisMonth,
-    cac: newCustomersThisMonth > 0 ? marketingSpendThisMonth / newCustomersThisMonth : null,
-    distinctCustomerCount,
-    averageCustomerValue: distinctCustomerCount > 0 ? totalRevenue / distinctCustomerCount : 0,
-    topCustomers: topCustomersNamed,
+    asOf,
+    startingCash,
+    rentDueDate,
+    rentAmount,
+    days,
+    cashAtRentDue,
+    canMakeRent,
+    shortfall: canMakeRent ? 0 : Math.abs(cashAtRentDue),
+    lowestBalance,
+    lowestBalanceDate,
   };
 }

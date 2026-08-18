@@ -5,39 +5,42 @@ import Link from "next/link";
 import { useEffect } from "react";
 import clsx from "clsx";
 import { useAuth } from "@/contexts/AuthContext";
+import { roleLabel } from "@/lib/permissions";
+import type { Role } from "@/lib/types";
 
-const NAV = [
-  { href: "/dashboard", label: "Home", icon: GridIcon },
-  { href: "/products", label: "Items", icon: BoxIcon },
-  { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon },
-  { href: "/purchases", label: "Buying", icon: DownIcon },
-  { href: "/sales", label: "Selling", icon: UpIcon },
-  { href: "/receivables-payables", label: "Money Owed", icon: HandCoinIcon },
-  { href: "/projects", label: "Projects", icon: ProjectIcon },
-  { href: "/employees", label: "Employees", icon: PeopleIcon },
-  { href: "/expenses", label: "Bills", icon: RepeatIcon },
-  { href: "/loans", label: "Loans", icon: LoanIcon },
-  { href: "/assets", label: "Assets", icon: AssetIcon },
-  { href: "/profitability", label: "Profit", icon: TrendIcon },
-  { href: "/health", label: "Ratios", icon: PulseIcon },
-  { href: "/statements", label: "Reports", icon: StatementIcon },
-  { href: "/import-export", label: "CSV", icon: FileIcon },
-  { href: "/settings", label: "Settings", icon: GearIcon },
+const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; roles: Role[] }[] = [
+  { href: "/dashboard", label: "Home", icon: GridIcon, roles: ["owner", "manager"] },
+  { href: "/products", label: "Items", icon: BoxIcon, roles: ["owner", "manager"] },
+  { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon, roles: ["owner", "manager"] },
+  { href: "/purchases", label: "Buying", icon: DownIcon, roles: ["owner", "manager"] },
+  { href: "/sales", label: "Selling", icon: UpIcon, roles: ["owner", "manager", "staff"] },
+  { href: "/receivables", label: "Owed to you", icon: ClockIcon, roles: ["owner", "manager"] },
+  { href: "/cash-count", label: "Cash count", icon: WalletIcon, roles: ["owner", "manager", "staff"] },
+  { href: "/cash-flow", label: "Cash flow", icon: RunwayIcon, roles: ["owner", "manager"] },
+  { href: "/employees", label: "Employees", icon: PeopleIcon, roles: ["owner"] },
+  { href: "/expenses", label: "Bills", icon: RepeatIcon, roles: ["owner", "manager"] },
+  { href: "/loans", label: "Loans", icon: LoanIcon, roles: ["owner", "manager"] },
+  { href: "/profitability", label: "Profit", icon: TrendIcon, roles: ["owner", "manager"] },
+  { href: "/statements", label: "Reports", icon: StatementIcon, roles: ["owner", "manager"] },
+  { href: "/import-export", label: "CSV", icon: FileIcon, roles: ["owner"] },
+  { href: "/team", label: "Team", icon: TeamIcon, roles: ["owner"] },
+  { href: "/settings", label: "Settings", icon: GearIcon, roles: ["owner"] },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, signOut } = useAuth();
+  const { user, role, memberName, memberActive, loading, signOut } = useAuth();
 
-  const isAuthPage = pathname === "/login";
+  const isAuthPage = pathname === "/login" || pathname === "/join";
+  const homeForRole = role === "staff" ? "/sales" : "/dashboard";
 
   useEffect(() => {
     if (loading) return;
     if (!user && !isAuthPage) router.replace("/login");
-    if (user && isAuthPage) router.replace("/dashboard");
-    if (user && pathname === "/") router.replace("/dashboard");
-  }, [loading, user, isAuthPage, pathname, router]);
+    if (user && isAuthPage) router.replace(homeForRole);
+    if (user && pathname === "/") router.replace(homeForRole);
+  }, [loading, user, isAuthPage, pathname, router, homeForRole]);
 
   if (isAuthPage || pathname === "/") {
     return <>{children}</>;
@@ -51,6 +54,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (user && role && !memberActive) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 text-center">
+        <div>
+          <div className="text-sm font-medium text-fg">Your access has been turned off</div>
+          <div className="text-sm text-muted mt-1 max-w-sm">
+            Whoever runs this business has deactivated your account. Talk to them if this seems wrong.
+          </div>
+          <button onClick={() => signOut()} className="text-sm text-muted hover:text-fg mt-4 underline">
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const visibleNav = NAV.filter((item) => !role || item.roles.includes(role));
+
   return (
     <div className="min-h-screen flex">
       {/* Desktop sidebar */}
@@ -61,7 +82,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="text-[11px] text-muted mt-0.5">solo SME finance</div>
           </div>
           <nav className="p-2.5 space-y-0.5">
-            {NAV.map((item) => {
+            {visibleNav.map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;
               return (
@@ -83,7 +104,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
         <div className="p-3 border-t border-line">
-          <div className="text-xs text-muted truncate px-1 mb-2">{user.email}</div>
+          <div className="px-1 mb-2">
+            <div className="text-xs text-fg truncate font-medium">{memberName ?? user.email}</div>
+            <div className="text-[11px] text-muted flex items-center gap-1.5">
+              {role && <span className="px-1.5 py-0.5 rounded border border-line bg-panel2">{roleLabel(role)}</span>}
+            </div>
+          </div>
           <button
             onClick={() => signOut()}
             className="w-full text-left text-sm text-muted hover:text-fg px-3 py-2 rounded-md hover:bg-panel2"
@@ -96,7 +122,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Mobile top bar */}
         <header className="sm:hidden flex items-center justify-between px-4 py-3.5 border-b border-line sticky top-0 bg-ink z-30">
-          <div className="font-display text-base font-bold">Ledger</div>
+          <div>
+            <div className="font-display text-base font-bold leading-none">Ledger</div>
+            {role && <div className="text-[10px] text-muted mt-0.5">{roleLabel(role)}</div>}
+          </div>
           <button onClick={() => signOut()} className="text-xs text-muted">
             Sign out
           </button>
@@ -108,7 +137,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Mobile bottom nav — horizontally scrollable since there are more items than fit one screen */}
         <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-panel border-t border-line flex overflow-x-auto z-30">
-          {NAV.map((item) => {
+          {visibleNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
@@ -240,37 +269,39 @@ function GearIcon(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
-function ProjectIcon(props: React.SVGProps<SVGSVGElement>) {
+function ClockIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 00-3-3H2z" />
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
     </svg>
   );
 }
-function HandCoinIcon(props: React.SVGProps<SVGSVGElement>) {
+function WalletIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
-      <circle cx="12" cy="8" r="4.5" />
-      <path d="M9.7 6.8h1.6a1.1 1.1 0 0 1 0 2.2h-1a1.1 1.1 0 0 0 0 2.2h1.7" />
-      <path d="M12 5.8v.8M12 10.8v.8" />
-      <path d="M3 19s2-1.5 4-1.5 3 1 5 1 3-1.2 5-1.2 4 1.7 4 1.7" />
+      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h11A2.5 2.5 0 0 1 19 7.5V8H5.5A2.5 2.5 0 0 1 3 5.5Z" />
+      <rect x="3" y="8" width="18" height="12" rx="2" />
+      <circle cx="16" cy="14" r="1.3" fill="currentColor" stroke="none" />
     </svg>
   );
 }
-function AssetIcon(props: React.SVGProps<SVGSVGElement>) {
+function RunwayIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
-      <path d="M3 21V9l9-6 9 6v12" />
-      <path d="M7 21v-7h10v7" />
-      <path d="M7 21h10" />
+      <path d="M4 20 20 4" />
+      <path d="M4 4h6M4 4v6" />
+      <path d="M20 20h-6M20 20v-6" />
     </svg>
   );
 }
-function PulseIcon(props: React.SVGProps<SVGSVGElement>) {
+function TeamIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
-      <path d="M3 12h4l2.5-7 4 14 2.5-7H21" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="3" />
+      <circle cx="16" cy="9" r="2.4" />
+      <path d="M2.5 20c.6-3.3 2.9-5.3 5.5-5.3s4.9 2 5.5 5.3" />
+      <path d="M14.5 15.2c2 .2 3.7 1.9 4.2 4.8" />
     </svg>
   );
 }

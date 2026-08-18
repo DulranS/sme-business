@@ -2,23 +2,25 @@
 
 import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, formatMonth, todayIso } from "@/lib/format";
 import { Card, PageHeader, Select, Badge, EmptyState } from "@/components/ui";
 
 type Tab = "income" | "balance" | "cashflow";
 
 export default function StatementsPage() {
+  const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
   const { monthlyPnL, balanceSheet, settings } = useData();
   const currency = settings.currency;
   const [tab, setTab] = useState<Tab>("income");
-  const [monthKey, setMonthKey] = useState<string>(
-    () => monthlyPnL.find((m) => m.month === todayIso().slice(0, 7))?.month ?? monthlyPnL[monthlyPnL.length - 1]?.month ?? ""
-  );
+  const [monthKey, setMonthKey] = useState<string>(monthlyPnL[monthlyPnL.length - 1]?.month ?? "");
 
   const selectedMonth = useMemo(
     () => monthlyPnL.find((m) => m.month === monthKey) ?? monthlyPnL[monthlyPnL.length - 1],
     [monthlyPnL, monthKey]
   );
+
+  if (guardLoading || !allowed) return null;
 
   if (monthlyPnL.length === 0) {
     return (
@@ -36,7 +38,7 @@ export default function StatementsPage() {
     <>
       <PageHeader title="Financial statements" />
 
-      <div className="flex gap-1 border-b border-line mb-6 -mt-1 overflow-x-auto">
+      <div className="flex gap-1 border-b border-line mb-6 -mt-1">
         {(
           [
             ["income", "Income statement"],
@@ -57,7 +59,7 @@ export default function StatementsPage() {
       </div>
 
       {(tab === "income" || tab === "cashflow") && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div className="flex items-center justify-between mb-4">
           <div className="text-xs text-muted">
             {tab === "income"
               ? "Revenue, expenses, and net profit for one month."
@@ -66,7 +68,7 @@ export default function StatementsPage() {
           <Select
             value={selectedMonth?.month ?? ""}
             onChange={(e) => setMonthKey(e.target.value)}
-            className="w-full sm:w-40 shrink-0"
+            className="w-40"
           >
             {[...monthlyPnL].reverse().map((m) => (
               <option key={m.month} value={m.month}>
@@ -106,10 +108,10 @@ function Line({
       className={`flex items-baseline justify-between py-2 ${bold ? "border-t border-line mt-1 pt-3" : "border-b border-line/60 last:border-0"}`}
     >
       <span className={`text-sm ${indent ? "pl-4 text-muted" : ""} ${bold ? "font-medium text-fg" : ""}`}>{label}</span>
-      <span className={`num text-sm ${bold ? "font-semibold text-base" : muted ? "text-muted" : ""} ${value < 0 && !negative ? "text-bad" : ""}`}>
-        {(negative || value < 0) && value !== 0 ? "(" : ""}
+      <span className={`num text-sm ${bold ? "font-semibold text-base" : muted ? "text-muted" : ""}`}>
+        {negative && value !== 0 ? "(" : ""}
         {formatMoney(Math.abs(value), currency)}
-        {(negative || value < 0) && value !== 0 ? ")" : ""}
+        {negative && value !== 0 ? ")" : ""}
       </span>
     </div>
   );
@@ -140,15 +142,6 @@ function IncomeStatement({
       <div className="mt-4">
         <Line label="Operating expenses" value={m.operatingExpenses} currency={currency} negative muted />
         <Line label="Interest expense" value={m.interestExpense} currency={currency} negative muted />
-        <Line label="Depreciation" value={m.depreciationExpense} currency={currency} negative muted />
-        {m.disposalGainLoss !== 0 && (
-          <Line
-            label={m.disposalGainLoss >= 0 ? "Gain on asset disposal" : "Loss on asset disposal"}
-            value={m.disposalGainLoss}
-            currency={currency}
-            muted
-          />
-        )}
         <Line label="Net profit before tax" value={m.netProfitPreTax} currency={currency} bold />
       </div>
 
@@ -157,7 +150,7 @@ function IncomeStatement({
         <Line label="Net profit after tax" value={m.netProfitAfterTax} currency={currency} bold />
       </div>
 
-      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2 flex-wrap">
+      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2">
         <span className="text-xs text-muted">Net margin:</span>
         <Badge tone={m.netProfitAfterTax >= 0 ? "good" : "bad"}>
           {m.totalRevenue > 0 ? ((m.netProfitAfterTax / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
@@ -187,7 +180,7 @@ function CashFlowStatement({
   m: NonNullable<ReturnType<typeof useData>["monthlyPnL"][number]>;
   currency: string;
 }) {
-  const cashIn = m.salesCash + m.recurringRevenue;
+  const cashIn = m.salesRevenue + m.recurringRevenue;
   return (
     <Card>
       <div className="text-sm font-medium mb-0.5">Cash flow statement — {formatMonth(m.month)}</div>
@@ -201,12 +194,6 @@ function CashFlowStatement({
       <Line label="Interest paid" value={m.interestExpense} currency={currency} negative muted />
       <Line label="Tax paid" value={m.tax} currency={currency} negative muted />
       <Line label="Net cash from operating" value={m.operatingCashFlow} currency={currency} bold />
-      {cashIn !== m.salesRevenue + m.recurringRevenue && (
-        <div className="text-[11px] text-muted mt-1.5">
-          Differs from Income Statement revenue because some sales are on credit — cash only counts here once
-          actually received. See <a href="/receivables-payables" className="text-amber-soft">Money owed</a>.
-        </div>
-      )}
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Financing activities</div>
       <Line label="Loan proceeds received" value={m.loanProceeds} currency={currency} />
@@ -216,9 +203,7 @@ function CashFlowStatement({
       <Line label="Net cash from financing" value={m.financingCashFlow} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Investing activities</div>
-      <Line label="Fixed assets purchased" value={m.assetPurchaseCash} currency={currency} negative muted />
-      <Line label="Proceeds from asset disposal" value={m.assetDisposalCash} currency={currency} />
-      <Line label="Net cash from investing" value={m.investingCashFlow} currency={currency} bold />
+      <div className="text-xs text-muted py-1.5">Not tracked in this build (no fixed-asset/equipment purchases logged).</div>
 
       <Line label="Net change in cash" value={m.netCashFlow} currency={currency} bold />
     </Card>
@@ -242,14 +227,11 @@ function BalanceSheetView({
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Assets</div>
       <Line label="Cash" value={b.cash} currency={currency} />
-      <Line label="Accounts receivable" value={b.accountsReceivable} currency={currency} />
       <Line label="Inventory" value={b.inventoryValue} currency={currency} />
-      <Line label="Fixed assets (net)" value={b.fixedAssetsNet} currency={currency} />
       <Line label="Total assets" value={b.totalAssets} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Liabilities</div>
       <Line label="Loans payable" value={b.loansPayable} currency={currency} />
-      <Line label="Accounts payable" value={b.accountsPayable} currency={currency} />
       <Line label="Total liabilities" value={b.totalLiabilities} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Equity</div>
@@ -259,7 +241,7 @@ function BalanceSheetView({
 
       <Line label="Total liabilities + equity" value={b.totalLiabilitiesAndEquity} currency={currency} bold />
 
-      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2 flex-wrap">
+      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2">
         <Badge tone={b.balances ? "good" : "bad"}>{b.balances ? "Balanced" : "Out of balance"}</Badge>
         <span className="text-xs text-muted">Assets should always equal Liabilities + Equity.</span>
       </div>

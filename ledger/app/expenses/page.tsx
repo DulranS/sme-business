@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
+import { useRequireRole } from "@/lib/roleGuard";
 import { computeMRR, monthlyNormalizedAmount } from "@/lib/calculations";
 import { formatMoney, todayIso } from "@/lib/format";
 import type { Expense, Recurrence } from "@/lib/types";
@@ -24,16 +25,21 @@ import {
 } from "@/components/ui";
 
 export default function ExpensesPage() {
-  const { expenses, addExpense, deleteExpense, settings, projects } = useData();
+  const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
+  const { expenses, addExpense, updateExpense, deleteExpense, settings } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<string>("all");
+  const [editing, setEditing] = useState<Expense | null>(null);
   const currency = settings.currency;
 
-  const filteredExpenses = useMemo(() => {
-    if (selectedProject === "all") return expenses;
-    return expenses.filter((e) => e.projectId === selectedProject);
-  }, [expenses, selectedProject]);
+  function openNew() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+  function openEdit(e: Expense) {
+    setEditing(e);
+    setModalOpen(true);
+  }
 
   function handleDelete(id: string, name: string) {
     if (!confirm(`Delete "${name}"? This can't be undone.`)) return;
@@ -46,48 +52,26 @@ export default function ExpensesPage() {
 
   const categoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
-    for (const e of filteredExpenses) {
+    for (const e of expenses) {
       if (e.kind !== "expense") continue;
       const monthly = e.isRecurring ? monthlyNormalizedAmount(e.amount, e.recurrence) : e.amount;
       const key = e.category || "Uncategorized";
       map.set(key, (map.get(key) ?? 0) + monthly);
     }
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [filteredExpenses]);
+  }, [expenses]);
+
+  if (guardLoading || !allowed) return null;
 
   return (
     <>
-      <PageHeader title="Expenses" action={<Button onClick={() => setModalOpen(true)}>+ Add item</Button>} />
+      <PageHeader title="Expenses" action={<Button onClick={openNew}>+ Add item</Button>} />
 
-      {projects.length > 0 && (
-        <div className="mb-4">
-          <Select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="max-w-xs"
-          >
-            <option value="all">All Projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Recurring revenue / mo" value={formatMoney(mrr.mrrRevenue, currency)} tone="good" />
         <Stat label="Recurring expenses / mo" value={formatMoney(mrr.mrrExpense, currency)} tone="bad" />
         <Stat label="Recurring net / mo" value={formatMoney(mrr.mrrRevenue - mrr.mrrExpense, currency)} tone="amber" />
       </div>
-
-      {filteredExpenses.length === 0 && expenses.length > 0 && (
-        <EmptyState
-          title="No expenses for this project"
-          body="Select a different project or add expenses to this project."
-        />
-      )}
 
       {expenses.length === 0 ? (
         <EmptyState
@@ -103,8 +87,8 @@ export default function ExpensesPage() {
                 {categoryBreakdown.map(([cat, amount]) => {
                   const max = categoryBreakdown[0][1];
                   return (
-                    <div key={cat} className="flex items-center gap-2 sm:gap-3 text-xs">
-                      <div className="w-24 sm:w-32 shrink-0 text-muted truncate">{cat}</div>
+                    <div key={cat} className="flex items-center gap-3 text-xs">
+                      <div className="w-32 shrink-0 text-muted truncate">{cat}</div>
                       <div className="flex-1 h-2 bg-panel2 rounded-full overflow-hidden">
                         <div className="h-full bg-amber-dim" style={{ width: `${max > 0 ? (amount / max) * 100 : 0}%` }} />
                       </div>
@@ -116,8 +100,7 @@ export default function ExpensesPage() {
             </Card>
           )}
           <Card>
-          <div className="table-container">
-            <Table>
+          <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Name</th>
@@ -130,7 +113,7 @@ export default function ExpensesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredExpenses.map((e) => (
+              {expenses.map((e) => (
                 <tr key={e.id} className="border-b border-line last:border-0">
                   <td className="py-2.5 pr-3 font-medium">
                     {e.name}
@@ -158,27 +141,37 @@ export default function ExpensesPage() {
                         Edit in Employees
                       </Link>
                     ) : (
-                      <button onClick={() => handleDelete(e.id, e.name)} className="text-xs text-muted hover:text-bad">
-                        Delete
-                      </button>
+                      <>
+                        <button onClick={() => openEdit(e)} className="text-xs text-muted hover:text-fg mr-3">
+                          Edit
+                        </button>
+                        <button onClick={() => handleDelete(e.id, e.name)} className="text-xs text-muted hover:text-bad">
+                          Delete
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </Table>
-          </div>
         </Card>
         </>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add expense or recurring revenue">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this" : "Add expense or recurring revenue"}>
         <ExpenseForm
+          initial={editing}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
-              await addExpense(values);
-              toast.success("Added", values.name);
+              if (editing) {
+                await updateExpense(editing.id, values);
+                toast.success("Updated", values.name);
+              } else {
+                await addExpense(values);
+                toast.success("Added", values.name);
+              }
               setModalOpen(false);
             } catch (err) {
               toast.error("Couldn't save", toastableErrorMessage(err));
@@ -191,20 +184,24 @@ export default function ExpensesPage() {
 }
 
 function ExpenseForm({
+  initial,
   onSave,
   onCancel,
 }: {
+  initial?: Expense | null;
   onSave: (values: Omit<Expense, "id" | "createdAt">) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
-  const [kind, setKind] = useState<Expense["kind"]>("expense");
-  const [isRecurring, setIsRecurring] = useState(true);
-  const [recurrence, setRecurrence] = useState<Recurrence>("monthly");
-  const [startDate, setStartDate] = useState(todayIso());
-  const [endDate, setEndDate] = useState("");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [amount, setAmount] = useState(initial?.amount?.toString() ?? "");
+  const [category, setCategory] = useState(initial?.category ?? "");
+  const [kind, setKind] = useState<Expense["kind"]>(initial?.kind ?? "expense");
+  const [isRecurring, setIsRecurring] = useState(initial?.isRecurring ?? true);
+  const [recurrence, setRecurrence] = useState<Recurrence>(
+    initial?.isRecurring && initial.recurrence !== "none" ? initial.recurrence : "monthly"
+  );
+  const [startDate, setStartDate] = useState(initial?.startDate ?? todayIso());
+  const [endDate, setEndDate] = useState(initial?.endDate ?? "");
   const [busy, setBusy] = useState(false);
 
   return (
@@ -230,7 +227,7 @@ function ExpenseForm({
         <Label>Name</Label>
         <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse rent" />
       </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Kind</Label>
           <Select value={kind} onChange={(e) => setKind(e.target.value as Expense["kind"])}>
@@ -269,7 +266,7 @@ function ExpenseForm({
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>{isRecurring ? "Starts" : "Date"}</Label>
           <Input required type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -281,12 +278,12 @@ function ExpenseForm({
           </Field>
         )}
       </div>
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? "Saving…" : initial ? "Save changes" : "Save"}
         </Button>
       </div>
     </form>

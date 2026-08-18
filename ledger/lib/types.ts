@@ -2,51 +2,6 @@ export type Recurrence = "weekly" | "monthly" | "yearly" | "none";
 
 export type OfferingType = "product" | "service";
 
-export type ProjectStatus = "active" | "completed" | "on_hold";
-
-export type TeamRole = "owner" | "admin" | "editor" | "viewer";
-
-export type PaymentStatus = "paid" | "unpaid" | "partial";
-
-// Shared shape for the payment fields on Sale/Purchase. All optional and
-// absent-by-default — an existing or newly-quick-added record with none of
-// these set behaves exactly as before (cash settled in full on `date`).
-// Only set these when the sale/purchase is actually on credit terms.
-export interface PaymentFields {
-  paymentStatus?: PaymentStatus;
-  amountPaid?: number; // cumulative amount paid so far (for "partial"; ignored/full for "paid")
-  paidDate?: string; // ISO date cash actually moved — drives Cash Flow timing, not `date`
-  dueDate?: string; // ISO date payment is due — drives AR/AP aging
-}
-
-// A project for tracking revenue, expenses, and profitability by initiative/client
-export interface Project {
-  id: string;
-  name: string;
-  description?: string;
-  status: ProjectStatus;
-  startDate?: string; // ISO date
-  endDate?: string; // ISO date
-  budget?: number; // optional budget for the project
-  createdAt: number;
-}
-
-// A named contact with an informal role label for your own reference (e.g.
-// "who's the accountant", "who handles supplier calls"). NOT an access
-// control system: this app is single-owner (see firestore.rules — every
-// document is scoped to one Firebase Auth uid), so adding someone here does
-// not grant them a login or any ability to view or edit this data. Purely a
-// roster.
-export interface TeamMember {
-  id: string;
-  email: string;
-  name: string;
-  role: TeamRole;
-  invitedAt: number;
-  joinedAt?: number; // set when they accept the invite
-  active: boolean;
-}
-
 // A "Product" can be a physical item (wholesale-bought, held as inventory)
 // or a service/labor offering (no physical stock — its "cost" is what it
 // costs you to deliver one unit, logged the same way a purchase is logged
@@ -89,7 +44,7 @@ export interface Product {
 // e.g. labor cost per hour or per job). Same shape, same WAC math either way.
 // This represents STOCK ALREADY IN HAND / cost already incurred — see
 // PurchaseOrder below for stock that's been ordered but not yet received.
-export interface Purchase extends PaymentFields {
+export interface Purchase {
   id: string;
   productId: string;
   qty: number;
@@ -98,10 +53,8 @@ export interface Purchase extends PaymentFields {
   supplier?: string; // product: supplier name. service: contractor/resource.
   notes?: string;
   purchaseOrderId?: string; // set when this purchase was created by receiving a PO
-  projectId?: string; // optional project assignment for project-based accounting
   createdAt: number;
 }
-
 
 export type OrderStatus = "ordered" | "in_transit" | "received" | "cancelled";
 
@@ -128,15 +81,49 @@ export interface PurchaseOrder {
   createdAt: number;
 }
 
-export interface Sale extends PaymentFields {
+export type PaymentMethod = "cash" | "card" | "bank_transfer" | "credit";
+
+export interface Sale {
   id: string;
   productId: string;
   qty: number;
   unitPrice: number;
   date: string; // ISO date
   customer?: string;
+  customerContact?: string; // phone/email — mainly useful once it's a credit sale you need to chase
   notes?: string;
-  projectId?: string; // optional project assignment for project-based accounting
+  // "cash"/"card"/"bank_transfer" are all treated as collected-in-full at the
+  // point of sale. "credit" is money owed to you — it doesn't show up as cash
+  // until a ReceivablePayment is recorded against it. Old sales without this
+  // field are read as "cash" (see computeReceivablesAging / DataContext).
+  paymentMethod?: PaymentMethod;
+  creditTermDays?: number; // only meaningful when paymentMethod === "credit"
+  dueDate?: string; // ISO date = date + creditTermDays, stored so it never has to be recomputed against a changed default later
+  // Who actually rang this up — set automatically by DataContext, never
+  // user-entered. Powers per-staff cash reconciliation and the audit log;
+  // also the basis for the Firestore rule that lets Staff read only their
+  // own sales.
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt: number;
+}
+
+// A payment collected against a credit sale. Deliberately its own
+// append-only record rather than an `amountPaid` field mutated on the Sale:
+// that means collecting a payment never requires "edit" permission on
+// Sales, so Staff can take a customer's cash against an outstanding credit
+// sale without ever being able to alter the original sale record — and the
+// business keeps a full history of who collected what, when, instead of a
+// single overwritten running total.
+export interface ReceivablePayment {
+  id: string;
+  saleId: string;
+  amount: number;
+  date: string; // ISO date
+  method: "cash" | "card" | "bank_transfer";
+  note?: string;
+  createdByUid?: string;
+  createdByName?: string;
   createdAt: number;
 }
 
@@ -165,7 +152,6 @@ export interface Expense {
   startDate: string; // ISO date
   endDate?: string; // ISO date, optional (ongoing if absent)
   employeeId?: string; // set when this expense is the auto-managed payroll line for an Employee
-  projectId?: string; // optional project assignment for project-based accounting
   createdAt: number;
 }
 
@@ -236,27 +222,6 @@ export interface Loan {
   createdAt: number;
 }
 
-// A capital asset the business owns and uses over time (machinery, a
-// vehicle, equipment, fixtures) — as opposed to inventory (held for resale)
-// or a one-off Expense (consumed immediately). Depreciated straight-line
-// over its useful life; the monthly depreciation charge flows into the
-// Income Statement as a non-cash expense, and net book value sits on the
-// Balance Sheet as an asset. The cash cost hits Investing Cash Flow once, on
-// `purchaseDate` — not spread out like depreciation.
-export interface FixedAsset {
-  id: string;
-  name: string; // e.g. "PP Spunbond fabric machine"
-  category: string;
-  purchaseDate: string; // ISO date
-  cost: number; // original cost, incl. installation/setup if capitalized
-  usefulLifeMonths: number; // straight-line depreciation period
-  salvageValue?: number; // estimated residual value at end of useful life (default 0)
-  disposalDate?: string; // ISO date, set when sold/scrapped
-  disposalAmount?: number; // cash received on disposal, set alongside disposalDate
-  notes?: string;
-  createdAt: number;
-}
-
 export interface Settings {
   taxRatePct: number; // e.g. 15 = 15%
   currency: string; // e.g. "LKR", "USD", "AED"
@@ -270,6 +235,21 @@ export interface Settings {
   // number so "we're profitable" isn't an illusion built on nobody paying
   // themselves for the hours they put in.
   monthlyOwnerDraw?: number;
+  // Default credit term offered to a customer when a sale is marked
+  // "credit" and no term is entered on that sale specifically.
+  defaultCreditTermDays: number;
+  // Credit sales at or above this amount get visually flagged on the
+  // Receivables page — not blocked, just surfaced, since the biggest single
+  // fraud vector in a credit-heavy shop is a large "sale" that was never
+  // really owed and never gets chased.
+  creditReviewThreshold: number;
+  // Rent (or any single largest fixed monthly outflow) — what the Cash
+  // Runway tool is checking you can cover.
+  rentAmount: number;
+  rentDueDayOfMonth: number; // 1-28, day of month rent is due
+  // Starting float assumed for a new cash-count session when nothing else
+  // is entered.
+  defaultOpeningFloat: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -279,4 +259,135 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultOrderingCost: 0,
   defaultHoldingCostPct: 20,
   defaultLeadTimeDays: 7,
+  defaultCreditTermDays: 90,
+  creditReviewThreshold: 25000,
+  rentAmount: 0,
+  rentDueDayOfMonth: 1,
+  defaultOpeningFloat: 0,
 };
+
+// ---------------------------------------------------------------------------
+// Multi-user access. One business (identified by its owner's uid) can have
+// several people signed in under it, each with their own login and a role
+// that determines what they can see and do. See lib/permissions.ts for the
+// actual permission matrix and firestore.rules for how it's enforced at the
+// database level (client-side checks alone are not real security).
+// ---------------------------------------------------------------------------
+
+// owner: the account the business was created under. Full access, always
+//   exactly one, cannot be removed or demoted.
+// manager: trusted day-to-day operator. Can create/edit almost everything a
+//   business needs day to day, but can't delete records, manage the team,
+//   change settings, or see payroll — deletion and payroll are the two
+//   things worth keeping to a short list of people even among trusted staff.
+// staff: till/floor level. Can log a sale, record a customer's payment, and
+//   count cash at end of shift — and nothing else. Critically, cannot edit
+//   or delete anything once it's saved, including their own entries: a
+//   genuine mistake gets fixed by a manager or owner, which is exactly the
+//   friction that makes "log it low, pocket the difference" not work.
+export type Role = "owner" | "manager" | "staff";
+
+// The record of a person's membership in a business — lives at
+// users/{businessId}/members/{uid}. This is the single source of truth
+// Firestore rules check for every permission decision; nothing else (not
+// even the top-level `memberships` pointer below) grants access on its own.
+export interface Member {
+  id: string; // == uid
+  role: Role;
+  name: string;
+  email: string;
+  active: boolean; // false = removed. Kept, not deleted, so history/audit trail stays intact.
+  invitedBy?: string; // uid of whoever invited them
+  createdAt: number;
+}
+
+// A top-level users/{uid}-independent pointer, at memberships/{uid}, that
+// exists purely so a freshly signed-in user's own client can answer "which
+// business am I part of" with a single doc read by their own uid — Firestore
+// can't otherwise search "which business's members subcollection contains
+// me" without a collection-group query. It intentionally carries no role —
+// role is always read fresh from the Member doc above, so there's exactly
+// one place a role can be wrong, and it isn't this one.
+export interface MembershipPointer {
+  businessId: string;
+}
+
+// A pending invitation — lives at users/{businessId}/invites/{id}. The owner
+// creates one and shares the resulting link with the person out of band
+// (WhatsApp, in person, whatever); accepting it is what creates the Member
+// doc and the MembershipPointer, validated by matching email + role in
+// firestore.rules.
+export interface Invite {
+  id: string;
+  email: string; // lowercased at creation
+  name: string; // pre-filled display name, editable by the invitee on accept
+  role: Role;
+  status: "pending" | "accepted" | "revoked";
+  invitedBy: string; // uid
+  invitedByName: string;
+  createdAt: number;
+  acceptedAt?: number;
+  acceptedByUid?: string;
+}
+
+export type AuditAction = "create" | "update" | "delete";
+
+// An append-only trail of who did what. Written by the app alongside the
+// mutations that matter most for fraud detection (sales, purchases,
+// expenses, deletions, role changes) — see contexts/DataContext.tsx. This is
+// a detection/deterrence layer, not a cryptographic guarantee: firestore.rules
+// make it truly impossible for anyone to edit or delete an entry here after
+// the fact, but a sufficiently technical person could in principle write to
+// Firestore directly and bypass the app's logging code entirely. The real,
+// unconditional protection against theft is what firestore.rules refuses to
+// allow Staff to do in the first place (see lib/permissions.ts) — this log
+// is what lets an owner or manager notice when something looks wrong.
+export interface AuditLogEntry {
+  id: string;
+  at: number;
+  byUid: string;
+  byName: string;
+  byRole: Role;
+  action: AuditAction;
+  entity: string; // "sale" | "purchase" | "expense" | "product" | "loan" | "member" | ...
+  entityId: string;
+  summary: string; // short human-readable description, e.g. "Sale 2×Widget Rs 4,500 → Rs 2,500"
+}
+
+// End-of-shift cash reconciliation. `expectedCash` is snapshotted at the
+// moment the count is submitted (opening float + cash sales collected -
+// cash spent, over the covered date range) rather than recomputed live
+// later, so a later edit to that day's records (which only Owner/Manager
+// can make anyway) never silently rewrites a variance that's already been
+// flagged and discussed. This is the single highest-leverage anti-theft
+// control in the app: a staff member who's been skimming cash sales will
+// show a shortfall here every time, on a clean, dated, named record they
+// can't later edit or delete.
+export interface CashCount {
+  id: string;
+  date: string; // ISO date the count covers
+  openingFloat: number;
+  expectedCash: number;
+  countedCash: number;
+  variance: number; // countedCash - expectedCash; negative = cash missing
+  notes?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt: number;
+}
+
+// A cost-stripped mirror of Product, kept in sync by DataContext whenever a
+// product is created/updated/deleted. Staff gets read access to this
+// collection instead of `products` — same id, but no cost/margin fields —
+// so a Staff-role sales form can list what's for sale and at what price
+// without ever being able to read what it cost the business, and therefore
+// without being able to work out how much room there is to skim per unit.
+export interface CatalogItem {
+  id: string; // == Product.id
+  name: string;
+  sku: string;
+  category: string;
+  type: OfferingType;
+  active: boolean;
+  sellPrice?: number; // mirrors Product.defaultSellPrice
+}

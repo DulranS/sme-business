@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
+import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, todayIso } from "@/lib/format";
-import type { Product } from "@/lib/types";
+import type { Product, Purchase } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -21,16 +22,21 @@ import {
 } from "@/components/ui";
 
 export default function PurchasesPage() {
-  const { products, purchases, addPurchase, deletePurchase, settings, loading, projects } = useData();
+  const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
+  const { products, purchases, addPurchase, updatePurchase, deletePurchase, settings, loading } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<string>("all");
+  const [editing, setEditing] = useState<Purchase | null>(null);
   const currency = settings.currency;
 
-  const filteredPurchases = useMemo(() => {
-    if (selectedProject === "all") return purchases;
-    return purchases.filter((p) => p.projectId === selectedProject);
-  }, [purchases, selectedProject]);
+  function openNew() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+  function openEdit(p: Purchase) {
+    setEditing(p);
+    setModalOpen(true);
+  }
 
   function handleDelete(id: string) {
     if (!confirm("Delete this? This can't be undone and will take it back out of your stock.")) return;
@@ -39,36 +45,21 @@ export default function PurchasesPage() {
       .catch(() => toast.error("Couldn't delete the entry"));
   }
 
+  if (guardLoading || !allowed) return null;
+
   return (
     <>
       <PageHeader
         title="Things You Bought"
         action={
-          <Button onClick={() => setModalOpen(true)} disabled={products.length === 0}>
+          <Button onClick={openNew} disabled={products.length === 0}>
             + I bought something
           </Button>
         }
       />
 
-      {projects.length > 0 && (
-        <div className="mb-4">
-          <Select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="max-w-xs"
-          >
-            <option value="all">All Projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      )}
-
       <Card className="mb-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-muted">
             This is what you&apos;ve already paid for and have in hand. Want to place an order with a supplier and track
             it until it arrives? Use the <span className="text-fg font-medium">Orders</span> page instead — once it
@@ -84,10 +75,6 @@ export default function PurchasesPage() {
         <EmptyState title="Add something first" body="Add a product or service before you log what it cost you." />
       )}
 
-      {!loading && products.length > 0 && filteredPurchases.length === 0 && purchases.length > 0 && (
-        <EmptyState title="No purchases for this project" body="Select a different project or add purchases to this project." />
-      )}
-
       {!loading && products.length > 0 && purchases.length === 0 && (
         <EmptyState
           title="Nothing bought yet"
@@ -95,10 +82,9 @@ export default function PurchasesPage() {
         />
       )}
 
-      {filteredPurchases.length > 0 && (
+      {purchases.length > 0 && (
         <Card>
-          <div className="table-container">
-            <Table>
+          <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
                 <th className="py-2 pr-3 font-medium">Date</th>
@@ -111,7 +97,7 @@ export default function PurchasesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredPurchases.map((p) => {
+              {purchases.map((p) => {
                 const product = products.find((pr) => pr.id === p.productId);
                 return (
                   <tr key={p.id} className="border-b border-line last:border-0">
@@ -128,19 +114,15 @@ export default function PurchasesPage() {
                           <Badge tone="good">from order</Badge>
                         </span>
                       )}
-                      {(p.paymentStatus === "unpaid" || p.paymentStatus === "partial") && (
-                        <span className="ml-1.5">
-                          <Link href="/receivables-payables">
-                            <Badge tone="bad">{p.paymentStatus === "unpaid" ? "unpaid" : "partial"}</Badge>
-                          </Link>
-                        </span>
-                      )}
                     </td>
                     <td className="py-2.5 px-3 num text-right">{p.qty}</td>
                     <td className="py-2.5 px-3 num text-right">{formatMoney(p.unitCost, currency)}</td>
                     <td className="py-2.5 px-3 num text-right">{formatMoney(p.qty * p.unitCost, currency)}</td>
                     <td className="py-2.5 px-3 text-muted">{p.supplier || "—"}</td>
-                    <td className="py-2.5 pl-3 text-right">
+                    <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                      <button onClick={() => openEdit(p)} className="text-xs text-muted hover:text-fg mr-3">
+                        Edit
+                      </button>
                       <button onClick={() => handleDelete(p.id)} className="text-xs text-muted hover:text-bad">
                         Delete
                       </button>
@@ -150,18 +132,23 @@ export default function PurchasesPage() {
               })}
             </tbody>
           </Table>
-          </div>
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="I bought something">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this" : "I bought something"}>
         <PurchaseForm
           products={products}
+          initial={editing}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
-              await addPurchase(values);
-              toast.success("Logged", `${values.qty} × ${formatMoney(values.unitCost, currency)} each`);
+              if (editing) {
+                await updatePurchase(editing.id, values);
+                toast.success("Updated");
+              } else {
+                await addPurchase(values);
+                toast.success("Logged", `${values.qty} × ${formatMoney(values.unitCost, currency)} each`);
+              }
               setModalOpen(false);
             } catch (err) {
               toast.error("Couldn't save that", toastableErrorMessage(err));
@@ -175,10 +162,12 @@ export default function PurchasesPage() {
 
 function PurchaseForm({
   products,
+  initial,
   onSave,
   onCancel,
 }: {
   products: Product[];
+  initial?: Purchase | null;
   onSave: (values: {
     productId: string;
     qty: number;
@@ -186,19 +175,17 @@ function PurchaseForm({
     date: string;
     supplier?: string;
     notes?: string;
-    paymentStatus?: "paid" | "unpaid" | "partial";
-    dueDate?: string;
   }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
-  const [qty, setQty] = useState("");
-  const [unitCost, setUnitCost] = useState(products[0]?.defaultCostPrice?.toString() ?? "");
-  const [date, setDate] = useState(todayIso());
-  const [supplier, setSupplier] = useState("");
-  const [notes, setNotes] = useState("");
-  const [onCredit, setOnCredit] = useState(false);
-  const [dueDate, setDueDate] = useState("");
+  const [productId, setProductId] = useState(initial?.productId ?? products[0]?.id ?? "");
+  const [qty, setQty] = useState(initial?.qty?.toString() ?? "");
+  const [unitCost, setUnitCost] = useState(
+    initial?.unitCost?.toString() ?? products[0]?.defaultCostPrice?.toString() ?? ""
+  );
+  const [date, setDate] = useState(initial?.date ?? todayIso());
+  const [supplier, setSupplier] = useState(initial?.supplier ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
 
   const selected = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
@@ -215,16 +202,7 @@ function PurchaseForm({
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        await onSave({
-          productId,
-          qty: Number(qty),
-          unitCost: Number(unitCost),
-          date,
-          supplier,
-          notes,
-          paymentStatus: onCredit ? "unpaid" : undefined,
-          dueDate: onCredit && dueDate ? dueDate : undefined,
-        });
+        await onSave({ productId, qty: Number(qty), unitCost: Number(unitCost), date, supplier, notes });
         setBusy(false);
       }}
       className="space-y-4"
@@ -239,7 +217,7 @@ function PurchaseForm({
           ))}
         </Select>
       </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>{isService ? "How many hours / jobs?" : "How many did you buy?"}</Label>
           <Input required type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -261,22 +239,12 @@ function PurchaseForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <input type="checkbox" checked={onCredit} onChange={(e) => setOnCredit(e.target.checked)} className="accent-amber" />
-        Bought on credit — not paid yet
-      </label>
-      {onCredit && (
-        <Field>
-          <Label>Due date (optional)</Label>
-          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </Field>
-      )}
-      <div className="flex justify-end gap-2 pt-2 flex-wrap">
+      <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? "Saving…" : initial ? "Save changes" : "Save"}
         </Button>
       </div>
     </form>

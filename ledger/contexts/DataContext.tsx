@@ -15,11 +15,11 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  deleteField,
   setDoc,
   getDoc,
   writeBatch,
   query,
+  where,
   orderBy,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
@@ -35,11 +35,17 @@ import type {
   Employee,
   Loan,
   Settings,
-  Project,
-  TeamMember,
-  FixedAsset,
+  Member,
+  Invite,
+  Role,
+  AuditAction,
+  AuditLogEntry,
+  CashCount,
+  ReceivablePayment,
+  CatalogItem,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
+import { can } from "@/lib/permissions";
 import {
   computeAllLedgers,
   computeSaleEconomics,
@@ -55,12 +61,7 @@ import {
   monthlyPayrollCost,
   computeLoanPortfolio,
   computeBalanceSheet,
-  computeGrowthRates,
-  computeOperationalMetrics,
-  computeReceivables,
-  computePayables,
-  computeFinancialRatios,
-  computeCustomerMetrics,
+  computeReceivablesAging,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -70,29 +71,31 @@ import {
   type OpenOrderValue,
   type LoanPortfolioSummary,
   type BalanceSheet,
-  type GrowthRates,
-  type OperationalMetrics,
-  type AgingSummary,
-  type FinancialRatios,
-  type CustomerMetrics,
+  type ReceivablesAging,
 } from "@/lib/calculations";
 import { todayIso } from "@/lib/format";
 
 interface DataContextValue {
   loading: boolean;
+  role: Role | null;
+  memberName: string | null;
+
   products: Product[];
+  catalog: CatalogItem[]; // cost-stripped product mirror; populated for Staff, empty otherwise (use `products` instead)
   purchases: Purchase[];
   purchaseOrders: PurchaseOrder[];
-  sales: Sale[];
+  sales: Sale[]; // all sales for Owner/Manager; only the signed-in person's own for Staff
   expenses: Expense[];
   variableCosts: VariableCost[];
   capitalEntries: CapitalEntry[];
   employees: Employee[];
   loans: Loan[];
   settings: Settings;
-  projects: Project[];
-  teamMembers: TeamMember[];
-  fixedAssets: FixedAsset[];
+  members: Member[];
+  invites: Invite[];
+  auditLog: AuditLogEntry[];
+  cashCounts: CashCount[]; // all for Owner/Manager, own-only for Staff
+  receivablePayments: ReceivablePayment[];
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -107,12 +110,8 @@ interface DataContextValue {
   monthlyPayroll: number;
   loanPortfolio: LoanPortfolioSummary;
   balanceSheet: BalanceSheet;
-  growthRates: GrowthRates;
-  operationalMetrics: OperationalMetrics;
-  receivables: AgingSummary;
-  payables: AgingSummary;
-  financialRatios: FinancialRatios;
-  customerMetrics: CustomerMetrics;
+  receivablesAging: ReceivablesAging;
+  avgDailyCashSales: number; // trailing 30-day average of cash/card/bank-transfer sales, for cash-runway projections
 
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
@@ -136,7 +135,7 @@ interface DataContextValue {
     rows: Omit<PurchaseOrder, "id" | "createdAt">[]
   ) => Promise<void>;
 
-  addSale: (s: Omit<Sale, "id" | "createdAt">) => Promise<void>;
+  addSale: (s: Omit<Sale, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
   updateSale: (id: string, s: Partial<Sale>) => Promise<void>;
   deleteSale: (id: string) => Promise<void>;
   bulkAddSales: (rows: Omit<Sale, "id" | "createdAt">[]) => Promise<void>;
@@ -152,9 +151,6 @@ interface DataContextValue {
   addCapitalEntry: (c: Omit<CapitalEntry, "id" | "createdAt">) => Promise<void>;
   deleteCapitalEntry: (id: string) => Promise<void>;
 
-  // Adding/updating/deleting an employee also creates/updates/removes their
-  // linked recurring "Payroll & labor" Expense in the same batch — payroll
-  // is always booked as a recurring bill, never a second source of truth.
   addEmployee: (e: Omit<Employee, "id" | "createdAt" | "linkedExpenseId">) => Promise<void>;
   updateEmployee: (id: string, e: Partial<Employee>) => Promise<void>;
   deleteEmployee: (id: string) => Promise<void>;
@@ -164,19 +160,22 @@ interface DataContextValue {
   deleteLoan: (id: string) => Promise<void>;
   bulkAddLoans: (rows: Omit<Loan, "id" | "createdAt">[]) => Promise<void>;
 
-  addFixedAsset: (a: Omit<FixedAsset, "id" | "createdAt">) => Promise<void>;
-  updateFixedAsset: (id: string, a: Partial<FixedAsset>) => Promise<void>;
-  deleteFixedAsset: (id: string) => Promise<void>;
-
-  addProject: (p: Omit<Project, "id" | "createdAt">) => Promise<void>;
-  updateProject: (id: string, p: Partial<Project>) => Promise<void>;
-  deleteProject: (id: string) => Promise<void>;
-
-  addTeamMember: (tm: Omit<TeamMember, "id" | "invitedAt">) => Promise<void>;
-  updateTeamMember: (id: string, tm: Partial<TeamMember>) => Promise<void>;
-  deleteTeamMember: (id: string) => Promise<void>;
-
   updateSettings: (s: Partial<Settings>) => Promise<void>;
+
+  // Team management (Owner only — enforced both here and in firestore.rules)
+  createInvite: (email: string, name: string, role: Role) => Promise<string>;
+  revokeInvite: (id: string) => Promise<void>;
+  changeMemberRole: (uid: string, role: Role) => Promise<void>;
+  setMemberActive: (uid: string, active: boolean) => Promise<void>;
+
+  // Cash reconciliation & receivables — the two anti-theft/collections tools
+  addCashCount: (c: {
+    date: string;
+    openingFloat: number;
+    countedCash: number;
+    notes?: string;
+  }) => Promise<void>;
+  addReceivablePayment: (p: Omit<ReceivablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -185,10 +184,11 @@ const DataContext = createContext<DataContextValue | undefined>(undefined);
 const BATCH_SIZE = 400;
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, businessId, role, memberName } = useAuth();
   const uid = user?.uid ?? null;
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -197,34 +197,41 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [loadedFlags, setLoadedFlags] = useState({
-    products: false,
-    purchases: false,
-    purchaseOrders: false,
-    sales: false,
-    expenses: false,
-    variableCosts: false,
-    capitalEntries: false,
-    employees: false,
-    loans: false,
-    projects: false,
-    teamMembers: false,
-    fixedAssets: false,
-    settings: false,
-  });
+  const [members, setMembers] = useState<Member[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
+  const [cashCounts, setCashCounts] = useState<CashCount[]>([]);
+  const [receivablePayments, setReceivablePayments] = useState<ReceivablePayment[]>([]);
+  const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
-  // Single set of onSnapshot listeners for the whole app (mounted once at the
-  // root via layout), rather than each page opening its own — this is the
-  // main "memory optimized" lever available with a client-only Firestore SPA:
-  // one live cache in memory + IndexedDB, shared by every page, instead of N
-  // duplicate listeners each re-fetching the same collections.
+  // Which collections this role actually needs — and, just as importantly,
+  // the ones it must never even attempt to subscribe to. A Staff account
+  // has no read access to `products`/`purchases`/etc at the database level
+  // (see firestore.rules), so opening a listener on them wouldn't just come
+  // back empty — it would fail with a permission-denied error and never
+  // resolve, leaving the app stuck on a loading screen. Scoping the
+  // subscription list by role up front avoids ever making that request.
+  const requiredKeys = useMemo((): string[] => {
+    if (role === "owner")
+      return [
+        "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
+        "capitalEntries", "employees", "loans", "settings", "members", "invites",
+        "auditLog", "cashCounts", "receivablePayments",
+      ];
+    if (role === "manager")
+      return [
+        "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
+        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments",
+      ];
+    if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments"];
+    return [];
+  }, [role]);
+
   useEffect(() => {
-    if (!uid) {
+    if (!businessId || !uid || !role) {
       setProducts([]);
+      setCatalog([]);
       setPurchases([]);
       setPurchaseOrders([]);
       setSales([]);
@@ -233,92 +240,145 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setCapitalEntries([]);
       setEmployees([]);
       setLoans([]);
-      setProjects([]);
-      setTeamMembers([]);
-      setFixedAssets([]);
       setSettings(DEFAULT_SETTINGS);
+      setMembers([]);
+      setInvites([]);
+      setAuditLog([]);
+      setCashCounts([]);
+      setReceivablePayments([]);
+      setLoadedFlags({});
       return;
     }
     const { db } = getFirebase();
+    const bump = (key: string) => setLoadedFlags((f) => ({ ...f, [key]: true }));
+    const isOwnerOrManager = role === "owner" || role === "manager";
+    const unsubs: (() => void)[] = [];
 
-    const unsubs = [
-      onSnapshot(collection(db, "users", uid, "products"), (snap) => {
-        setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product)));
-        setLoadedFlags((f) => ({ ...f, products: true }));
-      }),
-      onSnapshot(
-        query(collection(db, "users", uid, "purchases"), orderBy("date", "desc")),
-        (snap) => {
+    if (isOwnerOrManager) {
+      unsubs.push(
+        onSnapshot(collection(db, "users", businessId, "products"), (snap) => {
+          setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product)));
+          bump("products");
+        }),
+        onSnapshot(query(collection(db, "users", businessId, "purchases"), orderBy("date", "desc")), (snap) => {
           setPurchases(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Purchase)));
-          setLoadedFlags((f) => ({ ...f, purchases: true }));
-        }
-      ),
-      onSnapshot(
-        query(collection(db, "users", uid, "purchaseOrders"), orderBy("orderDate", "desc")),
-        (snap) => {
-          setPurchaseOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PurchaseOrder)));
-          setLoadedFlags((f) => ({ ...f, purchaseOrders: true }));
-        }
-      ),
-      onSnapshot(query(collection(db, "users", uid, "sales"), orderBy("date", "desc")), (snap) => {
-        setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
-        setLoadedFlags((f) => ({ ...f, sales: true }));
-      }),
-      onSnapshot(collection(db, "users", uid, "expenses"), (snap) => {
-        setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)));
-        setLoadedFlags((f) => ({ ...f, expenses: true }));
-      }),
-      onSnapshot(collection(db, "users", uid, "variableCosts"), (snap) => {
-        setVariableCosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as VariableCost)));
-        setLoadedFlags((f) => ({ ...f, variableCosts: true }));
-      }),
-      onSnapshot(
-        query(collection(db, "users", uid, "capitalEntries"), orderBy("date", "desc")),
-        (snap) => {
-          setCapitalEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CapitalEntry)));
-          setLoadedFlags((f) => ({ ...f, capitalEntries: true }));
-        }
-      ),
-      onSnapshot(collection(db, "users", uid, "employees"), (snap) => {
-        setEmployees(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Employee)));
-        setLoadedFlags((f) => ({ ...f, employees: true }));
-      }),
-      onSnapshot(
-        query(collection(db, "users", uid, "loans"), orderBy("startDate", "desc")),
-        (snap) => {
+          bump("purchases");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "purchaseOrders"), orderBy("orderDate", "desc")),
+          (snap) => {
+            setPurchaseOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PurchaseOrder)));
+            bump("purchaseOrders");
+          }
+        ),
+        onSnapshot(query(collection(db, "users", businessId, "sales"), orderBy("date", "desc")), (snap) => {
+          setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
+          bump("sales");
+        }),
+        onSnapshot(collection(db, "users", businessId, "expenses"), (snap) => {
+          setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)));
+          bump("expenses");
+        }),
+        onSnapshot(collection(db, "users", businessId, "variableCosts"), (snap) => {
+          setVariableCosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as VariableCost)));
+          bump("variableCosts");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "capitalEntries"), orderBy("date", "desc")),
+          (snap) => {
+            setCapitalEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CapitalEntry)));
+            bump("capitalEntries");
+          }
+        ),
+        onSnapshot(query(collection(db, "users", businessId, "loans"), orderBy("startDate", "desc")), (snap) => {
           setLoans(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Loan)));
-          setLoadedFlags((f) => ({ ...f, loans: true }));
-        }
-      ),
-      onSnapshot(query(collection(db, "users", uid, "projects"), orderBy("createdAt", "desc")), (snap) => {
-        setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
-        setLoadedFlags((f) => ({ ...f, projects: true }));
-      }),
-      onSnapshot(collection(db, "users", uid, "teamMembers"), (snap) => {
-        setTeamMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TeamMember)));
-        setLoadedFlags((f) => ({ ...f, teamMembers: true }));
-      }),
-      onSnapshot(
-        query(collection(db, "users", uid, "fixedAssets"), orderBy("purchaseDate", "desc")),
-        (snap) => {
-          setFixedAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FixedAsset)));
-          setLoadedFlags((f) => ({ ...f, fixedAssets: true }));
-        }
-      ),
-      onSnapshot(doc(db, "users", uid, "meta", "settings"), (snap) => {
+          bump("loans");
+        }),
+        onSnapshot(collection(db, "users", businessId, "cashCounts"), (snap) => {
+          setCashCounts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CashCount)));
+          bump("cashCounts");
+        }),
+        onSnapshot(collection(db, "users", businessId, "receivablePayments"), (snap) => {
+          setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
+          bump("receivablePayments");
+        })
+      );
+    }
+
+    if (role === "owner") {
+      unsubs.push(
+        onSnapshot(collection(db, "users", businessId, "employees"), (snap) => {
+          setEmployees(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Employee)));
+          bump("employees");
+        }),
+        onSnapshot(collection(db, "users", businessId, "members"), (snap) => {
+          setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Member)));
+          bump("members");
+        }),
+        onSnapshot(collection(db, "users", businessId, "invites"), (snap) => {
+          setInvites(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invite)));
+          bump("invites");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "auditLog"), orderBy("at", "desc")),
+          (snap) => {
+            setAuditLog(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLogEntry)));
+            bump("auditLog");
+          }
+        )
+      );
+    }
+
+    if (role === "staff") {
+      unsubs.push(
+        onSnapshot(collection(db, "users", businessId, "catalog"), (snap) => {
+          setCatalog(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CatalogItem)));
+          bump("catalog");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "sales"), where("createdByUid", "==", uid), orderBy("date", "desc")),
+          (snap) => {
+            setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
+            bump("sales");
+          }
+        ),
+        onSnapshot(
+          query(collection(db, "users", businessId, "cashCounts"), where("createdByUid", "==", uid)),
+          (snap) => {
+            setCashCounts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CashCount)));
+            bump("cashCounts");
+          }
+        ),
+        onSnapshot(
+          query(collection(db, "users", businessId, "receivablePayments"), where("createdByUid", "==", uid)),
+          (snap) => {
+            setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
+            bump("receivablePayments");
+          }
+        )
+      );
+    }
+
+    // Every active role can read settings (currency, credit-term defaults) —
+    // only Owner can write them.
+    unsubs.push(
+      onSnapshot(doc(db, "users", businessId, "meta", "settings"), (snap) => {
         if (snap.exists()) setSettings({ ...DEFAULT_SETTINGS, ...(snap.data() as Settings) });
-        setLoadedFlags((f) => ({ ...f, settings: true }));
-      }),
-    ];
+        bump("settings");
+      })
+    );
 
     return () => unsubs.forEach((u) => u());
-  }, [uid]);
+  }, [businessId, uid, role]);
 
-  const loading = !Object.values(loadedFlags).every(Boolean);
+  const loading = !businessId || !role || !requiredKeys.every((k) => loadedFlags[k]);
 
   // Derived calculations are memoized off the raw arrays' identities, which
-  // only change when a snapshot actually delivers new data — so switching
-  // pages never re-runs the WAC/P&L/forecast/EOQ math.
+  // only change when a snapshot actually delivers new data. For Staff these
+  // run over partial/empty arrays and yield harmless zeroed results — no
+  // page a Staff account can reach actually renders them (see AppShell nav
+  // + per-page role guards), so this is dead-but-safe computation for that
+  // role, not a data leak.
   const ledgers = useMemo(
     () => computeAllLedgers(products, purchases, sales),
     [products, purchases, sales]
@@ -337,20 +397,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         loans,
         capitalEntries,
         settings.taxRatePct,
-        settings.monthlyOwnerDraw ?? 0,
-        fixedAssets
+        settings.monthlyOwnerDraw ?? 0
       ),
-    [
-      sales,
-      saleEconomics,
-      expenses,
-      purchases,
-      loans,
-      capitalEntries,
-      settings.taxRatePct,
-      settings.monthlyOwnerDraw,
-      fixedAssets,
-    ]
+    [sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct, settings.monthlyOwnerDraw]
   );
   const inventoryValue = useMemo(() => currentInventoryValue(ledgers), [ledgers]);
   const inventoryUnits = useMemo(() => currentInventoryUnits(ledgers), [ledgers]);
@@ -367,14 +416,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return map;
   }, [products, sales, ledgers, settings]);
 
-  const breakEven = useMemo(() => {
-    // Prefer the row for the actual current month over "last item in the
-    // array" — see the comment in computeMonthlyPnL for why those aren't
-    // always the same thing.
-    const currentMonth =
-      monthlyPnL.find((m) => m.month === todayIso().slice(0, 7)) ?? monthlyPnL[monthlyPnL.length - 1];
-    return computeBreakEven(currentMonth, monthlyPnL);
-  }, [monthlyPnL]);
+  const breakEven = useMemo(
+    () => computeBreakEven(monthlyPnL[monthlyPnL.length - 1], monthlyPnL),
+    [monthlyPnL]
+  );
   const capitalSummary = useMemo(
     () => computeCapitalSummary(capitalEntries, monthlyPnL),
     [capitalEntries, monthlyPnL]
@@ -384,77 +429,71 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const monthlyPayroll = useMemo(() => monthlyPayrollCost(employees), [employees]);
   const loanPortfolio = useMemo(() => computeLoanPortfolio(loans, todayIso()), [loans]);
   const balanceSheet = useMemo(
-    () =>
-      computeBalanceSheet(
-        monthlyPnL,
-        inventoryValue,
-        loans,
-        capitalSummary,
-        todayIso(),
-        sales,
-        purchases,
-        fixedAssets
-      ),
-    [monthlyPnL, inventoryValue, loans, capitalSummary, sales, purchases, fixedAssets]
+    () => computeBalanceSheet(monthlyPnL, inventoryValue, loans, capitalSummary, todayIso()),
+    [monthlyPnL, inventoryValue, loans, capitalSummary]
   );
-  const receivables = useMemo(() => computeReceivables(sales, todayIso()), [sales]);
-  const payables = useMemo(() => computePayables(purchases, todayIso()), [purchases]);
-  const financialRatios = useMemo(
-    () => computeFinancialRatios(monthlyPnL, balanceSheet, loans, todayIso()),
-    [monthlyPnL, balanceSheet, loans]
+  const receivablesAging = useMemo(
+    () => computeReceivablesAging(products, sales, saleEconomics, receivablePayments, todayIso()),
+    [products, sales, saleEconomics, receivablePayments]
   );
-  const customerMetrics = useMemo(
-    () => computeCustomerMetrics(sales, expenses, todayIso().slice(0, 7)),
-    [sales, expenses]
-  );
-  const growthRates = useMemo(() => computeGrowthRates(monthlyPnL), [monthlyPnL]);
-  const operationalMetrics = useMemo(
-    () =>
-      computeOperationalMetrics(
-        monthlyPnL,
-        sales,
-        inventoryValue,
-        employees.filter((e) => e.active).length,
-        balanceSheet.cash
-      ),
-    [monthlyPnL, sales, inventoryValue, employees, balanceSheet.cash]
-  );
+  const avgDailyCashSales = useMemo(() => {
+    const since = todayIso();
+    const from = new Date(since);
+    from.setUTCDate(from.getUTCDate() - 30);
+    const fromIso = from.toISOString().slice(0, 10);
+    const econBySale = new Map(saleEconomics.map((e) => [e.saleId, e]));
+    let total = 0;
+    for (const s of sales) {
+      if (s.date < fromIso) continue;
+      if (s.paymentMethod === "credit") continue;
+      total += econBySale.get(s.id)?.revenue ?? s.qty * s.unitPrice;
+    }
+    return total / 30;
+  }, [sales, saleEconomics]);
 
-  function requireUid(): string {
-    if (!uid) throw new Error("Not signed in");
-    return uid;
+  function requireBusiness(): { businessId: string; uid: string } {
+    if (!businessId || !uid) throw new Error("Not signed in");
+    return { businessId, uid };
   }
 
-  // Firestore is configured with `ignoreUndefinedProperties: true` (see
-  // lib/firebase.ts) so forms can freely send `undefined` for a blank
-  // optional field when CREATING a doc via addDoc/set — the key is just
-  // omitted, which is exactly "unset". But that same setting means an
-  // `undefined` value in an updateDoc()/batch.update() call is *dropped from
-  // the write entirely* rather than clearing the field — so editing a
-  // record and blanking out a previously-set optional field (an ordering
-  // cost, a loan's lender, an employee's end date on reactivation, etc.)
-  // looks like it worked in the UI but silently leaves the old value sitting
-  // in Firestore forever. Every partial update must go through this so
-  // `undefined` becomes Firestore's deleteField() sentinel instead.
-  function sanitizeUpdate<T extends Record<string, unknown>>(patch: T): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(patch)) {
-      out[k] = v === undefined ? deleteField() : v;
+  function requirePermission(permission: Parameters<typeof can>[1]) {
+    if (!can(role, permission)) {
+      throw new Error("Your role doesn't have permission to do that.");
     }
-    return out;
+  }
+
+  // Best-effort, app-triggered audit trail — see the AuditLogEntry doc
+  // comment in lib/types.ts for exactly what this does and doesn't
+  // guarantee. Fire-and-forget on purpose: a slow/failed audit write should
+  // never block or fail the actual business transaction it's describing.
+  function logAudit(entity: string, entityId: string, action: AuditAction, summary: string) {
+    if (!businessId || !uid || !role) return;
+    const { db } = getFirebase();
+    addDoc(collection(db, "users", businessId, "auditLog"), {
+      at: Date.now(),
+      byUid: uid,
+      byName: memberName ?? user?.email ?? "Unknown",
+      byRole: role,
+      action,
+      entity,
+      entityId,
+      summary,
+    }).catch(() => {
+      /* deliberately swallowed — see comment above */
+    });
   }
 
   async function chunkedBatchAdd<T extends Record<string, unknown>>(
     colName: string,
     rows: T[]
   ) {
-    const id = requireUid();
+    const { businessId: bizId } = requireBusiness();
     const { db } = getFirebase();
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const chunk = rows.slice(i, i + BATCH_SIZE);
       const batch = writeBatch(db);
       for (const row of chunk) {
-        const ref = doc(collection(db, "users", id, colName));
+        const ref = doc(collection(db, "users", bizId, colName));
         batch.set(ref, { ...row, createdAt: Date.now() });
       }
       await batch.commit();
@@ -463,7 +502,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const value: DataContextValue = {
     loading,
+    role,
+    memberName,
     products,
+    catalog,
     purchases,
     purchaseOrders,
     sales,
@@ -473,9 +515,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     employees,
     loans,
     settings,
-    projects,
-    teamMembers,
-    fixedAssets,
+    members,
+    invites,
+    auditLog,
+    cashCounts,
+    receivablePayments,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -489,84 +533,120 @@ export function DataProvider({ children }: { children: ReactNode }) {
     monthlyPayroll,
     loanPortfolio,
     balanceSheet,
-    growthRates,
-    operationalMetrics,
-    receivables,
-    payables,
-    financialRatios,
-    customerMetrics,
+    receivablesAging,
+    avgDailyCashSales,
 
     addProduct: async (p) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "products"), { ...p, createdAt: Date.now() });
+      const batch = writeBatch(db);
+      const productRef = doc(collection(db, "users", bizId, "products"));
+      const catalogRef = doc(db, "users", bizId, "catalog", productRef.id);
+      batch.set(productRef, { ...p, createdAt: Date.now() });
+      batch.set(catalogRef, {
+        name: p.name, sku: p.sku, category: p.category, type: p.type, active: p.active,
+        sellPrice: p.defaultSellPrice ?? null,
+      });
+      await batch.commit();
+      logAudit("product", productRef.id, "create", `Product added: ${p.name}`);
     },
     updateProduct: async (docId, p) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "products", docId), sanitizeUpdate(p));
+      const batch = writeBatch(db);
+      batch.update(doc(db, "users", bizId, "products", docId), p);
+      const catalogPatch: Record<string, unknown> = {};
+      if (p.name !== undefined) catalogPatch.name = p.name;
+      if (p.sku !== undefined) catalogPatch.sku = p.sku;
+      if (p.category !== undefined) catalogPatch.category = p.category;
+      if (p.type !== undefined) catalogPatch.type = p.type;
+      if (p.active !== undefined) catalogPatch.active = p.active;
+      if (p.defaultSellPrice !== undefined) catalogPatch.sellPrice = p.defaultSellPrice;
+      if (Object.keys(catalogPatch).length > 0) {
+        batch.update(doc(db, "users", bizId, "catalog", docId), catalogPatch);
+      }
+      await batch.commit();
+      logAudit("product", docId, "update", `Product updated${p.name ? `: ${p.name}` : ""}`);
     },
     deleteProduct: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "products", docId));
+      const existing = products.find((pr) => pr.id === docId);
+      const batch = writeBatch(db);
+      batch.delete(doc(db, "users", bizId, "products", docId));
+      batch.delete(doc(db, "users", bizId, "catalog", docId));
+      await batch.commit();
+      logAudit("product", docId, "delete", `Product deleted: ${existing?.name ?? docId}`);
     },
     bulkAddProducts: (rows) => chunkedBatchAdd("products", rows),
 
     addPurchase: async (p) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "purchases"), { ...p, createdAt: Date.now() });
+      const ref = await addDoc(collection(db, "users", bizId, "purchases"), { ...p, createdAt: Date.now() });
+      logAudit("purchase", ref.id, "create", `Purchase: ${p.qty} × ${formatMoneyPlain(p.unitCost)}`);
     },
     updatePurchase: async (docId, p) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "purchases", docId), sanitizeUpdate(p));
+      await updateDoc(doc(db, "users", bizId, "purchases", docId), p);
+      logAudit("purchase", docId, "update", "Purchase edited");
     },
     deletePurchase: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "purchases", docId));
+      await deleteDoc(doc(db, "users", bizId, "purchases", docId));
+      logAudit("purchase", docId, "delete", "Purchase deleted");
     },
     bulkAddPurchases: (rows) => chunkedBatchAdd("purchases", rows),
 
     addPurchaseOrder: async (po) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "purchaseOrders"), {
+      const ref = await addDoc(collection(db, "users", bizId, "purchaseOrders"), {
         ...po,
         status: "ordered",
         createdAt: Date.now(),
       });
+      logAudit("purchaseOrder", ref.id, "create", `Order placed: ${po.qtyOrdered} units`);
     },
     updatePurchaseOrder: async (docId, po) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "purchaseOrders", docId), sanitizeUpdate(po));
+      await updateDoc(doc(db, "users", bizId, "purchaseOrders", docId), po);
+      logAudit("purchaseOrder", docId, "update", "Order edited");
     },
     cancelPurchaseOrder: async (docId) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "purchaseOrders", docId), { status: "cancelled" });
+      await updateDoc(doc(db, "users", bizId, "purchaseOrders", docId), { status: "cancelled" });
+      logAudit("purchaseOrder", docId, "update", "Order cancelled");
     },
     deletePurchaseOrder: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "purchaseOrders", docId));
+      await deleteDoc(doc(db, "users", bizId, "purchaseOrders", docId));
+      logAudit("purchaseOrder", docId, "delete", "Order deleted");
     },
-    // Receiving an order does two things atomically-in-intent: creates the
-    // Purchase entry (which is what actually feeds the WAC/inventory ledger)
-    // using the ACTUAL received qty/cost, and marks the order "received" so
-    // it drops out of "on order". This is the one moment ordered stock
-    // becomes on-hand stock.
     receivePurchaseOrder: async (docId, receipt) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
       const po = purchaseOrders.find((p) => p.id === docId);
       if (!po) throw new Error("Purchase order not found");
 
       const batch = writeBatch(db);
-      const purchaseRef = doc(collection(db, "users", id, "purchases"));
+      const purchaseRef = doc(collection(db, "users", bizId, "purchases"));
       batch.set(purchaseRef, {
         productId: po.productId,
         qty: receipt.qtyReceived,
@@ -577,7 +657,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         purchaseOrderId: po.id,
         createdAt: Date.now(),
       });
-      const poRef = doc(db, "users", id, "purchaseOrders", docId);
+      const poRef = doc(db, "users", bizId, "purchaseOrders", docId);
       batch.update(poRef, {
         status: "received",
         receivedDate: receipt.receivedDate,
@@ -585,75 +665,137 @@ export function DataProvider({ children }: { children: ReactNode }) {
         receivedUnitCost: receipt.receivedUnitCost,
       });
       await batch.commit();
+      logAudit("purchaseOrder", docId, "update", `Order received: ${receipt.qtyReceived} units`);
     },
     bulkAddPurchaseOrders: (rows) => chunkedBatchAdd("purchaseOrders", rows),
 
     addSale: async (s) => {
-      const id = requireUid();
+      requirePermission("manage:sales");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "sales"), { ...s, createdAt: Date.now() });
+      const dueDate =
+        s.paymentMethod === "credit"
+          ? addDaysToDate(s.date, s.creditTermDays ?? settings.defaultCreditTermDays)
+          : undefined;
+      const payload = {
+        ...s,
+        paymentMethod: s.paymentMethod ?? "cash",
+        dueDate,
+        createdByUid: myUid,
+        createdByName: memberName ?? user?.email ?? "Unknown",
+        createdAt: Date.now(),
+      };
+      const ref = await addDoc(collection(db, "users", bizId, "sales"), payload);
+      logAudit("sale", ref.id, "create", `Sale: ${s.qty} × ${formatMoneyPlain(s.unitPrice)}${s.paymentMethod === "credit" ? " (credit)" : ""}`);
     },
     updateSale: async (docId, s) => {
-      const id = requireUid();
+      requirePermission("delete:sales"); // editing a past sale is treated the same as delete — Owner/Manager territory, never Staff
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "sales", docId), sanitizeUpdate(s));
+      const before = sales.find((x) => x.id === docId);
+      const patch = { ...s };
+      if (s.paymentMethod === "credit" && (s.date || before?.date)) {
+        patch.dueDate = addDaysToDate(s.date ?? before!.date, s.creditTermDays ?? before?.creditTermDays ?? settings.defaultCreditTermDays);
+      }
+      await updateDoc(doc(db, "users", bizId, "sales", docId), patch);
+      const beforeSummary = before ? `${before.qty} × ${formatMoneyPlain(before.unitPrice)}` : "?";
+      const afterSummary = `${s.qty ?? before?.qty} × ${formatMoneyPlain(s.unitPrice ?? before?.unitPrice ?? 0)}`;
+      logAudit("sale", docId, "update", `Sale edited: ${beforeSummary} → ${afterSummary}`);
     },
     deleteSale: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:sales");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "sales", docId));
+      const existing = sales.find((s) => s.id === docId);
+      await deleteDoc(doc(db, "users", bizId, "sales", docId));
+      logAudit("sale", docId, "delete", existing ? `Sale deleted: ${existing.qty} × ${formatMoneyPlain(existing.unitPrice)}` : "Sale deleted");
     },
-    bulkAddSales: (rows) => chunkedBatchAdd("sales", rows),
+    bulkAddSales: async (rows) => {
+      requirePermission("manage:sales");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const chunk = rows.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        for (const row of chunk) {
+          const ref = doc(collection(db, "users", bizId, "sales"));
+          batch.set(ref, {
+            ...row,
+            paymentMethod: row.paymentMethod ?? "cash",
+            createdByUid: myUid,
+            createdByName: memberName ?? user?.email ?? "Unknown",
+            createdAt: Date.now(),
+          });
+        }
+        await batch.commit();
+      }
+    },
 
     addExpense: async (e) => {
-      const id = requireUid();
+      requirePermission("manage:expenses");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "expenses"), { ...e, createdAt: Date.now() });
+      const ref = await addDoc(collection(db, "users", bizId, "expenses"), { ...e, createdAt: Date.now() });
+      logAudit("expense", ref.id, "create", `Expense: ${e.name}, ${formatMoneyPlain(e.amount)}`);
     },
     updateExpense: async (docId, e) => {
-      const id = requireUid();
+      requirePermission("manage:expenses");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "expenses", docId), sanitizeUpdate(e));
+      const before = expenses.find((x) => x.id === docId);
+      await updateDoc(doc(db, "users", bizId, "expenses", docId), e);
+      logAudit(
+        "expense",
+        docId,
+        "update",
+        `Expense edited: ${before?.name ?? "?"} ${formatMoneyPlain(before?.amount ?? 0)} → ${formatMoneyPlain(e.amount ?? before?.amount ?? 0)}`
+      );
     },
     deleteExpense: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "expenses", docId));
+      const existing = expenses.find((x) => x.id === docId);
+      await deleteDoc(doc(db, "users", bizId, "expenses", docId));
+      logAudit("expense", docId, "delete", existing ? `Expense deleted: ${existing.name}` : "Expense deleted");
     },
     bulkAddExpenses: (rows) => chunkedBatchAdd("expenses", rows),
 
     addVariableCost: async (v) => {
-      const id = requireUid();
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "variableCosts"), { ...v, createdAt: Date.now() });
+      await addDoc(collection(db, "users", bizId, "variableCosts"), { ...v, createdAt: Date.now() });
     },
     deleteVariableCost: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "variableCosts", docId));
+      await deleteDoc(doc(db, "users", bizId, "variableCosts", docId));
     },
 
     addCapitalEntry: async (c) => {
-      const id = requireUid();
+      requirePermission("manage:capital");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "capitalEntries"), { ...c, createdAt: Date.now() });
+      const ref = await addDoc(collection(db, "users", bizId, "capitalEntries"), { ...c, createdAt: Date.now() });
+      logAudit("capitalEntry", ref.id, "create", `${c.kind}: ${formatMoneyPlain(c.amount)}`);
     },
     deleteCapitalEntry: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "capitalEntries", docId));
+      await deleteDoc(doc(db, "users", bizId, "capitalEntries", docId));
+      logAudit("capitalEntry", docId, "delete", "Capital entry deleted");
     },
 
-    // Employee pay is booked as a normal recurring Expense (category
-    // "Payroll & labor") so it flows through MRR/monthly P&L exactly like
-    // rent or a subscription. The employee doc just carries the linkedExpenseId
-    // so future edits (raise, frequency change, termination) keep both in sync.
     addEmployee: async (e) => {
-      const id = requireUid();
+      requirePermission("manage:employees");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
       const batch = writeBatch(db);
-      const employeeRef = doc(collection(db, "users", id, "employees"));
-      const expenseRef = doc(collection(db, "users", id, "expenses"));
+      const employeeRef = doc(collection(db, "users", bizId, "employees"));
+      const expenseRef = doc(collection(db, "users", bizId, "expenses"));
       batch.set(employeeRef, { ...e, linkedExpenseId: expenseRef.id, createdAt: Date.now() });
       batch.set(expenseRef, {
         name: `Payroll — ${e.name}`,
@@ -668,120 +810,171 @@ export function DataProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       });
       await batch.commit();
+      logAudit("employee", employeeRef.id, "create", `Employee added: ${e.name}`);
     },
     updateEmployee: async (docId, e) => {
-      const id = requireUid();
+      requirePermission("manage:employees");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
       const existing = employees.find((emp) => emp.id === docId);
-      const employeeRef = doc(db, "users", id, "employees", docId);
+      const employeeRef = doc(db, "users", bizId, "employees", docId);
       const batch = writeBatch(db);
-      batch.update(employeeRef, sanitizeUpdate(e));
+      batch.update(employeeRef, e);
 
       if (existing?.linkedExpenseId) {
         const merged = { ...existing, ...e };
-        const expenseRef = doc(db, "users", id, "expenses", existing.linkedExpenseId);
-        batch.update(
-          expenseRef,
-          sanitizeUpdate({
-            name: `Payroll — ${merged.name}`,
-            amount: merged.payRate,
-            recurrence: merged.payFrequency,
-            startDate: merged.startDate,
-            // Deactivating an employee stops the recurring cost going
-            // forward without deleting the historical expense record.
-            // Reactivating clears it back out — sanitizeUpdate() is what
-            // makes that `undefined` actually clear the field in Firestore
-            // instead of being silently dropped from the write.
-            endDate: merged.active ? undefined : merged.endDate ?? todayIso(),
-          })
-        );
+        const expenseRef = doc(db, "users", bizId, "expenses", existing.linkedExpenseId);
+        batch.update(expenseRef, {
+          name: `Payroll — ${merged.name}`,
+          amount: merged.payRate,
+          recurrence: merged.payFrequency,
+          startDate: merged.startDate,
+          endDate: merged.active ? undefined : merged.endDate ?? todayIso(),
+        });
       }
       await batch.commit();
+      logAudit("employee", docId, "update", `Employee edited${e.name ? `: ${e.name}` : ""}`);
     },
     deleteEmployee: async (docId) => {
-      const id = requireUid();
+      requirePermission("manage:employees");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
       const existing = employees.find((emp) => emp.id === docId);
       const batch = writeBatch(db);
-      batch.delete(doc(db, "users", id, "employees", docId));
+      batch.delete(doc(db, "users", bizId, "employees", docId));
       if (existing?.linkedExpenseId) {
-        batch.delete(doc(db, "users", id, "expenses", existing.linkedExpenseId));
+        batch.delete(doc(db, "users", bizId, "expenses", existing.linkedExpenseId));
       }
       await batch.commit();
+      logAudit("employee", docId, "delete", existing ? `Employee removed: ${existing.name}` : "Employee removed");
     },
 
     addLoan: async (l) => {
-      const id = requireUid();
+      requirePermission("manage:loans");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "loans"), { ...l, createdAt: Date.now() });
+      const ref = await addDoc(collection(db, "users", bizId, "loans"), { ...l, createdAt: Date.now() });
+      logAudit("loan", ref.id, "create", `Loan added: ${l.name}, ${formatMoneyPlain(l.principal)}`);
     },
     updateLoan: async (docId, l) => {
-      const id = requireUid();
+      requirePermission("manage:loans");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "loans", docId), sanitizeUpdate(l));
+      await updateDoc(doc(db, "users", bizId, "loans", docId), l);
+      logAudit("loan", docId, "update", "Loan edited");
     },
     deleteLoan: async (docId) => {
-      const id = requireUid();
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "loans", docId));
+      await deleteDoc(doc(db, "users", bizId, "loans", docId));
+      logAudit("loan", docId, "delete", "Loan deleted");
     },
     bulkAddLoans: (rows) => chunkedBatchAdd("loans", rows),
 
-    addFixedAsset: async (a) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "fixedAssets"), { ...a, createdAt: Date.now() });
-    },
-    updateFixedAsset: async (docId, a) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "fixedAssets", docId), sanitizeUpdate(a));
-    },
-    deleteFixedAsset: async (docId) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "fixedAssets", docId));
-    },
-
-    addProject: async (p) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "projects"), { ...p, createdAt: Date.now() });
-    },
-    updateProject: async (docId, p) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "projects", docId), sanitizeUpdate(p));
-    },
-    deleteProject: async (docId) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "projects", docId));
-    },
-
-    addTeamMember: async (tm) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await addDoc(collection(db, "users", id, "teamMembers"), { ...tm, invitedAt: Date.now() });
-    },
-    updateTeamMember: async (docId, tm) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await updateDoc(doc(db, "users", id, "teamMembers", docId), sanitizeUpdate(tm));
-    },
-    deleteTeamMember: async (docId) => {
-      const id = requireUid();
-      const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", id, "teamMembers", docId));
-    },
-
     updateSettings: async (s) => {
-      const id = requireUid();
+      requirePermission("manage:settings");
+      const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
-      const ref = doc(db, "users", id, "meta", "settings");
+      const ref = doc(db, "users", bizId, "meta", "settings");
       const snap = await getDoc(ref);
-      if (snap.exists()) await updateDoc(ref, sanitizeUpdate(s));
+      if (snap.exists()) await updateDoc(ref, s);
       else await setDoc(ref, { ...DEFAULT_SETTINGS, ...s });
+    },
+
+    createInvite: async (email, name, inviteRole) => {
+      requirePermission("manage:team");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "invites"), {
+        email: email.toLowerCase().trim(),
+        name: name.trim(),
+        role: inviteRole,
+        status: "pending",
+        invitedBy: myUid,
+        invitedByName: memberName ?? user?.email ?? "Owner",
+        createdAt: Date.now(),
+      });
+      logAudit("invite", ref.id, "create", `Invited ${email} as ${inviteRole}`);
+      return ref.id;
+    },
+    revokeInvite: async (id) => {
+      requirePermission("manage:team");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "invites", id), { status: "revoked" });
+      logAudit("invite", id, "update", "Invite revoked");
+    },
+    changeMemberRole: async (memberUid, newRole) => {
+      requirePermission("manage:team");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "members", memberUid), { role: newRole });
+      logAudit("member", memberUid, "update", `Role changed to ${newRole}`);
+    },
+    setMemberActive: async (memberUid, active) => {
+      requirePermission("manage:team");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "members", memberUid), { active });
+      logAudit("member", memberUid, "update", active ? "Member reactivated" : "Member deactivated");
+    },
+
+    addCashCount: async ({ date, openingFloat, countedCash, notes }) => {
+      requirePermission("create:cashCount");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      // Expected cash is snapshotted right now, from cash-collected sales
+      // and cash-paid expenses/purchases dated on the covered day — see the
+      // CashCount doc comment in lib/types.ts for why this is never
+      // recomputed later. `sales`/`purchases`/`expenses` are already
+      // scoped by role upstream (Staff's `sales` only ever contains their
+      // own — see the Firestore query in the subscription effect above),
+      // so no further filtering by who's submitting the count is needed
+      // here. One real limitation worth knowing: because Staff has no
+      // visibility into `purchases`/`expenses`, a cash count they submit
+      // can't account for petty cash spent out of the till on something
+      // like a delivery fee — that will show as an unexplained shortfall
+      // even though nothing was actually taken. Owner/Manager counts don't
+      // have this gap, since they see the full picture.
+      const econBySale = new Map(saleEconomics.map((e) => [e.saleId, e]));
+      const cashSalesToday = sales
+        .filter((s) => s.date === date && (s.paymentMethod ?? "cash") !== "credit")
+        .reduce((sum, s) => sum + (econBySale.get(s.id)?.revenue ?? s.qty * s.unitPrice), 0);
+      const receivableCashToday = receivablePayments
+        .filter((p) => p.date === date && p.method === "cash")
+        .reduce((sum, p) => sum + p.amount, 0);
+      const cashOutToday = [...purchases, ...expenses]
+        .filter((x) => "date" in x && x.date === date)
+        .reduce((sum, x) => sum + ("qty" in x ? x.qty * x.unitCost : x.amount), 0);
+      const expectedCash = openingFloat + cashSalesToday + receivableCashToday - cashOutToday;
+      const variance = countedCash - expectedCash;
+
+      const ref = await addDoc(collection(db, "users", bizId, "cashCounts"), {
+        date,
+        openingFloat,
+        expectedCash,
+        countedCash,
+        variance,
+        notes: notes || undefined,
+        createdByUid: myUid,
+        createdByName: memberName ?? user?.email ?? "Unknown",
+        createdAt: Date.now(),
+      });
+      logAudit("cashCount", ref.id, "create", `Cash count ${date}: variance ${formatMoneyPlain(variance)}`);
+    },
+
+    addReceivablePayment: async (p) => {
+      requirePermission("create:receivablePayment");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "receivablePayments"), {
+        ...p,
+        createdByUid: myUid,
+        createdByName: memberName ?? user?.email ?? "Unknown",
+        createdAt: Date.now(),
+      });
+      logAudit("receivablePayment", ref.id, "create", `Payment collected: ${formatMoneyPlain(p.amount)}`);
     },
   };
 
@@ -792,4 +985,18 @@ export function useData() {
   const ctx = useContext(DataContext);
   if (!ctx) throw new Error("useData must be used within DataProvider");
   return ctx;
+}
+
+function addDaysToDate(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
+}
+
+// A currency-agnostic, symbol-free number format for audit-log summaries —
+// the audit log is a plain trail of what happened, not a formatted report,
+// so it doesn't need Settings.currency threaded all the way down into this
+// module just to write "4,500" instead of "Rs 4,500".
+function formatMoneyPlain(n: number): string {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }

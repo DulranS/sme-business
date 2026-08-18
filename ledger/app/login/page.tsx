@@ -7,6 +7,7 @@ import { Button, Input, Label } from "@/components/ui";
 export default function LoginPage() {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +19,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       if (mode === "signin") await signIn(email, password);
-      else await signUp(email, password);
+      else await signUp(email, password, name);
     } catch (err) {
       setError(readableAuthError(err));
     } finally {
@@ -53,6 +54,19 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === "signup" && (
+              <div>
+                <Label>Your name</Label>
+                <Input
+                  type="text"
+                  required
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Kamal Perera"
+                />
+              </div>
+            )}
             <div>
               <Label>Email</Label>
               <Input
@@ -83,7 +97,9 @@ export default function LoginPage() {
           </form>
         </div>
         <p className="text-xs text-muted text-center mt-4">
-          Single-user ledger — your data is private to this account.
+          {mode === "signup"
+            ? "Creates a new business, owned by this account. Already have a team invite link? Open it directly instead."
+            : "Your data is private to your business — visible only to you and anyone you've added to your team."}
         </p>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
+import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
 import type { OfferingType, Product, VariableCost } from "@/lib/types";
 import { QuickStockForm, QuickSaleForm } from "@/components/QuickForms";
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui";
 
 export default function ProductsPage() {
+  const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
   const { products, ledgers, settings, deleteProduct, addProduct, updateProduct, loading } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
@@ -39,6 +41,8 @@ export default function ProductsPage() {
     setEditing(p);
     setModalOpen(true);
   }
+
+  if (guardLoading || !allowed) return null;
 
   return (
     <>

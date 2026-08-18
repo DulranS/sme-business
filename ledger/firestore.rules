@@ -1,13 +1,276 @@
 rules_version = '2';
 
+// ---------------------------------------------------------------------------
+// This is the actual security boundary for the app — everything the client
+// (lib/permissions.ts, contexts/DataContext.tsx) does to hide buttons or
+// skip a subscription is UX, not enforcement. If a rule and the client
+// disagree, the rule wins and the person just sees a failed write.
+//
+// Data model
+//   users/{businessId}/...            — every business's data, unchanged
+//                                        from the single-user version. The
+//                                        business's uid IS the owner's uid.
+//   users/{businessId}/members/{uid}  — one doc per person with access.
+//                                        The single source of truth for
+//                                        "what can this uid do here" — role,
+//                                        active/removed. Every rule below
+//                                        reads this, never anything else,
+//                                        for a permission decision.
+//   users/{businessId}/invites/{id}   — pending invitations, created by the
+//                                        owner, accepted by the invitee.
+//   memberships/{uid}                 — a top-level pointer, one per
+//                                        person, written once and never
+//                                        updated: { businessId }. Exists
+//                                        purely so a freshly signed-in
+//                                        client can find its own business
+//                                        with a single doc read by uid.
+//                                        Carries no role — role always
+//                                        comes from the members doc above,
+//                                        so there is exactly one place a
+//                                        role can be wrong, and it isn't
+//                                        this one.
+//
+// Role matrix (mirrors lib/permissions.ts — keep both in sync)
+//   owner   — full read/write on everything in their business. Only the
+//             owner can manage the team, change settings, view the audit
+//             log, or delete a record.
+//   manager — create/update on the operational collections (products,
+//             purchases, purchase orders, sales, expenses, variable costs,
+//             capital entries, loans, cash counts, receivable payments).
+//             No delete anywhere. No access to employees/payroll, team
+//             management, settings, or the audit log.
+//   staff   — create-only on sales, cash counts, and receivable payments,
+//             and only ever able to read the ones they created themselves.
+//             Read-only on `catalog` (a cost-stripped product mirror) and
+//             `meta/settings`. No access to anything else, including the
+//             real `products`/`purchases` collections that carry cost
+//             data — that's the mechanism that keeps a till-level employee
+//             from ever being able to see, let alone alter, a margin.
+// ---------------------------------------------------------------------------
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Every document lives under users/{uid}/... — a user can only ever
-    // read or write their own subtree. No cross-user sharing, matching the
-    // "solo use" requirement; nothing else needs to be open.
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(businessId) {
+      return signedIn() && request.auth.uid == businessId;
+    }
+
+    function memberDoc(businessId) {
+      return get(/databases/$(database)/documents/users/$(businessId)/members/$(request.auth.uid));
+    }
+
+    function isActiveMember(businessId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(businessId)/members/$(request.auth.uid))
+        && memberDoc(businessId).data.active == true;
+    }
+
+    function myRole(businessId) {
+      return memberDoc(businessId).data.role;
+    }
+
+    function isManager(businessId) {
+      return isActiveMember(businessId) && myRole(businessId) == 'manager';
+    }
+
+    function isStaff(businessId) {
+      return isActiveMember(businessId) && myRole(businessId) == 'staff';
+    }
+
+    // Owner + Manager are treated identically almost everywhere — see the
+    // module comment above for why the hard line in this app is Staff vs.
+    // everyone else, not a three-way split.
+    function isOwnerOrManager(businessId) {
+      return isOwner(businessId) || isManager(businessId);
+    }
+
+    function isOwnerOrActiveMember(businessId) {
+      return isOwner(businessId) || isActiveMember(businessId);
+    }
+
+    // A record's own createdByUid must match whoever is writing it — used
+    // on every create in the operational collections so nobody can log an
+    // entry and attribute it to somebody else.
+    function createdBySelf() {
+      return request.resource.data.createdByUid == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------
+    // memberships/{uid} — the bootstrapping pointer. See module comment.
+    // ------------------------------------------------------------------
+    match /memberships/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+
+      allow create: if signedIn() && request.auth.uid == uid && (
+        // A brand-new business: the account creating it owns it.
+        request.resource.data.businessId == uid
+        ||
+        // Accepting a pending invite — validated against the exact invite
+        // being claimed, matched by id, status, and email.
+        (
+          request.resource.data.inviteId is string &&
+          get(/databases/$(database)/documents/users/$(request.resource.data.businessId)/invites/$(request.resource.data.inviteId)).data.status == 'pending' &&
+          get(/databases/$(database)/documents/users/$(request.resource.data.businessId)/invites/$(request.resource.data.inviteId)).data.email == request.auth.token.email.lower()
+        )
+      );
+
+      // Never updated — role/business assignment for a given uid is
+      // immutable once set. Leaving a business or being removed is handled
+      // by deactivating the members doc, not by touching this pointer.
+      allow update: if false;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // ------------------------------------------------------------------
+    // A business's data, rooted at the owner's uid.
+    // ------------------------------------------------------------------
+    match /users/{businessId} {
+      // The owner's own top-level doc (created at signup) isn't otherwise
+      // used by the app, but harmless to let the owner read/write it.
+      allow read, write: if isOwner(businessId);
+
+      match /meta/settings {
+        allow read: if isOwnerOrActiveMember(businessId);
+        allow write: if isOwner(businessId);
+      }
+
+      match /products/{docId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow create, update: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      // Cost-stripped product mirror — this is what Staff reads instead of
+      // `products`. Only Owner/Manager ever write it (DataContext keeps it
+      // in sync alongside every product create/update/delete).
+      match /catalog/{docId} {
+        allow read: if isOwnerOrActiveMember(businessId);
+        allow write: if isOwnerOrManager(businessId);
+      }
+
+      match /purchases/{docId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow create, update: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      match /purchaseOrders/{docId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow create, update: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      // Sales are the one collection every role can create into. Editing
+      // or deleting one — even your own — is Owner/Manager only: that's
+      // the specific rule that makes "log it low, correct it later"
+      // impossible for Staff, on purpose.
+      match /sales/{docId} {
+        allow read: if isOwnerOrManager(businessId)
+          || (isStaff(businessId) && resource.data.createdByUid == request.auth.uid);
+        allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
+        allow update, delete: if isOwnerOrManager(businessId);
+      }
+
+      match /expenses/{docId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow create, update: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      match /variableCosts/{docId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow create: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      match /capitalEntries/{docId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow create: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      match /loans/{docId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow create, update: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      // Payroll. Owner only, full stop — not even Manager.
+      match /employees/{docId} {
+        allow read, write: if isOwner(businessId);
+      }
+
+      // End-of-shift cash reconciliation. Every active role can log one for
+      // themselves; nobody can edit a count after the fact — see the
+      // CashCount doc comment in lib/types.ts for why that's the point.
+      match /cashCounts/{docId} {
+        allow read: if isOwnerOrManager(businessId)
+          || (isStaff(businessId) && resource.data.createdByUid == request.auth.uid);
+        allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
+        allow update: if false;
+        allow delete: if isOwner(businessId);
+      }
+
+      // Payments collected against a credit sale. Same shape as sales:
+      // anyone active can create one (for a sale they can see), nobody can
+      // edit history, only Owner cleans up a genuine mistake.
+      match /receivablePayments/{docId} {
+        allow read: if isOwnerOrManager(businessId)
+          || (isStaff(businessId) && resource.data.createdByUid == request.auth.uid);
+        allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
+        allow update: if false;
+        allow delete: if isOwner(businessId);
+      }
+
+      // Team membership records — the authoritative role/active source
+      // every function above reads. Owner manages the roster; the one
+      // exception is a person creating their own doc at invite-acceptance
+      // time, validated against the specific pending invite they're
+      // claiming.
+      match /members/{uid} {
+        allow read: if isOwner(businessId) || (signedIn() && request.auth.uid == uid);
+        allow create: if isOwner(businessId) || (
+          signedIn() && request.auth.uid == uid &&
+          request.resource.data.inviteId is string &&
+          get(/databases/$(database)/documents/users/$(businessId)/invites/$(request.resource.data.inviteId)).data.status == 'pending' &&
+          get(/databases/$(database)/documents/users/$(businessId)/invites/$(request.resource.data.inviteId)).data.email == request.auth.token.email.lower() &&
+          get(/databases/$(database)/documents/users/$(businessId)/invites/$(request.resource.data.inviteId)).data.role == request.resource.data.role &&
+          request.resource.data.active == true
+        );
+        allow update: if isOwner(businessId);
+        allow delete: if false; // access is revoked via active:false, never by deleting the record
+      }
+
+      match /invites/{inviteId} {
+        // The owner sees the whole list; anyone else can only ever read
+        // the one invite that names their own email — enough to complete
+        // the join flow, nothing more.
+        allow read: if isOwner(businessId)
+          || (signedIn() && resource.data.email == request.auth.token.email.lower());
+        allow create: if isOwner(businessId);
+        // Owner can revoke; the invitee can only flip their own pending
+        // invite to accepted, nothing else about it.
+        allow update: if isOwner(businessId) || (
+          signedIn() &&
+          resource.data.email == request.auth.token.email.lower() &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'accepted'
+        );
+        allow delete: if isOwner(businessId);
+      }
+
+      // Append-only activity trail. Every active member can write an entry
+      // describing their own action; nobody, including the owner, can
+      // change or remove one afterward. Only the owner can read it.
+      match /auditLog/{docId} {
+        allow read: if isOwner(businessId);
+        allow create: if isOwnerOrActiveMember(businessId) && request.resource.data.byUid == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
   }
 }
