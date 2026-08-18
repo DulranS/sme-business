@@ -9,6 +9,7 @@ import type {
   PurchaseOrder,
   Recurrence,
   ReceivablePayment,
+  PayablePayment,
   Sale,
   Settings,
   VariableCost,
@@ -1179,6 +1180,82 @@ export function computeReceivablesAging(
   return { asOf: asOfISO, totalOutstanding, byBucket, lines };
 }
 
+// Payable aging — mirrors receivables aging but for supplier credit purchases
+export type PayableBucket = "current" | "1-30" | "31-60" | "61-90" | "90+";
+
+export interface PayableLine {
+  purchaseId: string;
+  productId: string;
+  productName: string;
+  supplier: string;
+  date: string;
+  dueDate: string;
+  amountDue: number;
+  amountPaid: number;
+  amountOutstanding: number;
+  daysOverdue: number;
+  bucket: PayableBucket;
+}
+
+export interface PayablesAging {
+  asOf: string;
+  totalOutstanding: number;
+  byBucket: Record<PayableBucket, number>;
+  lines: PayableLine[];
+}
+
+export function computePayablesAging(
+  products: Product[],
+  purchases: Purchase[],
+  payments: PayablePayment[],
+  asOfISO: string
+): PayablesAging {
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const paidByPurchase = new Map<string, number>();
+  for (const p of payments) paidByPurchase.set(p.purchaseId, (paidByPurchase.get(p.purchaseId) ?? 0) + p.amount);
+
+  const lines: PayableLine[] = [];
+  for (const pur of purchases) {
+    if (pur.paymentMethod !== "credit") continue;
+    const amountDue = pur.qty * pur.unitCost;
+    const amountPaid = paidByPurchase.get(pur.id) ?? 0;
+    const amountOutstanding = amountDue - amountPaid;
+    if (amountOutstanding <= 0.005) continue; // fully paid
+
+    const dueDate = pur.dueDate ?? pur.date;
+    const daysOverdue = daysBetween(dueDate, asOfISO);
+    let bucket: PayableBucket = "current";
+    if (daysOverdue > 90) bucket = "90+";
+    else if (daysOverdue > 60) bucket = "61-90";
+    else if (daysOverdue > 30) bucket = "31-60";
+    else if (daysOverdue > 0) bucket = "1-30";
+
+    lines.push({
+      purchaseId: pur.id,
+      productId: pur.productId,
+      productName: productById.get(pur.productId)?.name ?? "—",
+      supplier: pur.supplier ?? "Unnamed supplier",
+      date: pur.date,
+      dueDate,
+      amountDue,
+      amountPaid,
+      amountOutstanding,
+      daysOverdue,
+      bucket,
+    });
+  }
+  lines.sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  const byBucket: Record<PayableBucket, number> = { current: 0, "1-30": 0, "31-60": 0, "61-90": 0, "90+": 0 };
+  let totalOutstanding = 0;
+  for (const l of lines) {
+    byBucket[l.bucket] += l.amountOutstanding;
+    totalOutstanding += l.amountOutstanding;
+  }
+
+  return { asOf: asOfISO, totalOutstanding, byBucket, lines };
+}
+
 // ---------------------------------------------------------------------------
 // Cash runway / "can I make rent" projection. Starts from today's actual
 // cash position (the same derived cash figure the Balance Sheet uses, so
@@ -1251,16 +1328,17 @@ export function computeCashRunway(params: {
   asOf: string;
   startingCash: number;
   horizonDays: number;
-  estimatedDailyCashSales: number; // trailing-average baseline, projected forward
+  estimatedDailyCashSales: number; 
   rentAmount: number;
   rentDueDayOfMonth: number;
   loans: Loan[];
   employees: Employee[];
   expenses: Expense[];
   receivables: ReceivableLine[];
+  payables?: PayableLine[]; 
   currency: string;
 }): CashRunwayResult {
-  const { asOf, startingCash, horizonDays, estimatedDailyCashSales, rentAmount, rentDueDayOfMonth, loans, employees, expenses, receivables } = params;
+  const { asOf, startingCash, horizonDays, estimatedDailyCashSales, rentAmount, rentDueDayOfMonth, loans, employees, expenses, receivables, payables = [] } = params;
 
   // Next occurrence of the rent due day, strictly after today. Walks forward
   // day by day (at most ~31 iterations) rather than doing month arithmetic,
@@ -1296,6 +1374,13 @@ export function computeCashRunway(params: {
       if (r.dueDate === date) {
         inflow += r.amountOutstanding;
         events.push(`${r.customer} payment due (${r.amountOutstanding.toLocaleString()})`);
+      }
+    }
+
+    for (const p of payables) {
+      if (p.dueDate === date) {
+        outflow += p.amountOutstanding;
+        events.push(`${p.supplier} payment due (${p.amountOutstanding.toLocaleString()})`);
       }
     }
 

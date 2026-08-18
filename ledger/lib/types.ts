@@ -53,6 +53,12 @@ export interface Purchase {
   supplier?: string; // product: supplier name. service: contractor/resource.
   notes?: string;
   purchaseOrderId?: string; // set when this purchase was created by receiving a PO
+  // "cash"/"card"/"bank_transfer" are all treated as paid-in-full at purchase.
+  // "credit" is money owed to supplier — it doesn't show as paid until a
+  // PayablePayment is recorded against it.
+  paymentMethod?: PaymentMethod;
+  creditTermDays?: number; // only meaningful when paymentMethod === "credit"
+  dueDate?: string; // ISO date = date + creditTermDays, stored so it never has to be recomputed
   createdAt: number;
 }
 
@@ -118,6 +124,21 @@ export interface Sale {
 export interface ReceivablePayment {
   id: string;
   saleId: string;
+  amount: number;
+  date: string; // ISO date
+  method: "cash" | "card" | "bank_transfer";
+  note?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt: number;
+}
+
+// A payment made against a credit purchase (payable). Mirrors ReceivablePayment
+// for supplier payments — append-only for the same audit trail and permission
+// separation reasons.
+export interface PayablePayment {
+  id: string;
+  purchaseId: string;
   amount: number;
   date: string; // ISO date
   method: "cash" | "card" | "bank_transfer";

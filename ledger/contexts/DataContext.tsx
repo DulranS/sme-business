@@ -42,6 +42,7 @@ import type {
   AuditLogEntry,
   CashCount,
   ReceivablePayment,
+  PayablePayment,
   CatalogItem,
   Notification,
 } from "@/lib/types";
@@ -63,6 +64,7 @@ import {
   computeLoanPortfolio,
   computeBalanceSheet,
   computeReceivablesAging,
+  computePayablesAging,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -73,6 +75,7 @@ import {
   type LoanPortfolioSummary,
   type BalanceSheet,
   type ReceivablesAging,
+  type PayablesAging,
 } from "@/lib/calculations";
 import { todayIso } from "@/lib/format";
 
@@ -97,6 +100,7 @@ interface DataContextValue {
   auditLog: AuditLogEntry[];
   cashCounts: CashCount[]; // all for Owner/Manager, own-only for Staff
   receivablePayments: ReceivablePayment[];
+  payablePayments: PayablePayment[];
   notifications: Notification[];
 
   ledgers: Map<string, ProductLedgerResult>;
@@ -113,6 +117,7 @@ interface DataContextValue {
   loanPortfolio: LoanPortfolioSummary;
   balanceSheet: BalanceSheet;
   receivablesAging: ReceivablesAging;
+  payablesAging: PayablesAging;
   avgDailyCashSales: number; // trailing 30-day average of cash/card/bank-transfer sales, for cash-runway projections
 
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>;
@@ -183,6 +188,9 @@ interface DataContextValue {
   addNotification: (n: Omit<Notification, "id" | "createdAt">) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   deleteNotification: (id: string) => Promise<void>;
+
+  // Payable payments
+  addPayablePayment: (p: Omit<PayablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -210,6 +218,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [cashCounts, setCashCounts] = useState<CashCount[]>([]);
   const [receivablePayments, setReceivablePayments] = useState<ReceivablePayment[]>([]);
+  const [payablePayments, setPayablePayments] = useState<PayablePayment[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
@@ -225,12 +234,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
-        "auditLog", "cashCounts", "receivablePayments", "notifications",
+        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
-        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "notifications",
+        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications",
       ];
     if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments"];
     return [];
@@ -254,6 +263,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setAuditLog([]);
       setCashCounts([]);
       setReceivablePayments([]);
+      setPayablePayments([]);
       setNotifications([]);
       setLoadedFlags({});
       return;
@@ -310,6 +320,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         onSnapshot(collection(db, "users", businessId, "receivablePayments"), (snap) => {
           setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
           bump("receivablePayments");
+        }),
+        onSnapshot(query(collection(db, "users", businessId, "payablePayments"), orderBy("date", "desc")), (snap) => {
+          setPayablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PayablePayment)));
+          bump("payablePayments");
         }),
         onSnapshot(query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (snap) => {
           setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)));
@@ -449,6 +463,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     () => computeReceivablesAging(products, sales, saleEconomics, receivablePayments, todayIso()),
     [products, sales, saleEconomics, receivablePayments]
   );
+  const payablesAging = useMemo(
+    () => computePayablesAging(products, purchases, payablePayments, todayIso()),
+    [products, purchases, payablePayments]
+  );
   const avgDailyCashSales = useMemo(() => {
     const since = todayIso();
     const from = new Date(since);
@@ -533,6 +551,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     auditLog,
     cashCounts,
     receivablePayments,
+    payablePayments,
     notifications,
     ledgers,
     saleEconomics,
@@ -548,6 +567,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     loanPortfolio,
     balanceSheet,
     receivablesAging,
+    payablesAging,
     avgDailyCashSales,
 
     addProduct: async (p) => {
@@ -989,6 +1009,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       });
       logAudit("receivablePayment", ref.id, "create", `Payment collected: ${formatMoneyPlain(p.amount)}`);
+    },
+
+    addPayablePayment: async (p) => {
+      requirePermission("create:receivablePayment");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "payablePayments"), {
+        ...p,
+        createdByUid: myUid,
+        createdByName: memberName ?? user?.email ?? "Unknown",
+        createdAt: Date.now(),
+      });
+      logAudit("payablePayment", ref.id, "create", `Supplier payment: ${formatMoneyPlain(p.amount)}`);
     },
 
     addNotification: async (n) => {

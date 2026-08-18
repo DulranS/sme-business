@@ -9,7 +9,7 @@ import { Badge, Card, Field, Input, Label, PageHeader, Stat } from "@/components
 
 export default function CashFlowPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { balanceSheet, avgDailyCashSales, loans, employees, expenses, receivablesAging, settings } = useData();
+  const { balanceSheet, avgDailyCashSales, loans, employees, expenses, receivablesAging, payablesAging, settings } = useData();
   const currency = settings.currency;
 
   const [horizonDays, setHorizonDays] = useState(60);
@@ -34,9 +34,10 @@ export default function CashFlowPage() {
         employees,
         expenses,
         receivables: receivablesAging.lines,
+        payables: payablesAging.lines,
         currency,
       }),
-    [startingCash, horizonDays, estimatedDailyCashSales, rentAmount, settings.rentDueDayOfMonth, loans, employees, expenses, receivablesAging.lines, currency]
+    [startingCash, horizonDays, estimatedDailyCashSales, rentAmount, settings.rentDueDayOfMonth, loans, employees, expenses, receivablesAging.lines, payablesAging.lines, currency]
   );
 
   if (guardLoading || !allowed) return null;
