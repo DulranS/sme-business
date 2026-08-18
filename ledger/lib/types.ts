@@ -391,3 +391,31 @@ export interface CatalogItem {
   active: boolean;
   sellPrice?: number; // mirrors Product.defaultSellPrice
 }
+
+// Notification types for reminders and alerts
+export type NotificationType = 
+  | "receivable_overdue"      // Customer payment is overdue
+  | "receivable_due_soon"     // Customer payment due soon
+  | "payable_overdue"         // Supplier payment is overdue
+  | "payable_due_soon"        // Supplier payment due soon
+  | "low_stock"               // Product stock below reorder point
+  | "expense_due"             // Recurring expense due
+  | "loan_payment_due"        // Loan payment due
+  | "custom";                 // User-created custom reminder
+
+export type NotificationPriority = "low" | "medium" | "high";
+
+// A notification/reminder for the business owner
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  priority: NotificationPriority;
+  title: string;           // Short headline
+  message: string;         // Detailed description
+  entityId?: string;       // Reference to related entity (saleId, purchaseId, productId, etc.)
+  entityType?: string;     // Type of entity ("sale", "purchase", "product", etc.)
+  dueDate?: string;        // ISO date when action is needed
+  isRead: boolean;         // Whether user has dismissed/read it
+  dismissedAt?: number;    // Timestamp when marked as read
+  createdAt: number;
+}

@@ -32,6 +32,7 @@ export type Permission =
   | "manage:capital"
   | "manage:team" // invite/deactivate/change roles
   | "manage:settings"
+  | "manage:notifications" // create/read/dismiss notifications
   | "create:sale" // the one thing every role can do
   | "create:cashCount"
   | "create:receivablePayment"
@@ -46,6 +47,7 @@ const OWNER_MANAGER_SHARED: Permission[] = [
   "manage:expenses",
   "manage:loans",
   "manage:capital",
+  "manage:notifications",
   "create:sale",
   "create:cashCount",
   "create:receivablePayment",

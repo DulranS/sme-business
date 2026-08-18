@@ -43,6 +43,7 @@ import type {
   CashCount,
   ReceivablePayment,
   CatalogItem,
+  Notification,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { can } from "@/lib/permissions";
@@ -96,6 +97,7 @@ interface DataContextValue {
   auditLog: AuditLogEntry[];
   cashCounts: CashCount[]; // all for Owner/Manager, own-only for Staff
   receivablePayments: ReceivablePayment[];
+  notifications: Notification[];
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -176,6 +178,11 @@ interface DataContextValue {
     notes?: string;
   }) => Promise<void>;
   addReceivablePayment: (p: Omit<ReceivablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
+
+  // Notifications & reminders
+  addNotification: (n: Omit<Notification, "id" | "createdAt">) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -203,6 +210,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [cashCounts, setCashCounts] = useState<CashCount[]>([]);
   const [receivablePayments, setReceivablePayments] = useState<ReceivablePayment[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
   // Which collections this role actually needs — and, just as importantly,
@@ -217,12 +225,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
-        "auditLog", "cashCounts", "receivablePayments",
+        "auditLog", "cashCounts", "receivablePayments", "notifications",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
-        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments",
+        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "notifications",
       ];
     if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments"];
     return [];
@@ -246,6 +254,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setAuditLog([]);
       setCashCounts([]);
       setReceivablePayments([]);
+      setNotifications([]);
       setLoadedFlags({});
       return;
     }
@@ -301,6 +310,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         onSnapshot(collection(db, "users", businessId, "receivablePayments"), (snap) => {
           setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
           bump("receivablePayments");
+        }),
+        onSnapshot(query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (snap) => {
+          setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)));
+          bump("notifications");
         })
       );
     }
@@ -520,6 +533,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     auditLog,
     cashCounts,
     receivablePayments,
+    notifications,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -975,6 +989,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       });
       logAudit("receivablePayment", ref.id, "create", `Payment collected: ${formatMoneyPlain(p.amount)}`);
+    },
+
+    addNotification: async (n) => {
+      requirePermission("manage:notifications");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "notifications"), {
+        ...n,
+        createdAt: Date.now(),
+      });
+      logAudit("notification", ref.id, "create", `Notification: ${n.title}`);
+    },
+    markNotificationRead: async (id) => {
+      requirePermission("manage:notifications");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "notifications", id), {
+        isRead: true,
+        dismissedAt: Date.now(),
+      });
+    },
+    deleteNotification: async (id) => {
+      requirePermission("manage:notifications");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "notifications", id));
     },
   };
 
