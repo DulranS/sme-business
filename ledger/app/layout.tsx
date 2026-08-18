@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
@@ -44,6 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </ToastProvider>
           </DataProvider>
         </AuthProvider>
+
+        <Analytics />
       </body>
     </html>
   );
