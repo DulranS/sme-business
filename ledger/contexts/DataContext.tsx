@@ -21,6 +21,8 @@ import {
   query,
   where,
   orderBy,
+  type Query,
+  type CollectionReference,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
@@ -254,9 +256,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // resolve, leaving the app stuck on a loading screen. Scoping the
   // subscription list by role up front avoids ever making that request.
   const requiredKeys = useMemo((): string[] => {
-    // Only subscribe to collections that actually exist in the database
-    // Existing: meta, products, projects, purchases, sales
-    return ["products", "purchases", "sales", "settings"];
+    if (role === "owner")
+      return [
+        "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
+        "capitalEntries", "employees", "loans", "settings", "members", "invites",
+        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
+      ];
+    if (role === "manager")
+      return [
+        "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
+        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
+      ];
+    if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
+    return [];
   }, [role]);
 
   useEffect(() => {
@@ -290,33 +302,104 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const unsubs: (() => void)[] = [];
 
     if (isOwnerOrManager) {
-      // Only subscribe to collections that exist in the database
-      // Existing: meta, products, projects, purchases, sales
+      // Helper function to safely subscribe to collections that may not exist
+      const safeSubscribe = <T,>(
+        key: string,
+        queryOrCollection: Query | CollectionReference,
+        mapper: (doc: any) => T,
+        setter: (data: T[]) => void
+      ) => {
+        const unsub = onSnapshot(
+          queryOrCollection,
+          (snap: any) => {
+            setter(snap.docs.map((d: any) => mapper(d)));
+            bump(key);
+          },
+          (error: any) => {
+            // Collection doesn't exist or permission denied - mark as loaded with empty data
+            console.warn(`Collection ${key} not available:`, error.message);
+            setter([]);
+            bump(key);
+          }
+        );
+        return unsub;
+      };
+
       unsubs.push(
-        onSnapshot(collection(db, "users", businessId, "products"), (snap) => {
-          setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product)));
-          bump("products");
-        }),
-        onSnapshot(query(collection(db, "users", businessId, "purchases"), orderBy("date", "desc")), (snap) => {
-          setPurchases(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Purchase)));
-          bump("purchases");
-        }),
-        onSnapshot(query(collection(db, "users", businessId, "sales"), orderBy("date", "desc")), (snap) => {
-          setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
-          bump("sales");
-        })
+        safeSubscribe("products", collection(db, "users", businessId, "products"), (d) => ({ id: d.id, ...d.data() } as Product), setProducts),
+        safeSubscribe("purchases", query(collection(db, "users", businessId, "purchases"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as Purchase), setPurchases),
+        safeSubscribe("purchaseOrders", query(collection(db, "users", businessId, "purchaseOrders"), orderBy("orderDate", "desc")), (d) => ({ id: d.id, ...d.data() } as PurchaseOrder), setPurchaseOrders),
+        safeSubscribe("sales", query(collection(db, "users", businessId, "sales"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as Sale), setSales),
+        safeSubscribe("expenses", collection(db, "users", businessId, "expenses"), (d) => ({ id: d.id, ...d.data() } as Expense), setExpenses),
+        safeSubscribe("variableCosts", collection(db, "users", businessId, "variableCosts"), (d) => ({ id: d.id, ...d.data() } as VariableCost), setVariableCosts),
+        safeSubscribe("capitalEntries", query(collection(db, "users", businessId, "capitalEntries"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as CapitalEntry), setCapitalEntries),
+        safeSubscribe("loans", query(collection(db, "users", businessId, "loans"), orderBy("startDate", "desc")), (d) => ({ id: d.id, ...d.data() } as Loan), setLoans),
+        safeSubscribe("cashCounts", collection(db, "users", businessId, "cashCounts"), (d) => ({ id: d.id, ...d.data() } as CashCount), setCashCounts),
+        safeSubscribe("receivablePayments", collection(db, "users", businessId, "receivablePayments"), (d) => ({ id: d.id, ...d.data() } as ReceivablePayment), setReceivablePayments),
+        safeSubscribe("payablePayments", query(collection(db, "users", businessId, "payablePayments"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as PayablePayment), setPayablePayments),
+        safeSubscribe("notifications", query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (d) => ({ id: d.id, ...d.data() } as Notification), setNotifications),
+        safeSubscribe("timeEntries", query(collection(db, "users", businessId, "timeEntries"), orderBy("clockIn", "desc")), (d) => ({ id: d.id, ...d.data() } as TimeEntry), setTimeEntries),
+        safeSubscribe("fixedAssets", query(collection(db, "users", businessId, "fixedAssets"), orderBy("purchaseDate", "desc")), (d) => ({ id: d.id, ...d.data() } as FixedAsset), setFixedAssets)
+      );
+    }
+
+    if (role === "owner") {
+      const safeSubscribe = <T,>(
+        key: string,
+        queryOrCollection: Query | CollectionReference,
+        mapper: (doc: any) => T,
+        setter: (data: T[]) => void
+      ) => {
+        const unsub = onSnapshot(
+          queryOrCollection,
+          (snap: any) => {
+            setter(snap.docs.map((d: any) => mapper(d)));
+            bump(key);
+          },
+          (error: any) => {
+            console.warn(`Collection ${key} not available:`, error.message);
+            setter([]);
+            bump(key);
+          }
+        );
+        return unsub;
+      };
+
+      unsubs.push(
+        safeSubscribe("employees", collection(db, "users", businessId, "employees"), (d) => ({ id: d.id, ...d.data() } as Employee), setEmployees),
+        safeSubscribe("members", collection(db, "users", businessId, "members"), (d) => ({ id: d.id, ...d.data() } as Member), setMembers),
+        safeSubscribe("invites", collection(db, "users", businessId, "invites"), (d) => ({ id: d.id, ...d.data() } as Invite), setInvites),
+        safeSubscribe("auditLog", query(collection(db, "users", businessId, "auditLog"), orderBy("at", "desc")), (d) => ({ id: d.id, ...d.data() } as AuditLogEntry), setAuditLog)
       );
     }
 
     if (role === "staff") {
-      unsubs.push(
-        onSnapshot(
-          query(collection(db, "users", businessId, "sales"), where("createdByUid", "==", uid), orderBy("date", "desc")),
-          (snap) => {
-            setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
-            bump("sales");
+      const safeSubscribe = <T,>(
+        key: string,
+        queryOrCollection: Query | CollectionReference,
+        mapper: (doc: any) => T,
+        setter: (data: T[]) => void
+      ) => {
+        const unsub = onSnapshot(
+          queryOrCollection,
+          (snap: any) => {
+            setter(snap.docs.map((d: any) => mapper(d)));
+            bump(key);
+          },
+          (error: any) => {
+            console.warn(`Collection ${key} not available:`, error.message);
+            setter([]);
+            bump(key);
           }
-        )
+        );
+        return unsub;
+      };
+
+      unsubs.push(
+        safeSubscribe("catalog", collection(db, "users", businessId, "catalog"), (d) => ({ id: d.id, ...d.data() } as CatalogItem), setCatalog),
+        safeSubscribe("sales", query(collection(db, "users", businessId, "sales"), where("createdByUid", "==", uid), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as Sale), setSales),
+        safeSubscribe("receivablePayments", query(collection(db, "users", businessId, "receivablePayments"), where("createdByUid", "==", uid)), (d) => ({ id: d.id, ...d.data() } as ReceivablePayment), setReceivablePayments),
+        safeSubscribe("timeEntries", query(collection(db, "users", businessId, "timeEntries"), where("memberUid", "==", uid)), (d) => ({ id: d.id, ...d.data() } as TimeEntry), setTimeEntries)
       );
     }
 
