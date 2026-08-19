@@ -294,6 +294,31 @@ service cloud.firestore {
         allow create: if isOwnerOrActiveMember(businessId) && request.resource.data.byUid == request.auth.uid;
         allow update, delete: if false;
       }
+
+      // Reminders/alerts surfaced in the notifications page. Owner/Manager
+      // only, same as everywhere else `manage:notifications` gates the
+      // client (see lib/permissions.ts) — Staff has no notifications UI.
+      match /notifications/{docId} {
+        allow read, write: if isOwnerOrManager(businessId);
+      }
+
+      // Payments recorded against an outstanding purchase (supplier owed
+      // money). Same shape as receivablePayments: anyone active can create
+      // one, nobody edits history, only Owner cleans up a mistake.
+      match /payablePayments/{docId} {
+        allow read: if isOwnerOrManager(businessId)
+          || (isStaff(businessId) && resource.data.createdByUid == request.auth.uid);
+        allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
+        allow update: if false;
+        allow delete: if isOwner(businessId);
+      }
+
+      // Fixed assets (machinery, vehicles, equipment) for depreciation
+      // tracking. Owner/Manager only, matching `manage:fixedAssets` in
+      // lib/permissions.ts.
+      match /fixedAssets/{docId} {
+        allow read, write: if isOwnerOrManager(businessId);
+      }
     }
   }
 }

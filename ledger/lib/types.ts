@@ -466,3 +466,18 @@ export interface Notification {
   dismissedAt?: number;    // Timestamp when marked as read
   createdAt: number;
 }
+
+// Fixed asset for depreciation tracking (machinery, vehicles, equipment, etc.)
+export interface FixedAsset {
+  id: string;
+  name: string;
+  category: string;
+  purchaseDate: string; // ISO date
+  cost: number;
+  usefulLifeMonths: number;
+  salvageValue?: number;
+  notes?: string;
+  disposalDate?: string; // ISO date, set when disposed
+  disposalAmount?: number; // amount received on disposal
+  createdAt: number;
+}
