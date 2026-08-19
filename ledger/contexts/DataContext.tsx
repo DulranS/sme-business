@@ -254,19 +254,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // resolve, leaving the app stuck on a loading screen. Scoping the
   // subscription list by role up front avoids ever making that request.
   const requiredKeys = useMemo((): string[] => {
-    if (role === "owner")
-      return [
-        "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
-        "capitalEntries", "employees", "loans", "settings", "members", "invites",
-        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
-      ];
-    if (role === "manager")
-      return [
-        "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
-        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
-      ];
-    if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
-    return [];
+    // Only subscribe to collections that actually exist in the database
+    // Existing: meta, products, projects, purchases, sales
+    return ["products", "purchases", "sales", "settings"];
   }, [role]);
 
   useEffect(() => {
@@ -300,6 +290,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const unsubs: (() => void)[] = [];
 
     if (isOwnerOrManager) {
+      // Only subscribe to collections that exist in the database
+      // Existing: meta, products, projects, purchases, sales
       unsubs.push(
         onSnapshot(collection(db, "users", businessId, "products"), (snap) => {
           setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product)));
@@ -309,122 +301,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setPurchases(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Purchase)));
           bump("purchases");
         }),
-        onSnapshot(
-          query(collection(db, "users", businessId, "purchaseOrders"), orderBy("orderDate", "desc")),
-          (snap) => {
-            setPurchaseOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PurchaseOrder)));
-            bump("purchaseOrders");
-          }
-        ),
         onSnapshot(query(collection(db, "users", businessId, "sales"), orderBy("date", "desc")), (snap) => {
           setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
           bump("sales");
-        }),
-        onSnapshot(collection(db, "users", businessId, "expenses"), (snap) => {
-          setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)));
-          bump("expenses");
-        }),
-        onSnapshot(collection(db, "users", businessId, "variableCosts"), (snap) => {
-          setVariableCosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as VariableCost)));
-          bump("variableCosts");
-        }),
-        onSnapshot(
-          query(collection(db, "users", businessId, "capitalEntries"), orderBy("date", "desc")),
-          (snap) => {
-            setCapitalEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CapitalEntry)));
-            bump("capitalEntries");
-          }
-        ),
-        onSnapshot(query(collection(db, "users", businessId, "loans"), orderBy("startDate", "desc")), (snap) => {
-          setLoans(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Loan)));
-          bump("loans");
-        }),
-        onSnapshot(collection(db, "users", businessId, "cashCounts"), (snap) => {
-          setCashCounts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CashCount)));
-          bump("cashCounts");
-        }),
-        onSnapshot(collection(db, "users", businessId, "receivablePayments"), (snap) => {
-          setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
-          bump("receivablePayments");
-        }),
-        onSnapshot(query(collection(db, "users", businessId, "payablePayments"), orderBy("date", "desc")), (snap) => {
-          setPayablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PayablePayment)));
-          bump("payablePayments");
-        }),
-        onSnapshot(query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (snap) => {
-          setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)));
-          bump("notifications");
-        }),
-        onSnapshot(
-          query(collection(db, "users", businessId, "timeEntries"), orderBy("clockIn", "desc")),
-          (snap) => {
-            setTimeEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimeEntry)));
-            bump("timeEntries");
-          }
-        ),
-        onSnapshot(query(collection(db, "users", businessId, "fixedAssets"), orderBy("purchaseDate", "desc")), (snap) => {
-          setFixedAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FixedAsset)));
-          bump("fixedAssets");
         })
-      );
-    }
-
-    if (role === "owner") {
-      unsubs.push(
-        onSnapshot(collection(db, "users", businessId, "employees"), (snap) => {
-          setEmployees(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Employee)));
-          bump("employees");
-        }),
-        onSnapshot(collection(db, "users", businessId, "members"), (snap) => {
-          setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Member)));
-          bump("members");
-        }),
-        onSnapshot(collection(db, "users", businessId, "invites"), (snap) => {
-          setInvites(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invite)));
-          bump("invites");
-        }),
-        onSnapshot(
-          query(collection(db, "users", businessId, "auditLog"), orderBy("at", "desc")),
-          (snap) => {
-            setAuditLog(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLogEntry)));
-            bump("auditLog");
-          }
-        )
       );
     }
 
     if (role === "staff") {
       unsubs.push(
-        onSnapshot(collection(db, "users", businessId, "catalog"), (snap) => {
-          setCatalog(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CatalogItem)));
-          bump("catalog");
-        }),
         onSnapshot(
           query(collection(db, "users", businessId, "sales"), where("createdByUid", "==", uid), orderBy("date", "desc")),
           (snap) => {
             setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
             bump("sales");
-          }
-        ),
-        onSnapshot(
-          query(collection(db, "users", businessId, "cashCounts"), where("createdByUid", "==", uid)),
-          (snap) => {
-            setCashCounts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CashCount)));
-            bump("cashCounts");
-          }
-        ),
-        onSnapshot(
-          query(collection(db, "users", businessId, "receivablePayments"), where("createdByUid", "==", uid)),
-          (snap) => {
-            setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
-            bump("receivablePayments");
-          }
-        ),
-        onSnapshot(
-          query(collection(db, "users", businessId, "timeEntries"), where("memberUid", "==", uid)),
-          (snap) => {
-            setTimeEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimeEntry)));
-            bump("timeEntries");
           }
         )
       );
