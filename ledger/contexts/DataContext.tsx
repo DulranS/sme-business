@@ -46,7 +46,6 @@ import type {
   CatalogItem,
   Notification,
   TimeEntry,
-  FixedAsset,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { can } from "@/lib/permissions";
@@ -106,7 +105,6 @@ interface DataContextValue {
   payablePayments: PayablePayment[];
   notifications: Notification[];
   timeEntries: TimeEntry[]; // all for Owner/Manager, own-only for Staff
-  fixedAssets: FixedAsset[];
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -197,11 +195,6 @@ interface DataContextValue {
   // Payable payments
   addPayablePayment: (p: Omit<PayablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
 
-  // Fixed assets
-  addFixedAsset: (a: Omit<FixedAsset, "id" | "createdAt">) => Promise<void>;
-  updateFixedAsset: (id: string, a: Partial<FixedAsset>) => Promise<void>;
-  deleteFixedAsset: (id: string) => Promise<void>;
-
   // Time tracking — every active role clocks itself in/out; Owner/Manager
   // can also log or correct an entry on someone else's behalf and delete
   // mistakes. See the TimeEntry doc comment in lib/types.ts for why more
@@ -243,7 +236,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [payablePayments, setPayablePayments] = useState<PayablePayment[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
-  const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
   // Which collections this role actually needs — and, just as importantly,
@@ -258,12 +250,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
-        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
+        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
-        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
+        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries",
       ];
     if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
     return [];
@@ -290,7 +282,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setPayablePayments([]);
       setNotifications([]);
       setTimeEntries([]);
-      setFixedAssets([]);
       setLoadedFlags({});
       return;
     }
@@ -361,11 +352,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             setTimeEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimeEntry)));
             bump("timeEntries");
           }
-        ),
-        onSnapshot(query(collection(db, "users", businessId, "fixedAssets"), orderBy("purchaseDate", "desc")), (snap) => {
-          setFixedAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FixedAsset)));
-          bump("fixedAssets");
-        })
+        )
       );
     }
 
@@ -646,7 +633,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     payablePayments,
     notifications,
     timeEntries,
-    fixedAssets,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -1116,33 +1102,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       });
       logAudit("payablePayment", ref.id, "create", `Supplier payment: ${formatMoneyPlain(p.amount)}`);
-    },
-
-    addFixedAsset: async (a) => {
-      requirePermission("manage:fixedAssets");
-      const { businessId: bizId } = requireBusiness();
-      const { db } = getFirebase();
-      const ref = await addDoc(collection(db, "users", bizId, "fixedAssets"), {
-        ...a,
-        createdAt: Date.now(),
-      });
-      logAudit("fixedAsset", ref.id, "create", `Asset added: ${a.name}`);
-    },
-
-    updateFixedAsset: async (id, a) => {
-      requirePermission("manage:fixedAssets");
-      const { businessId: bizId } = requireBusiness();
-      const { db } = getFirebase();
-      await updateDoc(doc(db, "users", bizId, "fixedAssets", id), a);
-      logAudit("fixedAsset", id, "update", `Asset updated`);
-    },
-
-    deleteFixedAsset: async (id) => {
-      requirePermission("manage:fixedAssets");
-      const { businessId: bizId } = requireBusiness();
-      const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", bizId, "fixedAssets", id));
-      logAudit("fixedAsset", id, "delete", `Asset deleted`);
     },
 
     addNotification: async (n) => {

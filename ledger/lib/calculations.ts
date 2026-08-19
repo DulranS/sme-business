@@ -2,7 +2,6 @@ import type {
   CapitalEntry,
   Employee,
   Expense,
-  FixedAsset,
   Loan,
   OfferingType,
   Product,
@@ -1437,50 +1436,5 @@ export function computeCashRunway(params: {
     shortfall: canMakeRent ? 0 : Math.abs(cashAtRentDue),
     lowestBalance,
     lowestBalanceDate,
-  };
-}
-
-// Fixed asset depreciation calculation
-export interface FixedAssetStatus {
-  asset: FixedAsset;
-  accumulatedDepreciation: number;
-  netBookValue: number;
-  monthlyDepreciation: number;
-  fullyDepreciated: boolean;
-  disposed: boolean;
-  monthsDepreciated: number;
-}
-
-export function computeFixedAssetStatus(asset: FixedAsset, asOfISO: string): FixedAssetStatus {
-  const disposed = !!asset.disposalDate;
-  const effectiveEndDate = asset.disposalDate || asOfISO;
-
-  // Calculate months between purchase date and effective end date
-  const [py, pm, pd] = asset.purchaseDate.split("-").map(Number);
-  const [ey, em, ed] = effectiveEndDate.split("-").map(Number);
-
-  const purchaseMonth = py * 12 + (pm - 1);
-  const endMonth = ey * 12 + (em - 1);
-  const monthsDepreciated = Math.max(0, endMonth - purchaseMonth + 1);
-
-  const depreciableAmount = asset.cost - (asset.salvageValue || 0);
-  const monthlyDepreciation = depreciableAmount / asset.usefulLifeMonths;
-
-  const accumulatedDepreciation = Math.min(
-    depreciableAmount,
-    monthlyDepreciation * monthsDepreciated
-  );
-
-  const netBookValue = asset.cost - accumulatedDepreciation;
-  const fullyDepreciated = accumulatedDepreciation >= depreciableAmount;
-
-  return {
-    asset,
-    accumulatedDepreciation,
-    netBookValue,
-    monthlyDepreciation,
-    fullyDepreciated,
-    disposed,
-    monthsDepreciated,
   };
 }
