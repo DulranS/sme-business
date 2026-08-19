@@ -38,7 +38,7 @@ export default function StatementsPage() {
     <>
       <PageHeader title="Financial statements" />
 
-      <div className="flex gap-1 border-b border-line mb-6 -mt-1">
+      <div className="flex gap-1 border-b border-line mb-6 -mt-1 overflow-x-auto">
         {(
           [
             ["income", "Income statement"],
@@ -49,7 +49,7 @@ export default function StatementsPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-3.5 py-2.5 text-sm border-b-2 -mb-px transition-colors ${
+            className={`px-3.5 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
               tab === key ? "border-amber text-fg font-medium" : "border-transparent text-muted hover:text-fg"
             }`}
           >

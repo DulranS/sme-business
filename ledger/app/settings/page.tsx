@@ -94,7 +94,7 @@ export default function SettingsPage() {
             <div className="text-xs font-medium text-muted mb-3">
               EOQ / reorder planning defaults — used for any product that doesn&apos;t set its own
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field>
                 <Label>Ordering cost</Label>
                 <Input
@@ -154,7 +154,7 @@ export default function SettingsPage() {
             <div className="text-xs text-muted mb-3">
               Defaults used when you mark a sale as &quot;credit&quot; — money owed to you rather than collected on the spot.
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
                 <Label>Default credit term (days)</Label>
                 <Input
@@ -184,7 +184,7 @@ export default function SettingsPage() {
               Powers the Cash Flow page&apos;s &quot;can you make rent&quot; projection and the default opening float on a new cash
               count.
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field>
                 <Label>Rent / month</Label>
                 <Input type="number" min="0" step="1" value={rentAmount} onChange={(e) => setRentAmount(e.target.value)} />

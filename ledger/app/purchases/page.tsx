@@ -59,7 +59,7 @@ export default function PurchasesPage() {
       />
 
       <Card className="mb-5">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="text-xs text-muted">
             This is what you&apos;ve already paid for and have in hand. Want to place an order with a supplier and track
             it until it arrives? Use the <span className="text-fg font-medium">Orders</span> page instead — once it

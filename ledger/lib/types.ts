@@ -397,6 +397,32 @@ export interface CashCount {
   createdAt: number;
 }
 
+// A billable-hours clock-in/out record. Deliberately per-job rather than
+// per-day: `jobLabel` is a free-text reference (a customer name, a service
+// sale, a project — whatever the business calls it) rather than a link to
+// a formal "job" entity, since this app has no job/project object of its
+// own. That also means the same member can have more than one entry open
+// at once (clocked into two jobs on and off through the day) — the create
+// rule doesn't try to prevent that, since a caterer or contractor genuinely
+// does bounce between concurrent jobs. `clockOut` is unset while an entry
+// is running; once set, `firestore.rules` blocks that field from ever being
+// changed again by the entry's own creator, same anti-tampering shape as
+// CashCount — only Owner/Manager can correct a mistake after the fact.
+export interface TimeEntry {
+  id: string;
+  memberUid: string;
+  memberName: string;
+  jobLabel: string; // e.g. a customer name, "Acme Corp — website redesign"
+  billable: boolean;
+  hourlyRate?: number; // snapshotted at clock-in, in the business's currency
+  clockIn: number; // epoch ms
+  clockOut?: number; // epoch ms; absent while the entry is still running
+  notes?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt: number;
+}
+
 // A cost-stripped mirror of Product, kept in sync by DataContext whenever a
 // product is created/updated/deleted. Staff gets read access to this
 // collection instead of `products` — same id, but no cost/margin fields —

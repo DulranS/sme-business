@@ -45,6 +45,7 @@ import type {
   PayablePayment,
   CatalogItem,
   Notification,
+  TimeEntry,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { can } from "@/lib/permissions";
@@ -103,6 +104,7 @@ interface DataContextValue {
   receivablePayments: ReceivablePayment[];
   payablePayments: PayablePayment[];
   notifications: Notification[];
+  timeEntries: TimeEntry[]; // all for Owner/Manager, own-only for Staff
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -192,6 +194,18 @@ interface DataContextValue {
 
   // Payable payments
   addPayablePayment: (p: Omit<PayablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
+
+  // Time tracking — every active role clocks itself in/out; Owner/Manager
+  // can also log or correct an entry on someone else's behalf and delete
+  // mistakes. See the TimeEntry doc comment in lib/types.ts for why more
+  // than one entry can be open for the same person at once.
+  clockIn: (jobLabel: string, opts?: { billable?: boolean; hourlyRate?: number }) => Promise<void>;
+  clockOut: (id: string) => Promise<void>;
+  addTimeEntry: (
+    e: Omit<TimeEntry, "id" | "createdAt" | "createdByUid" | "createdByName">
+  ) => Promise<void>;
+  updateTimeEntry: (id: string, e: Partial<TimeEntry>) => Promise<void>;
+  deleteTimeEntry: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -221,6 +235,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [receivablePayments, setReceivablePayments] = useState<ReceivablePayment[]>([]);
   const [payablePayments, setPayablePayments] = useState<PayablePayment[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
   // Which collections this role actually needs — and, just as importantly,
@@ -235,14 +250,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
-        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications",
+        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
-        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications",
+        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries",
       ];
-    if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments"];
+    if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
     return [];
   }, [role]);
 
@@ -266,6 +281,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setReceivablePayments([]);
       setPayablePayments([]);
       setNotifications([]);
+      setTimeEntries([]);
       setLoadedFlags({});
       return;
     }
@@ -329,7 +345,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         onSnapshot(query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (snap) => {
           setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)));
           bump("notifications");
-        })
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "timeEntries"), orderBy("clockIn", "desc")),
+          (snap) => {
+            setTimeEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimeEntry)));
+            bump("timeEntries");
+          }
+        )
       );
     }
 
@@ -382,6 +405,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
           (snap) => {
             setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
             bump("receivablePayments");
+          }
+        ),
+        onSnapshot(
+          query(collection(db, "users", businessId, "timeEntries"), where("memberUid", "==", uid)),
+          (snap) => {
+            setTimeEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimeEntry)));
+            bump("timeEntries");
           }
         )
       );
@@ -602,6 +632,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     receivablePayments,
     payablePayments,
     notifications,
+    timeEntries,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -1097,6 +1128,64 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { businessId: bizId } = requireBusiness();
       const { db } = getFirebase();
       await deleteDoc(doc(db, "users", bizId, "notifications", id));
+    },
+
+    clockIn: async (jobLabel, opts) => {
+      requirePermission("create:timeEntry");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "timeEntries"), {
+        memberUid: myUid,
+        memberName: memberName ?? user?.email ?? "Unknown",
+        jobLabel,
+        billable: opts?.billable ?? true,
+        ...(opts?.hourlyRate != null ? { hourlyRate: opts.hourlyRate } : {}),
+        clockIn: Date.now(),
+        createdByUid: myUid,
+        createdByName: memberName ?? user?.email ?? "Unknown",
+        createdAt: Date.now(),
+      });
+      logAudit("timeEntry", ref.id, "create", `Clocked in: ${jobLabel}`);
+    },
+    clockOut: async (id) => {
+      requirePermission("create:timeEntry");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      // Firestore rules only allow the creator's own update to touch the
+      // `clockOut` field, and only once — see the timeEntries block in
+      // firestore.rules. This is intentionally the one field a Staff
+      // member can ever change after saving, same as a cash count is
+      // create-only: no going back to edit the hours themselves.
+      await updateDoc(doc(db, "users", bizId, "timeEntries", id), { clockOut: Date.now() });
+      logAudit("timeEntry", id, "update", "Clocked out");
+    },
+    addTimeEntry: async (e) => {
+      // Backfilling or logging on someone else's behalf is an Owner/Manager
+      // action — a Staff member can only ever create their own via clockIn.
+      requirePermission("manage:timeEntries");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "timeEntries"), {
+        ...e,
+        createdByUid: myUid,
+        createdByName: memberName ?? user?.email ?? "Unknown",
+        createdAt: Date.now(),
+      });
+      logAudit("timeEntry", ref.id, "create", `Time entry added for ${e.memberName}: ${e.jobLabel}`);
+    },
+    updateTimeEntry: async (id, e) => {
+      requirePermission("manage:timeEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "timeEntries", id), e);
+      logAudit("timeEntry", id, "update", "Time entry corrected");
+    },
+    deleteTimeEntry: async (id) => {
+      requirePermission("manage:timeEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "timeEntries", id));
+      logAudit("timeEntry", id, "delete", "Time entry deleted");
     },
   };
 

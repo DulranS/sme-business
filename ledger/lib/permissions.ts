@@ -36,7 +36,10 @@ export type Permission =
   | "create:sale" // the one thing every role can do
   | "create:cashCount"
   | "create:receivablePayment"
-  | "view:receivables";
+  | "view:receivables"
+  | "create:timeEntry" // clock in/out for yourself
+  | "manage:timeEntries" // log time on someone else's behalf, edit/delete any entry
+  | "view:allTimeEntries"; // see everyone's hours, not just your own
 
 const OWNER_MANAGER_SHARED: Permission[] = [
   "view:dashboard",
@@ -52,6 +55,9 @@ const OWNER_MANAGER_SHARED: Permission[] = [
   "create:cashCount",
   "create:receivablePayment",
   "view:receivables",
+  "create:timeEntry",
+  "manage:timeEntries",
+  "view:allTimeEntries",
 ];
 
 const MATRIX: Record<Role, Permission[]> = {
@@ -68,7 +74,13 @@ const MATRIX: Record<Role, Permission[]> = {
     "manage:settings",
   ],
   manager: [...OWNER_MANAGER_SHARED],
-  staff: ["view:catalog", "create:sale", "create:cashCount", "create:receivablePayment"],
+  staff: [
+    "view:catalog",
+    "create:sale",
+    "create:cashCount",
+    "create:receivablePayment",
+    "create:timeEntry",
+  ],
 };
 
 export function can(role: Role | null | undefined, permission: Permission): boolean {
@@ -83,5 +95,5 @@ export function roleLabel(role: Role): string {
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   owner: "Full access. Only the owner can manage the team, change settings, view the audit log, or delete records.",
   manager: "Can run day-to-day operations — sales, stock, expenses, orders — but can't delete records, see payroll, manage the team, or change settings.",
-  staff: "Can log sales, record customer payments, and count cash at the end of a shift. Can't edit or delete anything once saved, and can't see cost prices, other reports, or payroll.",
+  staff: "Can log sales, record customer payments, count cash at the end of a shift, and clock in/out on jobs. Can't edit or delete anything once saved, and can't see cost prices, other reports, or payroll.",
 };

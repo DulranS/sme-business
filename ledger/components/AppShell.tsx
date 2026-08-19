@@ -16,6 +16,7 @@ const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGEle
   { href: "/sales", label: "Selling", icon: UpIcon, roles: ["owner", "manager", "staff"] },
   { href: "/receivables-payables", label: "Money owed", icon: ClockIcon, roles: ["owner", "manager"] },
   { href: "/cash-count", label: "Cash count", icon: WalletIcon, roles: ["owner", "manager", "staff"] },
+  { href: "/time", label: "Time", icon: TimerIcon, roles: ["owner", "manager", "staff"] },
   { href: "/cash-flow", label: "Cash flow", icon: RunwayIcon, roles: ["owner", "manager"] },
   { href: "/employees", label: "Employees", icon: PeopleIcon, roles: ["owner"] },
   { href: "/expenses", label: "Bills", icon: RepeatIcon, roles: ["owner", "manager"] },
@@ -278,6 +279,17 @@ function ClockIcon(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+function TimerIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M10 2h4" />
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 1.5" />
+      <path d="M18.5 6.5 20 5" />
+    </svg>
+  );
+}
+
 function WalletIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>

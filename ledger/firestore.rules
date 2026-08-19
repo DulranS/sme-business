@@ -39,8 +39,10 @@ rules_version = '2';
 //             capital entries, loans, cash counts, receivable payments).
 //             No delete anywhere. No access to employees/payroll, team
 //             management, settings, or the audit log.
-//   staff   — create-only on sales, cash counts, and receivable payments,
-//             and only ever able to read the ones they created themselves.
+//   staff   — create-only on sales, cash counts, receivable payments, and
+//             time entries (can also clock themselves out of a running time
+//             entry, and nothing else about it), and only ever able to read
+//             the ones they created themselves.
 //             Read-only on `catalog` (a cost-stripped product mirror) and
 //             `meta/settings`. No access to anything else, including the
 //             real `products`/`purchases` collections that carry cost
@@ -213,6 +215,27 @@ service cloud.firestore {
         allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
         allow update: if false;
         allow delete: if isOwner(businessId);
+      }
+
+      // Clock in/out records. Every active role can create one for
+      // themselves; Owner/Manager can also create one on someone else's
+      // behalf (backfilling a missed clock-in) or correct any entry. The
+      // one thing a Staff member can still do after saving their own entry
+      // is clock out of it — but that update may touch `clockOut` and
+      // nothing else, and only once, so the running duration on record can
+      // never be quietly stretched or shrunk after the fact.
+      match /timeEntries/{docId} {
+        allow read: if isOwnerOrManager(businessId)
+          || (isStaff(businessId) && resource.data.memberUid == request.auth.uid);
+        allow create: if isOwnerOrManager(businessId)
+          || (isOwnerOrActiveMember(businessId) && createdBySelf() && request.resource.data.memberUid == request.auth.uid);
+        allow update: if isOwnerOrManager(businessId) || (
+          isOwnerOrActiveMember(businessId)
+          && resource.data.memberUid == request.auth.uid
+          && !resource.data.keys().hasAny(['clockOut'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clockOut'])
+        );
+        allow delete: if isOwnerOrManager(businessId);
       }
 
       // Payments collected against a credit sale. Same shape as sales:

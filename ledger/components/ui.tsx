@@ -85,7 +85,7 @@ export function Field({ children }: { children: ReactNode }) {
 
 export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between mb-5 sm:mb-6">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 sm:mb-6">
       <h1 className="font-display text-xl sm:text-2xl font-medium">{title}</h1>
       {action}
     </div>
