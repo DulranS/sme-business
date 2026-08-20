@@ -141,7 +141,16 @@ function IncomeStatement({
 
       <div className="mt-4">
         <Line label="Operating expenses" value={m.operatingExpenses} currency={currency} negative muted />
+        <Line label="Depreciation" value={m.depreciationExpense} currency={currency} negative muted />
         <Line label="Interest expense" value={m.interestExpense} currency={currency} negative muted />
+        {m.disposalGainLoss !== 0 && (
+          <Line
+            label={m.disposalGainLoss >= 0 ? "Gain on asset disposal" : "Loss on asset disposal"}
+            value={m.disposalGainLoss}
+            currency={currency}
+            negative={m.disposalGainLoss < 0}
+          />
+        )}
         <Line label="Net profit before tax" value={m.netProfitPreTax} currency={currency} bold />
       </div>
 
@@ -180,14 +189,14 @@ function CashFlowStatement({
   m: NonNullable<ReturnType<typeof useData>["monthlyPnL"][number]>;
   currency: string;
 }) {
-  const cashIn = m.salesRevenue + m.recurringRevenue;
   return (
     <Card>
       <div className="text-sm font-medium mb-0.5">Cash flow statement — {formatMonth(m.month)}</div>
       <div className="text-xs text-muted mb-4">Actual cash in and out — over the period. Cash basis.</div>
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Operating activities</div>
-      <Line label="Cash from sales & recurring revenue" value={cashIn} currency={currency} />
+      <Line label="Cash sales & recurring revenue" value={m.cashSalesRevenue + m.recurringRevenue} currency={currency} />
+      <Line label="Collected from customers (credit sales)" value={m.receivableCollections} currency={currency} />
       <Line label="Cash paid for inventory / stock" value={m.purchaseCash} currency={currency} negative muted />
       <Line label="Variable costs paid" value={m.variableCosts} currency={currency} negative muted />
       <Line label="Operating expenses paid" value={m.operatingExpenses} currency={currency} negative muted />
@@ -203,7 +212,9 @@ function CashFlowStatement({
       <Line label="Net cash from financing" value={m.financingCashFlow} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Investing activities</div>
-      <div className="text-xs text-muted py-1.5">Not tracked in this build (no fixed-asset/equipment purchases logged).</div>
+      <Line label="Fixed asset purchases" value={m.fixedAssetPurchases} currency={currency} negative muted />
+      <Line label="Proceeds from asset disposals" value={m.fixedAssetDisposalProceeds} currency={currency} />
+      <Line label="Net cash from investing" value={m.investingCashFlow} currency={currency} bold />
 
       <Line label="Net change in cash" value={m.netCashFlow} currency={currency} bold />
     </Card>
@@ -228,6 +239,7 @@ function BalanceSheetView({
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Assets</div>
       <Line label="Cash" value={b.cash} currency={currency} />
       <Line label="Inventory" value={b.inventoryValue} currency={currency} />
+      <Line label="Fixed assets (net)" value={b.fixedAssetsNetBookValue} currency={currency} />
       <Line label="Total assets" value={b.totalAssets} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Liabilities</div>

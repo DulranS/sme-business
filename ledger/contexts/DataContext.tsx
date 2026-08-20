@@ -482,9 +482,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
         loans,
         capitalEntries,
         settings.taxRatePct,
-        settings.monthlyOwnerDraw ?? 0
+        settings.monthlyOwnerDraw ?? 0,
+        fixedAssets,
+        receivablePayments,
+        payablePayments
       ),
-    [sales, saleEconomics, expenses, purchases, loans, capitalEntries, settings.taxRatePct, settings.monthlyOwnerDraw]
+    [
+      sales,
+      saleEconomics,
+      expenses,
+      purchases,
+      loans,
+      capitalEntries,
+      settings.taxRatePct,
+      settings.monthlyOwnerDraw,
+      fixedAssets,
+      receivablePayments,
+      payablePayments,
+    ]
   );
   const inventoryValue = useMemo(() => currentInventoryValue(ledgers), [ledgers]);
   const inventoryUnits = useMemo(() => currentInventoryUnits(ledgers), [ledgers]);
@@ -514,8 +529,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const monthlyPayroll = useMemo(() => monthlyPayrollCost(employees), [employees]);
   const loanPortfolio = useMemo(() => computeLoanPortfolio(loans, todayIso()), [loans]);
   const balanceSheet = useMemo(
-    () => computeBalanceSheet(monthlyPnL, inventoryValue, loans, capitalSummary, todayIso()),
-    [monthlyPnL, inventoryValue, loans, capitalSummary]
+    () => computeBalanceSheet(monthlyPnL, inventoryValue, loans, capitalSummary, todayIso(), fixedAssets),
+    [monthlyPnL, inventoryValue, loans, capitalSummary, fixedAssets]
   );
   const receivablesAging = useMemo(
     () => computeReceivablesAging(products, sales, saleEconomics, receivablePayments, todayIso()),
@@ -1115,9 +1130,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const receivableCashToday = receivablePayments
         .filter((p) => p.date === date && p.method === "cash")
         .reduce((sum, p) => sum + p.amount, 0);
-      const cashOutToday = [...purchases, ...expenses]
-        .filter((x) => "date" in x && x.date === date)
-        .reduce((sum, x) => sum + ("qty" in x ? x.qty * x.unitCost : x.amount), 0);
+      // Credit purchases don't take cash out of the till on the purchase
+      // date (that happens later, when the supplier is actually paid — see
+      // payableCashOutToday below); only cash-paid purchases do.
+      const purchaseCashOutToday = purchases
+        .filter((p) => p.date === date && (p.paymentMethod ?? "cash") !== "credit")
+        .reduce((sum, p) => sum + p.qty * p.unitCost, 0);
+      const payableCashOutToday = payablePayments
+        .filter((p) => p.date === date && p.method === "cash")
+        .reduce((sum, p) => sum + p.amount, 0);
+      // Expense.kind can be "revenue" (extra income logged the same way as
+      // a bill, e.g. interest earned) — that adds cash, it doesn't take it
+      // out, so it must not be lumped in as an outflow alongside real
+      // expenses.
+      const expenseCashToday = expenses
+        .filter((e) => e.startDate === date)
+        .reduce((sum, e) => sum + (e.kind === "revenue" ? -e.amount : e.amount), 0);
+      const cashOutToday = purchaseCashOutToday + payableCashOutToday + expenseCashToday;
       const expectedCash = openingFloat + cashSalesToday + receivableCashToday - cashOutToday;
       const variance = countedCash - expectedCash;
 

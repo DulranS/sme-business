@@ -276,17 +276,36 @@ export interface MonthlyPnL {
   // net profit, so "the business is profitable" isn't quietly built on
   // nobody paying themselves for the hours worked.
   economicProfit: number;
+  // Non-cash straight-line depreciation for fixed assets held this month —
+  // reduces net profit (and is tax-deductible, matching the pre-tax
+  // treatment of every other expense here) but never touches cash.
+  depreciationExpense: number;
+  // Gain/loss recognized when a fixed asset is disposed this month:
+  // disposal proceeds minus its net book value at disposal. Positive =
+  // gain, negative = loss. Flows into net profit; the cash side is
+  // `fixedAssetDisposalProceeds` below.
+  disposalGainLoss: number;
   // Cash-basis fields, for the Cash Flow Statement / Balance Sheet. These
-  // differ from the accrual fields above in one key way: inventory purchases
-  // hit cash when bought, not when the stock is later sold (COGS timing).
-  purchaseCash: number; // cash paid for inventory this month (at cost)
+  // differ from the accrual fields above in a few key ways: inventory
+  // purchases and sales hit cash only when actually paid/collected (not
+  // when incurred/recognized — see cashSalesRevenue/receivableCollections
+  // and purchaseCash/payableSettlements), and fixed-asset purchases/
+  // disposals are investing activity, never part of accrual net profit
+  // (only depreciation and disposal gain/loss are).
+  cashSalesRevenue: number; // revenue from non-credit sales, collected same month
+  receivableCollections: number; // cash collected this month against credit sales (any period)
+  purchaseCash: number; // cash paid for inventory this month: non-credit purchases + payable settlements
+  payableSettlements: number; // cash paid this month against supplier credit (any period)
   loanProceeds: number; // new loan cash received this month
   principalRepayment: number; // loan principal repaid this month
   capitalIn: number; // owner investment/reinvestment this month
   capitalOut: number; // owner withdrawals this month
+  fixedAssetPurchases: number; // cash paid to acquire fixed assets this month
+  fixedAssetDisposalProceeds: number; // cash received on fixed asset disposals this month
   operatingCashFlow: number;
   financingCashFlow: number;
-  netCashFlow: number; // operating + financing (no investing activity tracked yet)
+  investingCashFlow: number; // fixedAssetDisposalProceeds - fixedAssetPurchases
+  netCashFlow: number; // operating + financing + investing
 }
 
 function monthKey(iso: string): string {
@@ -321,7 +340,10 @@ export function computeMonthlyPnL(
   loans: Loan[],
   capitalEntries: CapitalEntry[],
   taxRatePct: number,
-  monthlyOwnerDraw = 0
+  monthlyOwnerDraw = 0,
+  fixedAssets: FixedAsset[] = [],
+  receivablePayments: ReceivablePayment[] = [],
+  payablePayments: PayablePayment[] = []
 ): MonthlyPnL[] {
   const economicsBySaleId = new Map(saleEconomics.map((e) => [e.saleId, e]));
   const loanMonthlyTotals = computeLoanMonthlyTotals(loans);
@@ -335,10 +357,17 @@ export function computeMonthlyPnL(
   for (const e of expenses) candidateKeys.push(monthKey(e.startDate));
   for (const c of capitalEntries) candidateKeys.push(monthKey(c.date));
   for (const key of loanMonthlyTotals.keys()) candidateKeys.push(key);
+  for (const a of fixedAssets) {
+    candidateKeys.push(monthKey(a.purchaseDate));
+    if (a.disposalDate) candidateKeys.push(monthKey(a.disposalDate));
+  }
+  for (const rp of receivablePayments) candidateKeys.push(monthKey(rp.date));
+  for (const pp of payablePayments) candidateKeys.push(monthKey(pp.date));
 
   if (candidateKeys.length === 0) return [];
   candidateKeys.sort();
   const months = fullMonthRange(candidateKeys[0], candidateKeys[candidateKeys.length - 1]);
+  const fixedAssetMonthlyTotals = computeFixedAssetMonthlyTotals(fixedAssets, months);
   const result: MonthlyPnL[] = [];
 
   for (const month of months) {
@@ -364,14 +393,39 @@ export function computeMonthlyPnL(
     const principalRepayment = loanTotals?.principal ?? 0;
     const loanProceeds = loanTotals?.proceeds ?? 0;
 
-    const netProfitPreTax = grossProfit - expenseTotal - interestExpense;
+    const faTotals = fixedAssetMonthlyTotals.get(month);
+    const depreciationExpense = faTotals?.depreciation ?? 0;
+    const disposalGainLoss = faTotals?.disposalGainLoss ?? 0;
+    const fixedAssetPurchases = faTotals?.purchaseCash ?? 0;
+    const fixedAssetDisposalProceeds = faTotals?.disposalProceeds ?? 0;
+
+    const netProfitPreTax =
+      grossProfit - expenseTotal - interestExpense - depreciationExpense + disposalGainLoss;
     const tax = Math.max(netProfitPreTax, 0) * (taxRatePct / 100);
     const netProfitAfterTax = netProfitPreTax - tax;
     const economicProfit = netProfitAfterTax - monthlyOwnerDraw;
 
-    const purchaseCash = purchases
+    // Cash actually paid/collected this month — not the accrual figures
+    // above. A credit sale/purchase only moves cash when it's actually
+    // collected/paid (receivablePayments / payablePayments), not in the
+    // month it was recognized as revenue/COGS.
+    const cashSalesRevenue = monthSales
+      .filter((s) => (s.paymentMethod ?? "cash") !== "credit")
+      .reduce((sum, s) => sum + (economicsBySaleId.get(s.id)?.revenue ?? 0), 0);
+
+    const receivableCollections = receivablePayments
       .filter((p) => monthKey(p.date) === month)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    const cashPurchasesThisMonth = purchases
+      .filter((p) => monthKey(p.date) === month && (p.paymentMethod ?? "cash") !== "credit")
       .reduce((sum, p) => sum + p.qty * p.unitCost, 0);
+
+    const payableSettlements = payablePayments
+      .filter((p) => monthKey(p.date) === month)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    const purchaseCash = cashPurchasesThisMonth + payableSettlements;
 
     const monthCapital = capitalEntries.filter((c) => monthKey(c.date) === month);
     const capitalIn = monthCapital
@@ -382,8 +436,16 @@ export function computeMonthlyPnL(
       .reduce((s, c) => s + c.amount, 0);
 
     const operatingCashFlow =
-      salesRevenue + recurringRevenueTotal - purchaseCash - variableCosts - expenseTotal - interestExpense - tax;
+      cashSalesRevenue +
+      recurringRevenueTotal +
+      receivableCollections -
+      purchaseCash -
+      variableCosts -
+      expenseTotal -
+      interestExpense -
+      tax;
     const financingCashFlow = loanProceeds - principalRepayment + capitalIn - capitalOut;
+    const investingCashFlow = fixedAssetDisposalProceeds - fixedAssetPurchases;
 
     result.push({
       month,
@@ -402,14 +464,22 @@ export function computeMonthlyPnL(
       netMarginPct: totalRevenue > 0 ? (netProfitAfterTax / totalRevenue) * 100 : null,
       unitsSold,
       economicProfit,
+      depreciationExpense,
+      disposalGainLoss,
+      cashSalesRevenue,
+      receivableCollections,
       purchaseCash,
+      payableSettlements,
       loanProceeds,
       principalRepayment,
       capitalIn,
       capitalOut,
+      fixedAssetPurchases,
+      fixedAssetDisposalProceeds,
       operatingCashFlow,
       financingCashFlow,
-      netCashFlow: operatingCashFlow + financingCashFlow,
+      investingCashFlow,
+      netCashFlow: operatingCashFlow + financingCashFlow + investingCashFlow,
     });
   }
 
@@ -626,7 +696,11 @@ export function computeBreakEven(
   const variableCostTotal = window.reduce((s, m) => s + m.cogs + m.variableCosts, 0);
   const contributionMarginRatio = revenue > 0 ? (revenue - variableCostTotal) / revenue : 0;
 
-  const monthlyFixedCosts = latestMonth?.operatingExpenses ?? 0;
+  // Depreciation is a real fixed cost (just non-cash), so it belongs in the
+  // break-even fixed-cost base alongside rent/payroll/subscriptions —
+  // otherwise break-even revenue understates what's actually needed to
+  // cover the business's full cost structure.
+  const monthlyFixedCosts = (latestMonth?.operatingExpenses ?? 0) + (latestMonth?.depreciationExpense ?? 0);
   const breakEvenRevenue = contributionMarginRatio > 0 ? monthlyFixedCosts / contributionMarginRatio : Infinity;
   const actualRevenue = latestMonth?.totalRevenue ?? 0;
 
@@ -1037,6 +1111,7 @@ export interface BalanceSheet {
   asOf: string;
   cash: number;
   inventoryValue: number;
+  fixedAssetsNetBookValue: number;
   totalAssets: number;
   loansPayable: number;
   totalLiabilities: number;
@@ -1052,7 +1127,8 @@ export function computeBalanceSheet(
   inventoryValue: number,
   loans: Loan[],
   capitalSummary: CapitalSummary,
-  asOfISO: string
+  asOfISO: string,
+  fixedAssets: FixedAsset[] = []
 ): BalanceSheet {
   const toDate = monthlyPnL.filter((m) => m.month <= asOfISO.slice(0, 7));
   const cash = toDate.reduce((s, m) => s + m.netCashFlow, 0);
@@ -1062,7 +1138,14 @@ export function computeBalanceSheet(
     .filter((l) => l.active)
     .reduce((s, l) => s + computeLoanSummary(l, asOfISO).currentBalance, 0);
 
-  const totalAssets = cash + inventoryValue;
+  // Only assets still held as of this date — a disposed asset's book value
+  // left the books (and its cash/gain-loss are already folded into `cash`
+  // and `retainedEarnings` above via investingCashFlow/disposalGainLoss).
+  const fixedAssetsNetBookValue = fixedAssets
+    .filter((a) => !a.disposalDate || a.disposalDate > asOfISO)
+    .reduce((s, a) => s + computeFixedAssetStatus(a, asOfISO).netBookValue, 0);
+
+  const totalAssets = cash + inventoryValue + fixedAssetsNetBookValue;
   const totalLiabilities = loansPayable;
   const ownersCapital = capitalSummary.netCapitalIn;
   const totalEquity = ownersCapital + retainedEarnings;
@@ -1072,6 +1155,7 @@ export function computeBalanceSheet(
     asOf: asOfISO,
     cash,
     inventoryValue,
+    fixedAssetsNetBookValue,
     totalAssets,
     loansPayable,
     totalLiabilities,
@@ -1483,4 +1567,78 @@ export function computeFixedAssetStatus(asset: FixedAsset, asOfISO: string): Fix
     disposed,
     monthsDepreciated,
   };
+}
+
+function monthEndIso(mKey: string): string {
+  const [y, m] = mKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
+function previousMonthKey(mKey: string): string {
+  const [y, m] = mKey.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
+export interface FixedAssetMonthlyTotals {
+  depreciation: number; // non-cash expense for the month
+  purchaseCash: number; // cash paid to acquire assets, this month
+  disposalProceeds: number; // cash received on disposal, this month
+  disposalGainLoss: number; // disposalProceeds - net book value at disposal
+}
+
+// Per-month depreciation, acquisition cash, and disposal cash/gain-loss for
+// the fixed asset register, aggregated across the whole portfolio. This is
+// what feeds the non-cash depreciation line (and disposal gain/loss) into
+// the Income Statement, and the acquisition/disposal cash into the Cash
+// Flow Statement's investing section — for every month in `months`.
+// Depreciation per month is derived from computeFixedAssetStatus's
+// accumulated-depreciation figure (month-end minus prior month-end) so it
+// always reconciles exactly with the net book value shown on the Balance
+// Sheet and on the Fixed Assets page, however many months are summed.
+export function computeFixedAssetMonthlyTotals(
+  fixedAssets: FixedAsset[],
+  months: string[]
+): Map<string, FixedAssetMonthlyTotals> {
+  const map = new Map<string, FixedAssetMonthlyTotals>();
+  const bump = (key: string, delta: Partial<FixedAssetMonthlyTotals>) => {
+    const cur = map.get(key) ?? { depreciation: 0, purchaseCash: 0, disposalProceeds: 0, disposalGainLoss: 0 };
+    map.set(key, {
+      depreciation: cur.depreciation + (delta.depreciation ?? 0),
+      purchaseCash: cur.purchaseCash + (delta.purchaseCash ?? 0),
+      disposalProceeds: cur.disposalProceeds + (delta.disposalProceeds ?? 0),
+      disposalGainLoss: cur.disposalGainLoss + (delta.disposalGainLoss ?? 0),
+    });
+  };
+
+  for (const asset of fixedAssets) {
+    const purchaseMonth = monthKey(asset.purchaseDate);
+    bump(purchaseMonth, { purchaseCash: asset.cost });
+
+    const disposalMonth = asset.disposalDate ? monthKey(asset.disposalDate) : null;
+
+    for (const month of months) {
+      if (month < purchaseMonth) continue;
+      if (disposalMonth && month > disposalMonth) continue;
+
+      const asOfThisMonth = disposalMonth === month ? asset.disposalDate! : monthEndIso(month);
+      const accumThisMonth = computeFixedAssetStatus(asset, asOfThisMonth).accumulatedDepreciation;
+
+      const prevKey = previousMonthKey(month);
+      const accumPrev =
+        prevKey < purchaseMonth ? 0 : computeFixedAssetStatus(asset, monthEndIso(prevKey)).accumulatedDepreciation;
+
+      bump(month, { depreciation: accumThisMonth - accumPrev });
+    }
+
+    if (disposalMonth) {
+      const statusAtDisposal = computeFixedAssetStatus(asset, asset.disposalDate!);
+      const proceeds = asset.disposalAmount ?? 0;
+      bump(disposalMonth, {
+        disposalProceeds: proceeds,
+        disposalGainLoss: proceeds - statusAtDisposal.netBookValue,
+      });
+    }
+  }
+
+  return map;
 }
