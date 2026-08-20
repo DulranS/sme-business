@@ -195,7 +195,7 @@ function EmployeeForm({
         <Label>Role (optional)</Label>
         <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Mechanic, Sales" />
       </Field>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Field>
           <Label>Gross pay</Label>
           <Input required type="number" min="0" step="0.01" value={payRate} onChange={(e) => setPayRate(e.target.value)} />
@@ -208,7 +208,7 @@ function EmployeeForm({
             <option value="yearly">Yearly</option>
           </Select>
         </Field>
-        <Field>
+        <Field className="col-span-2 sm:col-span-1">
           <Label>Tax %</Label>
           <Input required type="number" min="0" max="100" step="0.5" value={taxPct} onChange={(e) => setTaxPct(e.target.value)} />
         </Field>

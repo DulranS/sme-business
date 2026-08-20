@@ -47,7 +47,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-[100] flex flex-col gap-2 sm:w-80 pointer-events-none">
+      {/* Positioned above the fixed mobile bottom nav (see AppShell) so a
+          toast never renders underneath/behind it — bottom-20 clears the
+          ~56px nav plus its safe-area padding with room to spare; back to
+          a tight bottom-4 on desktop, where there's no bottom nav. */}
+      <div className="fixed bottom-20 sm:bottom-4 right-4 left-4 sm:left-auto z-[100] flex flex-col gap-2 sm:w-80 pointer-events-none">
         {toasts.map((t) => (
           <div
             key={t.id}

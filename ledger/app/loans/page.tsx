@@ -256,7 +256,7 @@ function LoanForm({
           <Input required type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Field>
           <Label>Principal ({"amount"})</Label>
           <Input required type="number" min="0" step="0.01" value={principal} onChange={(e) => setPrincipal(e.target.value)} />
@@ -272,7 +272,7 @@ function LoanForm({
             onChange={(e) => setAnnualInterestRatePct(e.target.value)}
           />
         </Field>
-        <Field>
+        <Field className="col-span-2 sm:col-span-1">
           <Label>Term (months)</Label>
           <Input required type="number" min="1" step="1" value={termMonths} onChange={(e) => setTermMonths(e.target.value)} />
         </Field>

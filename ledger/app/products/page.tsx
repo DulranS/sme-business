@@ -328,7 +328,7 @@ function ProductForm({
       {type === "product" && (
         <div className="border border-line rounded-md p-3 space-y-3">
           <div className="text-xs font-medium text-muted">Reorder planning (optional — falls back to Settings defaults)</div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Field>
               <Label>Ordering cost</Label>
               <Input type="number" min="0" step="0.01" value={orderingCost} onChange={(e) => setOrderingCost(e.target.value)} />
@@ -337,7 +337,7 @@ function ProductForm({
               <Label>Holding cost %/yr</Label>
               <Input type="number" min="0" step="0.5" value={holdingCostPct} onChange={(e) => setHoldingCostPct(e.target.value)} />
             </Field>
-            <Field>
+            <Field className="col-span-2 sm:col-span-1">
               <Label>Lead time (days)</Label>
               <Input type="number" min="0" step="1" value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value)} />
             </Field>

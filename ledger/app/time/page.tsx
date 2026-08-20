@@ -197,7 +197,7 @@ export default function TimePage() {
                 <Input required value={manualJobLabel} onChange={(e) => setManualJobLabel(e.target.value)} />
               </Field>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field>
                 <Label>Date</Label>
                 <Input required type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} />
@@ -412,7 +412,7 @@ function EditTimeEntryForm({
         <Label>Job / customer</Label>
         <Input required value={jobLabel} onChange={(e) => setJobLabel(e.target.value)} />
       </Field>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />

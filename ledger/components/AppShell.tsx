@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { useAuth } from "@/contexts/AuthContext";
 import { roleLabel } from "@/lib/permissions";
@@ -29,10 +29,25 @@ const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGEle
   { href: "/settings", label: "Settings", icon: GearIcon, roles: ["owner"] },
 ];
 
+// A handful of items per role that earn a permanent slot in the mobile
+// bottom bar — the things done most often, day to day. Everything else
+// lives one tap away behind "More" rather than in a horizontally-scrolling
+// row of 18 icons, which hides items with no indication there's more to
+// scroll to and makes every tap a guess. This mirrors how every mobile app
+// with a deep nav tree (not just 4-5 top-level sections) actually solves
+// this — Instagram, Amazon, banking apps — a short fixed bar plus a "More"
+// entry point.
+const MOBILE_PRIMARY_HREFS: Record<Role, string[]> = {
+  owner: ["/dashboard", "/sales", "/purchases", "/receivables-payables"],
+  manager: ["/dashboard", "/sales", "/purchases", "/receivables-payables"],
+  staff: ["/sales", "/cash-count", "/time"],
+};
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, memberName, memberActive, loading, signOut } = useAuth();
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const isAuthPage = pathname === "/login" || pathname === "/join";
   const homeForRole = role === "staff" ? "/sales" : "/dashboard";
@@ -43,6 +58,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (user && isAuthPage) router.replace(homeForRole);
     if (user && pathname === "/") router.replace(homeForRole);
   }, [loading, user, isAuthPage, pathname, router, homeForRole]);
+
+  // Close the "More" sheet automatically on navigation so it never lingers
+  // open over the next page.
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
 
   if (isAuthPage || pathname === "/") {
     return <>{children}</>;
@@ -73,12 +94,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const visibleNav = NAV.filter((item) => !role || item.roles.includes(role));
+  const primaryHrefs = role ? MOBILE_PRIMARY_HREFS[role] : [];
+  const primaryNav = visibleNav.filter((item) => primaryHrefs.includes(item.href));
+  const restNav = visibleNav.filter((item) => !primaryHrefs.includes(item.href));
+  const restHasActive = restNav.some((item) => pathname.startsWith(item.href));
 
   return (
     <div className="min-h-screen flex">
       {/* Desktop sidebar */}
       <aside className="hidden sm:flex w-56 shrink-0 border-r border-line flex-col justify-between h-screen sticky top-0">
-        <div>
+        <div className="overflow-y-auto scroll-touch">
           <div className="px-5 py-5 border-b border-line">
             <div className="font-display text-base font-bold tracking-tight">Ledger</div>
             <div className="text-[11px] text-muted mt-0.5">solo SME finance</div>
@@ -105,7 +130,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
         </div>
-        <div className="p-3 border-t border-line">
+        <div className="p-3 border-t border-line shrink-0">
           <div className="px-1 mb-2">
             <div className="text-xs text-fg truncate font-medium">{memberName ?? user.email}</div>
             <div className="text-[11px] text-muted flex items-center gap-1.5">
@@ -123,23 +148,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Mobile top bar */}
-        <header className="sm:hidden flex items-center justify-between px-4 py-3.5 border-b border-line sticky top-0 bg-ink z-30">
+        <header className="sm:hidden safe-top flex items-center justify-between px-4 py-3.5 border-b border-line sticky top-0 bg-ink z-30">
           <div>
             <div className="font-display text-base font-bold leading-none">Ledger</div>
             {role && <div className="text-[10px] text-muted mt-0.5">{roleLabel(role)}</div>}
           </div>
-          <button onClick={() => signOut()} className="text-xs text-muted">
+          <button onClick={() => signOut()} className="text-xs text-muted min-h-[44px] px-2 -mr-2">
             Sign out
           </button>
         </header>
 
-        <main className="flex-1 px-4 py-5 sm:px-8 sm:py-8 pb-24 sm:pb-8 max-w-6xl w-full mx-auto">
+        <main className="flex-1 px-4 py-5 sm:px-8 sm:py-8 pb-24 sm:pb-8 max-w-6xl w-full mx-auto overflow-x-hidden">
           {children}
         </main>
 
-        {/* Mobile bottom nav — horizontally scrollable since there are more items than fit one screen */}
-        <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-panel border-t border-line flex overflow-x-auto z-30">
-          {visibleNav.map((item) => {
+        {/* Mobile bottom nav — a short, fixed set of the most-used
+            destinations for this role, plus a "More" entry point for
+            everything else. Nothing scrolls or gets clipped. */}
+        <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-panel border-t border-line flex safe-bottom z-30">
+          {primaryNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
@@ -147,7 +174,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={clsx(
-                  "flex flex-col items-center gap-1 py-2.5 px-3.5 text-[10px] shrink-0",
+                  "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] text-[10px]",
                   active ? "text-amber-soft" : "text-muted"
                 )}
               >
@@ -156,7 +183,76 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          {restNav.length > 0 && (
+            <button
+              onClick={() => setMoreOpen(true)}
+              className={clsx(
+                "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] text-[10px]",
+                restHasActive ? "text-amber-soft" : "text-muted"
+              )}
+              aria-label="More"
+            >
+              <MoreIcon className="w-[18px] h-[18px]" />
+              More
+            </button>
+          )}
         </nav>
+
+        {/* "More" sheet: everything not pinned to the bottom bar, grouped
+            in one tap-friendly grid instead of a second layer of scrolling. */}
+        {moreOpen && (
+          <div className="sm:hidden fixed inset-0 z-40 flex items-end">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setMoreOpen(false)} />
+            <div className="relative w-full bg-panel border-t border-line rounded-t-lg max-h-[80vh] overflow-y-auto scroll-touch p-5 pb-8 safe-bottom">
+              <div className="w-9 h-1 rounded-full bg-line mx-auto -mt-1 mb-4" />
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-display text-lg font-medium">More</h2>
+                <button
+                  onClick={() => setMoreOpen(false)}
+                  className="text-muted hover:text-fg w-9 h-9 flex items-center justify-center rounded-md hover:bg-panel2"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {restNav.map((item) => {
+                  const active = pathname.startsWith(item.href);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={clsx(
+                        "flex flex-col items-center justify-center gap-1.5 rounded-lg border py-4 px-2 text-xs text-center min-h-[76px]",
+                        active
+                          ? "border-amber-dim bg-panel2 text-fg font-medium"
+                          : "border-line text-muted hover:bg-panel2 hover:text-fg"
+                      )}
+                    >
+                      <Icon className="w-5 h-5 shrink-0" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+              <div className="mt-5 pt-4 border-t border-line">
+                <div className="text-xs text-fg truncate font-medium">{memberName ?? user.email}</div>
+                {role && (
+                  <div className="text-[11px] text-muted mt-1">
+                    <span className="px-1.5 py-0.5 rounded border border-line bg-panel2">{roleLabel(role)}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => signOut()}
+                  className="w-full text-left text-sm text-muted hover:text-fg px-0 py-3 mt-1 min-h-[44px]"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -323,6 +419,15 @@ function BellIcon(props: React.SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
       <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
       <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+function MoreIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" {...props}>
+      <circle cx="5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="19" cy="12" r="1.8" />
     </svg>
   );
 }
