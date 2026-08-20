@@ -40,7 +40,8 @@ export type Permission =
   | "create:timeEntry" // clock in/out for yourself
   | "manage:timeEntries" // log time on someone else's behalf, edit/delete any entry
   | "view:allTimeEntries" // see everyone's hours, not just your own
-  | "manage:fixedAssets"; // create/edit/delete fixed assets
+  | "manage:fixedAssets" // create/edit/delete fixed assets
+  | "correct:ledgerEntries"; // owner-only: edit/delete a saved cash count or receivable/payable payment to fix a data-entry mistake
 
 const OWNER_MANAGER_SHARED: Permission[] = [
   "view:dashboard",
@@ -71,6 +72,7 @@ const MATRIX: Record<Role, Permission[]> = {
     "view:auditLog",
     "delete:sales",
     "delete:records",
+    "correct:ledgerEntries",
     "manage:employees",
     "manage:team",
     "manage:settings",

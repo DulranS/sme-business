@@ -1,26 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import AppShell from "@/components/AppShell";
 
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["500", "700"],
-  variable: "--font-display",
-});
-const body = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-body",
-});
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-mono",
-});
+// Font stacks are plain CSS custom properties defined in globals.css
+// (system fonts only — no next/font/google). This app previously loaded
+// Space Grotesk / Inter / JetBrains Mono from fonts.googleapis.com at
+// build time via next/font/google. That's a hard network dependency: in
+// any offline build, sandboxed CI runner, or network-restricted
+// environment, `next build` fails outright with NextFontError and the
+// app doesn't ship at all — the entire UI (sidebar included) never
+// renders. Self-hosting the same three-token type system (display/body/
+// mono — see tailwind.config.ts) as a system-font stack keeps the design
+// intent without any external request, so the app builds and renders
+// identically everywhere, with no dependency on Google's servers being
+// reachable at build or runtime.
 
 export const metadata: Metadata = {
   title: "Ledger — inventory & unit economics",
@@ -35,7 +31,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
+    <html lang="en">
       <body>
         <AuthProvider>
           <DataProvider>

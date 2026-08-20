@@ -383,7 +383,11 @@ export interface AuditLogEntry {
 // flagged and discussed. This is the single highest-leverage anti-theft
 // control in the app: a staff member who's been skimming cash sales will
 // show a shortfall here every time, on a clean, dated, named record they
-// can't later edit or delete.
+// can never edit or delete themselves. The one exception is the Owner
+// (never Manager, never the person who submitted it), who can correct a
+// genuine data-entry slip — see DataContext.updateCashCount — without
+// losing the record to a delete-and-recreate; `variance` is re-derived
+// against the corrected `countedCash`, `expectedCash` itself never changes.
 export interface CashCount {
   id: string;
   date: string; // ISO date the count covers

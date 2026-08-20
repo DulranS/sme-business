@@ -13,6 +13,7 @@ import {
   Field,
   Input,
   Label,
+  Modal,
   PageHeader,
   Select,
   Table,
@@ -38,7 +39,7 @@ function formatClock(ts: number): string {
 
 export default function TimePage() {
   const { role } = useAuth();
-  const { timeEntries, members, settings, clockIn, clockOut, addTimeEntry, deleteTimeEntry, loading } = useData();
+  const { timeEntries, members, settings, clockIn, clockOut, addTimeEntry, updateTimeEntry, deleteTimeEntry, loading } = useData();
   const toast = useToast();
   const currency = settings.currency;
 
@@ -59,6 +60,7 @@ export default function TimePage() {
   const [manualEnd, setManualEnd] = useState("");
   const [manualRate, setManualRate] = useState("");
   const [manualBusy, setManualBusy] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
 
   const sorted = useMemo(() => [...timeEntries].sort((a, b) => b.clockIn - a.clockIn), [timeEntries]);
   const openEntries = sorted.filter((t) => !t.clockOut);
@@ -295,7 +297,14 @@ export default function TimePage() {
                         {value != null ? formatMoney(value, currency) : "—"}
                       </td>
                       {canManage && (
-                        <td className="py-2.5 pl-3 text-right">
+                        <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            className="text-xs text-muted hover:text-fg mr-3"
+                            onClick={() => setEditingEntry(t)}
+                          >
+                            Edit
+                          </button>
                           <button
                             type="button"
                             className="text-xs text-bad hover:underline"
@@ -320,7 +329,126 @@ export default function TimePage() {
           </Card>
         </>
       )}
+
+      <Modal open={!!editingEntry} onClose={() => setEditingEntry(null)} title="Correct this time entry">
+        {editingEntry && (
+          <EditTimeEntryForm
+            entry={editingEntry}
+            onSave={async (patch) => {
+              try {
+                await updateTimeEntry(editingEntry.id, patch);
+                toast.success("Time entry corrected");
+                setEditingEntry(null);
+              } catch (err) {
+                toast.error("Couldn't save", toastableErrorMessage(err));
+              }
+            }}
+            onCancel={() => setEditingEntry(null)}
+          />
+        )}
+      </Modal>
     </>
+  );
+}
+
+function EditTimeEntryForm({
+  entry,
+  onSave,
+  onCancel,
+}: {
+  entry: TimeEntry;
+  onSave: (patch: {
+    jobLabel?: string;
+    clockIn?: number;
+    clockOut?: number;
+    billable?: boolean;
+    hourlyRate?: number;
+  }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const toISOFields = (ts: number) => {
+    const d = new Date(ts);
+    const date = d.toISOString().slice(0, 10);
+    const time = d.toTimeString().slice(0, 5);
+    return { date, time };
+  };
+  const startFields = toISOFields(entry.clockIn);
+  const endFields = toISOFields(entry.clockOut ?? entry.clockIn);
+
+  const [jobLabel, setJobLabel] = useState(entry.jobLabel);
+  const [date, setDate] = useState(startFields.date);
+  const [start, setStart] = useState(startFields.time);
+  const [end, setEnd] = useState(endFields.time);
+  const [billable, setBillable] = useState(entry.billable);
+  const [hourlyRate, setHourlyRate] = useState(entry.hourlyRate?.toString() ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const clockInTs = new Date(`${date}T${start}`).getTime();
+        const clockOutTs = new Date(`${date}T${end}`).getTime();
+        if (clockOutTs <= clockInTs) {
+          setError("Clock-out has to be after clock-in.");
+          return;
+        }
+        setError("");
+        setBusy(true);
+        await onSave({
+          jobLabel: jobLabel.trim(),
+          clockIn: clockInTs,
+          clockOut: clockOutTs,
+          billable,
+          hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
+        });
+        setBusy(false);
+      }}
+      className="space-y-4"
+    >
+      <div className="text-xs text-muted">Correcting {entry.memberName}&apos;s entry.</div>
+      <Field>
+        <Label>Job / customer</Label>
+        <Input required value={jobLabel} onChange={(e) => setJobLabel(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-3 gap-3">
+        <Field>
+          <Label>Date</Label>
+          <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field>
+          <Label>Start</Label>
+          <Input required type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+        </Field>
+        <Field>
+          <Label>End</Label>
+          <Input required type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field>
+          <Label>Rate/hr (optional)</Label>
+          <Input type="number" min="0" step="0.01" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} />
+        </Field>
+        <Field>
+          <Label>Billable</Label>
+          <Select value={billable ? "yes" : "no"} onChange={(e) => setBillable(e.target.value === "yes")}>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </Select>
+        </Field>
+      </div>
+      {error && <div className="text-xs text-bad">{error}</div>}
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy ? "Saving…" : "Save correction"}
+        </Button>
+      </div>
+    </form>
   );
 }
 

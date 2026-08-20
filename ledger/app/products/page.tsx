@@ -447,25 +447,54 @@ function ReorderPlanningSection() {
 }
 
 function VariableCostsSection() {
-  const { products, variableCosts, addVariableCost, deleteVariableCost, settings } = useData();
+  const { products, variableCosts, addVariableCost, updateVariableCost, deleteVariableCost, settings } = useData();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [type, setType] = useState<VariableCost["type"]>("per_unit");
   const [amount, setAmount] = useState("");
   const [productId, setProductId] = useState("");
   const currency = settings.currency;
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    await addVariableCost({
-      name,
-      type,
-      amount: Number(amount),
-      productId: productId || undefined,
-    });
+  function resetForm() {
+    setEditingId(null);
     setName("");
+    setType("per_unit");
     setAmount("");
     setProductId("");
+  }
+
+  function openAdd() {
+    resetForm();
+    setOpen(true);
+  }
+
+  function openEdit(v: VariableCost) {
+    setEditingId(v.id);
+    setName(v.name);
+    setType(v.type);
+    setAmount(v.amount.toString());
+    setProductId(v.productId ?? "");
+    setOpen(true);
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const values = { name, type, amount: Number(amount), productId: productId || undefined };
+    try {
+      if (editingId) {
+        await updateVariableCost(editingId, values);
+        toast.success("Variable cost updated");
+      } else {
+        await addVariableCost(values);
+        toast.success("Variable cost added");
+      }
+      setOpen(false);
+      resetForm();
+    } catch (err) {
+      toast.error("Couldn't save", toastableErrorMessage(err));
+    }
   }
 
   return (
@@ -478,7 +507,10 @@ function VariableCostsSection() {
             contribution margin. Works for products and services alike.
           </div>
         </div>
-        <button onClick={() => setOpen((v) => !v)} className="text-xs text-amber-soft">
+        <button
+          onClick={() => (open ? (setOpen(false), resetForm()) : openAdd())}
+          className="text-xs text-amber-soft"
+        >
           {open ? "Close" : "+ Add"}
         </button>
       </div>
@@ -511,7 +543,14 @@ function VariableCostsSection() {
               ))}
             </Select>
           </Field>
-          <Button type="submit">Add</Button>
+          <div className="flex gap-2">
+            <Button type="submit">{editingId ? "Save changes" : "Add"}</Button>
+            {editingId && (
+              <Button type="button" variant="ghost" onClick={() => { setOpen(false); resetForm(); }}>
+                Cancel
+              </Button>
+            )}
+          </div>
         </form>
       )}
 
@@ -528,9 +567,22 @@ function VariableCostsSection() {
                     {product ? product.name : "all offerings"})
                   </span>
                 </div>
-                <button onClick={() => { if (confirm("Delete this variable cost?")) deleteVariableCost(v.id); }} className="text-xs text-muted hover:text-bad">
-                  Remove
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button onClick={() => openEdit(v)} className="text-xs text-muted hover:text-fg">
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!confirm("Delete this variable cost?")) return;
+                      deleteVariableCost(v.id)
+                        .then(() => toast.success("Deleted"))
+                        .catch((err) => toast.error("Couldn't delete", toastableErrorMessage(err)));
+                    }}
+                    className="text-xs text-muted hover:text-bad"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             );
           })}

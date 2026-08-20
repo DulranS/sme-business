@@ -33,7 +33,8 @@ rules_version = '2';
 // Role matrix (mirrors lib/permissions.ts — keep both in sync)
 //   owner   — full read/write on everything in their business. Only the
 //             owner can manage the team, change settings, view the audit
-//             log, or delete a record.
+//             log, delete a record, or correct a saved cash count /
+//             receivable payment / payable payment after the fact.
 //   manager — create/update on the operational collections (products,
 //             purchases, purchase orders, sales, expenses, variable costs,
 //             capital entries, loans, cash counts, receivable payments).
@@ -185,13 +186,13 @@ service cloud.firestore {
 
       match /variableCosts/{docId} {
         allow read: if isOwnerOrManager(businessId);
-        allow create: if isOwnerOrManager(businessId);
+        allow create, update: if isOwnerOrManager(businessId);
         allow delete: if isOwner(businessId);
       }
 
       match /capitalEntries/{docId} {
         allow read: if isOwnerOrManager(businessId);
-        allow create: if isOwnerOrManager(businessId);
+        allow create, update: if isOwnerOrManager(businessId);
         allow delete: if isOwner(businessId);
       }
 
@@ -207,13 +208,18 @@ service cloud.firestore {
       }
 
       // End-of-shift cash reconciliation. Every active role can log one for
-      // themselves; nobody can edit a count after the fact — see the
-      // CashCount doc comment in lib/types.ts for why that's the point.
+      // themselves; whoever counted it can never edit it afterward — see
+      // the CashCount doc comment in lib/types.ts for why that's the
+      // anti-theft point. The one exception is the Owner, who can correct a
+      // genuine data-entry mistake (a typo'd amount, wrong date) without
+      // having to delete and lose the record — same trust boundary as
+      // deleting one, just also allowing update now instead of forcing a
+      // destroy-and-recreate for something as small as a typo.
       match /cashCounts/{docId} {
         allow read: if isOwnerOrManager(businessId)
           || (isStaff(businessId) && resource.data.createdByUid == request.auth.uid);
         allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
-        allow update: if false;
+        allow update: if isOwner(businessId);
         allow delete: if isOwner(businessId);
       }
 
@@ -239,13 +245,14 @@ service cloud.firestore {
       }
 
       // Payments collected against a credit sale. Same shape as sales:
-      // anyone active can create one (for a sale they can see), nobody can
-      // edit history, only Owner cleans up a genuine mistake.
+      // anyone active can create one (for a sale they can see); only Owner
+      // can edit or delete one afterward, to correct a mis-keyed amount,
+      // date, or method.
       match /receivablePayments/{docId} {
         allow read: if isOwnerOrManager(businessId)
           || (isStaff(businessId) && resource.data.createdByUid == request.auth.uid);
         allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
-        allow update: if false;
+        allow update: if isOwner(businessId);
         allow delete: if isOwner(businessId);
       }
 
@@ -304,12 +311,12 @@ service cloud.firestore {
 
       // Payments recorded against an outstanding purchase (supplier owed
       // money). Same shape as receivablePayments: anyone active can create
-      // one, nobody edits history, only Owner cleans up a mistake.
+      // one; only Owner can edit or delete one afterward.
       match /payablePayments/{docId} {
         allow read: if isOwnerOrManager(businessId)
           || (isStaff(businessId) && resource.data.createdByUid == request.auth.uid);
         allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
-        allow update: if false;
+        allow update: if isOwner(businessId);
         allow delete: if isOwner(businessId);
       }
 

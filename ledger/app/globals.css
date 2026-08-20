@@ -6,6 +6,15 @@
   box-sizing: border-box;
 }
 
+/* System-font stacks for the app's three type tokens (display/body/mono —
+   see tailwind.config.ts). No external font request is made; see the
+   comment in app/layout.tsx for why. */
+:root {
+  --font-display: -apple-system, "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, Roboto, Arial, sans-serif;
+  --font-body: -apple-system, "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;

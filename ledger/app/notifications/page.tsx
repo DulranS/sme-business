@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
-import { formatMoney } from "@/lib/format";
-import type { Notification, NotificationType, NotificationPriority } from "@/lib/types";
+import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
+import type { NotificationType, NotificationPriority } from "@/lib/types";
 import { Badge, Card, EmptyState, PageHeader, Stat, Table } from "@/components/ui";
 
 const PRIORITY_LABEL: Record<NotificationPriority, string> = {
@@ -32,22 +32,18 @@ const TYPE_LABEL: Record<NotificationType, string> = {
 
 export default function NotificationsPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { settings, loading } = useData();
+  const { notifications, markNotificationRead, deleteNotification, loading } = useData();
+  const toast = useToast();
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
   if (guardLoading || !allowed) return null;
 
-  // For now, we'll show a placeholder since notifications aren't integrated yet
-  // This will be populated from DataContext once integrated
-  const notifications: Notification[] = [];
-
   const unreadCount = notifications.filter((n) => !n.isRead).length;
-  const filteredNotifications = filter === "unread" 
+  const filteredNotifications = filter === "unread"
     ? notifications.filter((n) => !n.isRead)
     : notifications;
 
   const highPriorityCount = notifications.filter((n) => n.priority === "high" && !n.isRead).length;
-  const mediumPriorityCount = notifications.filter((n) => n.priority === "medium" && !n.isRead).length;
 
   return (
     <>
@@ -103,9 +99,9 @@ export default function NotificationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredNotifications.map((notification) => (
-                  <tr 
-                    key={notification.id} 
+                {[...filteredNotifications].sort((a, b) => b.createdAt - a.createdAt).map((notification) => (
+                  <tr
+                    key={notification.id}
                     className={`border-b border-line last:border-0 ${!notification.isRead ? "bg-panel2/50" : ""}`}
                   >
                     <td className="py-2.5 pr-3">
@@ -119,10 +115,29 @@ export default function NotificationsPage() {
                       <div className="text-[11px] text-muted mt-0.5">{notification.message}</div>
                     </td>
                     <td className="py-2.5 px-3 text-muted text-xs">{notification.dueDate ?? "—"}</td>
-                    <td className="py-2.5 pl-3 text-right">
+                    <td className="py-2.5 pl-3 text-right whitespace-nowrap">
                       {!notification.isRead && (
-                        <span className="inline-block w-2 h-2 bg-amber-soft rounded-full" />
+                        <button
+                          onClick={() =>
+                            markNotificationRead(notification.id).catch((err) =>
+                              toast.error("Couldn't mark as read", toastableErrorMessage(err))
+                            )
+                          }
+                          className="text-xs text-amber-soft hover:underline mr-3"
+                        >
+                          Mark read
+                        </button>
                       )}
+                      <button
+                        onClick={() =>
+                          deleteNotification(notification.id).catch((err) =>
+                            toast.error("Couldn't dismiss", toastableErrorMessage(err))
+                          )
+                        }
+                        className="text-xs text-muted hover:text-bad"
+                      >
+                        Dismiss
+                      </button>
                     </td>
                   </tr>
                 ))}

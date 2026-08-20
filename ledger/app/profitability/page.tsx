@@ -39,6 +39,7 @@ export default function ProfitabilityPage() {
     capitalSummary,
     capitalEntries,
     addCapitalEntry,
+    updateCapitalEntry,
     deleteCapitalEntry,
     settings,
     monthlyPnL,
@@ -50,6 +51,7 @@ export default function ProfitabilityPage() {
   const toast = useToast();
   const currency = settings.currency;
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<CapitalEntry | null>(null);
   const [period, setPeriod] = useState<PeriodFilter>("90");
 
   const hasData = monthlyPnL.length > 0;
@@ -236,7 +238,7 @@ export default function ProfitabilityPage() {
                   Money you (or an investor) put into the business, took out, and how it&apos;s doing compared to that.
                 </div>
               </div>
-              <Button onClick={() => setModalOpen(true)}>+ Add money in/out</Button>
+              <Button onClick={() => { setEditingEntry(null); setModalOpen(true); }}>+ Add money in/out</Button>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-4">
@@ -280,7 +282,13 @@ export default function ProfitabilityPage() {
                         </td>
                         <td className="py-2.5 px-3 num text-right">{formatMoney(c.amount, currency)}</td>
                         <td className="py-2.5 px-3 text-muted">{c.notes || "—"}</td>
-                        <td className="py-2.5 pl-3 text-right">
+                        <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => { setEditingEntry(c); setModalOpen(true); }}
+                            className="text-xs text-muted hover:text-fg mr-3"
+                          >
+                            Edit
+                          </button>
                           <button
                             onClick={() => {
                               if (!confirm("Delete this entry? This can't be undone.")) return;

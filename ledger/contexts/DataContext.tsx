@@ -21,8 +21,6 @@ import {
   query,
   where,
   orderBy,
-  type Query,
-  type CollectionReference,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
@@ -160,9 +158,11 @@ interface DataContextValue {
   bulkAddExpenses: (rows: Omit<Expense, "id" | "createdAt">[]) => Promise<void>;
 
   addVariableCost: (v: Omit<VariableCost, "id" | "createdAt">) => Promise<void>;
+  updateVariableCost: (id: string, v: Partial<VariableCost>) => Promise<void>;
   deleteVariableCost: (id: string) => Promise<void>;
 
   addCapitalEntry: (c: Omit<CapitalEntry, "id" | "createdAt">) => Promise<void>;
+  updateCapitalEntry: (id: string, c: Partial<CapitalEntry>) => Promise<void>;
   deleteCapitalEntry: (id: string) => Promise<void>;
 
   addEmployee: (e: Omit<Employee, "id" | "createdAt" | "linkedExpenseId">) => Promise<void>;
@@ -189,7 +189,17 @@ interface DataContextValue {
     countedCash: number;
     notes?: string;
   }) => Promise<void>;
+  // Owner-only correction path for a cash count entered wrong — see the
+  // comment on the implementation below for why this is deliberately
+  // narrower than every other "edit" in the app.
+  updateCashCount: (
+    id: string,
+    c: { date?: string; openingFloat?: number; countedCash?: number; notes?: string }
+  ) => Promise<void>;
+  deleteCashCount: (id: string) => Promise<void>;
   addReceivablePayment: (p: Omit<ReceivablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
+  updateReceivablePayment: (id: string, p: Partial<Pick<ReceivablePayment, "amount" | "date" | "method" | "note">>) => Promise<void>;
+  deleteReceivablePayment: (id: string) => Promise<void>;
 
   // Notifications & reminders
   addNotification: (n: Omit<Notification, "id" | "createdAt">) => Promise<void>;
@@ -198,6 +208,8 @@ interface DataContextValue {
 
   // Payable payments
   addPayablePayment: (p: Omit<PayablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
+  updatePayablePayment: (id: string, p: Partial<Pick<PayablePayment, "amount" | "date" | "method" | "note">>) => Promise<void>;
+  deletePayablePayment: (id: string) => Promise<void>;
 
   // Fixed assets
   addFixedAsset: (a: Omit<FixedAsset, "id" | "createdAt">) => Promise<void>;
@@ -302,104 +314,133 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const unsubs: (() => void)[] = [];
 
     if (isOwnerOrManager) {
-      // Helper function to safely subscribe to collections that may not exist
-      const safeSubscribe = <T,>(
-        key: string,
-        queryOrCollection: Query | CollectionReference,
-        mapper: (doc: any) => T,
-        setter: (data: T[]) => void
-      ) => {
-        const unsub = onSnapshot(
-          queryOrCollection,
-          (snap: any) => {
-            setter(snap.docs.map((d: any) => mapper(d)));
-            bump(key);
-          },
-          (error: any) => {
-            // Collection doesn't exist or permission denied - mark as loaded with empty data
-            console.warn(`Collection ${key} not available:`, error.message);
-            setter([]);
-            bump(key);
-          }
-        );
-        return unsub;
-      };
-
       unsubs.push(
-        safeSubscribe("products", collection(db, "users", businessId, "products"), (d) => ({ id: d.id, ...d.data() } as Product), setProducts),
-        safeSubscribe("purchases", query(collection(db, "users", businessId, "purchases"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as Purchase), setPurchases),
-        safeSubscribe("purchaseOrders", query(collection(db, "users", businessId, "purchaseOrders"), orderBy("orderDate", "desc")), (d) => ({ id: d.id, ...d.data() } as PurchaseOrder), setPurchaseOrders),
-        safeSubscribe("sales", query(collection(db, "users", businessId, "sales"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as Sale), setSales),
-        safeSubscribe("expenses", collection(db, "users", businessId, "expenses"), (d) => ({ id: d.id, ...d.data() } as Expense), setExpenses),
-        safeSubscribe("variableCosts", collection(db, "users", businessId, "variableCosts"), (d) => ({ id: d.id, ...d.data() } as VariableCost), setVariableCosts),
-        safeSubscribe("capitalEntries", query(collection(db, "users", businessId, "capitalEntries"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as CapitalEntry), setCapitalEntries),
-        safeSubscribe("loans", query(collection(db, "users", businessId, "loans"), orderBy("startDate", "desc")), (d) => ({ id: d.id, ...d.data() } as Loan), setLoans),
-        safeSubscribe("cashCounts", collection(db, "users", businessId, "cashCounts"), (d) => ({ id: d.id, ...d.data() } as CashCount), setCashCounts),
-        safeSubscribe("receivablePayments", collection(db, "users", businessId, "receivablePayments"), (d) => ({ id: d.id, ...d.data() } as ReceivablePayment), setReceivablePayments),
-        safeSubscribe("payablePayments", query(collection(db, "users", businessId, "payablePayments"), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as PayablePayment), setPayablePayments),
-        safeSubscribe("notifications", query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (d) => ({ id: d.id, ...d.data() } as Notification), setNotifications),
-        safeSubscribe("timeEntries", query(collection(db, "users", businessId, "timeEntries"), orderBy("clockIn", "desc")), (d) => ({ id: d.id, ...d.data() } as TimeEntry), setTimeEntries),
-        safeSubscribe("fixedAssets", query(collection(db, "users", businessId, "fixedAssets"), orderBy("purchaseDate", "desc")), (d) => ({ id: d.id, ...d.data() } as FixedAsset), setFixedAssets)
+        onSnapshot(collection(db, "users", businessId, "products"), (snap) => {
+          setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product)));
+          bump("products");
+        }),
+        onSnapshot(query(collection(db, "users", businessId, "purchases"), orderBy("date", "desc")), (snap) => {
+          setPurchases(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Purchase)));
+          bump("purchases");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "purchaseOrders"), orderBy("orderDate", "desc")),
+          (snap) => {
+            setPurchaseOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PurchaseOrder)));
+            bump("purchaseOrders");
+          }
+        ),
+        onSnapshot(query(collection(db, "users", businessId, "sales"), orderBy("date", "desc")), (snap) => {
+          setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
+          bump("sales");
+        }),
+        onSnapshot(collection(db, "users", businessId, "expenses"), (snap) => {
+          setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)));
+          bump("expenses");
+        }),
+        onSnapshot(collection(db, "users", businessId, "variableCosts"), (snap) => {
+          setVariableCosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as VariableCost)));
+          bump("variableCosts");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "capitalEntries"), orderBy("date", "desc")),
+          (snap) => {
+            setCapitalEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CapitalEntry)));
+            bump("capitalEntries");
+          }
+        ),
+        onSnapshot(query(collection(db, "users", businessId, "loans"), orderBy("startDate", "desc")), (snap) => {
+          setLoans(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Loan)));
+          bump("loans");
+        }),
+        onSnapshot(collection(db, "users", businessId, "cashCounts"), (snap) => {
+          setCashCounts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CashCount)));
+          bump("cashCounts");
+        }),
+        onSnapshot(collection(db, "users", businessId, "receivablePayments"), (snap) => {
+          setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
+          bump("receivablePayments");
+        }),
+        onSnapshot(query(collection(db, "users", businessId, "payablePayments"), orderBy("date", "desc")), (snap) => {
+          setPayablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PayablePayment)));
+          bump("payablePayments");
+        }),
+        onSnapshot(query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (snap) => {
+          setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)));
+          bump("notifications");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "timeEntries"), orderBy("clockIn", "desc")),
+          (snap) => {
+            setTimeEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimeEntry)));
+            bump("timeEntries");
+          }
+        ),
+        onSnapshot(query(collection(db, "users", businessId, "fixedAssets"), orderBy("purchaseDate", "desc")), (snap) => {
+          setFixedAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FixedAsset)));
+          bump("fixedAssets");
+        })
       );
     }
 
     if (role === "owner") {
-      const safeSubscribe = <T,>(
-        key: string,
-        queryOrCollection: Query | CollectionReference,
-        mapper: (doc: any) => T,
-        setter: (data: T[]) => void
-      ) => {
-        const unsub = onSnapshot(
-          queryOrCollection,
-          (snap: any) => {
-            setter(snap.docs.map((d: any) => mapper(d)));
-            bump(key);
-          },
-          (error: any) => {
-            console.warn(`Collection ${key} not available:`, error.message);
-            setter([]);
-            bump(key);
-          }
-        );
-        return unsub;
-      };
-
       unsubs.push(
-        safeSubscribe("employees", collection(db, "users", businessId, "employees"), (d) => ({ id: d.id, ...d.data() } as Employee), setEmployees),
-        safeSubscribe("members", collection(db, "users", businessId, "members"), (d) => ({ id: d.id, ...d.data() } as Member), setMembers),
-        safeSubscribe("invites", collection(db, "users", businessId, "invites"), (d) => ({ id: d.id, ...d.data() } as Invite), setInvites),
-        safeSubscribe("auditLog", query(collection(db, "users", businessId, "auditLog"), orderBy("at", "desc")), (d) => ({ id: d.id, ...d.data() } as AuditLogEntry), setAuditLog)
+        onSnapshot(collection(db, "users", businessId, "employees"), (snap) => {
+          setEmployees(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Employee)));
+          bump("employees");
+        }),
+        onSnapshot(collection(db, "users", businessId, "members"), (snap) => {
+          setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Member)));
+          bump("members");
+        }),
+        onSnapshot(collection(db, "users", businessId, "invites"), (snap) => {
+          setInvites(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invite)));
+          bump("invites");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "auditLog"), orderBy("at", "desc")),
+          (snap) => {
+            setAuditLog(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLogEntry)));
+            bump("auditLog");
+          }
+        )
       );
     }
 
     if (role === "staff") {
-      const safeSubscribe = <T,>(
-        key: string,
-        queryOrCollection: Query | CollectionReference,
-        mapper: (doc: any) => T,
-        setter: (data: T[]) => void
-      ) => {
-        const unsub = onSnapshot(
-          queryOrCollection,
-          (snap: any) => {
-            setter(snap.docs.map((d: any) => mapper(d)));
-            bump(key);
-          },
-          (error: any) => {
-            console.warn(`Collection ${key} not available:`, error.message);
-            setter([]);
-            bump(key);
-          }
-        );
-        return unsub;
-      };
-
       unsubs.push(
-        safeSubscribe("catalog", collection(db, "users", businessId, "catalog"), (d) => ({ id: d.id, ...d.data() } as CatalogItem), setCatalog),
-        safeSubscribe("sales", query(collection(db, "users", businessId, "sales"), where("createdByUid", "==", uid), orderBy("date", "desc")), (d) => ({ id: d.id, ...d.data() } as Sale), setSales),
-        safeSubscribe("receivablePayments", query(collection(db, "users", businessId, "receivablePayments"), where("createdByUid", "==", uid)), (d) => ({ id: d.id, ...d.data() } as ReceivablePayment), setReceivablePayments),
-        safeSubscribe("timeEntries", query(collection(db, "users", businessId, "timeEntries"), where("memberUid", "==", uid)), (d) => ({ id: d.id, ...d.data() } as TimeEntry), setTimeEntries)
+        onSnapshot(collection(db, "users", businessId, "catalog"), (snap) => {
+          setCatalog(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CatalogItem)));
+          bump("catalog");
+        }),
+        onSnapshot(
+          query(collection(db, "users", businessId, "sales"), where("createdByUid", "==", uid), orderBy("date", "desc")),
+          (snap) => {
+            setSales(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sale)));
+            bump("sales");
+          }
+        ),
+        onSnapshot(
+          query(collection(db, "users", businessId, "cashCounts"), where("createdByUid", "==", uid)),
+          (snap) => {
+            setCashCounts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CashCount)));
+            bump("cashCounts");
+          }
+        ),
+        onSnapshot(
+          query(collection(db, "users", businessId, "receivablePayments"), where("createdByUid", "==", uid)),
+          (snap) => {
+            setReceivablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReceivablePayment)));
+            bump("receivablePayments");
+          }
+        ),
+        onSnapshot(
+          query(collection(db, "users", businessId, "timeEntries"), where("memberUid", "==", uid)),
+          (snap) => {
+            setTimeEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TimeEntry)));
+            bump("timeEntries");
+          }
+        )
       );
     }
 
@@ -503,7 +544,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (role !== "owner" && role !== "manager") return;
     if (!businessId) return;
-    if (!loadedFlags["receivables"] || !loadedFlags["payablePayments"] || !loadedFlags["products"]) return;
+    // Guard on the actual snapshot-loaded keys this effect depends on. This
+    // used to check a key ("receivables") that's never bumped anywhere —
+    // requiredKeys/onSnapshot only ever set "receivablePayments",
+    // "payablePayments", "products", "purchases", "sales", "expenses" and
+    // "loans" — so the check was permanently false and this effect quietly
+    // never ran: reorder/overdue/low-stock notifications never
+    // auto-generated for anyone, no matter how long the app was open.
+    if (
+      !loadedFlags["receivablePayments"] ||
+      !loadedFlags["payablePayments"] ||
+      !loadedFlags["products"] ||
+      !loadedFlags["purchases"] ||
+      !loadedFlags["sales"] ||
+      !loadedFlags["expenses"] ||
+      !loadedFlags["loans"]
+    )
+      return;
 
     const generated = generateAllNotifications({
       receivables: receivablesAging.lines,
@@ -868,6 +925,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       await addDoc(collection(db, "users", bizId, "variableCosts"), { ...v, createdAt: Date.now() });
     },
+    updateVariableCost: async (docId, v) => {
+      requirePermission("manage:products");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "variableCosts", docId), v);
+    },
     deleteVariableCost: async (docId) => {
       requirePermission("delete:records");
       const { businessId: bizId } = requireBusiness();
@@ -881,6 +944,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       const ref = await addDoc(collection(db, "users", bizId, "capitalEntries"), { ...c, createdAt: Date.now() });
       logAudit("capitalEntry", ref.id, "create", `${c.kind}: ${formatMoneyPlain(c.amount)}`);
+    },
+    updateCapitalEntry: async (docId, c) => {
+      requirePermission("manage:capital");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "capitalEntries", docId), c);
+      logAudit("capitalEntry", docId, "update", "Capital entry edited");
     },
     deleteCapitalEntry: async (docId) => {
       requirePermission("delete:records");
@@ -1065,6 +1135,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
       logAudit("cashCount", ref.id, "create", `Cash count ${date}: variance ${formatMoneyPlain(variance)}`);
     },
 
+    // Deliberately Owner-only, and deliberately not exposed to Staff even
+    // for their own counts — the whole anti-theft value of a cash count is
+    // that whoever counted the till can't quietly correct it afterward
+    // (see the addCashCount comment above, and the copy on the Cash Count
+    // page). This exists purely so an Owner can fix a genuine slip — a typo
+    // in the counted amount, the wrong date picked — without deleting and
+    // losing the record entirely. expectedCash/variance are recomputed from
+    // the edited fields so they stay consistent with what's actually saved.
+    updateCashCount: async (docId, patch) => {
+      requirePermission("correct:ledgerEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      const existing = cashCounts.find((c) => c.id === docId);
+      if (!existing) throw new Error("Cash count not found");
+      const openingFloat = patch.openingFloat ?? existing.openingFloat;
+      const countedCash = patch.countedCash ?? existing.countedCash;
+      // expectedCash itself isn't recomputed here (it's a point-in-time
+      // snapshot of cash sales/payments/outflows as of when it was
+      // originally saved — see the CashCount doc comment in lib/types.ts);
+      // only variance is re-derived, against the corrected counted amount.
+      const recomputedVariance = countedCash - existing.expectedCash;
+      await updateDoc(doc(db, "users", bizId, "cashCounts", docId), {
+        ...(patch.date !== undefined ? { date: patch.date } : {}),
+        ...(patch.openingFloat !== undefined ? { openingFloat } : {}),
+        ...(patch.countedCash !== undefined ? { countedCash, variance: recomputedVariance } : {}),
+        ...(patch.notes !== undefined ? { notes: patch.notes || undefined } : {}),
+      });
+      logAudit("cashCount", docId, "update", `Cash count corrected (was variance ${formatMoneyPlain(existing.variance)})`);
+    },
+    deleteCashCount: async (docId) => {
+      requirePermission("correct:ledgerEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "cashCounts", docId));
+      logAudit("cashCount", docId, "delete", "Cash count deleted");
+    },
+
     addReceivablePayment: async (p) => {
       requirePermission("create:receivablePayment");
       const { businessId: bizId, uid: myUid } = requireBusiness();
@@ -1076,6 +1183,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       });
       logAudit("receivablePayment", ref.id, "create", `Payment collected: ${formatMoneyPlain(p.amount)}`);
+    },
+    // Owner-only, same reasoning as updateCashCount: Staff (and Manager) can
+    // record a payment, but only the Owner can go back and fix a mis-keyed
+    // amount, date, or method on one afterward.
+    updateReceivablePayment: async (docId, patch) => {
+      requirePermission("correct:ledgerEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "receivablePayments", docId), patch);
+      logAudit("receivablePayment", docId, "update", "Payment corrected");
+    },
+    deleteReceivablePayment: async (docId) => {
+      requirePermission("correct:ledgerEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "receivablePayments", docId));
+      logAudit("receivablePayment", docId, "delete", "Payment deleted");
     },
 
     addPayablePayment: async (p) => {
@@ -1089,6 +1213,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       });
       logAudit("payablePayment", ref.id, "create", `Supplier payment: ${formatMoneyPlain(p.amount)}`);
+    },
+    updatePayablePayment: async (docId, patch) => {
+      requirePermission("correct:ledgerEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "payablePayments", docId), patch);
+      logAudit("payablePayment", docId, "update", "Supplier payment corrected");
+    },
+    deletePayablePayment: async (docId) => {
+      requirePermission("correct:ledgerEntries");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "payablePayments", docId));
+      logAudit("payablePayment", docId, "delete", "Supplier payment deleted");
     },
 
     addFixedAsset: async (a) => {
