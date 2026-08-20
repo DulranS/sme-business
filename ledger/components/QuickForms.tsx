@@ -7,6 +7,7 @@ import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, formatNumber, todayIso } from "@/lib/format";
 import type { PaymentMethod, Product, Sale } from "@/lib/types";
 import { EXPENSE_CATEGORIES } from "@/lib/types";
+import { CURRENCIES, convertToBase } from "@/lib/fx";
 import { Button, Field, Input, Label, Select } from "@/components/ui";
 
 // These three forms back every "just get the data in fast" entry point in
@@ -16,6 +17,55 @@ import { Button, Field, Input, Label, Select } from "@/components/ui";
 // hosting the form; each form is responsible for its own toast feedback so
 // a failed write never leaves the user staring at a modal that silently
 // did nothing.
+
+// Shared by QuickSaleForm and QuickStockForm: lets a single transaction be
+// entered in a currency other than the business's base currency. Only shows
+// the rate input once a non-base currency is picked — the common case (same
+// currency as always) stays a single dropdown, no extra fields to fill in.
+function CurrencyRateFields({
+  baseCurrency,
+  currency,
+  onCurrencyChange,
+  exchangeRate,
+  onExchangeRateChange,
+}: {
+  baseCurrency: string;
+  currency: string;
+  onCurrencyChange: (c: string) => void;
+  exchangeRate: string;
+  onExchangeRateChange: (r: string) => void;
+}) {
+  const currencyOptions = CURRENCIES.includes(baseCurrency) ? CURRENCIES : [baseCurrency, ...CURRENCIES];
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field>
+        <Label>Currency</Label>
+        <Select value={currency} onChange={(e) => onCurrencyChange(e.target.value)}>
+          {currencyOptions.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {currency !== baseCurrency && (
+        <Field>
+          <Label>
+            Rate (1 {currency} = ? {baseCurrency})
+          </Label>
+          <Input
+            required
+            type="number"
+            min="0"
+            step="0.0001"
+            value={exchangeRate}
+            onChange={(e) => onExchangeRateChange(e.target.value)}
+          />
+        </Field>
+      )}
+    </div>
+  );
+}
 
 function SummaryRow({ label, value, currency, muted }: { label: string; value: number; currency: string; muted?: boolean }) {
   return (
@@ -57,7 +107,11 @@ export function QuickSaleForm({
   const [productId, setProductId] = useState(lockedProduct?.id ?? existingSale?.productId ?? sellable[0]?.id ?? "");
   const product = lockedProduct ?? sellable.find((p) => p.id === productId);
   const [qty, setQty] = useState(existingSale?.qty?.toString() ?? "");
-  const [unitPrice, setUnitPrice] = useState(existingSale?.unitPrice?.toString() ?? product?.defaultSellPrice?.toString() ?? "");
+  const [unitPrice, setUnitPrice] = useState(
+    (existingSale?.foreignUnitPrice ?? existingSale?.unitPrice)?.toString() ?? product?.defaultSellPrice?.toString() ?? ""
+  );
+  const [txCurrency, setTxCurrency] = useState(existingSale?.currency ?? settings.currency);
+  const [exchangeRate, setExchangeRate] = useState((existingSale?.exchangeRate ?? 1).toString());
   const [date, setDate] = useState(existingSale?.date ?? todayIso());
   const [customer, setCustomer] = useState(existingSale?.customer ?? "");
   const [customerContact, setCustomerContact] = useState(existingSale?.customerContact ?? "");
@@ -73,8 +127,10 @@ export function QuickSaleForm({
   const isProduct = product?.type === "product";
 
   const qtyNum = Number(qty) || 0;
-  const priceNum = Number(unitPrice) || 0;
-  const revenue = qtyNum * priceNum;
+  const priceNum = Number(unitPrice) || 0; // entered price, in txCurrency
+  const rateNum = txCurrency === settings.currency ? 1 : Number(exchangeRate) || 0;
+  const basePriceNum = convertToBase(priceNum, rateNum); // base-currency equivalent — what every calc below uses
+  const revenue = qtyNum * basePriceNum;
   const cogs = isProduct ? qtyNum * wac : 0;
   const profit = revenue - cogs;
   const marginPct = revenue > 0 ? (profit / revenue) * 100 : null;
@@ -103,7 +159,10 @@ export function QuickSaleForm({
           const values = {
             productId,
             qty: qtyNum,
-            unitPrice: priceNum,
+            unitPrice: basePriceNum,
+            currency: txCurrency !== settings.currency ? txCurrency : undefined,
+            exchangeRate: txCurrency !== settings.currency ? rateNum : undefined,
+            foreignUnitPrice: txCurrency !== settings.currency ? priceNum : undefined,
             date,
             customer: customer || undefined,
             customerContact: customerContact || undefined,
@@ -154,6 +213,18 @@ export function QuickSaleForm({
           <Input required type="number" min="0" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
         </Field>
       </div>
+      <CurrencyRateFields
+        baseCurrency={settings.currency}
+        currency={txCurrency}
+        onCurrencyChange={setTxCurrency}
+        exchangeRate={exchangeRate}
+        onExchangeRateChange={setExchangeRate}
+      />
+      {txCurrency !== settings.currency && priceNum > 0 && rateNum > 0 && (
+        <div className="text-xs text-muted -mt-2">
+          = {formatMoney(basePriceNum, settings.currency)} per unit at this rate
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
@@ -240,12 +311,17 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
   const product = fixedProduct ?? products.find((p) => p.id === productId);
   const [qty, setQty] = useState("");
   const [unitCost, setUnitCost] = useState(product?.defaultCostPrice?.toString() ?? "");
+  const [txCurrency, setTxCurrency] = useState(currency);
+  const [exchangeRate, setExchangeRate] = useState("1");
   const [date, setDate] = useState(todayIso());
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const total = (Number(qty) || 0) * (Number(unitCost) || 0);
+  const costNum = Number(unitCost) || 0; // entered cost, in txCurrency
+  const rateNum = txCurrency === currency ? 1 : Number(exchangeRate) || 0;
+  const baseCostNum = convertToBase(costNum, rateNum); // base-currency equivalent, used everywhere downstream
+  const total = (Number(qty) || 0) * baseCostNum;
 
   function handleProductChange(id: string) {
     setProductId(id);
@@ -264,12 +340,15 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           await addPurchase({
             productId,
             qty: Number(qty),
-            unitCost: Number(unitCost),
+            unitCost: baseCostNum,
+            currency: txCurrency !== currency ? txCurrency : undefined,
+            exchangeRate: txCurrency !== currency ? rateNum : undefined,
+            foreignUnitCost: txCurrency !== currency ? costNum : undefined,
             date,
             supplier: supplier || undefined,
             notes: notes || undefined,
           });
-          toast.success("Added to your stock", `${product.name}: +${qty} at ${formatMoney(Number(unitCost), currency)} each`);
+          toast.success("Added to your stock", `${product.name}: +${qty} at ${formatMoney(baseCostNum, currency)} each`);
           onDone();
         } catch (err) {
           toast.error("Couldn't add that stock", toastableErrorMessage(err));
@@ -301,6 +380,16 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
+      <CurrencyRateFields
+        baseCurrency={currency}
+        currency={txCurrency}
+        onCurrencyChange={setTxCurrency}
+        exchangeRate={exchangeRate}
+        onExchangeRateChange={setExchangeRate}
+      />
+      {txCurrency !== currency && costNum > 0 && rateNum > 0 && (
+        <div className="text-xs text-muted -mt-2">= {formatMoney(baseCostNum, currency)} per unit at this rate</div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>

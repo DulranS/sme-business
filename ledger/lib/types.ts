@@ -59,6 +59,15 @@ export interface Purchase {
   paymentMethod?: PaymentMethod;
   creditTermDays?: number; // only meaningful when paymentMethod === "credit"
   dueDate?: string; // ISO date = date + creditTermDays, stored so it never has to be recomputed
+  // Multi-currency (all optional — absent means this was paid in the
+  // business's base currency, i.e. exchangeRate 1). When set, `unitCost`
+  // above is ALWAYS the base-currency equivalent (foreignUnitCost ×
+  // exchangeRate), so WAC/COGS and every other calculation keep working
+  // unchanged. These three fields exist purely to remember what was
+  // actually paid, and in what currency, for display/audit. See lib/fx.ts.
+  currency?: string; // e.g. "USD" — only set when different from the base currency
+  exchangeRate?: number; // 1 unit of `currency` = this many units of base currency, at purchase date
+  foreignUnitCost?: number; // the price actually paid, in `currency`
   createdAt: number;
 }
 
@@ -105,6 +114,15 @@ export interface Sale {
   paymentMethod?: PaymentMethod;
   creditTermDays?: number; // only meaningful when paymentMethod === "credit"
   dueDate?: string; // ISO date = date + creditTermDays, stored so it never has to be recomputed against a changed default later
+  // Multi-currency (all optional — absent means this was charged in the
+  // business's base currency, i.e. exchangeRate 1). When set, `unitPrice`
+  // above is ALWAYS the base-currency equivalent (foreignUnitPrice ×
+  // exchangeRate), so revenue/COGS/margin and every other calculation keep
+  // working unchanged. These three fields exist purely to remember what was
+  // actually charged, and in what currency, for display/audit. See lib/fx.ts.
+  currency?: string; // e.g. "USD" — only set when different from the base currency
+  exchangeRate?: number; // 1 unit of `currency` = this many units of base currency, at sale date
+  foreignUnitPrice?: number; // the price actually charged, in `currency`
   // Who actually rang this up — set automatically by DataContext, never
   // user-entered. Powers per-staff cash reconciliation and the audit log;
   // also the basis for the Firestore rule that lets Staff read only their

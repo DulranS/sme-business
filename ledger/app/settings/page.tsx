@@ -5,8 +5,7 @@ import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { Button, Card, Field, Input, Label, PageHeader, Select } from "@/components/ui";
-
-const CURRENCIES = ["LKR", "USD", "AED", "EUR", "GBP", "INR"];
+import { CURRENCIES } from "@/lib/fx";
 
 export default function SettingsPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner"]);
@@ -69,7 +68,7 @@ export default function SettingsPage() {
             <div className="text-xs text-muted mt-1.5">Applied to positive pre-tax net profit each month.</div>
           </Field>
           <Field>
-            <Label>Currency</Label>
+            <Label>Base currency (used for all reports)</Label>
             <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>
@@ -77,6 +76,10 @@ export default function SettingsPage() {
                 </option>
               ))}
             </Select>
+            <div className="text-xs text-muted mt-1.5">
+              Every report and total is shown in this currency. A specific sale or purchase can still be entered in a
+              different currency with its own exchange rate — it gets converted to this one automatically.
+            </div>
           </Field>
           <Field>
             <Label>Forecast horizon (months)</Label>

@@ -6,6 +6,7 @@ import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, todayIso } from "@/lib/format";
+import { CURRENCIES, convertToBase } from "@/lib/fx";
 import type { Product, Purchase } from "@/lib/types";
 import {
   Badge,
@@ -116,7 +117,12 @@ export default function PurchasesPage() {
                       )}
                     </td>
                     <td className="py-2.5 px-3 num text-right">{p.qty}</td>
-                    <td className="py-2.5 px-3 num text-right">{formatMoney(p.unitCost, currency)}</td>
+                    <td className="py-2.5 px-3 num text-right">
+                      {formatMoney(p.unitCost, currency)}
+                      {p.currency && p.currency !== currency && p.foreignUnitCost !== undefined && (
+                        <div className="text-[11px] text-muted">{formatMoney(p.foreignUnitCost, p.currency)}</div>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 num text-right">{formatMoney(p.qty * p.unitCost, currency)}</td>
                     <td className="py-2.5 px-3 text-muted">{p.supplier || "—"}</td>
                     <td className="py-2.5 pl-3 text-right whitespace-nowrap">
@@ -139,6 +145,7 @@ export default function PurchasesPage() {
         <PurchaseForm
           products={products}
           initial={editing}
+          baseCurrency={currency}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
@@ -163,15 +170,20 @@ export default function PurchasesPage() {
 function PurchaseForm({
   products,
   initial,
+  baseCurrency,
   onSave,
   onCancel,
 }: {
   products: Product[];
   initial?: Purchase | null;
+  baseCurrency: string;
   onSave: (values: {
     productId: string;
     qty: number;
     unitCost: number;
+    currency?: string;
+    exchangeRate?: number;
+    foreignUnitCost?: number;
     date: string;
     supplier?: string;
     notes?: string;
@@ -181,8 +193,10 @@ function PurchaseForm({
   const [productId, setProductId] = useState(initial?.productId ?? products[0]?.id ?? "");
   const [qty, setQty] = useState(initial?.qty?.toString() ?? "");
   const [unitCost, setUnitCost] = useState(
-    initial?.unitCost?.toString() ?? products[0]?.defaultCostPrice?.toString() ?? ""
+    (initial?.foreignUnitCost ?? initial?.unitCost)?.toString() ?? products[0]?.defaultCostPrice?.toString() ?? ""
   );
+  const [txCurrency, setTxCurrency] = useState(initial?.currency ?? baseCurrency);
+  const [exchangeRate, setExchangeRate] = useState((initial?.exchangeRate ?? 1).toString());
   const [date, setDate] = useState(initial?.date ?? todayIso());
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
@@ -190,6 +204,10 @@ function PurchaseForm({
 
   const selected = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
   const isService = selected?.type === "service";
+
+  const costNum = Number(unitCost) || 0; // entered cost, in txCurrency
+  const rateNum = txCurrency === baseCurrency ? 1 : Number(exchangeRate) || 0;
+  const baseCostNum = convertToBase(costNum, rateNum); // base-currency equivalent, used everywhere downstream
 
   function handleProductChange(id: string) {
     setProductId(id);
@@ -202,7 +220,17 @@ function PurchaseForm({
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        await onSave({ productId, qty: Number(qty), unitCost: Number(unitCost), date, supplier, notes });
+        await onSave({
+          productId,
+          qty: Number(qty),
+          unitCost: baseCostNum,
+          currency: txCurrency !== baseCurrency ? txCurrency : undefined,
+          exchangeRate: txCurrency !== baseCurrency ? rateNum : undefined,
+          foreignUnitCost: txCurrency !== baseCurrency ? costNum : undefined,
+          date,
+          supplier,
+          notes,
+        });
         setBusy(false);
       }}
       className="space-y-4"
@@ -227,6 +255,36 @@ function PurchaseForm({
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field>
+          <Label>Currency</Label>
+          <Select value={txCurrency} onChange={(e) => setTxCurrency(e.target.value)}>
+            {(CURRENCIES.includes(baseCurrency) ? CURRENCIES : [baseCurrency, ...CURRENCIES]).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {txCurrency !== baseCurrency && (
+          <Field>
+            <Label>
+              Rate (1 {txCurrency} = ? {baseCurrency})
+            </Label>
+            <Input
+              required
+              type="number"
+              min="0"
+              step="0.0001"
+              value={exchangeRate}
+              onChange={(e) => setExchangeRate(e.target.value)}
+            />
+          </Field>
+        )}
+      </div>
+      {txCurrency !== baseCurrency && costNum > 0 && rateNum > 0 && (
+        <div className="text-xs text-muted -mt-2">= {formatMoney(baseCostNum, baseCurrency)} per unit at this rate</div>
+      )}
       <Field>
         <Label>Date</Label>
         <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />

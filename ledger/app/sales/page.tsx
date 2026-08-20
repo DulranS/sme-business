@@ -107,7 +107,12 @@ function FullSalesView() {
                       )}
                     </td>
                     <td className="py-2.5 px-3 num text-right">{s.qty}</td>
-                    <td className="py-2.5 px-3 num text-right">{formatMoney(s.unitPrice, currency)}</td>
+                    <td className="py-2.5 px-3 num text-right">
+                      {formatMoney(s.unitPrice, currency)}
+                      {s.currency && s.currency !== currency && s.foreignUnitPrice !== undefined && (
+                        <div className="text-[11px] text-muted">{formatMoney(s.foreignUnitPrice, s.currency)}</div>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 num text-right">{formatMoney(econ?.revenue ?? 0, currency)}</td>
                     <td className="py-2.5 px-3 num text-right">
                       <span className={econ && econ.grossProfit >= 0 ? "text-good" : "text-bad"}>
