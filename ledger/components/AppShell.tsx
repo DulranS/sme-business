@@ -65,6 +65,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setMoreOpen(false);
   }, [pathname]);
 
+  // Same background-scroll lock + Escape-to-close as the shared Modal
+  // component (see components/ui.tsx). This sheet is hand-rolled rather
+  // than built on top of Modal because it needs its own bottom-nav-aware
+  // trigger, but it's still a full-screen overlay and without this the
+  // page underneath keeps scrolling/rubber-banding on touch while the
+  // sheet is open — the exact "stickiness" Modal was built to avoid.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMoreOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [moreOpen]);
+
   if (isAuthPage || pathname === "/") {
     return <>{children}</>;
   }
@@ -203,7 +223,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {moreOpen && (
           <div className="sm:hidden fixed inset-0 z-40 flex items-end">
             <div className="absolute inset-0 bg-black/60" onClick={() => setMoreOpen(false)} />
-            <div className="relative w-full bg-panel border-t border-line rounded-t-lg max-h-[80vh] overflow-y-auto scroll-touch p-5 pb-8 safe-bottom">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="More"
+              className="relative w-full bg-panel border-t border-line rounded-t-lg max-h-[80vh] overflow-y-auto scroll-touch p-5 pb-8 safe-bottom">
               <div className="w-9 h-1 rounded-full bg-line mx-auto -mt-1 mb-4" />
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-display text-lg font-medium">More</h2>

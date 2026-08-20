@@ -1,5 +1,15 @@
 "use client";
 
+// Notifications used to live in this context, but they change on their own
+// clock (a background effect writes new ones whenever receivables/stock/etc.
+// cross a threshold) and had only one real consumer (the notifications
+// page). Bundling them in here meant every notification write forced a new
+// context value and re-rendered every screen that reads *any* piece of
+// DataContext, not just the notifications page. They now live in
+// contexts/NotificationsContext.tsx, nested inside this provider so it can
+// still read the business data (receivables aging, stock levels, etc.) it
+// needs to generate reminders from.
+
 import {
   createContext,
   useContext,
@@ -44,7 +54,6 @@ import type {
   ReceivablePayment,
   PayablePayment,
   CatalogItem,
-  Notification,
   TimeEntry,
   FixedAsset,
 } from "@/lib/types";
@@ -79,7 +88,6 @@ import {
   type ReceivablesAging,
   type PayablesAging,
 } from "@/lib/calculations";
-import { generateAllNotifications } from "@/lib/notification-automation";
 import { todayIso } from "@/lib/format";
 
 interface DataContextValue {
@@ -104,7 +112,6 @@ interface DataContextValue {
   cashCounts: CashCount[]; // all for Owner/Manager, own-only for Staff
   receivablePayments: ReceivablePayment[];
   payablePayments: PayablePayment[];
-  notifications: Notification[];
   timeEntries: TimeEntry[]; // all for Owner/Manager, own-only for Staff
   fixedAssets: FixedAsset[];
 
@@ -201,11 +208,6 @@ interface DataContextValue {
   updateReceivablePayment: (id: string, p: Partial<Pick<ReceivablePayment, "amount" | "date" | "method" | "note">>) => Promise<void>;
   deleteReceivablePayment: (id: string) => Promise<void>;
 
-  // Notifications & reminders
-  addNotification: (n: Omit<Notification, "id" | "createdAt">) => Promise<void>;
-  markNotificationRead: (id: string) => Promise<void>;
-  deleteNotification: (id: string) => Promise<void>;
-
   // Payable payments
   addPayablePayment: (p: Omit<PayablePayment, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
   updatePayablePayment: (id: string, p: Partial<Pick<PayablePayment, "amount" | "date" | "method" | "note">>) => Promise<void>;
@@ -255,7 +257,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [cashCounts, setCashCounts] = useState<CashCount[]>([]);
   const [receivablePayments, setReceivablePayments] = useState<ReceivablePayment[]>([]);
   const [payablePayments, setPayablePayments] = useState<PayablePayment[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
@@ -272,12 +273,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
-        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
+        "auditLog", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
-        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "notifications", "timeEntries", "fixedAssets",
+        "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
       ];
     if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
     return [];
@@ -302,7 +303,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setCashCounts([]);
       setReceivablePayments([]);
       setPayablePayments([]);
-      setNotifications([]);
       setTimeEntries([]);
       setFixedAssets([]);
       setLoadedFlags({});
@@ -364,10 +364,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         onSnapshot(query(collection(db, "users", businessId, "payablePayments"), orderBy("date", "desc")), (snap) => {
           setPayablePayments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PayablePayment)));
           bump("payablePayments");
-        }),
-        onSnapshot(query(collection(db, "users", businessId, "notifications"), orderBy("createdAt", "desc")), (snap) => {
-          setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)));
-          bump("notifications");
         }),
         onSnapshot(
           query(collection(db, "users", businessId, "timeEntries"), orderBy("clockIn", "desc")),
@@ -555,70 +551,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return total / 30;
   }, [sales, saleEconomics]);
 
-  // Auto-generate notifications based on business state
-  useEffect(() => {
-    if (role !== "owner" && role !== "manager") return;
-    if (!businessId) return;
-    // Guard on the actual snapshot-loaded keys this effect depends on. This
-    // used to check a key ("receivables") that's never bumped anywhere —
-    // requiredKeys/onSnapshot only ever set "receivablePayments",
-    // "payablePayments", "products", "purchases", "sales", "expenses" and
-    // "loans" — so the check was permanently false and this effect quietly
-    // never ran: reorder/overdue/low-stock notifications never
-    // auto-generated for anyone, no matter how long the app was open.
-    if (
-      !loadedFlags["receivablePayments"] ||
-      !loadedFlags["payablePayments"] ||
-      !loadedFlags["products"] ||
-      !loadedFlags["purchases"] ||
-      !loadedFlags["sales"] ||
-      !loadedFlags["expenses"] ||
-      !loadedFlags["loans"]
-    )
-      return;
-
-    const generated = generateAllNotifications({
-      receivables: receivablesAging.lines,
-      payables: payablesAging.lines,
-      products,
-      ledgers,
-      eoqByProduct,
-      expenses,
-      loans,
-    });
-
-    // Deduplicate: only add notifications that don't already exist
-    const existingKeys = new Set(notifications.map((n) => `${n.type}-${n.entityId}-${n.entityType}`));
-    const newNotifications = generated.filter(
-      (n) => !existingKeys.has(`${n.type}-${n.entityId}-${n.entityType}`)
-    );
-
-    // Add new notifications to Firestore
-    newNotifications.forEach(async (n) => {
-      try {
-        const { db } = getFirebase();
-        await addDoc(collection(db, "users", businessId, "notifications"), {
-          ...n,
-          createdAt: Date.now(),
-        });
-      } catch (err) {
-        console.error("Failed to create notification:", err);
-      }
-    });
-  }, [
-    role,
-    businessId,
-    loadedFlags,
-    receivablesAging.lines,
-    payablesAging.lines,
-    products,
-    ledgers,
-    eoqByProduct,
-    expenses,
-    loans,
-    notifications,
-  ]);
-
   function requireBusiness(): { businessId: string; uid: string } {
     if (!businessId || !uid) throw new Error("Not signed in");
     return { businessId, uid };
@@ -689,7 +621,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     cashCounts,
     receivablePayments,
     payablePayments,
-    notifications,
     timeEntries,
     fixedAssets,
     ledgers,
@@ -1283,32 +1214,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       await deleteDoc(doc(db, "users", bizId, "fixedAssets", id));
       logAudit("fixedAsset", id, "delete", `Asset deleted`);
-    },
-
-    addNotification: async (n) => {
-      requirePermission("manage:notifications");
-      const { businessId: bizId } = requireBusiness();
-      const { db } = getFirebase();
-      const ref = await addDoc(collection(db, "users", bizId, "notifications"), {
-        ...n,
-        createdAt: Date.now(),
-      });
-      logAudit("notification", ref.id, "create", `Notification: ${n.title}`);
-    },
-    markNotificationRead: async (id) => {
-      requirePermission("manage:notifications");
-      const { businessId: bizId } = requireBusiness();
-      const { db } = getFirebase();
-      await updateDoc(doc(db, "users", bizId, "notifications", id), {
-        isRead: true,
-        dismissedAt: Date.now(),
-      });
-    },
-    deleteNotification: async (id) => {
-      requirePermission("manage:notifications");
-      const { businessId: bizId } = requireBusiness();
-      const { db } = getFirebase();
-      await deleteDoc(doc(db, "users", bizId, "notifications", id));
     },
 
     clockIn: async (jobLabel, opts) => {

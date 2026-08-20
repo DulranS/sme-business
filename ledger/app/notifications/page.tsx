@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useData } from "@/contexts/DataContext";
+import { useNotifications } from "@/contexts/NotificationsContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import type { NotificationType, NotificationPriority } from "@/lib/types";
@@ -32,7 +32,7 @@ const TYPE_LABEL: Record<NotificationType, string> = {
 
 export default function NotificationsPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { notifications, markNotificationRead, deleteNotification, loading } = useData();
+  const { notifications, markNotificationRead, deleteNotification, notificationsLoading: loading } = useNotifications();
   const toast = useToast();
   const [filter, setFilter] = useState<"all" | "unread">("all");
 

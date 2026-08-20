@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
+import { NotificationsProvider } from "@/contexts/NotificationsContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import AppShell from "@/components/AppShell";
 
@@ -35,9 +36,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthProvider>
           <DataProvider>
-            <ToastProvider>
-              <AppShell>{children}</AppShell>
-            </ToastProvider>
+            {/* Nested inside DataProvider so it can read business data
+                (receivables aging, stock levels, etc.) via useData() to
+                generate reminders from, while keeping its own notification
+                writes from re-rendering every DataContext consumer. */}
+            <NotificationsProvider>
+              <ToastProvider>
+                <AppShell>{children}</AppShell>
+              </ToastProvider>
+            </NotificationsProvider>
           </DataProvider>
         </AuthProvider>
       </body>
