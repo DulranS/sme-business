@@ -356,14 +356,25 @@ export default function ProfitabilityPage() {
         </>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add capital entry">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingEntry ? "Edit capital entry" : "Add capital entry"}>
         <CapitalForm
+          existingEntry={editingEntry ?? undefined}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
-              await addCapitalEntry(values);
-              toast.success("Capital entry added", formatMoney(values.amount, currency));
+              // FIX: this used to always call addCapitalEntry, even when
+              // editing an existing entry — so "editing" one silently
+              // created a duplicate new record instead of updating the
+              // original, and the old entry never went away.
+              if (editingEntry) {
+                await updateCapitalEntry(editingEntry.id, values);
+                toast.success("Capital entry updated", formatMoney(values.amount, currency));
+              } else {
+                await addCapitalEntry(values);
+                toast.success("Capital entry added", formatMoney(values.amount, currency));
+              }
               setModalOpen(false);
+              setEditingEntry(null);
             } catch (err) {
               toast.error("Couldn't save", toastableErrorMessage(err));
             }
@@ -375,16 +386,18 @@ export default function ProfitabilityPage() {
 }
 
 function CapitalForm({
+  existingEntry,
   onSave,
   onCancel,
 }: {
+  existingEntry?: CapitalEntry;
   onSave: (values: Omit<CapitalEntry, "id" | "createdAt">) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [kind, setKind] = useState<CapitalEntry["kind"]>("investment");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayIso());
-  const [notes, setNotes] = useState("");
+  const [kind, setKind] = useState<CapitalEntry["kind"]>(existingEntry?.kind ?? "investment");
+  const [amount, setAmount] = useState(existingEntry?.amount?.toString() ?? "");
+  const [date, setDate] = useState(existingEntry?.date ?? todayIso());
+  const [notes, setNotes] = useState(existingEntry?.notes ?? "");
   const [busy, setBusy] = useState(false);
 
   return (
