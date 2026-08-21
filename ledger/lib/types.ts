@@ -304,6 +304,14 @@ export interface Settings {
   // Starting float assumed for a new cash-count session when nothing else
   // is entered.
   defaultOpeningFloat: number;
+  // Business identity for printed documents (project quotes/invoices — see
+  // buildQuoteHtml/buildInvoiceHtml in app/projects/page.tsx). All optional
+  // and all purely cosmetic — nothing elsewhere in the app reads these, so
+  // leaving them blank never breaks anything, it just means the printed
+  // document has no letterhead.
+  businessName?: string;
+  businessAddress?: string;
+  businessPhone?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

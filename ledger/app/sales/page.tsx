@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, todayIso } from "@/lib/format";
 import type { ReceivableLine } from "@/lib/calculations";
-import type { Sale } from "@/lib/types";
+import type { Sale, Settings } from "@/lib/types";
 import { QuickSaleForm } from "@/components/QuickForms";
 import { RecordPaymentForm } from "@/components/RecordPaymentForm";
 import { Badge, Button, Card, Modal, PageHeader, Table, EmptyState } from "@/components/ui";
+import { escapeHtml, openPrintWindow, printBaseStyles, buildLetterheadHtml } from "@/lib/print";
 
 export default function SalesPage() {
   const { role } = useAuth();
@@ -126,6 +127,12 @@ function FullSalesView() {
                           Record payment
                         </button>
                       )}
+                      <button
+                        onClick={() => openPrintWindow(buildSaleReceiptHtml(s, product?.name ?? "Item", settings))}
+                        className="text-xs text-muted hover:text-fg mr-3"
+                      >
+                        Print receipt
+                      </button>
                       <button onClick={() => openEdit(s)} className="text-xs text-muted hover:text-fg mr-3">
                         Edit
                       </button>
@@ -217,10 +224,16 @@ function StaffSalesView() {
                     <td className="py-2.5 px-3 num text-right">{formatMoney(s.qty * s.unitPrice, currency)}</td>
                     <td className="py-2.5 pl-3 text-right whitespace-nowrap">
                       {receivable && (
-                        <button onClick={() => setPayingFor(receivable)} className="text-xs text-amber-soft hover:underline">
+                        <button onClick={() => setPayingFor(receivable)} className="text-xs text-amber-soft hover:underline mr-3">
                           Record payment
                         </button>
                       )}
+                      <button
+                        onClick={() => openPrintWindow(buildSaleReceiptHtml(s, item?.name ?? "Item", settings))}
+                        className="text-xs text-muted hover:text-fg"
+                      >
+                        Print receipt
+                      </button>
                     </td>
                   </tr>
                 );
@@ -239,4 +252,46 @@ function StaffSalesView() {
       </Modal>
     </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// A printable receipt for a single sale — the retail/walk-in counterpart to
+// the project quote/invoice in app/projects/page.tsx, sharing the same
+// print machinery from lib/print.ts (letterhead, base styles, print
+// trigger). Every SME sells *something* to a walk-in or one-off customer at
+// some point, project-based or not, and until now there was no way to hand
+// them anything on paper — every sale record just sat in the app. This
+// covers a single sale line; a combined multi-item receipt for one register
+// transaction isn't modeled here since Sale itself is one line per record.
+// ---------------------------------------------------------------------------
+function buildSaleReceiptHtml(sale: Sale, productName: string, settings: Settings): string {
+  const currency = settings.currency;
+  const isCredit = (sale.paymentMethod ?? "cash") === "credit";
+  const total = sale.qty * sale.unitPrice;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Receipt — ${escapeHtml(productName)}</title>${printBaseStyles()}</head>
+    <body>
+      ${buildLetterheadHtml(settings, "Receipt")}
+      <div class="meta">
+        <div>${sale.customer ? `<strong>Customer:</strong> ${escapeHtml(sale.customer)}` : ""}</div>
+        <div><strong>Date:</strong> ${sale.date}</div>
+      </div>
+      <table>
+        <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>${escapeHtml(productName)}</td>
+            <td class="num">${sale.qty}</td>
+            <td class="num">${formatMoney(sale.unitPrice, currency)}</td>
+            <td class="num">${formatMoney(total, currency)}</td>
+          </tr>
+        </tbody>
+        <tfoot><tr class="total-row"><td colspan="3">Total</td><td class="num">${formatMoney(total, currency)}</td></tr></tfoot>
+      </table>
+      ${
+        isCredit
+          ? `<div class="footer">Sold on credit${sale.dueDate ? ` — payment due ${sale.dueDate}` : ""}.</div>`
+          : `<div class="footer">Paid${sale.paymentMethod ? ` by ${sale.paymentMethod.replace("_", " ")}` : ""} on ${sale.date}.</div>`
+      }
+      <div class="footer">Printed ${todayIso()}.</div>
+    </body></html>`;
 }

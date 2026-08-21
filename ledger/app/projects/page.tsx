@@ -7,6 +7,7 @@ import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, todayIso } from "@/lib/format";
 import type { ProjectFinancials } from "@/lib/calculations";
 import { summarizeMilestones } from "@/lib/calculations";
+import { escapeHtml, openPrintWindow, printBaseStyles, buildLetterheadHtml } from "@/lib/print";
 import type {
   Project,
   ProjectCostSegment,
@@ -18,6 +19,7 @@ import type {
   Sale,
   TimeEntry,
   Product,
+  Settings,
 } from "@/lib/types";
 import { PROJECT_COST_CATEGORIES } from "@/lib/types";
 import {
@@ -256,6 +258,7 @@ export default function ProjectsPage() {
             allSales={sales}
             products={products}
             currency={currency}
+            settings={settings}
             onAddSegment={addProjectCostSegment}
             onUpdateSegment={updateProjectCostSegment}
             onDeleteSegment={deleteProjectCostSegment}
@@ -386,6 +389,7 @@ function ProjectDetail({
   allSales,
   products,
   currency,
+  settings,
   onAddSegment,
   onUpdateSegment,
   onDeleteSegment,
@@ -411,6 +415,7 @@ function ProjectDetail({
   allSales: Sale[];
   products: Product[];
   currency: string;
+  settings: Settings;
   onAddSegment: (s: Omit<ProjectCostSegment, "id" | "createdAt">) => Promise<void>;
   onUpdateSegment: (id: string, s: Partial<ProjectCostSegment>) => Promise<void>;
   onDeleteSegment: (id: string) => Promise<void>;
@@ -457,7 +462,7 @@ function ProjectDetail({
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <button
-            onClick={() => openPrintWindow(buildQuoteHtml(project, f, milestones, currency))}
+            onClick={() => openPrintWindow(buildQuoteHtml(project, f, milestones, currency, settings))}
             className="text-xs text-amber-soft hover:underline"
           >
             Print quote
@@ -757,7 +762,7 @@ function ProjectDetail({
                         </button>
                       )}
                       <button
-                        onClick={() => openPrintWindow(buildInvoiceHtml(project, m, currency))}
+                        onClick={() => openPrintWindow(buildInvoiceHtml(project, m, currency, settings))}
                         className="text-xs text-muted hover:text-fg mr-3"
                       >
                         Print invoice
@@ -1212,51 +1217,18 @@ function buildLinkedRecords(
 }
 
 // ---------------------------------------------------------------------------
-// Printable quote / invoice generation. Deliberately implemented as a
-// browser print dialog (window.open + document.write + print()) rather than
-// a PDF-generation library: every OS's print dialog already offers "Save as
-// PDF", so this gets a downloadable, professional-looking document without
-// adding a client-side PDF dependency to the bundle. Kept intentionally
-// generic (no business letterhead) since Settings doesn't currently capture
-// a business name/address/logo.
+// Printable quote / invoice generation for a project. Shared print
+// machinery (letterhead, base styles, the print-dialog trigger) lives in
+// lib/print.ts — reused by app/sales/page.tsx for sale receipts too, so
+// every printable document in the app looks consistent and shares one
+// implementation instead of each page reinventing it.
 // ---------------------------------------------------------------------------
-function openPrintWindow(html: string) {
-  const win = window.open("", "_blank", "width=800,height=1000");
-  if (!win) return;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  // Give the new document a beat to lay out before invoking print.
-  setTimeout(() => {
-    win.focus();
-    win.print();
-  }, 250);
-}
-
-function printBaseStyles(): string {
-  return `
-    <style>
-      * { box-sizing: border-box; }
-      body { font-family: -apple-system, Helvetica, Arial, sans-serif; color: #1a1a1a; padding: 40px; max-width: 720px; margin: 0 auto; }
-      h1 { font-size: 22px; margin: 0 0 4px; }
-      .muted { color: #666; font-size: 13px; }
-      .meta { display: flex; justify-content: space-between; margin: 24px 0; font-size: 13px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd; font-size: 13px; }
-      th { text-transform: uppercase; letter-spacing: 0.03em; font-size: 10px; color: #666; }
-      td.num, th.num { text-align: right; }
-      .total-row td { border-top: 2px solid #1a1a1a; border-bottom: none; font-weight: 600; }
-      .footer { margin-top: 32px; font-size: 11px; color: #888; }
-      @media print { body { padding: 0; } }
-    </style>
-  `;
-}
-
 function buildQuoteHtml(
   project: Project,
   financials: ProjectFinancials | undefined,
   milestones: ProjectMilestone[],
-  currency: string
+  currency: string,
+  settings: Settings
 ): string {
   const sortedMilestones = [...milestones].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
   const scheduleRows = sortedMilestones
@@ -1267,7 +1239,7 @@ function buildQuoteHtml(
     .join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Quote — ${escapeHtml(project.name)}</title>${printBaseStyles()}</head>
     <body>
-      <h1>Quote</h1>
+      ${buildLetterheadHtml(settings, "Quote")}
       <div class="muted">${escapeHtml(project.name)}</div>
       <div class="meta">
         <div>${project.client ? `<strong>Client:</strong> ${escapeHtml(project.client)}` : ""}</div>
@@ -1290,10 +1262,10 @@ function buildQuoteHtml(
     </body></html>`;
 }
 
-function buildInvoiceHtml(project: Project, milestone: ProjectMilestone, currency: string): string {
+function buildInvoiceHtml(project: Project, milestone: ProjectMilestone, currency: string, settings: Settings): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Invoice — ${escapeHtml(project.name)}</title>${printBaseStyles()}</head>
     <body>
-      <h1>Invoice</h1>
+      ${buildLetterheadHtml(settings, "Invoice")}
       <div class="muted">${escapeHtml(project.name)}</div>
       <div class="meta">
         <div>${project.client ? `<strong>Bill to:</strong> ${escapeHtml(project.client)}` : ""}</div>
@@ -1308,10 +1280,6 @@ function buildInvoiceHtml(project: Project, milestone: ProjectMilestone, currenc
       </table>
       <div class="footer">${escapeHtml(project.name)}${project.client ? ` · ${escapeHtml(project.client)}` : ""} — generated ${todayIso()}.</div>
     </body></html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
 

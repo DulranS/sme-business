@@ -13,6 +13,9 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const [taxRatePct, setTaxRatePct] = useState(settings.taxRatePct.toString());
   const [currency, setCurrency] = useState(settings.currency);
+  const [businessName, setBusinessName] = useState(settings.businessName ?? "");
+  const [businessAddress, setBusinessAddress] = useState(settings.businessAddress ?? "");
+  const [businessPhone, setBusinessPhone] = useState(settings.businessPhone ?? "");
   const [forecastMonths, setForecastMonths] = useState(settings.forecastMonths.toString());
   const [defaultOrderingCost, setDefaultOrderingCost] = useState(settings.defaultOrderingCost.toString());
   const [defaultHoldingCostPct, setDefaultHoldingCostPct] = useState(settings.defaultHoldingCostPct.toString());
@@ -32,6 +35,9 @@ export default function SettingsPage() {
     await updateSettings({
       taxRatePct: Number(taxRatePct),
       currency,
+      businessName: businessName.trim() || undefined,
+      businessAddress: businessAddress.trim() || undefined,
+      businessPhone: businessPhone.trim() || undefined,
       forecastMonths: Number(forecastMonths),
       defaultOrderingCost: Number(defaultOrderingCost),
       defaultHoldingCostPct: Number(defaultHoldingCostPct),
@@ -67,6 +73,29 @@ export default function SettingsPage() {
             />
             <div className="text-xs text-muted mt-1.5">Applied to positive pre-tax net profit each month.</div>
           </Field>
+          <Field>
+            <Label>Business name (optional)</Label>
+            <Input
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              placeholder="e.g. Perera Auto Works"
+            />
+            <div className="text-xs text-muted mt-1.5">
+              Shown as the letterhead on printed project quotes and invoices. Leave blank to print without one.
+            </div>
+          </Field>
+          {businessName.trim() && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field>
+                <Label>Business address (optional)</Label>
+                <Input value={businessAddress} onChange={(e) => setBusinessAddress(e.target.value)} />
+              </Field>
+              <Field>
+                <Label>Business phone (optional)</Label>
+                <Input value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
+              </Field>
+            </div>
+          )}
           <Field>
             <Label>Base currency (used for all reports)</Label>
             <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
