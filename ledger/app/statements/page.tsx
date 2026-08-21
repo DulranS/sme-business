@@ -238,12 +238,14 @@ function BalanceSheetView({
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Assets</div>
       <Line label="Cash" value={b.cash} currency={currency} />
+      <Line label="Accounts receivable" value={b.accountsReceivable} currency={currency} />
       <Line label="Inventory" value={b.inventoryValue} currency={currency} />
       <Line label="Fixed assets (net)" value={b.fixedAssetsNetBookValue} currency={currency} />
       <Line label="Total assets" value={b.totalAssets} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Liabilities</div>
       <Line label="Loans payable" value={b.loansPayable} currency={currency} />
+      <Line label="Accounts payable" value={b.accountsPayable} currency={currency} />
       <Line label="Total liabilities" value={b.totalLiabilities} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Equity</div>

@@ -1115,10 +1115,12 @@ export function computeProductProfitability(
 export interface BalanceSheet {
   asOf: string;
   cash: number;
+  accountsReceivable: number; // outstanding credit sales not yet collected — a real asset, omitted before this fix
   inventoryValue: number;
   fixedAssetsNetBookValue: number;
   totalAssets: number;
   loansPayable: number;
+  accountsPayable: number; // outstanding credit purchases not yet paid — a real liability, omitted before this fix
   totalLiabilities: number;
   ownersCapital: number; // net capital contributed (investment + reinvestment - withdrawals)
   retainedEarnings: number; // cumulative net profit after tax, all time
@@ -1133,7 +1135,22 @@ export function computeBalanceSheet(
   loans: Loan[],
   capitalSummary: CapitalSummary,
   asOfISO: string,
-  fixedAssets: FixedAsset[] = []
+  fixedAssets: FixedAsset[] = [],
+  // Outstanding accounts receivable / payable as of asOfISO (pass
+  // receivablesAging.totalOutstanding / payablesAging.totalOutstanding).
+  // FIX: a credit sale immediately recognizes revenue into retainedEarnings
+  // (via monthlyPnL's accrual salesRevenue) but only moves `cash` once it's
+  // actually collected — so until it's collected, the asset side of the
+  // balance sheet was missing the receivable entirely, understating total
+  // assets relative to equity. Symmetrically, a credit purchase adds to
+  // inventoryValue immediately (goods received) but was never recorded as a
+  // liability, overstating assets relative to liabilities+equity. Any
+  // business using credit sales or credit purchases — a first-class,
+  // explicitly supported feature of this app (dueDate, creditTermDays,
+  // aging reports) — would see `balances: false` and materially wrong
+  // asset/liability totals without these two lines.
+  accountsReceivable = 0,
+  accountsPayable = 0
 ): BalanceSheet {
   const toDate = monthlyPnL.filter((m) => m.month <= asOfISO.slice(0, 7));
   const cash = toDate.reduce((s, m) => s + m.netCashFlow, 0);
@@ -1150,8 +1167,8 @@ export function computeBalanceSheet(
     .filter((a) => !a.disposalDate || a.disposalDate > asOfISO)
     .reduce((s, a) => s + computeFixedAssetStatus(a, asOfISO).netBookValue, 0);
 
-  const totalAssets = cash + inventoryValue + fixedAssetsNetBookValue;
-  const totalLiabilities = loansPayable;
+  const totalAssets = cash + accountsReceivable + inventoryValue + fixedAssetsNetBookValue;
+  const totalLiabilities = loansPayable + accountsPayable;
   const ownersCapital = capitalSummary.netCapitalIn;
   const totalEquity = ownersCapital + retainedEarnings;
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
@@ -1159,10 +1176,12 @@ export function computeBalanceSheet(
   return {
     asOf: asOfISO,
     cash,
+    accountsReceivable,
     inventoryValue,
     fixedAssetsNetBookValue,
     totalAssets,
     loansPayable,
+    accountsPayable,
     totalLiabilities,
     ownersCapital,
     retainedEarnings,
@@ -1344,6 +1363,101 @@ export function computePayablesAging(
   }
 
   return { asOf: asOfISO, totalOutstanding, byBucket, lines };
+}
+
+// ---------------------------------------------------------------------------
+// Financial health ratios — the standard liquidity / profitability /
+// efficiency / leverage set, computed off numbers this file already
+// produces (Balance Sheet, Monthly P&L). Nothing here is hand-entered, so
+// it stays consistent with the statements by construction, same as the
+// Balance Sheet itself.
+//
+// "Current liabilities" for the liquidity ratios is accounts payable —
+// this is a simplification (loan principal due within 12 months should
+// technically also count), consistent with this codebase's existing
+// approach elsewhere of favoring a transparent, checkable number over a
+// more "complete" one that can't be verified by hand.
+// ---------------------------------------------------------------------------
+
+export interface FinancialHealthRatios {
+  asOf: string;
+  trailingMonths: number; // how many months of activity the profitability/efficiency ratios are drawn from
+
+  // Liquidity — can the business cover near-term obligations?
+  currentRatio: number | null; // (cash + AR + inventory) / accounts payable
+  quickRatio: number | null; // (cash + AR) / accounts payable — excludes inventory, which isn't instantly spendable
+
+  // Profitability — trailing-window margins and return on the owner's stake
+  grossMarginPct: number | null;
+  netMarginPct: number | null;
+  returnOnEquityPct: number | null; // trailing net profit / current total equity
+
+  // Efficiency — how fast cash moves through the business
+  daysSalesOutstanding: number | null; // avg days to collect a sale
+  daysPayableOutstanding: number | null; // avg days taken to pay a supplier
+  daysInventoryOutstanding: number | null; // avg days stock sits before selling
+  cashConversionCycleDays: number | null; // DIO + DSO - DPO — days cash is tied up in the operating cycle
+  inventoryTurnoverAnnualized: number | null; // times inventory is sold through per year
+
+  // Leverage — how much of the business is financed by debt
+  debtToEquity: number | null;
+  debtRatio: number | null; // total liabilities / total assets
+}
+
+export function computeFinancialHealthRatios(
+  monthlyPnL: MonthlyPnL[],
+  balanceSheet: BalanceSheet,
+  windowMonths = 12
+): FinancialHealthRatios {
+  const window = monthlyPnL.slice(-Math.max(1, windowMonths));
+  const trailingMonths = window.length;
+  const days = trailingMonths * 30; // approximate — matches this app's existing "30 days/month" convention elsewhere
+
+  const revenue = window.reduce((s, m) => s + m.totalRevenue, 0);
+  const cogs = window.reduce((s, m) => s + m.cogs, 0);
+  const grossProfit = window.reduce((s, m) => s + m.grossProfit, 0);
+  const netProfit = window.reduce((s, m) => s + m.netProfitAfterTax, 0);
+
+  const { cash, accountsReceivable, inventoryValue, accountsPayable, totalLiabilities, totalAssets, totalEquity } =
+    balanceSheet;
+
+  const currentAssets = cash + accountsReceivable + inventoryValue;
+  const currentRatio = accountsPayable > 0 ? currentAssets / accountsPayable : null;
+  const quickRatio = accountsPayable > 0 ? (cash + accountsReceivable) / accountsPayable : null;
+
+  const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : null;
+  const netMarginPct = revenue > 0 ? (netProfit / revenue) * 100 : null;
+  const returnOnEquityPct = totalEquity > 0 ? (netProfit / totalEquity) * 100 : null;
+
+  const daysSalesOutstanding = revenue > 0 ? (accountsReceivable / revenue) * days : null;
+  const daysPayableOutstanding = cogs > 0 ? (accountsPayable / cogs) * days : null;
+  const daysInventoryOutstanding = cogs > 0 ? (inventoryValue / cogs) * days : null;
+  const cashConversionCycleDays =
+    daysInventoryOutstanding !== null && daysSalesOutstanding !== null && daysPayableOutstanding !== null
+      ? daysInventoryOutstanding + daysSalesOutstanding - daysPayableOutstanding
+      : null;
+  const inventoryTurnoverAnnualized =
+    cogs > 0 && inventoryValue > 0 ? (cogs / inventoryValue) * (365 / days) : null;
+
+  const debtToEquity = totalEquity > 0 ? totalLiabilities / totalEquity : null;
+  const debtRatio = totalAssets > 0 ? totalLiabilities / totalAssets : null;
+
+  return {
+    asOf: balanceSheet.asOf,
+    trailingMonths,
+    currentRatio,
+    quickRatio,
+    grossMarginPct,
+    netMarginPct,
+    returnOnEquityPct,
+    daysSalesOutstanding,
+    daysPayableOutstanding,
+    daysInventoryOutstanding,
+    cashConversionCycleDays,
+    inventoryTurnoverAnnualized,
+    debtToEquity,
+    debtRatio,
+  };
 }
 
 // ---------------------------------------------------------------------------

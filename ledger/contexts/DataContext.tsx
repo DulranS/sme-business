@@ -78,6 +78,7 @@ import {
   monthlyPayrollCost,
   computeLoanPortfolio,
   computeBalanceSheet,
+  computeFinancialHealthRatios,
   computeReceivablesAging,
   computePayablesAging,
   computeAllProjectFinancials,
@@ -92,6 +93,7 @@ import {
   type OpenOrderValue,
   type LoanPortfolioSummary,
   type BalanceSheet,
+  type FinancialHealthRatios,
   type ReceivablesAging,
   type PayablesAging,
   type ProjectFinancials,
@@ -141,6 +143,7 @@ interface DataContextValue {
   monthlyPayroll: number;
   loanPortfolio: LoanPortfolioSummary;
   balanceSheet: BalanceSheet;
+  financialHealth: FinancialHealthRatios;
   receivablesAging: ReceivablesAging;
   payablesAging: PayablesAging;
   avgDailyCashSales: number; // trailing 30-day average of cash/card/bank-transfer sales, for cash-runway projections
@@ -577,10 +580,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const openOrders = useMemo(() => computeOpenOrderValue(purchaseOrders), [purchaseOrders]);
   const monthlyPayroll = useMemo(() => monthlyPayrollCost(employees), [employees]);
   const loanPortfolio = useMemo(() => computeLoanPortfolio(loans, todayIso()), [loans]);
-  const balanceSheet = useMemo(
-    () => computeBalanceSheet(monthlyPnL, inventoryValue, loans, capitalSummary, todayIso(), fixedAssets),
-    [monthlyPnL, inventoryValue, loans, capitalSummary, fixedAssets]
-  );
   const receivablesAging = useMemo(
     () => computeReceivablesAging(products, sales, saleEconomics, receivablePayments, todayIso()),
     [products, sales, saleEconomics, receivablePayments]
@@ -588,6 +587,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const payablesAging = useMemo(
     () => computePayablesAging(products, purchases, payablePayments, todayIso()),
     [products, purchases, payablePayments]
+  );
+  // FIX: outstanding receivables/payables must feed the Balance Sheet — see
+  // the comment on computeBalanceSheet's params. Without this, the Balance
+  // Sheet silently drops accounts receivable/payable and can misstate (or
+  // fail to balance) for any account that uses credit sales or purchases.
+  const balanceSheet = useMemo(
+    () =>
+      computeBalanceSheet(
+        monthlyPnL,
+        inventoryValue,
+        loans,
+        capitalSummary,
+        todayIso(),
+        fixedAssets,
+        receivablesAging.totalOutstanding,
+        payablesAging.totalOutstanding
+      ),
+    [monthlyPnL, inventoryValue, loans, capitalSummary, fixedAssets, receivablesAging, payablesAging]
+  );
+  const financialHealth = useMemo(
+    () => computeFinancialHealthRatios(monthlyPnL, balanceSheet, 12),
+    [monthlyPnL, balanceSheet]
   );
   const avgDailyCashSales = useMemo(() => {
     const since = todayIso();
@@ -704,6 +725,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     monthlyPayroll,
     loanPortfolio,
     balanceSheet,
+    financialHealth,
     receivablesAging,
     payablesAging,
     avgDailyCashSales,
