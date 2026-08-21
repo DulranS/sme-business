@@ -326,6 +326,17 @@ service cloud.firestore {
       match /fixedAssets/{docId} {
         allow read, write: if isOwnerOrManager(businessId);
       }
+
+      // Job/project costing. Owner/Manager only, matching `manage:projects`
+      // in lib/permissions.ts — Staff never sees cost or margin data
+      // anywhere else in this app, and a project's whole point is
+      // margin-against-quote, so it stays behind the same line.
+      match /projects/{docId} {
+        allow read, write: if isOwnerOrManager(businessId);
+      }
+      match /projectCostSegments/{docId} {
+        allow read, write: if isOwnerOrManager(businessId);
+      }
     }
   }
 }

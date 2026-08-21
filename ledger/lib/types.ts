@@ -53,6 +53,11 @@ export interface Purchase {
   supplier?: string; // product: supplier name. service: contractor/resource.
   notes?: string;
   purchaseOrderId?: string; // set when this purchase was created by receiving a PO
+  // Optional link to a Project — set when this purchase (materials, a
+  // subcontracted service, whatever) was bought specifically for a costed
+  // job. Rolls straight into that project's actual cost alongside its
+  // manual cost segments — see ProjectCostSegment below. Purely additive.
+  projectId?: string;
   // "cash"/"card"/"bank_transfer" are all treated as paid-in-full at purchase.
   // "credit" is money owed to supplier — it doesn't show as paid until a
   // PayablePayment is recorded against it.
@@ -107,6 +112,11 @@ export interface Sale {
   customer?: string;
   customerContact?: string; // phone/email — mainly useful once it's a credit sale you need to chase
   notes?: string;
+  // Optional link to a Project — set when this sale is a progress-billing /
+  // invoice line against a costed job rather than a standalone retail sale.
+  // Purely additive: an untagged sale behaves exactly as before. See
+  // Project/ProjectCostSegment below for the job-costing model.
+  projectId?: string;
   // "cash"/"card"/"bank_transfer" are all treated as collected-in-full at the
   // point of sale. "credit" is money owed to you — it doesn't show up as cash
   // until a ReceivablePayment is recorded against it. Old sales without this
@@ -191,6 +201,11 @@ export interface Expense {
   startDate: string; // ISO date
   endDate?: string; // ISO date, optional (ongoing if absent)
   employeeId?: string; // set when this expense is the auto-managed payroll line for an Employee
+  // Optional link to a Project — set when this one-off cost (a permit, a
+  // rental, a subcontractor invoice) belongs to a specific job rather than
+  // general overhead. Only meaningful for kind === "expense". Purely
+  // additive. See ProjectCostSegment below.
+  projectId?: string;
   createdAt: number;
 }
 
@@ -486,6 +501,70 @@ export interface Notification {
   dueDate?: string;        // ISO date when action is needed
   isRead: boolean;         // Whether user has dismissed/read it
   dismissedAt?: number;    // Timestamp when marked as read
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Project / job costing. A Project bundles many costs against ONE agreed
+// price, so a business that quotes jobs (a build, a renovation, a client
+// engagement, a custom order) can see whether that specific job actually
+// made money once every material, subcontractor invoice, and ad-hoc cost
+// against it is totalled up — not just whether the business as a whole is
+// profitable that month. Deliberately kept separate from the WAC/COGS
+// engine (which answers "is this *product* profitable") — this answers
+// "is this *job* profitable", the question a project-based SME (a
+// contractor, an agency, a fabricator) actually asks.
+// ---------------------------------------------------------------------------
+
+export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled";
+
+export const PROJECT_COST_CATEGORIES = [
+  "Materials",
+  "Labor",
+  "Subcontractor",
+  "Equipment & rental",
+  "Permits & fees",
+  "Transport & logistics",
+  "Overhead allocation",
+  "Other",
+] as const;
+
+// A costed job — e.g. a customer order, a renovation, a build, a contract
+// engagement. `quotedPrice` is the single agreed/contracted value of the
+// whole job; every cost that lands against it (see ProjectCostSegment, and
+// the optional `projectId` on Purchase/Expense/Sale) is compared against
+// this one number to answer "did we make money on this job".
+export interface Project {
+  id: string;
+  name: string;
+  client?: string;
+  quotedPrice: number; // the agreed/contracted price for the whole project
+  status: ProjectStatus;
+  startDate: string; // ISO date
+  targetEndDate?: string; // ISO date
+  completedDate?: string; // ISO date, set when marked completed
+  notes?: string;
+  createdAt: number;
+}
+
+// One line of cost against a project — a "cost segment". Kept as its own
+// append list (rather than a running total mutated on Project) for the same
+// auditability reason every other ledger in this app works this way.
+// Segments are for costs that don't already exist as a Purchase or Expense
+// (a subcontractor's lump-sum invoice, a permit fee, a manual labor
+// allocation). A cost that *does* already exist as a Purchase or Expense
+// should be tagged with this project's id on that record instead (its
+// `projectId` field), so nothing is ever counted twice — see
+// computeProjectFinancials in lib/calculations.ts, which sums segments and
+// tagged Purchases/Expenses together into one total.
+export interface ProjectCostSegment {
+  id: string;
+  projectId: string;
+  label: string;
+  category: string; // one of PROJECT_COST_CATEGORIES, free text also accepted
+  amount: number;
+  date: string; // ISO date
+  notes?: string;
   createdAt: number;
 }
 

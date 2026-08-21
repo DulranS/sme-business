@@ -85,7 +85,7 @@ export function QuickSaleForm({
   existingSale?: Sale;
   onDone: () => void;
 }) {
-  const { products, catalog, ledgers, addSale, updateSale, settings } = useData();
+  const { products, catalog, ledgers, addSale, updateSale, settings, projects } = useData();
   const { role } = useAuth();
   const toast = useToast();
   const currency = settings.currency;
@@ -120,6 +120,7 @@ export function QuickSaleForm({
   const [creditTermDays, setCreditTermDays] = useState(
     (existingSale?.creditTermDays ?? settings.defaultCreditTermDays).toString()
   );
+  const [projectId, setProjectId] = useState(existingSale?.projectId ?? "");
   const [busy, setBusy] = useState(false);
 
   const wac = ledgers.get(productId)?.wac ?? 0;
@@ -169,6 +170,7 @@ export function QuickSaleForm({
             notes: notes || undefined,
             paymentMethod,
             creditTermDays: paymentMethod === "credit" ? Number(creditTermDays) || settings.defaultCreditTermDays : undefined,
+            projectId: projectId || undefined,
           };
           if (existingSale) {
             await updateSale(existingSale.id, values);
@@ -267,6 +269,19 @@ export function QuickSaleForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
+      {!isStaff && projects.length > 0 && (
+        <Field>
+          <Label>Project (optional)</Label>
+          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— not part of a project —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
 
       {qtyNum > 0 && (
         <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 space-y-1.5">
@@ -302,7 +317,7 @@ export function QuickSaleForm({
 }
 
 export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Product; onDone: () => void }) {
-  const { products, addPurchase, settings } = useData();
+  const { products, addPurchase, settings, projects } = useData();
   const toast = useToast();
   const currency = settings.currency;
   const restockable = useMemo(() => products.filter((p) => p.active && p.type === "product"), [products]);
@@ -316,6 +331,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
   const [date, setDate] = useState(todayIso());
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [busy, setBusy] = useState(false);
 
   const costNum = Number(unitCost) || 0; // entered cost, in txCurrency
@@ -347,6 +363,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
             date,
             supplier: supplier || undefined,
             notes: notes || undefined,
+            projectId: projectId || undefined,
           });
           toast.success("Added to your stock", `${product.name}: +${qty} at ${formatMoney(baseCostNum, currency)} each`);
           onDone();
@@ -404,6 +421,19 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
+      {projects.length > 0 && (
+        <Field>
+          <Label>Project (optional)</Label>
+          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— not part of a project —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
 
       <div className="rounded-md border border-line bg-panel2 px-3 py-2.5 flex items-center justify-between">
         <span className="text-xs text-muted">Total you paid</span>

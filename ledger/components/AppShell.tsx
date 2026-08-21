@@ -14,6 +14,7 @@ const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGEle
   { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon, roles: ["owner", "manager"] },
   { href: "/purchases", label: "Buying", icon: DownIcon, roles: ["owner", "manager"] },
   { href: "/sales", label: "Selling", icon: UpIcon, roles: ["owner", "manager", "staff"] },
+  { href: "/projects", label: "Projects", icon: ProjectIcon, roles: ["owner", "manager"] },
   { href: "/receivables-payables", label: "Money owed", icon: ClockIcon, roles: ["owner", "manager"] },
   { href: "/cash-count", label: "Cash count", icon: WalletIcon, roles: ["owner", "manager", "staff"] },
   { href: "/time", label: "Time", icon: TimerIcon, roles: ["owner", "manager", "staff"] },
@@ -308,6 +309,15 @@ function ClipboardIcon(props: React.SVGProps<SVGSVGElement>) {
       <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
       <path d="M9 11h6" />
       <path d="M9 15h6" />
+    </svg>
+  );
+}
+function ProjectIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
     </svg>
   );
 }

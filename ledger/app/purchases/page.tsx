@@ -7,7 +7,7 @@ import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, todayIso } from "@/lib/format";
 import { CURRENCIES, convertToBase } from "@/lib/fx";
-import type { Product, Purchase } from "@/lib/types";
+import type { Product, Project, Purchase } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -24,7 +24,7 @@ import {
 
 export default function PurchasesPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { products, purchases, addPurchase, updatePurchase, deletePurchase, settings, loading } = useData();
+  const { products, purchases, addPurchase, updatePurchase, deletePurchase, settings, loading, projects } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Purchase | null>(null);
@@ -144,6 +144,7 @@ export default function PurchasesPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this" : "I bought something"}>
         <PurchaseForm
           products={products}
+          projects={projects}
           initial={editing}
           baseCurrency={currency}
           onCancel={() => setModalOpen(false)}
@@ -169,12 +170,14 @@ export default function PurchasesPage() {
 
 function PurchaseForm({
   products,
+  projects,
   initial,
   baseCurrency,
   onSave,
   onCancel,
 }: {
   products: Product[];
+  projects: Project[];
   initial?: Purchase | null;
   baseCurrency: string;
   onSave: (values: {
@@ -187,6 +190,7 @@ function PurchaseForm({
     date: string;
     supplier?: string;
     notes?: string;
+    projectId?: string;
   }) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -200,6 +204,7 @@ function PurchaseForm({
   const [date, setDate] = useState(initial?.date ?? todayIso());
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [projectId, setProjectId] = useState(initial?.projectId ?? "");
   const [busy, setBusy] = useState(false);
 
   const selected = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
@@ -230,6 +235,7 @@ function PurchaseForm({
           date,
           supplier,
           notes,
+          projectId: projectId || undefined,
         });
         setBusy(false);
       }}
@@ -297,6 +303,19 @@ function PurchaseForm({
         <Label>Notes (optional)</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
+      {projects.length > 0 && (
+        <Field>
+          <Label>Project (optional)</Label>
+          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— not part of a project —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel

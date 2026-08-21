@@ -56,6 +56,8 @@ import type {
   CatalogItem,
   TimeEntry,
   FixedAsset,
+  Project,
+  ProjectCostSegment,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { can } from "@/lib/permissions";
@@ -76,6 +78,8 @@ import {
   computeBalanceSheet,
   computeReceivablesAging,
   computePayablesAging,
+  computeAllProjectFinancials,
+  computeProjectPortfolioSummary,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -87,6 +91,8 @@ import {
   type BalanceSheet,
   type ReceivablesAging,
   type PayablesAging,
+  type ProjectFinancials,
+  type ProjectPortfolioSummary,
 } from "@/lib/calculations";
 import { todayIso } from "@/lib/format";
 
@@ -114,6 +120,8 @@ interface DataContextValue {
   payablePayments: PayablePayment[];
   timeEntries: TimeEntry[]; // all for Owner/Manager, own-only for Staff
   fixedAssets: FixedAsset[];
+  projects: Project[];
+  projectCostSegments: ProjectCostSegment[];
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -131,6 +139,8 @@ interface DataContextValue {
   receivablesAging: ReceivablesAging;
   payablesAging: PayablesAging;
   avgDailyCashSales: number; // trailing 30-day average of cash/card/bank-transfer sales, for cash-runway projections
+  projectFinancials: Map<string, ProjectFinancials>;
+  projectPortfolio: ProjectPortfolioSummary;
 
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
@@ -218,6 +228,14 @@ interface DataContextValue {
   updateFixedAsset: (id: string, a: Partial<FixedAsset>) => Promise<void>;
   deleteFixedAsset: (id: string) => Promise<void>;
 
+  // Project / job costing
+  addProject: (p: Omit<Project, "id" | "createdAt">) => Promise<void>;
+  updateProject: (id: string, p: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  addProjectCostSegment: (s: Omit<ProjectCostSegment, "id" | "createdAt">) => Promise<void>;
+  updateProjectCostSegment: (id: string, s: Partial<ProjectCostSegment>) => Promise<void>;
+  deleteProjectCostSegment: (id: string) => Promise<void>;
+
   // Time tracking — every active role clocks itself in/out; Owner/Manager
   // can also log or correct an entry on someone else's behalf and delete
   // mistakes. See the TimeEntry doc comment in lib/types.ts for why more
@@ -259,6 +277,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [payablePayments, setPayablePayments] = useState<PayablePayment[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectCostSegments, setProjectCostSegments] = useState<ProjectCostSegment[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
   // Which collections this role actually needs — and, just as importantly,
@@ -274,11 +294,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
         "auditLog", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
+        "projects", "projectCostSegments",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
+        "projects", "projectCostSegments",
       ];
     if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
     return [];
@@ -305,6 +327,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setPayablePayments([]);
       setTimeEntries([]);
       setFixedAssets([]);
+      setProjects([]);
+      setProjectCostSegments([]);
       setLoadedFlags({});
       return;
     }
@@ -375,6 +399,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         onSnapshot(query(collection(db, "users", businessId, "fixedAssets"), orderBy("purchaseDate", "desc")), (snap) => {
           setFixedAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FixedAsset)));
           bump("fixedAssets");
+        }),
+        onSnapshot(query(collection(db, "users", businessId, "projects"), orderBy("startDate", "desc")), (snap) => {
+          setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
+          bump("projects");
+        }),
+        onSnapshot(collection(db, "users", businessId, "projectCostSegments"), (snap) => {
+          setProjectCostSegments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ProjectCostSegment)));
+          bump("projectCostSegments");
         })
       );
     }
@@ -550,6 +582,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     return total / 30;
   }, [sales, saleEconomics]);
+  const projectFinancials = useMemo(
+    () => computeAllProjectFinancials(projects, projectCostSegments, purchases, expenses, sales),
+    [projects, projectCostSegments, purchases, expenses, sales]
+  );
+  const projectPortfolio = useMemo(
+    () => computeProjectPortfolioSummary(projects, projectFinancials),
+    [projects, projectFinancials]
+  );
 
   function requireBusiness(): { businessId: string; uid: string } {
     if (!businessId || !uid) throw new Error("Not signed in");
@@ -623,6 +663,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     payablePayments,
     timeEntries,
     fixedAssets,
+    projects,
+    projectCostSegments,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -639,6 +681,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     receivablesAging,
     payablesAging,
     avgDailyCashSales,
+    projectFinancials,
+    projectPortfolio,
 
     addProduct: async (p) => {
       requirePermission("manage:products");
@@ -1214,6 +1258,65 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       await deleteDoc(doc(db, "users", bizId, "fixedAssets", id));
       logAudit("fixedAsset", id, "delete", `Asset deleted`);
+    },
+
+    addProject: async (p) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "projects"), {
+        ...p,
+        createdAt: Date.now(),
+      });
+      logAudit("project", ref.id, "create", `Project added: ${p.name} (${formatMoneyPlain(p.quotedPrice)})`);
+    },
+
+    updateProject: async (id, p) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "projects", id), p);
+      logAudit("project", id, "update", `Project updated`);
+    },
+
+    // Deleting a project leaves its cost segments and any tagged
+    // Purchases/Expenses/Sales alone — those records still exist and still
+    // affect inventory/P&L exactly as before, they just lose their project
+    // attribution. This mirrors how deleting a Product doesn't retroactively
+    // rewrite past Purchases/Sales.
+    deleteProject: async (id) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "projects", id));
+      logAudit("project", id, "delete", `Project deleted`);
+    },
+
+    addProjectCostSegment: async (s) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "projectCostSegments"), {
+        ...s,
+        createdAt: Date.now(),
+      });
+      logAudit("projectCostSegment", ref.id, "create", `Cost added: ${s.label} (${formatMoneyPlain(s.amount)})`);
+    },
+
+    updateProjectCostSegment: async (id, s) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "projectCostSegments", id), s);
+      logAudit("projectCostSegment", id, "update", `Cost segment updated`);
+    },
+
+    deleteProjectCostSegment: async (id) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "projectCostSegments", id));
+      logAudit("projectCostSegment", id, "delete", `Cost segment deleted`);
     },
 
     clockIn: async (jobLabel, opts) => {

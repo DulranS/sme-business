@@ -7,7 +7,7 @@ import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { computeMRR, monthlyNormalizedAmount } from "@/lib/calculations";
 import { formatMoney, todayIso } from "@/lib/format";
-import type { Expense, Recurrence } from "@/lib/types";
+import type { Expense, Project, Recurrence } from "@/lib/types";
 import { EXPENSE_CATEGORIES } from "@/lib/types";
 import {
   Badge,
@@ -26,7 +26,7 @@ import {
 
 export default function ExpensesPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { expenses, addExpense, updateExpense, deleteExpense, settings } = useData();
+  const { expenses, addExpense, updateExpense, deleteExpense, settings, projects } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -162,6 +162,7 @@ export default function ExpensesPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this" : "Add expense or recurring revenue"}>
         <ExpenseForm
           initial={editing}
+          projects={projects}
           onCancel={() => setModalOpen(false)}
           onSave={async (values) => {
             try {
@@ -185,10 +186,12 @@ export default function ExpensesPage() {
 
 function ExpenseForm({
   initial,
+  projects,
   onSave,
   onCancel,
 }: {
   initial?: Expense | null;
+  projects: Project[];
   onSave: (values: Omit<Expense, "id" | "createdAt">) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -202,6 +205,7 @@ function ExpenseForm({
   );
   const [startDate, setStartDate] = useState(initial?.startDate ?? todayIso());
   const [endDate, setEndDate] = useState(initial?.endDate ?? "");
+  const [projectId, setProjectId] = useState(initial?.projectId ?? "");
   const [busy, setBusy] = useState(false);
 
   return (
@@ -218,6 +222,7 @@ function ExpenseForm({
           recurrence: isRecurring ? recurrence : "none",
           startDate,
           endDate: endDate || undefined,
+          projectId: kind === "expense" ? projectId || undefined : undefined,
         });
         setBusy(false);
       }}
@@ -278,6 +283,19 @@ function ExpenseForm({
           </Field>
         )}
       </div>
+      {kind === "expense" && projects.length > 0 && (
+        <Field>
+          <Label>Project (optional)</Label>
+          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— not part of a project —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel

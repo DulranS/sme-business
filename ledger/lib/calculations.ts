@@ -6,6 +6,8 @@ import type {
   Loan,
   OfferingType,
   Product,
+  Project,
+  ProjectCostSegment,
   Purchase,
   PurchaseOrder,
   Recurrence,
@@ -1641,4 +1643,138 @@ export function computeFixedAssetMonthlyTotals(
   }
 
   return map;
+}
+
+// ---------------------------------------------------------------------------
+// Project / job costing. Rolls a project's manual cost segments together
+// with any Purchase/Expense/Sale tagged to it (via their optional
+// `projectId`) into one picture: quoted price vs. actual cost vs. invoiced
+// to date. Nothing here touches inventory/WAC, MRR, or the P&L — a
+// project's costs live wherever they already lived (a tagged Purchase still
+// affects inventory and COGS exactly as before); this is purely an
+// additional lens over the same data plus the segments that don't fit
+// anywhere else.
+// ---------------------------------------------------------------------------
+
+export interface ProjectCostCategoryTotal {
+  category: string;
+  amount: number;
+}
+
+export interface ProjectFinancials {
+  projectId: string;
+  segmentCost: number; // sum of this project's manual ProjectCostSegment amounts
+  purchaseCost: number; // sum of qty*unitCost for Purchases tagged to this project
+  expenseCost: number; // sum of amount for Expenses tagged to this project
+  totalCost: number; // segmentCost + purchaseCost + expenseCost
+  quotedPrice: number;
+  profit: number; // quotedPrice - totalCost
+  marginPct: number | null; // profit / quotedPrice * 100, null if quotedPrice is 0
+  budgetUsedPct: number | null; // totalCost / quotedPrice * 100, null if quotedPrice is 0
+  invoicedToDate: number; // sum of revenue for Sales tagged to this project — cash/billing progress, separate from the margin calc above
+  costByCategory: ProjectCostCategoryTotal[]; // segments (own category) + tagged purchases ("Materials (purchases)") + tagged expenses (own category), sorted desc
+}
+
+export function computeProjectFinancials(
+  project: Project,
+  costSegments: ProjectCostSegment[],
+  purchases: Purchase[],
+  expenses: Expense[],
+  sales: Sale[]
+): ProjectFinancials {
+  const segs = costSegments.filter((s) => s.projectId === project.id);
+  const segmentCost = segs.reduce((sum, s) => sum + s.amount, 0);
+
+  const linkedPurchases = purchases.filter((p) => p.projectId === project.id);
+  const purchaseCost = linkedPurchases.reduce((sum, p) => sum + p.unitCost * p.qty, 0);
+
+  const linkedExpenses = expenses.filter((e) => e.projectId === project.id && e.kind === "expense");
+  const expenseCost = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const linkedSales = sales.filter((s) => s.projectId === project.id);
+  const invoicedToDate = linkedSales.reduce((sum, s) => sum + s.unitPrice * s.qty, 0);
+
+  const totalCost = segmentCost + purchaseCost + expenseCost;
+  const profit = project.quotedPrice - totalCost;
+  const marginPct = project.quotedPrice > 0 ? (profit / project.quotedPrice) * 100 : null;
+  const budgetUsedPct = project.quotedPrice > 0 ? (totalCost / project.quotedPrice) * 100 : null;
+
+  const catMap = new Map<string, number>();
+  for (const s of segs) {
+    const key = s.category || "Other";
+    catMap.set(key, (catMap.get(key) ?? 0) + s.amount);
+  }
+  if (purchaseCost > 0) {
+    catMap.set("Materials (purchases)", (catMap.get("Materials (purchases)") ?? 0) + purchaseCost);
+  }
+  for (const e of linkedExpenses) {
+    const key = e.category || "Other";
+    catMap.set(key, (catMap.get(key) ?? 0) + e.amount);
+  }
+
+  const costByCategory = Array.from(catMap.entries())
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    projectId: project.id,
+    segmentCost,
+    purchaseCost,
+    expenseCost,
+    totalCost,
+    quotedPrice: project.quotedPrice,
+    profit,
+    marginPct,
+    budgetUsedPct,
+    invoicedToDate,
+    costByCategory,
+  };
+}
+
+export function computeAllProjectFinancials(
+  projects: Project[],
+  costSegments: ProjectCostSegment[],
+  purchases: Purchase[],
+  expenses: Expense[],
+  sales: Sale[]
+): Map<string, ProjectFinancials> {
+  const map = new Map<string, ProjectFinancials>();
+  for (const p of projects) {
+    map.set(p.id, computeProjectFinancials(p, costSegments, purchases, expenses, sales));
+  }
+  return map;
+}
+
+// Portfolio-level roll-up across every active (not completed/cancelled)
+// project — the numbers a "Projects" list page leads with.
+export interface ProjectPortfolioSummary {
+  activeCount: number;
+  totalQuotedActive: number;
+  totalCostActive: number;
+  totalProfitActive: number;
+  overBudgetCount: number; // active projects where totalCost > quotedPrice
+}
+
+export function computeProjectPortfolioSummary(
+  projects: Project[],
+  financials: Map<string, ProjectFinancials>
+): ProjectPortfolioSummary {
+  let activeCount = 0;
+  let totalQuotedActive = 0;
+  let totalCostActive = 0;
+  let totalProfitActive = 0;
+  let overBudgetCount = 0;
+
+  for (const p of projects) {
+    if (p.status === "completed" || p.status === "cancelled") continue;
+    const f = financials.get(p.id);
+    if (!f) continue;
+    activeCount += 1;
+    totalQuotedActive += f.quotedPrice;
+    totalCostActive += f.totalCost;
+    totalProfitActive += f.profit;
+    if (f.totalCost > f.quotedPrice && f.quotedPrice > 0) overBudgetCount += 1;
+  }
+
+  return { activeCount, totalQuotedActive, totalCostActive, totalProfitActive, overBudgetCount };
 }
