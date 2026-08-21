@@ -6,7 +6,7 @@ import type {
   Expense,
   Loan,
 } from "./types";
-import type { ReceivableLine, PayableLine, ProductLedgerResult, ProjectBudgetAlert } from "./calculations";
+import type { ReceivableLine, PayableLine, ProductLedgerResult, ProjectBudgetAlert, MilestoneReminder } from "./calculations";
 import { todayIso } from "./format";
 
 /**
@@ -248,6 +248,33 @@ export function generateProjectBudgetNotifications(
 }
 
 /**
+ * Generate notifications for progress-billing milestones that are overdue
+ * or due within the reminder window. `computeMilestoneReminders` (lib/
+ * calculations.ts) does the filtering — this just turns each into a
+ * notification, mirroring generateReceivableNotifications' overdue/upcoming
+ * split.
+ */
+export function generateMilestoneNotifications(
+  reminders: MilestoneReminder[]
+): Omit<Notification, "id" | "createdAt">[] {
+  return reminders.map((r) => ({
+    type: "milestone_due" as NotificationType,
+    priority: (r.isOverdue ? "high" : "medium") as NotificationPriority,
+    title: r.isOverdue
+      ? `Overdue: ${r.label} — ${r.projectName}`
+      : `Due soon: ${r.label} — ${r.projectName}`,
+    message: r.isOverdue
+      ? `${r.amount.toLocaleString()} was due ${Math.abs(r.daysUntilDue)} day${Math.abs(r.daysUntilDue) === 1 ? "" : "s"} ago on ${r.dueDate}.`
+      : r.daysUntilDue === 0
+        ? `${r.amount.toLocaleString()} is due today.`
+        : `${r.amount.toLocaleString()} is due in ${r.daysUntilDue} day${r.daysUntilDue === 1 ? "" : "s"} (${r.dueDate}).`,
+    entityId: r.projectId,
+    entityType: "project",
+    isRead: false,
+  }));
+}
+
+/**
  * Generate all notifications based on current business state
  * This is the main entry point for notification automation
  */
@@ -260,8 +287,19 @@ export function generateAllNotifications(params: {
   expenses: Expense[];
   loans: Loan[];
   projectBudgetAlerts: ProjectBudgetAlert[];
+  milestoneReminders: MilestoneReminder[];
 }): Omit<Notification, "id" | "createdAt">[] {
-  const { receivables, payables, products, ledgers, eoqByProduct, expenses, loans, projectBudgetAlerts } = params;
+  const {
+    receivables,
+    payables,
+    products,
+    ledgers,
+    eoqByProduct,
+    expenses,
+    loans,
+    projectBudgetAlerts,
+    milestoneReminders,
+  } = params;
 
   return [
     ...generateReceivableNotifications(receivables),
@@ -270,5 +308,6 @@ export function generateAllNotifications(params: {
     ...generateExpenseNotifications(expenses),
     ...generateLoanNotifications(loans),
     ...generateProjectBudgetNotifications(projectBudgetAlerts),
+    ...generateMilestoneNotifications(milestoneReminders),
   ];
 }

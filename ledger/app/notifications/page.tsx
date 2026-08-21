@@ -28,6 +28,7 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   expense_due: "Expense due",
   loan_payment_due: "Loan payment due",
   project_over_budget: "Project budget alert",
+  milestone_due: "Milestone payment due",
   custom: "Custom reminder",
 };
 

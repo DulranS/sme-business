@@ -39,7 +39,8 @@ import { useData } from "./DataContext";
 import type { Notification } from "@/lib/types";
 import { can } from "@/lib/permissions";
 import { generateAllNotifications } from "@/lib/notification-automation";
-import { computeProjectBudgetAlerts } from "@/lib/calculations";
+import { computeProjectBudgetAlerts, computeMilestoneReminders } from "@/lib/calculations";
+import { todayIso } from "@/lib/format";
 
 interface NotificationsContextValue {
   notifications: Notification[];
@@ -65,6 +66,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     payablesAging,
     projects,
     projectFinancials,
+    projectMilestones,
   } = useData();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -139,6 +141,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       expenses,
       loans,
       projectBudgetAlerts: computeProjectBudgetAlerts(projects, projectFinancials),
+      milestoneReminders: computeMilestoneReminders(projects, projectMilestones, todayIso()),
     });
 
     const existingKeys = new Set(notifications.map((n) => `${n.type}-${n.entityId}-${n.entityType}`));
@@ -171,6 +174,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     loans,
     projects,
     projectFinancials,
+    projectMilestones,
     notifications,
   ]);
 

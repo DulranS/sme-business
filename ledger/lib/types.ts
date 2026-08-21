@@ -495,6 +495,7 @@ export type NotificationType =
   | "expense_due"             // Recurring expense due
   | "loan_payment_due"        // Loan payment due
   | "project_over_budget"     // Project actual cost is approaching/past its quoted price
+  | "milestone_due"           // A progress-billing milestone is due soon or overdue
   | "custom";                 // User-created custom reminder
 
 export type NotificationPriority = "low" | "medium" | "high";

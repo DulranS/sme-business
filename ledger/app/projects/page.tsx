@@ -74,6 +74,10 @@ export default function ProjectsPage() {
     products,
     settings,
     loading,
+    updatePurchase,
+    updateExpense,
+    updateSale,
+    untagProjectRecord,
   } = useData();
   const toast = useToast();
   const currency = settings.currency;
@@ -247,6 +251,9 @@ export default function ProjectsPage() {
             expenses={expenses.filter((e) => e.projectId === detailProject.id)}
             sales={sales.filter((s) => s.projectId === detailProject.id)}
             timeEntries={timeEntries.filter((t) => t.projectId === detailProject.id)}
+            allPurchases={purchases}
+            allExpenses={expenses}
+            allSales={sales}
             products={products}
             currency={currency}
             onAddSegment={addProjectCostSegment}
@@ -255,6 +262,12 @@ export default function ProjectsPage() {
             onAddMilestone={addProjectMilestone}
             onUpdateMilestone={updateProjectMilestone}
             onDeleteMilestone={deleteProjectMilestone}
+            onTagPurchase={(id) => updatePurchase(id, { projectId: detailProject.id })}
+            onTagExpense={(id) => updateExpense(id, { projectId: detailProject.id })}
+            onTagSale={(id) => updateSale(id, { projectId: detailProject.id })}
+            onUntag={async (kind, id) => {
+              await untagProjectRecord(kind, id);
+            }}
             onEditProject={() => {
               setDetailId(null);
               openEdit(detailProject);
@@ -368,6 +381,9 @@ function ProjectDetail({
   expenses,
   sales,
   timeEntries,
+  allPurchases,
+  allExpenses,
+  allSales,
   products,
   currency,
   onAddSegment,
@@ -376,6 +392,10 @@ function ProjectDetail({
   onAddMilestone,
   onUpdateMilestone,
   onDeleteMilestone,
+  onTagPurchase,
+  onTagExpense,
+  onTagSale,
+  onUntag,
   onEditProject,
 }: {
   project: Project;
@@ -386,6 +406,9 @@ function ProjectDetail({
   expenses: Expense[];
   sales: Sale[];
   timeEntries: TimeEntry[];
+  allPurchases: Purchase[];
+  allExpenses: Expense[];
+  allSales: Sale[];
   products: Product[];
   currency: string;
   onAddSegment: (s: Omit<ProjectCostSegment, "id" | "createdAt">) => Promise<void>;
@@ -394,6 +417,10 @@ function ProjectDetail({
   onAddMilestone: (m: Omit<ProjectMilestone, "id" | "createdAt">) => Promise<void>;
   onUpdateMilestone: (id: string, m: Partial<ProjectMilestone>) => Promise<void>;
   onDeleteMilestone: (id: string) => Promise<void>;
+  onTagPurchase: (id: string) => Promise<void>;
+  onTagExpense: (id: string) => Promise<void>;
+  onTagSale: (id: string) => Promise<void>;
+  onUntag: (kind: "purchase" | "expense" | "sale", id: string) => Promise<void>;
   onEditProject: () => void;
 }) {
   const toast = useToast();
@@ -401,6 +428,7 @@ function ProjectDetail({
   const [editingSegment, setEditingSegment] = useState<ProjectCostSegment | null>(null);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<ProjectMilestone | null>(null);
+  const [tagOpen, setTagOpen] = useState(false);
 
   const f = financials;
   const maxCat = f && f.costByCategory.length > 0 ? f.costByCategory[0].amount : 0;
@@ -497,7 +525,12 @@ function ProjectDetail({
 
       {linkedRecords.length > 0 && (
         <div>
-          <div className="text-sm font-medium mb-2">Linked records</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">Linked records</div>
+            <Button variant="ghost" className="!min-h-0 !py-1.5 !px-2.5 text-xs" onClick={() => setTagOpen(true)}>
+              + Tag existing
+            </Button>
+          </div>
           <Card>
             <Table>
               <thead>
@@ -505,7 +538,8 @@ function ProjectDetail({
                   <th className="py-2 pr-3 font-medium">Date</th>
                   <th className="py-2 px-3 font-medium">Type</th>
                   <th className="py-2 px-3 font-medium">Description</th>
-                  <th className="py-2 pl-3 font-medium text-right">Amount</th>
+                  <th className="py-2 px-3 font-medium text-right">Amount</th>
+                  <th className="py-2 pl-3 font-medium text-right">·</th>
                 </tr>
               </thead>
               <tbody>
@@ -516,8 +550,23 @@ function ProjectDetail({
                       <Badge tone={r.kind === "income" ? "good" : "default"}>{r.typeLabel}</Badge>
                     </td>
                     <td className="py-2 px-3">{r.description}</td>
-                    <td className={`py-2 pl-3 num text-right ${r.kind === "income" ? "text-good" : ""}`}>
+                    <td className={`py-2 px-3 num text-right ${r.kind === "income" ? "text-good" : ""}`}>
                       {r.amount === null ? "—" : `${r.kind === "income" ? "+" : ""}${formatMoney(r.amount, currency)}`}
+                    </td>
+                    <td className="py-2 pl-3 text-right whitespace-nowrap">
+                      {r.typeLabel !== "Labor" && (
+                        <button
+                          onClick={() => {
+                            const untagKind = r.typeLabel === "Purchase" ? "purchase" : r.typeLabel === "Expense" ? "expense" : "sale";
+                            onUntag(untagKind, r.sourceId)
+                              .then(() => toast.success("Untagged", "No longer counted against this project"))
+                              .catch((err) => toast.error("Couldn't untag", toastableErrorMessage(err)));
+                          }}
+                          className="text-xs text-muted hover:text-bad"
+                        >
+                          Untag
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -525,8 +574,27 @@ function ProjectDetail({
             </Table>
           </Card>
           <div className="text-[11px] text-muted mt-2">
-            Every Purchase, Expense, Sale, and Time entry currently tagged to this project — tag or un-tag one from
-            its own page (Buying, Bills, Selling, or Time) rather than here.
+            Every Purchase, Expense, Sale, and Time entry currently tagged to this project — tag a new Purchase,
+            Expense, or Sale from its own page (Buying, Bills, Selling), tag Time from the Time page, or use{" "}
+            <button onClick={() => setTagOpen(true)} className="text-amber-soft hover:underline">
+              Tag existing
+            </button>{" "}
+            above to attach something you already logged before the project existed.
+          </div>
+        </div>
+      )}
+
+      {linkedRecords.length === 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">Linked records</div>
+            <Button variant="ghost" className="!min-h-0 !py-1.5 !px-2.5 text-xs" onClick={() => setTagOpen(true)}>
+              + Tag existing
+            </Button>
+          </div>
+          <div className="text-xs text-muted border border-dashed border-line rounded-md py-4 text-center">
+            Nothing tagged yet. Tag a Purchase, Expense, or Sale to this project from its own page, or pull in
+            something you already logged with &ldquo;Tag existing&rdquo; above.
           </div>
         </div>
       )}
@@ -768,6 +836,21 @@ function ProjectDetail({
           }}
         />
       </Modal>
+
+      <Modal open={tagOpen} onClose={() => setTagOpen(false)} title="Tag existing records">
+        <TagExistingRecords
+          project={project}
+          allPurchases={allPurchases}
+          allExpenses={allExpenses}
+          allSales={allSales}
+          productById={productById}
+          currency={currency}
+          onTagPurchase={onTagPurchase}
+          onTagExpense={onTagExpense}
+          onTagSale={onTagSale}
+          onDone={() => setTagOpen(false)}
+        />
+      </Modal>
     </div>
   );
 }
@@ -842,6 +925,210 @@ function MilestoneForm({
 }
 
 // ---------------------------------------------------------------------------
+// Tag-existing-records: for a Purchase/Expense/Sale that was logged before
+// the project existed (or before anyone thought to tag it), this lets you
+// find it by a quick text search and attach it retroactively, instead of
+// hunting it down on the Buying/Bills/Selling page and editing it there.
+// Only shows untagged records or ones tagged to a *different* project, so
+// you're not offered to re-tag something already sitting on this project.
+// ---------------------------------------------------------------------------
+function TagExistingRecords({
+  project,
+  allPurchases,
+  allExpenses,
+  allSales,
+  productById,
+  currency,
+  onTagPurchase,
+  onTagExpense,
+  onTagSale,
+  onDone,
+}: {
+  project: Project;
+  allPurchases: Purchase[];
+  allExpenses: Expense[];
+  allSales: Sale[];
+  productById: Map<string, Product>;
+  currency: string;
+  onTagPurchase: (id: string) => Promise<void>;
+  onTagExpense: (id: string) => Promise<void>;
+  onTagSale: (id: string) => Promise<void>;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [tab, setTab] = useState<"purchase" | "expense" | "sale">("purchase");
+  const [query, setQuery] = useState("");
+  const [taggingId, setTaggingId] = useState<string | null>(null);
+
+  const q = query.trim().toLowerCase();
+
+  const candidatePurchases = useMemo(
+    () =>
+      allPurchases
+        .filter((p) => p.projectId !== project.id)
+        .filter((p) => {
+          if (!q) return true;
+          const name = productById.get(p.productId)?.name?.toLowerCase() ?? "";
+          return name.includes(q) || (p.supplier ?? "").toLowerCase().includes(q);
+        })
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 30),
+    [allPurchases, project.id, q, productById]
+  );
+
+  const candidateExpenses = useMemo(
+    () =>
+      allExpenses
+        .filter((e) => e.kind === "expense" && e.projectId !== project.id)
+        .filter((e) => !q || e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q))
+        .sort((a, b) => b.startDate.localeCompare(a.startDate))
+        .slice(0, 30),
+    [allExpenses, project.id, q]
+  );
+
+  const candidateSales = useMemo(
+    () =>
+      allSales
+        .filter((s) => s.projectId !== project.id)
+        .filter((s) => {
+          if (!q) return true;
+          const name = productById.get(s.productId)?.name?.toLowerCase() ?? "";
+          return name.includes(q) || (s.customer ?? "").toLowerCase().includes(q);
+        })
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 30),
+    [allSales, project.id, q, productById]
+  );
+
+  const tag = async (kind: "purchase" | "expense" | "sale", id: string, label: string) => {
+    setTaggingId(id);
+    try {
+      if (kind === "purchase") await onTagPurchase(id);
+      else if (kind === "expense") await onTagExpense(id);
+      else await onTagSale(id);
+      toast.success("Tagged", `${label} → ${project.name}`);
+    } catch (err) {
+      toast.error("Couldn't tag", toastableErrorMessage(err));
+    } finally {
+      setTaggingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs text-muted">
+        Find something you already logged — before this project existed, or before you thought to tag it — and
+        attach it here without leaving this screen.
+      </div>
+      <div className="flex gap-1 border-b border-line">
+        {(["purchase", "expense", "sale"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${
+              tab === t ? "border-amber-soft text-fg" : "border-transparent text-muted hover:text-fg"
+            }`}
+          >
+            {t === "purchase" ? "Purchases" : t === "expense" ? "Expenses" : "Sales"}
+          </button>
+        ))}
+      </div>
+      <Input
+        placeholder={tab === "purchase" ? "Search by item or supplier…" : tab === "expense" ? "Search by name or category…" : "Search by item or customer…"}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        autoFocus
+      />
+
+      <div className="max-h-72 overflow-y-auto space-y-1.5">
+        {tab === "purchase" &&
+          (candidatePurchases.length === 0 ? (
+            <div className="text-xs text-muted text-center py-6">No matching purchases.</div>
+          ) : (
+            candidatePurchases.map((p) => (
+              <div key={p.id} className="flex items-center justify-between text-xs border border-line rounded-md px-3 py-2">
+                <div>
+                  <div className="font-medium">{productById.get(p.productId)?.name ?? "Item"}</div>
+                  <div className="text-muted">
+                    {p.date} · {p.qty} × {formatMoney(p.unitCost, currency)}
+                    {p.supplier ? ` · ${p.supplier}` : ""}
+                    {p.projectId ? " · tagged to another project" : ""}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  className="!min-h-0 !py-1 !px-2.5 text-xs shrink-0"
+                  disabled={taggingId === p.id}
+                  onClick={() => tag("purchase", p.id, productById.get(p.productId)?.name ?? "Purchase")}
+                >
+                  {taggingId === p.id ? "Tagging…" : "Tag"}
+                </Button>
+              </div>
+            ))
+          ))}
+
+        {tab === "expense" &&
+          (candidateExpenses.length === 0 ? (
+            <div className="text-xs text-muted text-center py-6">No matching expenses.</div>
+          ) : (
+            candidateExpenses.map((e) => (
+              <div key={e.id} className="flex items-center justify-between text-xs border border-line rounded-md px-3 py-2">
+                <div>
+                  <div className="font-medium">{e.name}</div>
+                  <div className="text-muted">
+                    {e.startDate} · {e.category} · {formatMoney(e.amount, currency)}
+                    {e.projectId ? " · tagged to another project" : ""}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  className="!min-h-0 !py-1 !px-2.5 text-xs shrink-0"
+                  disabled={taggingId === e.id}
+                  onClick={() => tag("expense", e.id, e.name)}
+                >
+                  {taggingId === e.id ? "Tagging…" : "Tag"}
+                </Button>
+              </div>
+            ))
+          ))}
+
+        {tab === "sale" &&
+          (candidateSales.length === 0 ? (
+            <div className="text-xs text-muted text-center py-6">No matching sales.</div>
+          ) : (
+            candidateSales.map((s) => (
+              <div key={s.id} className="flex items-center justify-between text-xs border border-line rounded-md px-3 py-2">
+                <div>
+                  <div className="font-medium">{productById.get(s.productId)?.name ?? "Item"}</div>
+                  <div className="text-muted">
+                    {s.date} · {s.qty} × {formatMoney(s.unitPrice, currency)}
+                    {s.customer ? ` · ${s.customer}` : ""}
+                    {s.projectId ? " · tagged to another project" : ""}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  className="!min-h-0 !py-1 !px-2.5 text-xs shrink-0"
+                  disabled={taggingId === s.id}
+                  onClick={() => tag("sale", s.id, productById.get(s.productId)?.name ?? "Sale")}
+                >
+                  {taggingId === s.id ? "Tagging…" : "Tag"}
+                </Button>
+              </div>
+            ))
+          ))}
+      </div>
+
+      <div className="flex justify-end pt-1">
+        <Button type="button" onClick={onDone}>
+          Done
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Itemized linked records — the actual Purchase/Expense/Sale/TimeEntry rows
 // tagged to a project, not just a category total. Built once per detail
 // render rather than stored anywhere; the tag lives on the source record
@@ -849,6 +1136,7 @@ function MilestoneForm({
 // ---------------------------------------------------------------------------
 interface LinkedRecordRow {
   key: string;
+  sourceId: string;
   date: string;
   typeLabel: string;
   description: string;
@@ -870,6 +1158,7 @@ function buildLinkedRecords(
     const productName = productById.get(p.productId)?.name ?? "Item";
     rows.push({
       key: `purchase-${p.id}`,
+      sourceId: p.id,
       date: p.date,
       typeLabel: "Purchase",
       description: `${productName} — ${p.qty} × ${formatMoney(p.unitCost, currency)}${p.supplier ? ` (${p.supplier})` : ""}`,
@@ -882,6 +1171,7 @@ function buildLinkedRecords(
     if (e.kind !== "expense") continue;
     rows.push({
       key: `expense-${e.id}`,
+      sourceId: e.id,
       date: e.startDate,
       typeLabel: "Expense",
       description: `${e.name} (${e.category})`,
@@ -894,6 +1184,7 @@ function buildLinkedRecords(
     const productName = productById.get(s.productId)?.name ?? "Item";
     rows.push({
       key: `sale-${s.id}`,
+      sourceId: s.id,
       date: s.date,
       typeLabel: "Sale",
       description: `${productName} — ${s.qty} × ${formatMoney(s.unitPrice, currency)}${s.customer ? ` (${s.customer})` : ""}`,
@@ -908,6 +1199,7 @@ function buildLinkedRecords(
     const cost = t.billable && t.hourlyRate ? hours * t.hourlyRate : null;
     rows.push({
       key: `time-${t.id}`,
+      sourceId: t.id,
       date: new Date(t.clockIn).toISOString().slice(0, 10),
       typeLabel: "Labor",
       description: `${t.memberName} — ${t.jobLabel} (${hours.toFixed(1)}h${t.hourlyRate ? ` × ${formatMoney(t.hourlyRate, currency)}/hr` : ""})${!t.billable ? " — non-billable" : ""}`,

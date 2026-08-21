@@ -1876,3 +1876,50 @@ export function summarizeMilestones(milestones: ProjectMilestone[], quotedPrice:
     unscheduled: quotedPrice - scheduledTotal,
   };
 }
+
+// Milestones with a dueDate that's overdue or coming up soon and haven't
+// been paid yet — the progress-billing counterpart to receivables aging.
+// Deliberately excludes "paid" milestones (nothing left to chase) but
+// includes "invoiced" ones (billed but not yet collected is exactly the
+// case worth a reminder for), same as how an overdue receivable is tracked
+// regardless of whether an invoice was formally issued.
+export interface MilestoneReminder {
+  milestoneId: string;
+  projectId: string;
+  projectName: string;
+  label: string;
+  amount: number;
+  dueDate: string;
+  daysUntilDue: number; // negative when overdue
+  isOverdue: boolean;
+}
+
+export function computeMilestoneReminders(
+  projects: Project[],
+  milestones: ProjectMilestone[],
+  todayIsoDate: string,
+  daysAhead: number = 7
+): MilestoneReminder[] {
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+  const today = new Date(todayIsoDate).getTime();
+  const reminders: MilestoneReminder[] = [];
+  for (const m of milestones) {
+    if (m.status === "paid" || !m.dueDate) continue;
+    const due = new Date(m.dueDate).getTime();
+    const daysUntilDue = Math.round((due - today) / 86400000);
+    if (daysUntilDue > daysAhead) continue;
+    const project = projectById.get(m.projectId);
+    if (!project || project.status === "cancelled") continue;
+    reminders.push({
+      milestoneId: m.id,
+      projectId: m.projectId,
+      projectName: project.name,
+      label: m.label,
+      amount: m.amount,
+      dueDate: m.dueDate,
+      daysUntilDue,
+      isOverdue: daysUntilDue < 0,
+    });
+  }
+  return reminders.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+}

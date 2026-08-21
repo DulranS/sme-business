@@ -25,6 +25,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   setDoc,
   getDoc,
   writeBatch,
@@ -171,6 +172,12 @@ interface DataContextValue {
 
   addSale: (s: Omit<Sale, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
   updateSale: (id: string, s: Partial<Sale>) => Promise<void>;
+  // Clears the projectId tag on a Purchase/Expense/Sale — a plain
+  // updatePurchase/updateExpense/updateSale({ projectId: undefined }) can't
+  // do this: Firestore's updateDoc rejects `undefined` field values outright
+  // (it only ever *sets* fields), so actually removing one needs the
+  // deleteField() sentinel, which doesn't fit Partial<T>'s string type.
+  untagProjectRecord: (kind: "purchase" | "expense" | "sale", id: string) => Promise<void>;
   deleteSale: (id: string) => Promise<void>;
   bulkAddSales: (rows: Omit<Sale, "id" | "createdAt">[]) => Promise<void>;
 
@@ -870,6 +877,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const afterSummary = `${s.qty ?? before?.qty} × ${formatMoneyPlain(s.unitPrice ?? before?.unitPrice ?? 0)}`;
       logAudit("sale", docId, "update", `Sale edited: ${beforeSummary} → ${afterSummary}`);
     },
+    untagProjectRecord: async (kind, docId) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      const collectionName = kind === "purchase" ? "purchases" : kind === "expense" ? "expenses" : "sales";
+      await updateDoc(doc(db, "users", bizId, collectionName, docId), { projectId: deleteField() });
+      logAudit(kind, docId, "update", `Untagged from project`);
+    },
+
     deleteSale: async (docId) => {
       requirePermission("delete:sales");
       const { businessId: bizId } = requireBusiness();
