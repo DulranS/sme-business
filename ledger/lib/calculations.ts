@@ -8,6 +8,8 @@ import type {
   Product,
   Project,
   ProjectCostSegment,
+  ProjectMilestone,
+  ProjectStatus,
   Purchase,
   PurchaseOrder,
   Recurrence,
@@ -15,6 +17,7 @@ import type {
   PayablePayment,
   Sale,
   Settings,
+  TimeEntry,
   VariableCost,
 } from "./types";
 
@@ -1666,13 +1669,15 @@ export interface ProjectFinancials {
   segmentCost: number; // sum of this project's manual ProjectCostSegment amounts
   purchaseCost: number; // sum of qty*unitCost for Purchases tagged to this project
   expenseCost: number; // sum of amount for Expenses tagged to this project
-  totalCost: number; // segmentCost + purchaseCost + expenseCost
+  laborCost: number; // sum of hours*hourlyRate for closed, billable TimeEntries tagged to this project
+  laborHours: number; // sum of hours for closed TimeEntries tagged to this project (billable or not, for visibility)
+  totalCost: number; // segmentCost + purchaseCost + expenseCost + laborCost
   quotedPrice: number;
   profit: number; // quotedPrice - totalCost
   marginPct: number | null; // profit / quotedPrice * 100, null if quotedPrice is 0
   budgetUsedPct: number | null; // totalCost / quotedPrice * 100, null if quotedPrice is 0
   invoicedToDate: number; // sum of revenue for Sales tagged to this project — cash/billing progress, separate from the margin calc above
-  costByCategory: ProjectCostCategoryTotal[]; // segments (own category) + tagged purchases ("Materials (purchases)") + tagged expenses (own category), sorted desc
+  costByCategory: ProjectCostCategoryTotal[]; // segments (own category) + tagged purchases ("Materials (purchases)") + tagged expenses (own category) + tagged labor ("Labor (time entries)"), sorted desc
 }
 
 export function computeProjectFinancials(
@@ -1680,7 +1685,8 @@ export function computeProjectFinancials(
   costSegments: ProjectCostSegment[],
   purchases: Purchase[],
   expenses: Expense[],
-  sales: Sale[]
+  sales: Sale[],
+  timeEntries: TimeEntry[] = []
 ): ProjectFinancials {
   const segs = costSegments.filter((s) => s.projectId === project.id);
   const segmentCost = segs.reduce((sum, s) => sum + s.amount, 0);
@@ -1694,7 +1700,19 @@ export function computeProjectFinancials(
   const linkedSales = sales.filter((s) => s.projectId === project.id);
   const invoicedToDate = linkedSales.reduce((sum, s) => sum + s.unitPrice * s.qty, 0);
 
-  const totalCost = segmentCost + purchaseCost + expenseCost;
+  // Only entries that are actually finished (clockOut set) have a settled
+  // duration; a still-running clock-in has no end time to cost out yet.
+  // Only billable entries with a snapshotted hourlyRate contribute a dollar
+  // cost — a non-billable or unrated entry still counts toward laborHours
+  // (so the hours worked are visible) but adds nothing to totalCost, same
+  // as it always could add nothing if never entered as a segment either.
+  const linkedTimeEntries = timeEntries.filter((t) => t.projectId === project.id && t.clockOut);
+  const laborHours = linkedTimeEntries.reduce((sum, t) => sum + (t.clockOut! - t.clockIn) / 3600000, 0);
+  const laborCost = linkedTimeEntries
+    .filter((t) => t.billable && t.hourlyRate)
+    .reduce((sum, t) => sum + ((t.clockOut! - t.clockIn) / 3600000) * (t.hourlyRate ?? 0), 0);
+
+  const totalCost = segmentCost + purchaseCost + expenseCost + laborCost;
   const profit = project.quotedPrice - totalCost;
   const marginPct = project.quotedPrice > 0 ? (profit / project.quotedPrice) * 100 : null;
   const budgetUsedPct = project.quotedPrice > 0 ? (totalCost / project.quotedPrice) * 100 : null;
@@ -1711,6 +1729,9 @@ export function computeProjectFinancials(
     const key = e.category || "Other";
     catMap.set(key, (catMap.get(key) ?? 0) + e.amount);
   }
+  if (laborCost > 0) {
+    catMap.set("Labor (time entries)", (catMap.get("Labor (time entries)") ?? 0) + laborCost);
+  }
 
   const costByCategory = Array.from(catMap.entries())
     .map(([category, amount]) => ({ category, amount }))
@@ -1721,6 +1742,8 @@ export function computeProjectFinancials(
     segmentCost,
     purchaseCost,
     expenseCost,
+    laborCost,
+    laborHours,
     totalCost,
     quotedPrice: project.quotedPrice,
     profit,
@@ -1736,11 +1759,12 @@ export function computeAllProjectFinancials(
   costSegments: ProjectCostSegment[],
   purchases: Purchase[],
   expenses: Expense[],
-  sales: Sale[]
+  sales: Sale[],
+  timeEntries: TimeEntry[] = []
 ): Map<string, ProjectFinancials> {
   const map = new Map<string, ProjectFinancials>();
   for (const p of projects) {
-    map.set(p.id, computeProjectFinancials(p, costSegments, purchases, expenses, sales));
+    map.set(p.id, computeProjectFinancials(p, costSegments, purchases, expenses, sales, timeEntries));
   }
   return map;
 }
@@ -1777,4 +1801,78 @@ export function computeProjectPortfolioSummary(
   }
 
   return { activeCount, totalQuotedActive, totalCostActive, totalProfitActive, overBudgetCount };
+}
+
+// The actual list behind ProjectPortfolioSummary.overBudgetCount — every
+// active (not completed/cancelled) project that's at or past a budget
+// threshold, worst first. This is what surfaces "3 projects over budget" on
+// the Dashboard and drives the budget-threshold notifications, rather than
+// requiring a visit to the Projects page to notice.
+export interface ProjectBudgetAlert {
+  projectId: string;
+  name: string;
+  client?: string;
+  status: ProjectStatus;
+  totalCost: number;
+  quotedPrice: number;
+  budgetUsedPct: number;
+  isOverBudget: boolean; // true once budgetUsedPct > 100, vs. just "approaching" at the warn threshold
+}
+
+export function computeProjectBudgetAlerts(
+  projects: Project[],
+  financials: Map<string, ProjectFinancials>,
+  warnThresholdPct: number = 90
+): ProjectBudgetAlert[] {
+  const alerts: ProjectBudgetAlert[] = [];
+  for (const p of projects) {
+    if (p.status === "completed" || p.status === "cancelled") continue;
+    if (p.quotedPrice <= 0) continue;
+    const f = financials.get(p.id);
+    if (!f || f.budgetUsedPct === null) continue;
+    if (f.budgetUsedPct < warnThresholdPct) continue;
+    alerts.push({
+      projectId: p.id,
+      name: p.name,
+      client: p.client,
+      status: p.status,
+      totalCost: f.totalCost,
+      quotedPrice: f.quotedPrice,
+      budgetUsedPct: f.budgetUsedPct,
+      isOverBudget: f.budgetUsedPct > 100,
+    });
+  }
+  return alerts.sort((a, b) => b.budgetUsedPct - a.budgetUsedPct);
+}
+
+// ---------------------------------------------------------------------------
+// Progress-billing schedule roll-up for a single project's milestones — the
+// number behind "how much of the quote has been scheduled/invoiced/paid so
+// far", used on the Project detail view and to sanity-check that a
+// milestone schedule actually adds up to the quoted price.
+// ---------------------------------------------------------------------------
+export interface MilestoneSummary {
+  scheduledTotal: number; // sum of every milestone's amount, regardless of status
+  invoicedTotal: number; // sum of amounts for milestones marked invoiced or paid
+  paidTotal: number; // sum of amounts for milestones marked paid
+  outstandingInvoiced: number; // invoicedTotal - paidTotal — billed but not yet collected
+  unscheduled: number; // quotedPrice - scheduledTotal — what's left to put on the schedule (can be negative if over-scheduled)
+}
+
+export function summarizeMilestones(milestones: ProjectMilestone[], quotedPrice: number): MilestoneSummary {
+  let scheduledTotal = 0;
+  let invoicedTotal = 0;
+  let paidTotal = 0;
+  for (const m of milestones) {
+    scheduledTotal += m.amount;
+    if (m.status === "invoiced" || m.status === "paid") invoicedTotal += m.amount;
+    if (m.status === "paid") paidTotal += m.amount;
+  }
+  return {
+    scheduledTotal,
+    invoicedTotal,
+    paidTotal,
+    outstandingInvoiced: invoicedTotal - paidTotal,
+    unscheduled: quotedPrice - scheduledTotal,
+  };
 }

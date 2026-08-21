@@ -19,7 +19,7 @@ import {
   Table,
   EmptyState,
 } from "@/components/ui";
-import type { TimeEntry } from "@/lib/types";
+import type { TimeEntry, Project } from "@/lib/types";
 
 function formatDuration(ms: number): string {
   const totalMinutes = Math.max(0, Math.round(ms / 60000));
@@ -39,7 +39,18 @@ function formatClock(ts: number): string {
 
 export default function TimePage() {
   const { role } = useAuth();
-  const { timeEntries, members, settings, clockIn, clockOut, addTimeEntry, updateTimeEntry, deleteTimeEntry, loading } = useData();
+  const {
+    timeEntries,
+    members,
+    settings,
+    projects,
+    clockIn,
+    clockOut,
+    addTimeEntry,
+    updateTimeEntry,
+    deleteTimeEntry,
+    loading,
+  } = useData();
   const toast = useToast();
   const currency = settings.currency;
 
@@ -49,6 +60,7 @@ export default function TimePage() {
   const [jobLabel, setJobLabel] = useState("");
   const [billable, setBillable] = useState(true);
   const [hourlyRate, setHourlyRate] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [busy, setBusy] = useState(false);
 
   // Manual/backfill entry, Owner/Manager only
@@ -59,8 +71,15 @@ export default function TimePage() {
   const [manualStart, setManualStart] = useState("");
   const [manualEnd, setManualEnd] = useState("");
   const [manualRate, setManualRate] = useState("");
+  const [manualProjectId, setManualProjectId] = useState("");
   const [manualBusy, setManualBusy] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+
+  const billableProjects = useMemo(
+    () => [...projects].filter((p) => p.status !== "cancelled").sort((a, b) => a.name.localeCompare(b.name)),
+    [projects]
+  );
+  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
 
   const sorted = useMemo(() => [...timeEntries].sort((a, b) => b.clockIn - a.clockIn), [timeEntries]);
   const openEntries = sorted.filter((t) => !t.clockOut);
@@ -99,17 +118,19 @@ export default function TimePage() {
               await clockIn(jobLabel.trim(), {
                 billable,
                 hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
+                projectId: projectId || undefined,
               });
               toast.success("Clocked in");
               setJobLabel("");
               setHourlyRate("");
+              setProjectId("");
             } catch (err) {
               toast.error("Couldn't clock in", toastableErrorMessage(err));
             } finally {
               setBusy(false);
             }
           }}
-          className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end"
+          className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end"
         >
           <Field>
             <Label>Job / customer</Label>
@@ -120,6 +141,17 @@ export default function TimePage() {
               placeholder="e.g. Acme Corp — website redesign"
               autoFocus
             />
+          </Field>
+          <Field>
+            <Label>Project (optional)</Label>
+            <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">None</option>
+              {billableProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field>
             <Label>Rate/hr (optional)</Label>
@@ -136,6 +168,12 @@ export default function TimePage() {
             {busy ? "Clocking in…" : "Clock in"}
           </Button>
         </form>
+        {billableProjects.length > 0 && (
+          <div className="text-[11px] text-muted mt-2">
+            Tag a project and, once you clock out, billable hours × rate roll straight into that project&apos;s
+            actual cost — no need to also add it as a manual cost entry.
+          </div>
+        )}
       </Card>
 
       {showManual && canManage && (
@@ -165,12 +203,14 @@ export default function TimePage() {
                   clockIn: clockInTs,
                   clockOut: clockOutTs,
                   hourlyRate: manualRate ? Number(manualRate) : undefined,
+                  projectId: manualProjectId || undefined,
                 });
                 toast.success("Time entry added");
                 setManualJobLabel("");
                 setManualStart("");
                 setManualEnd("");
                 setManualRate("");
+                setManualProjectId("");
                 setShowManual(false);
               } catch (err) {
                 toast.error("Couldn't save that entry", toastableErrorMessage(err));
@@ -211,10 +251,23 @@ export default function TimePage() {
                 <Input required type="time" value={manualEnd} onChange={(e) => setManualEnd(e.target.value)} />
               </Field>
             </div>
-            <Field>
-              <Label>Rate/hr (optional)</Label>
-              <Input type="number" min="0" step="0.01" value={manualRate} onChange={(e) => setManualRate(e.target.value)} />
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field>
+                <Label>Rate/hr (optional)</Label>
+                <Input type="number" min="0" step="0.01" value={manualRate} onChange={(e) => setManualRate(e.target.value)} />
+              </Field>
+              <Field>
+                <Label>Project (optional)</Label>
+                <Select value={manualProjectId} onChange={(e) => setManualProjectId(e.target.value)}>
+                  <option value="">None</option>
+                  {billableProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
             <div className="flex justify-end">
               <Button type="submit" disabled={manualBusy}>
                 {manualBusy ? "Saving…" : "Save entry"}
@@ -232,6 +285,7 @@ export default function TimePage() {
               <RunningRow
                 key={t.id}
                 entry={t}
+                projectName={t.projectId ? projectById.get(t.projectId)?.name : undefined}
                 onClockOut={async () => {
                   try {
                     await clockOut(t.id);
@@ -280,10 +334,16 @@ export default function TimePage() {
                 {closedEntries.map((t) => {
                   const durationMs = (t.clockOut ?? 0) - t.clockIn;
                   const value = t.hourlyRate ? (durationMs / 3600000) * t.hourlyRate : null;
+                  const projectName = t.projectId ? projectById.get(t.projectId)?.name : undefined;
                   return (
                     <tr key={t.id} className="border-b border-line last:border-0">
                       <td className="py-2.5 pr-3">
                         {t.jobLabel}
+                        {projectName && (
+                          <span className="ml-2">
+                            <Badge tone="amber">{projectName}</Badge>
+                          </span>
+                        )}
                         {!t.billable && (
                           <span className="ml-2">
                             <Badge>Non-billable</Badge>
@@ -334,6 +394,7 @@ export default function TimePage() {
         {editingEntry && (
           <EditTimeEntryForm
             entry={editingEntry}
+            projects={projects}
             onSave={async (patch) => {
               try {
                 await updateTimeEntry(editingEntry.id, patch);
@@ -353,16 +414,19 @@ export default function TimePage() {
 
 function EditTimeEntryForm({
   entry,
+  projects,
   onSave,
   onCancel,
 }: {
   entry: TimeEntry;
+  projects: Project[];
   onSave: (patch: {
     jobLabel?: string;
     clockIn?: number;
     clockOut?: number;
     billable?: boolean;
     hourlyRate?: number;
+    projectId?: string;
   }) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -381,6 +445,7 @@ function EditTimeEntryForm({
   const [end, setEnd] = useState(endFields.time);
   const [billable, setBillable] = useState(entry.billable);
   const [hourlyRate, setHourlyRate] = useState(entry.hourlyRate?.toString() ?? "");
+  const [projectId, setProjectId] = useState(entry.projectId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -402,6 +467,7 @@ function EditTimeEntryForm({
           clockOut: clockOutTs,
           billable,
           hourlyRate: hourlyRate ? Number(hourlyRate) : undefined,
+          projectId: projectId || undefined,
         });
         setBusy(false);
       }}
@@ -439,6 +505,19 @@ function EditTimeEntryForm({
           </Select>
         </Field>
       </div>
+      <Field>
+        <Label>Project (optional)</Label>
+        <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <option value="">None</option>
+          {projects
+            .filter((p) => p.status !== "cancelled")
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+        </Select>
+      </Field>
       {error && <div className="text-xs text-bad">{error}</div>}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
@@ -454,10 +533,12 @@ function EditTimeEntryForm({
 
 function RunningRow({
   entry,
+  projectName,
   onClockOut,
   canManage,
 }: {
   entry: TimeEntry;
+  projectName?: string;
   onClockOut: () => void;
   canManage: boolean;
 }) {
@@ -466,7 +547,14 @@ function RunningRow({
   return (
     <div className="flex items-center justify-between rounded-lg border border-line px-3 py-2.5">
       <div>
-        <div className="font-medium">{entry.jobLabel}</div>
+        <div className="font-medium">
+          {entry.jobLabel}
+          {projectName && (
+            <span className="ml-2">
+              <Badge tone="amber">{projectName}</Badge>
+            </span>
+          )}
+        </div>
         <div className="text-xs text-muted">
           {entry.memberName} · started {formatClock(entry.clockIn)}
           {!entry.billable && " · non-billable"}

@@ -58,6 +58,7 @@ import type {
   FixedAsset,
   Project,
   ProjectCostSegment,
+  ProjectMilestone,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { can } from "@/lib/permissions";
@@ -80,6 +81,7 @@ import {
   computePayablesAging,
   computeAllProjectFinancials,
   computeProjectPortfolioSummary,
+  computeProjectBudgetAlerts,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -93,6 +95,7 @@ import {
   type PayablesAging,
   type ProjectFinancials,
   type ProjectPortfolioSummary,
+  type ProjectBudgetAlert,
 } from "@/lib/calculations";
 import { todayIso } from "@/lib/format";
 
@@ -122,6 +125,7 @@ interface DataContextValue {
   fixedAssets: FixedAsset[];
   projects: Project[];
   projectCostSegments: ProjectCostSegment[];
+  projectMilestones: ProjectMilestone[];
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -141,6 +145,7 @@ interface DataContextValue {
   avgDailyCashSales: number; // trailing 30-day average of cash/card/bank-transfer sales, for cash-runway projections
   projectFinancials: Map<string, ProjectFinancials>;
   projectPortfolio: ProjectPortfolioSummary;
+  projectBudgetAlerts: ProjectBudgetAlert[]; // active projects at/over the budget-warning threshold, worst first
 
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
@@ -235,12 +240,15 @@ interface DataContextValue {
   addProjectCostSegment: (s: Omit<ProjectCostSegment, "id" | "createdAt">) => Promise<void>;
   updateProjectCostSegment: (id: string, s: Partial<ProjectCostSegment>) => Promise<void>;
   deleteProjectCostSegment: (id: string) => Promise<void>;
+  addProjectMilestone: (m: Omit<ProjectMilestone, "id" | "createdAt">) => Promise<void>;
+  updateProjectMilestone: (id: string, m: Partial<ProjectMilestone>) => Promise<void>;
+  deleteProjectMilestone: (id: string) => Promise<void>;
 
   // Time tracking — every active role clocks itself in/out; Owner/Manager
   // can also log or correct an entry on someone else's behalf and delete
   // mistakes. See the TimeEntry doc comment in lib/types.ts for why more
   // than one entry can be open for the same person at once.
-  clockIn: (jobLabel: string, opts?: { billable?: boolean; hourlyRate?: number }) => Promise<void>;
+  clockIn: (jobLabel: string, opts?: { billable?: boolean; hourlyRate?: number; projectId?: string }) => Promise<void>;
   clockOut: (id: string) => Promise<void>;
   addTimeEntry: (
     e: Omit<TimeEntry, "id" | "createdAt" | "createdByUid" | "createdByName">
@@ -279,6 +287,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectCostSegments, setProjectCostSegments] = useState<ProjectCostSegment[]>([]);
+  const [projectMilestones, setProjectMilestones] = useState<ProjectMilestone[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
   // Which collections this role actually needs — and, just as importantly,
@@ -294,13 +303,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
         "auditLog", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
-        "projects", "projectCostSegments",
+        "projects", "projectCostSegments", "projectMilestones",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
-        "projects", "projectCostSegments",
+        "projects", "projectCostSegments", "projectMilestones",
       ];
     if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
     return [];
@@ -329,6 +338,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setFixedAssets([]);
       setProjects([]);
       setProjectCostSegments([]);
+      setProjectMilestones([]);
       setLoadedFlags({});
       return;
     }
@@ -407,6 +417,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         onSnapshot(collection(db, "users", businessId, "projectCostSegments"), (snap) => {
           setProjectCostSegments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ProjectCostSegment)));
           bump("projectCostSegments");
+        }),
+        onSnapshot(collection(db, "users", businessId, "projectMilestones"), (snap) => {
+          setProjectMilestones(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ProjectMilestone)));
+          bump("projectMilestones");
         })
       );
     }
@@ -583,11 +597,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return total / 30;
   }, [sales, saleEconomics]);
   const projectFinancials = useMemo(
-    () => computeAllProjectFinancials(projects, projectCostSegments, purchases, expenses, sales),
-    [projects, projectCostSegments, purchases, expenses, sales]
+    () => computeAllProjectFinancials(projects, projectCostSegments, purchases, expenses, sales, timeEntries),
+    [projects, projectCostSegments, purchases, expenses, sales, timeEntries]
   );
   const projectPortfolio = useMemo(
     () => computeProjectPortfolioSummary(projects, projectFinancials),
+    [projects, projectFinancials]
+  );
+  const projectBudgetAlerts = useMemo(
+    () => computeProjectBudgetAlerts(projects, projectFinancials),
     [projects, projectFinancials]
   );
 
@@ -665,6 +683,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fixedAssets,
     projects,
     projectCostSegments,
+    projectMilestones,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -683,6 +702,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     avgDailyCashSales,
     projectFinancials,
     projectPortfolio,
+    projectBudgetAlerts,
 
     addProduct: async (p) => {
       requirePermission("manage:products");
@@ -1319,6 +1339,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
       logAudit("projectCostSegment", id, "delete", `Cost segment deleted`);
     },
 
+    addProjectMilestone: async (m) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "projectMilestones"), {
+        ...m,
+        createdAt: Date.now(),
+      });
+      logAudit("projectMilestone", ref.id, "create", `Milestone added: ${m.label} (${formatMoneyPlain(m.amount)})`);
+    },
+
+    updateProjectMilestone: async (id, m) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "projectMilestones", id), m);
+      logAudit(
+        "projectMilestone",
+        id,
+        "update",
+        m.status ? `Milestone marked ${m.status}` : "Milestone updated"
+      );
+    },
+
+    deleteProjectMilestone: async (id) => {
+      requirePermission("manage:projects");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await deleteDoc(doc(db, "users", bizId, "projectMilestones", id));
+      logAudit("projectMilestone", id, "delete", `Milestone deleted`);
+    },
+
     clockIn: async (jobLabel, opts) => {
       requirePermission("create:timeEntry");
       const { businessId: bizId, uid: myUid } = requireBusiness();
@@ -1329,6 +1381,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         jobLabel,
         billable: opts?.billable ?? true,
         ...(opts?.hourlyRate != null ? { hourlyRate: opts.hourlyRate } : {}),
+        ...(opts?.projectId ? { projectId: opts.projectId } : {}),
         clockIn: Date.now(),
         createdByUid: myUid,
         createdByName: memberName ?? user?.email ?? "Unknown",

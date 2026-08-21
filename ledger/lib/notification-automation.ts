@@ -6,7 +6,7 @@ import type {
   Expense,
   Loan,
 } from "./types";
-import type { ReceivableLine, PayableLine, ProductLedgerResult } from "./calculations";
+import type { ReceivableLine, PayableLine, ProductLedgerResult, ProjectBudgetAlert } from "./calculations";
 import { todayIso } from "./format";
 
 /**
@@ -225,6 +225,29 @@ export function generateLoanNotifications(
 }
 
 /**
+ * Generate notifications for projects approaching or past their quoted
+ * budget. `computeProjectBudgetAlerts` (lib/calculations.ts) already does
+ * the filtering/threshold work — this just turns each alert into a
+ * notification, medium priority while still under 100% (a heads-up) and
+ * high once actual cost has passed the quote (already losing money).
+ */
+export function generateProjectBudgetNotifications(
+  alerts: ProjectBudgetAlert[]
+): Omit<Notification, "id" | "createdAt">[] {
+  return alerts.map((a) => ({
+    type: "project_over_budget" as NotificationType,
+    priority: (a.isOverBudget ? "high" : "medium") as NotificationPriority,
+    title: a.isOverBudget ? `Over budget: ${a.name}` : `Approaching budget: ${a.name}`,
+    message: a.isOverBudget
+      ? `Actual cost ${a.totalCost.toLocaleString()} has passed the quoted price of ${a.quotedPrice.toLocaleString()} (${a.budgetUsedPct.toFixed(0)}% used).`
+      : `Actual cost ${a.totalCost.toLocaleString()} is at ${a.budgetUsedPct.toFixed(0)}% of the quoted price ${a.quotedPrice.toLocaleString()}.`,
+    entityId: a.projectId,
+    entityType: "project",
+    isRead: false,
+  }));
+}
+
+/**
  * Generate all notifications based on current business state
  * This is the main entry point for notification automation
  */
@@ -236,8 +259,9 @@ export function generateAllNotifications(params: {
   eoqByProduct: Map<string, { eoq: number }>;
   expenses: Expense[];
   loans: Loan[];
+  projectBudgetAlerts: ProjectBudgetAlert[];
 }): Omit<Notification, "id" | "createdAt">[] {
-  const { receivables, payables, products, ledgers, eoqByProduct, expenses, loans } = params;
+  const { receivables, payables, products, ledgers, eoqByProduct, expenses, loans, projectBudgetAlerts } = params;
 
   return [
     ...generateReceivableNotifications(receivables),
@@ -245,5 +269,6 @@ export function generateAllNotifications(params: {
     ...generateLowStockNotifications(products, ledgers, eoqByProduct),
     ...generateExpenseNotifications(expenses),
     ...generateLoanNotifications(loans),
+    ...generateProjectBudgetNotifications(projectBudgetAlerts),
   ];
 }

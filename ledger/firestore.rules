@@ -337,6 +337,12 @@ service cloud.firestore {
       match /projectCostSegments/{docId} {
         allow read, write: if isOwnerOrManager(businessId);
       }
+      // Progress-billing schedule lines for a project (deposit, milestone
+      // payments, final payment). Same trust boundary as the rest of
+      // project costing — Owner/Manager only.
+      match /projectMilestones/{docId} {
+        allow read, write: if isOwnerOrManager(businessId);
+      }
     }
   }
 }

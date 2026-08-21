@@ -39,6 +39,7 @@ import { useData } from "./DataContext";
 import type { Notification } from "@/lib/types";
 import { can } from "@/lib/permissions";
 import { generateAllNotifications } from "@/lib/notification-automation";
+import { computeProjectBudgetAlerts } from "@/lib/calculations";
 
 interface NotificationsContextValue {
   notifications: Notification[];
@@ -53,8 +54,18 @@ const NotificationsContext = createContext<NotificationsContextValue | undefined
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user, businessId, role, memberName } = useAuth();
   const uid = user?.uid ?? null;
-  const { loading: coreDataLoading, products, ledgers, eoqByProduct, expenses, loans, receivablesAging, payablesAging } =
-    useData();
+  const {
+    loading: coreDataLoading,
+    products,
+    ledgers,
+    eoqByProduct,
+    expenses,
+    loans,
+    receivablesAging,
+    payablesAging,
+    projects,
+    projectFinancials,
+  } = useData();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [subscribed, setSubscribed] = useState(false);
@@ -127,6 +138,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       eoqByProduct,
       expenses,
       loans,
+      projectBudgetAlerts: computeProjectBudgetAlerts(projects, projectFinancials),
     });
 
     const existingKeys = new Set(notifications.map((n) => `${n.type}-${n.entityId}-${n.entityType}`));
@@ -157,6 +169,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     eoqByProduct,
     expenses,
     loans,
+    projects,
+    projectFinancials,
     notifications,
   ]);
 

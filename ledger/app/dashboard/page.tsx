@@ -36,6 +36,8 @@ export default function DashboardPage() {
     loanPortfolio,
     eoqByProduct,
     onOrderByProduct,
+    projects,
+    projectBudgetAlerts,
   } = useData();
 
   const currency = settings.currency;
@@ -152,6 +154,40 @@ export default function DashboardPage() {
           </Link>
         </Card>
       )}
+
+      {projects.length > 0 && projectBudgetAlerts.length > 0 && (
+        <Card className="mb-5 border-bad/30">
+          <div className="text-sm font-medium text-bad mb-1">
+            {projectBudgetAlerts.filter((a) => a.isOverBudget).length > 0
+              ? `${projectBudgetAlerts.filter((a) => a.isOverBudget).length} project${
+                  projectBudgetAlerts.filter((a) => a.isOverBudget).length !== 1 ? "s" : ""
+                } over budget`
+              : "Projects approaching budget"}
+          </div>
+          <div className="text-xs text-muted mb-3">
+            Actual cost compared against the quoted price on each job — the earlier you notice this, the more
+            room there is to renegotiate scope or catch a runaway cost before the job wraps.
+          </div>
+          <div className="space-y-2">
+            {projectBudgetAlerts.slice(0, 5).map((a) => (
+              <div key={a.projectId} className="flex items-center justify-between text-xs">
+                <span className="text-fg font-medium">
+                  {a.name}
+                  {a.client ? <span className="text-muted font-normal"> · {a.client}</span> : null}
+                </span>
+                <span className={a.isOverBudget ? "text-bad" : "text-amber-soft"}>
+                  {formatMoney(a.totalCost, currency)} / {formatMoney(a.quotedPrice, currency)} (
+                  {a.budgetUsedPct.toFixed(0)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+          <Link href="/projects" className="text-xs text-amber-soft mt-3 inline-block">
+            Review projects →
+          </Link>
+        </Card>
+      )}
+
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat

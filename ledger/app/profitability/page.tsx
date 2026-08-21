@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { useRequireRole } from "@/lib/roleGuard";
@@ -47,6 +48,8 @@ export default function ProfitabilityPage() {
     sales,
     saleEconomics,
     ledgers,
+    projects,
+    projectFinancials,
   } = useData();
   const toast = useToast();
   const currency = settings.currency;
@@ -73,6 +76,14 @@ export default function ProfitabilityPage() {
     () => [...productProfitability].sort((a, b) => b.grossProfit - a.grossProfit),
     [productProfitability]
   );
+
+  const rankedProjects = useMemo(() => {
+    return [...projects]
+      .filter((p) => p.status !== "cancelled" && p.quotedPrice > 0)
+      .map((p) => ({ project: p, f: projectFinancials.get(p.id) }))
+      .filter((r) => r.f && r.f.marginPct !== null)
+      .sort((a, b) => (a.f!.marginPct as number) - (b.f!.marginPct as number));
+  }, [projects, projectFinancials]);
 
   if (guardLoading || !allowed) return null;
 
@@ -176,6 +187,40 @@ export default function ProfitabilityPage() {
           Worth asking why for anything at either end.
         </div>
       </Card>
+
+      {rankedProjects.length > 0 && (
+        <Card className="mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <div className="text-sm font-medium">Job / project profitability</div>
+              <div className="text-xs text-muted mt-0.5">
+                Which quoted jobs are actually making money once every cost against them is totalled up — worst
+                margin first, so the ones worth a closer look surface here rather than staying buried on the
+                Projects page.
+              </div>
+            </div>
+            <Link href="/projects" className="text-xs text-amber-soft shrink-0 ml-4">
+              All projects →
+            </Link>
+          </div>
+          <div className="mt-4 space-y-2">
+            {rankedProjects.slice(0, 6).map(({ project, f }) => (
+              <div key={project.id} className="flex items-center justify-between text-xs">
+                <span className="text-fg font-medium">
+                  {project.name}
+                  {project.client ? <span className="text-muted font-normal"> · {project.client}</span> : null}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="text-muted">
+                    {formatMoney(f!.totalCost, currency)} cost / {formatMoney(f!.quotedPrice, currency)} quoted
+                  </span>
+                  <Badge tone={(f!.marginPct ?? 0) >= 0 ? "good" : "bad"}>{f!.marginPct!.toFixed(0)}%</Badge>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {!hasData ? (
         <EmptyState

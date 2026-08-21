@@ -455,6 +455,15 @@ export interface TimeEntry {
   clockIn: number; // epoch ms
   clockOut?: number; // epoch ms; absent while the entry is still running
   notes?: string;
+  // Optional link to a Project — set when this clocked time was worked
+  // against a costed job rather than general/unattributed work. Purely
+  // additive, same shape as the `projectId` on Purchase/Expense/Sale: an
+  // untagged entry behaves exactly as before. When set (and the entry has
+  // both a hourlyRate and a clockOut), hours × rate rolls automatically
+  // into that project's actual labor cost — see computeProjectFinancials
+  // in lib/calculations.ts — instead of having to be re-entered by hand as
+  // a manual ProjectCostSegment.
+  projectId?: string;
   createdByUid?: string;
   createdByName?: string;
   createdAt: number;
@@ -485,6 +494,7 @@ export type NotificationType =
   | "low_stock"               // Product stock below reorder point
   | "expense_due"             // Recurring expense due
   | "loan_payment_due"        // Loan payment due
+  | "project_over_budget"     // Project actual cost is approaching/past its quoted price
   | "custom";                 // User-created custom reminder
 
 export type NotificationPriority = "low" | "medium" | "high";
@@ -564,6 +574,30 @@ export interface ProjectCostSegment {
   category: string; // one of PROJECT_COST_CATEGORIES, free text also accepted
   amount: number;
   date: string; // ISO date
+  notes?: string;
+  createdAt: number;
+}
+
+// A progress-billing schedule line for a Project — e.g. "Deposit", "50% on
+// delivery", "Final payment on handover". Deliberately its own append list
+// (same auditability pattern as ProjectCostSegment) rather than a JSON blob
+// on Project, and deliberately NOT auto-converted into a Sale: a milestone
+// can be scheduled long before it's actually billed, and a service project
+// billed in stages doesn't always map to a sellable Product/SKU the way the
+// Sale record requires. Status is tracked here directly instead — see
+// summarizeMilestones in lib/calculations.ts for the roll-up used on the
+// Project detail view (scheduled vs invoiced vs paid, against quotedPrice).
+export type MilestoneStatus = "pending" | "invoiced" | "paid";
+
+export interface ProjectMilestone {
+  id: string;
+  projectId: string;
+  label: string; // e.g. "Deposit", "Milestone 2 — framing complete"
+  amount: number;
+  dueDate?: string; // ISO date
+  status: MilestoneStatus;
+  invoicedDate?: string; // ISO date, set when marked invoiced
+  paidDate?: string; // ISO date, set when marked paid
   notes?: string;
   createdAt: number;
 }

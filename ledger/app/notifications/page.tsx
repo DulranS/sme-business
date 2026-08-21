@@ -27,6 +27,7 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   low_stock: "Low stock warning",
   expense_due: "Expense due",
   loan_payment_due: "Loan payment due",
+  project_over_budget: "Project budget alert",
   custom: "Custom reminder",
 };
 
