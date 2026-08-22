@@ -86,7 +86,7 @@ export default function ReceivablesPayablesPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <Stat label="Total outstanding" value={formatMoney(active.totalOutstanding, currency)} tone={tab === "receivables" ? "good" : "bad"} />
         <Stat label="Overdue" value={formatMoney(active.overdueTotal, currency)} tone={active.overdueTotal > 0 ? "bad" : undefined} />
         <Stat label="1-30 days" value={formatMoney(active.byBucket["1-30"], currency)} />
@@ -179,15 +179,15 @@ export default function ReceivablesPayablesPage() {
 
       {isOwner && historyForTab.length > 0 && (
         <Card className="mt-6">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-medium">Payment history &amp; corrections</div>
               <div className="text-xs text-muted mt-0.5">
                 Every payment ever recorded on this tab. As owner, you can fix a mis-keyed amount, date or method —
                 everyone else can only ever add a new payment, never edit one.
               </div>
             </div>
-            <button onClick={() => setShowHistory((v) => !v)} className="text-xs text-amber-soft shrink-0 ml-4">
+            <button onClick={() => setShowHistory((v) => !v)} className="text-xs text-amber-soft shrink-0">
               {showHistory ? "Hide" : `Show (${historyForTab.length})`}
             </button>
           </div>

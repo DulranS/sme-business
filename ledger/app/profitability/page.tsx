@@ -92,15 +92,15 @@ export default function ProfitabilityPage() {
       <PageHeader title="My Profit" />
 
       <Card className="mb-6">
-        <div className="flex items-center justify-between mb-1">
-          <div>
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-1">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">Profit by item</div>
             <div className="text-xs text-muted mt-0.5">
               For each thing you sell: how many you sold, what you charged vs. what it cost you, and how much profit
               that made. What&apos;s left in stock is valued at what you actually paid for it.
             </div>
           </div>
-          <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="w-36 shrink-0">
+          <Select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} className="!w-36 shrink-0">
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
             <option value="month">This month</option>
@@ -190,8 +190,8 @@ export default function ProfitabilityPage() {
 
       {rankedProjects.length > 0 && (
         <Card className="mb-6">
-          <div className="flex items-center justify-between mb-1">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 mb-1">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-medium">Job / project profitability</div>
               <div className="text-xs text-muted mt-0.5">
                 Which quoted jobs are actually making money once every cost against them is totalled up — worst
@@ -199,7 +199,7 @@ export default function ProfitabilityPage() {
                 Projects page.
               </div>
             </div>
-            <Link href="/projects" className="text-xs text-amber-soft shrink-0 ml-4">
+            <Link href="/projects" className="text-xs text-amber-soft shrink-0">
               All projects →
             </Link>
           </div>
@@ -235,7 +235,7 @@ export default function ProfitabilityPage() {
               Based on your last 3 months of sales and this month&apos;s regular costs (rent, salaries, subscriptions,
               and so on).
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <Stat
                 label="Profit per sale"
                 value={`${(breakEven.contributionMarginRatio * 100).toFixed(1)}%`}
@@ -276,17 +276,17 @@ export default function ProfitabilityPage() {
           </Card>
 
           <Card>
-            <div className="flex items-center justify-between mb-1">
-              <div>
+            <div className="flex items-start sm:items-center justify-between gap-3 mb-1">
+              <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium">Money You Put In</div>
                 <div className="text-xs text-muted mt-0.5">
                   Money you (or an investor) put into the business, took out, and how it&apos;s doing compared to that.
                 </div>
               </div>
-              <Button onClick={() => { setEditingEntry(null); setModalOpen(true); }}>+ Add money in/out</Button>
+              <Button onClick={() => { setEditingEntry(null); setModalOpen(true); }} className="shrink-0">+ Add money in/out</Button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
               <Stat label="Put in" value={formatMoney(capitalSummary.totalInvested, currency)} />
               <Stat label="Taken out" value={formatMoney(capitalSummary.totalWithdrawn, currency)} />
               <Stat

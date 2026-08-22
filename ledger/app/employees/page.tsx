@@ -47,7 +47,7 @@ export default function EmployeesPage() {
     <>
       <PageHeader title="Employees &amp; payroll" action={<Button onClick={openNew}>+ Add employee</Button>} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Active staff" value={activeEmployees.length.toString()} />
         <Stat label="Payroll / month" value={formatMoney(monthlyPayroll, currency)} tone="bad" sub="booked as a recurring expense" />
         <Stat

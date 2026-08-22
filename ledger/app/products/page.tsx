@@ -379,8 +379,8 @@ function ReorderPlanningSection() {
 
   return (
     <Card className="mt-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-start sm:items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Reorder planning (EOQ)</div>
           <div className="text-xs text-muted mt-0.5 mb-4">
             Economic order quantity — the batch size that minimizes ordering + holding cost, based on your last 90
@@ -499,8 +499,8 @@ function VariableCostsSection() {
 
   return (
     <Card className="mt-6">
-      <div className="flex items-center justify-between mb-1">
-        <div>
+      <div className="flex items-start sm:items-center justify-between gap-3 mb-1">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Variable costs per unit</div>
           <div className="text-xs text-muted mt-0.5">
             Packaging, payment fees, delivery, subcontractor cuts — applied automatically to gross profit for
@@ -509,7 +509,7 @@ function VariableCostsSection() {
         </div>
         <button
           onClick={() => (open ? (setOpen(false), resetForm()) : openAdd())}
-          className="text-xs text-amber-soft"
+          className="text-xs text-amber-soft shrink-0"
         >
           {open ? "Close" : "+ Add"}
         </button>

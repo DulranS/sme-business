@@ -163,7 +163,7 @@ export default function ImportExportPage() {
         {rows.map((row) => (
           <Card key={row.entity}>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
+              <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium">{row.label}</div>
                 <div className="text-xs text-muted mt-0.5">{row.description}</div>
                 <div className="text-[11px] text-muted mt-1 font-mono">{row.columns}</div>
@@ -219,8 +219,8 @@ export default function ImportExportPage() {
         ))}
 
         <Card>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-medium">Extra costs per sale</div>
               <div className="text-xs text-muted mt-0.5">Export only — set these up on the Items page.</div>
             </div>

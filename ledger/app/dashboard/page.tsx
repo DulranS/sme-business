@@ -353,8 +353,8 @@ export default function DashboardPage() {
       </Card>
 
       <Card className="mt-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-start sm:items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">Is the business actually profitable?</div>
             <div className="text-xs text-muted mt-0.5">
               {breakEven.overheadCoverageRatio !== null
@@ -364,7 +364,7 @@ export default function DashboardPage() {
                 : "Log some expenses to see overhead coverage."}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0 ml-4">
+          <div className="flex flex-col items-end gap-1 shrink-0">
             <Link href="/profitability" className="text-xs text-amber-soft">
               Break-even &amp; ROI →
             </Link>

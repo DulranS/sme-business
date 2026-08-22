@@ -132,7 +132,7 @@ export default function ProjectsPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <Stat label="Active projects" value={String(projectPortfolio.activeCount)} />
             <Stat label="Quoted (active)" value={formatMoney(projectPortfolio.totalQuotedActive, currency)} />
             <Stat
@@ -473,7 +473,7 @@ function ProjectDetail({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Stat label="Quoted" value={formatMoney(project.quotedPrice, currency)} />
         <Stat label="Actual cost" value={formatMoney(f?.totalCost ?? 0, currency)} />
         <Stat label="Profit" value={formatMoney(f?.profit ?? 0, currency)} tone={(f?.profit ?? 0) >= 0 ? "good" : "bad"} />
@@ -678,8 +678,8 @@ function ProjectDetail({
       </div>
 
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <div>
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-2">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">Progress-billing schedule</div>
             <div className="text-[11px] text-muted mt-0.5">
               Scheduled {formatMoney(milestoneSummary.scheduledTotal, currency)} of{" "}
@@ -696,7 +696,7 @@ function ProjectDetail({
           </div>
           <Button
             variant="ghost"
-            className="!min-h-0 !py-1.5 !px-2.5 text-xs"
+            className="!min-h-0 !py-1.5 !px-2.5 text-xs shrink-0"
             onClick={() => {
               setEditingMilestone(null);
               setMilestoneOpen(true);

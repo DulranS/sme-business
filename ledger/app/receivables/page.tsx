@@ -31,7 +31,7 @@ export default function ReceivablesPage() {
     <>
       <PageHeader title="Owed to You" />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         <Stat label="Total outstanding" value={formatMoney(receivablesAging.totalOutstanding, currency)} />
         <Stat label="Overdue" value={formatMoney(overdueTotal, currency)} tone={overdueTotal > 0 ? "bad" : "default"} />
         <Stat label="90+ days" value={formatMoney(receivablesAging.byBucket["90+"], currency)} tone={receivablesAging.byBucket["90+"] > 0 ? "bad" : "default"} />
