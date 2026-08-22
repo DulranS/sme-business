@@ -8,27 +8,33 @@ import { useAuth } from "@/contexts/AuthContext";
 import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
 
-const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; roles: Role[] }[] = [
-  { href: "/dashboard", label: "Home", icon: GridIcon, roles: ["owner", "manager"] },
-  { href: "/products", label: "Items", icon: BoxIcon, roles: ["owner", "manager"] },
-  { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon, roles: ["owner", "manager"] },
-  { href: "/purchases", label: "Buying", icon: DownIcon, roles: ["owner", "manager"] },
-  { href: "/sales", label: "Selling", icon: UpIcon, roles: ["owner", "manager", "staff"] },
-  { href: "/projects", label: "Projects", icon: ProjectIcon, roles: ["owner", "manager"] },
-  { href: "/receivables-payables", label: "Money owed", icon: ClockIcon, roles: ["owner", "manager"] },
-  { href: "/cash-count", label: "Cash count", icon: WalletIcon, roles: ["owner", "manager", "staff"] },
-  { href: "/time", label: "Time", icon: TimerIcon, roles: ["owner", "manager", "staff"] },
-  { href: "/cash-flow", label: "Cash flow", icon: RunwayIcon, roles: ["owner", "manager"] },
-  { href: "/employees", label: "Employees", icon: PeopleIcon, roles: ["owner"] },
-  { href: "/expenses", label: "Bills", icon: RepeatIcon, roles: ["owner", "manager"] },
-  { href: "/loans", label: "Loans", icon: LoanIcon, roles: ["owner", "manager"] },
-  { href: "/profitability", label: "Profit", icon: TrendIcon, roles: ["owner", "manager"] },
-  { href: "/statements", label: "Reports", icon: StatementIcon, roles: ["owner", "manager"] },
-  { href: "/notifications", label: "Notifications", icon: BellIcon, roles: ["owner", "manager"] },
-  { href: "/import-export", label: "CSV", icon: FileIcon, roles: ["owner"] },
-  { href: "/team", label: "Team", icon: TeamIcon, roles: ["owner"] },
-  { href: "/settings", label: "Settings", icon: GearIcon, roles: ["owner"] },
+const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; roles: Role[]; group: string }[] = [
+  { href: "/dashboard", label: "Home", icon: GridIcon, roles: ["owner", "manager"], group: "Overview" },
+  { href: "/notifications", label: "Notifications", icon: BellIcon, roles: ["owner", "manager"], group: "Overview" },
+
+  { href: "/products", label: "Items", icon: BoxIcon, roles: ["owner", "manager"], group: "Buy & sell" },
+  { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon, roles: ["owner", "manager"], group: "Buy & sell" },
+  { href: "/purchases", label: "Buying", icon: DownIcon, roles: ["owner", "manager"], group: "Buy & sell" },
+  { href: "/sales", label: "Selling", icon: UpIcon, roles: ["owner", "manager", "staff"], group: "Buy & sell" },
+  { href: "/projects", label: "Projects", icon: ProjectIcon, roles: ["owner", "manager"], group: "Buy & sell" },
+
+  { href: "/cash-count", label: "Cash count", icon: WalletIcon, roles: ["owner", "manager", "staff"], group: "Money" },
+  { href: "/cash-flow", label: "Cash flow", icon: RunwayIcon, roles: ["owner", "manager"], group: "Money" },
+  { href: "/receivables-payables", label: "Money owed", icon: ClockIcon, roles: ["owner", "manager"], group: "Money" },
+  { href: "/expenses", label: "Bills", icon: RepeatIcon, roles: ["owner", "manager"], group: "Money" },
+  { href: "/loans", label: "Loans", icon: LoanIcon, roles: ["owner", "manager"], group: "Money" },
+  { href: "/profitability", label: "Profit", icon: TrendIcon, roles: ["owner", "manager"], group: "Money" },
+  { href: "/statements", label: "Reports", icon: StatementIcon, roles: ["owner", "manager"], group: "Money" },
+
+  { href: "/time", label: "Time", icon: TimerIcon, roles: ["owner", "manager", "staff"], group: "Team" },
+  { href: "/employees", label: "Employees", icon: PeopleIcon, roles: ["owner"], group: "Team" },
+  { href: "/team", label: "Team access", icon: TeamIcon, roles: ["owner"], group: "Team" },
+
+  { href: "/import-export", label: "CSV", icon: FileIcon, roles: ["owner"], group: "Admin" },
+  { href: "/settings", label: "Settings", icon: GearIcon, roles: ["owner"], group: "Admin" },
 ];
+
+const GROUP_ORDER = ["Overview", "Buy & sell", "Money", "Team", "Admin"];
 
 // A handful of items per role that earn a permanent slot in the mobile
 // bottom bar — the things done most often, day to day. Everything else
@@ -129,24 +135,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="font-display text-base font-bold tracking-tight">Ledger</div>
             <div className="text-[11px] text-muted mt-0.5">solo SME finance</div>
           </div>
-          <nav className="p-2.5 space-y-0.5">
-            {visibleNav.map((item) => {
-              const active = pathname.startsWith(item.href);
-              const Icon = item.icon;
+          <nav className="p-2.5">
+            {GROUP_ORDER.map((group) => {
+              const items = visibleNav.filter((item) => item.group === group);
+              if (items.length === 0) return null;
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={clsx(
-                    "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors border-l-2",
-                    active
-                      ? "bg-panel2 text-fg border-amber font-medium"
-                      : "text-muted border-transparent hover:text-fg hover:bg-panel2"
-                  )}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  {item.label}
-                </Link>
+                <div key={group} className="mb-3.5 last:mb-1">
+                  <div className="px-3 pb-1 text-[10px] uppercase tracking-wider text-muted/70 font-semibold">
+                    {group}
+                  </div>
+                  <div className="space-y-0.5">
+                    {items.map((item) => {
+                      const active = pathname.startsWith(item.href);
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={clsx(
+                            "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors border-l-2",
+                            active
+                              ? "bg-panel2 text-fg border-amber font-medium"
+                              : "text-muted border-transparent hover:text-fg hover:bg-panel2"
+                          )}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </nav>
@@ -240,27 +259,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   ✕
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                {restNav.map((item) => {
-                  const active = pathname.startsWith(item.href);
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={clsx(
-                        "flex flex-col items-center justify-center gap-1.5 rounded-lg border py-4 px-2 text-xs text-center min-h-[76px]",
-                        active
-                          ? "border-amber-dim bg-panel2 text-fg font-medium"
-                          : "border-line text-muted hover:bg-panel2 hover:text-fg"
-                      )}
-                    >
-                      <Icon className="w-5 h-5 shrink-0" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
+              {GROUP_ORDER.map((group) => {
+                const items = restNav.filter((item) => item.group === group);
+                if (items.length === 0) return null;
+                return (
+                  <div key={group} className="mb-4 last:mb-0">
+                    <div className="px-1 pb-2 text-[10px] uppercase tracking-wider text-muted/70 font-semibold">
+                      {group}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      {items.map((item) => {
+                        const active = pathname.startsWith(item.href);
+                        const Icon = item.icon;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={clsx(
+                              "flex flex-col items-center justify-center gap-1.5 rounded-lg border py-4 px-2 text-xs text-center min-h-[76px]",
+                              active
+                                ? "border-amber-dim bg-panel2 text-fg font-medium"
+                                : "border-line text-muted hover:bg-panel2 hover:text-fg"
+                            )}
+                          >
+                            <Icon className="w-5 h-5 shrink-0" />
+                            {item.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
               <div className="mt-5 pt-4 border-t border-line">
                 <div className="text-xs text-fg truncate font-medium">{memberName ?? user.email}</div>
                 {role && (
