@@ -32,6 +32,7 @@ const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGEle
   { href: "/team", label: "Team access", icon: TeamIcon, roles: ["owner"], group: "Team" },
 
   { href: "/import-export", label: "CSV", icon: FileIcon, roles: ["owner"], group: "Admin" },
+  { href: "/activity", label: "Activity", icon: ClockIcon, roles: ["owner"], group: "Admin" },
   { href: "/settings", label: "Settings", icon: GearIcon, roles: ["owner"], group: "Admin" },
 ];
 

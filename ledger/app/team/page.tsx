@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
@@ -187,7 +188,12 @@ export default function TeamPage() {
 
       {auditLog.length > 0 && (
         <Card>
-          <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Recent activity</div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-medium text-muted uppercase tracking-wider">Recent activity</div>
+            <Link href="/activity" className="text-xs text-amber-soft hover:opacity-80">
+              View full log →
+            </Link>
+          </div>
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {auditLog.slice(0, 40).map((a) => (
               <div key={a.id} className="flex items-start justify-between text-xs gap-3 border-b border-line last:border-0 pb-2 last:pb-0">
