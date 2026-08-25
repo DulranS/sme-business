@@ -57,14 +57,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
 
   const isAuthPage = pathname === "/login" || pathname === "/join";
+  // The admin-only account-provisioning tool is deliberately outside the
+  // normal signed-in-user chrome: it isn't part of any business's
+  // dashboard, it's gated by its own passcode rather than a login, and an
+  // admin using it may or may not also be signed into a business in this
+  // same browser. It must never bounce a signed-out visitor to /login
+  // (that's the whole point — it's how accounts get created before anyone
+  // can log in) and never bounce a signed-in owner away from it either.
+  const isStandalonePage = isAuthPage || pathname.startsWith("/admin/");
   const homeForRole = role === "staff" ? "/sales" : "/dashboard";
 
   useEffect(() => {
     if (loading) return;
-    if (!user && !isAuthPage) router.replace("/login");
+    if (!user && !isStandalonePage) router.replace("/login");
     if (user && isAuthPage) router.replace(homeForRole);
     if (user && pathname === "/") router.replace(homeForRole);
-  }, [loading, user, isAuthPage, pathname, router, homeForRole]);
+  }, [loading, user, isAuthPage, isStandalonePage, pathname, router, homeForRole]);
 
   // Close the "More" sheet automatically on navigation so it never lingers
   // open over the next page.
@@ -92,7 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [moreOpen]);
 
-  if (isAuthPage || pathname === "/") {
+  if (isStandalonePage || pathname === "/") {
     return <>{children}</>;
   }
 

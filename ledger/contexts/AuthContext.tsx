@@ -12,10 +12,11 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut as fbSignOut,
   type User,
 } from "firebase/auth";
-import { doc, onSnapshot, writeBatch } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import type { Member, MembershipPointer, Role } from "@/lib/types";
 
@@ -31,8 +32,15 @@ interface AuthContextValue {
   memberName: string | null;
   memberActive: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  // Creates a brand-new business, owned by the newly created account.
-  signUp: (email: string, password: string, ownerName: string) => Promise<void>;
+  // Sends a "reset your password" email via Firebase Auth's own flow. This
+  // is how a person sets their password for the first time, too — accounts
+  // are provisioned by an admin (see /admin/new-business + lib/provisioning.ts)
+  // with a throwaway password nobody is ever told, specifically so this
+  // reset link is the only way in. The login page deliberately shows the
+  // same "check your email" message whether or not this throws
+  // auth/user-not-found, so the UI never confirms/denies which emails have
+  // an account (see app/login/page.tsx).
+  sendPasswordReset: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -132,20 +140,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { auth } = getFirebase();
         await signInWithEmailAndPassword(auth, email, password);
       },
-      signUp: async (email, password, ownerName) => {
-        const { auth, db } = getFirebase();
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = cred.user.uid;
-        const batch = writeBatch(db);
-        batch.set(doc(db, "memberships", uid), { businessId: uid });
-        batch.set(doc(db, "users", uid, "members", uid), {
-          role: "owner",
-          name: ownerName || email.split("@")[0],
-          email: email.toLowerCase(),
-          active: true,
-          createdAt: Date.now(),
-        });
-        await batch.commit();
+      sendPasswordReset: async (email) => {
+        const { auth } = getFirebase();
+        await sendPasswordResetEmail(auth, email);
       },
       signOut: async () => {
         const { auth } = getFirebase();
