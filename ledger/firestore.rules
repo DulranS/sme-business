@@ -178,6 +178,19 @@ service cloud.firestore {
         allow update, delete: if isOwnerOrManager(businessId);
       }
 
+      // Customer directory — a name/contact lookup, not a financial record,
+      // so every active role can read it (Staff needs it for the sale-form
+      // autocomplete) and create a new entry (meeting a first-time customer
+      // shouldn't require finding an Owner/Manager). Editing an existing
+      // entry's contact info is Owner/Manager only, same trust line as
+      // everything else Staff can add but not later alter.
+      match /customers/{docId} {
+        allow read: if isOwnerOrActiveMember(businessId);
+        allow create: if isOwnerOrActiveMember(businessId) && createdBySelf();
+        allow update: if isOwnerOrManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
       match /expenses/{docId} {
         allow read: if isOwnerOrManager(businessId);
         allow create, update: if isOwnerOrManager(businessId);

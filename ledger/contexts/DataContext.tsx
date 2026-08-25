@@ -60,6 +60,7 @@ import type {
   Project,
   ProjectCostSegment,
   ProjectMilestone,
+  Customer,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import { can } from "@/lib/permissions";
@@ -129,6 +130,7 @@ interface DataContextValue {
   projects: Project[];
   projectCostSegments: ProjectCostSegment[];
   projectMilestones: ProjectMilestone[];
+  customers: Customer[]; // read by every active role — see firestore.rules
 
   ledgers: Map<string, ProductLedgerResult>;
   saleEconomics: SaleEconomics[];
@@ -200,6 +202,10 @@ interface DataContextValue {
   addEmployee: (e: Omit<Employee, "id" | "createdAt" | "linkedExpenseId">) => Promise<void>;
   updateEmployee: (id: string, e: Partial<Employee>) => Promise<void>;
   deleteEmployee: (id: string) => Promise<void>;
+
+  addCustomer: (c: Omit<Customer, "id" | "createdAt" | "createdByUid" | "createdByName">) => Promise<void>;
+  updateCustomer: (id: string, c: Partial<Customer>) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
 
   addLoan: (l: Omit<Loan, "id" | "createdAt">) => Promise<void>;
   updateLoan: (id: string, l: Partial<Loan>) => Promise<void>;
@@ -298,6 +304,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectCostSegments, setProjectCostSegments] = useState<ProjectCostSegment[]>([]);
   const [projectMilestones, setProjectMilestones] = useState<ProjectMilestone[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadedFlags, setLoadedFlags] = useState<Record<string, boolean>>({});
 
   // Which collections this role actually needs — and, just as importantly,
@@ -313,15 +320,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "employees", "loans", "settings", "members", "invites",
         "auditLog", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
-        "projects", "projectCostSegments", "projectMilestones",
+        "projects", "projectCostSegments", "projectMilestones", "customers",
       ];
     if (role === "manager")
       return [
         "products", "purchases", "purchaseOrders", "sales", "expenses", "variableCosts",
         "capitalEntries", "loans", "settings", "cashCounts", "receivablePayments", "payablePayments", "timeEntries", "fixedAssets",
-        "projects", "projectCostSegments", "projectMilestones",
+        "projects", "projectCostSegments", "projectMilestones", "customers",
       ];
-    if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries"];
+    if (role === "staff") return ["catalog", "sales", "settings", "cashCounts", "receivablePayments", "timeEntries", "customers"];
     return [];
   }, [role]);
 
@@ -349,6 +356,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setProjects([]);
       setProjectCostSegments([]);
       setProjectMilestones([]);
+      setCustomers([]);
       setLoadedFlags({});
       return;
     }
@@ -502,6 +510,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       onSnapshot(doc(db, "users", businessId, "meta", "settings"), (snap) => {
         if (snap.exists()) setSettings({ ...DEFAULT_SETTINGS, ...(snap.data() as Settings) });
         bump("settings");
+      })
+    );
+
+    // Customer directory — every active role reads the full list (see
+    // firestore.rules): it's a name/contact lookup, not financial data, and
+    // Staff needs it for the sale-form autocomplete.
+    unsubs.push(
+      onSnapshot(query(collection(db, "users", businessId, "customers"), orderBy("name", "asc")), (snap) => {
+        setCustomers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Customer)));
+        bump("customers");
       })
     );
 
@@ -712,6 +730,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     projects,
     projectCostSegments,
     projectMilestones,
+    customers,
     ledgers,
     saleEconomics,
     monthlyPnL,
@@ -1006,6 +1025,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       await deleteDoc(doc(db, "users", bizId, "capitalEntries", docId));
       logAudit("capitalEntry", docId, "delete", "Capital entry deleted");
+    },
+
+    addCustomer: async (c) => {
+      requirePermission("create:customer");
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      const { db } = getFirebase();
+      const ref = await addDoc(collection(db, "users", bizId, "customers"), {
+        ...c,
+        createdByUid: myUid,
+        createdByName: memberName ?? user?.email ?? "Unknown",
+        createdAt: Date.now(),
+      });
+      logAudit("customer", ref.id, "create", `Customer added: ${c.name}`);
+    },
+    updateCustomer: async (docId, c) => {
+      requirePermission("manage:customers");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      await updateDoc(doc(db, "users", bizId, "customers", docId), c);
+      logAudit("customer", docId, "update", `Customer edited${c.name ? `: ${c.name}` : ""}`);
+    },
+    deleteCustomer: async (docId) => {
+      requirePermission("delete:records");
+      const { businessId: bizId } = requireBusiness();
+      const { db } = getFirebase();
+      const existing = customers.find((cust) => cust.id === docId);
+      await deleteDoc(doc(db, "users", bizId, "customers", docId));
+      logAudit("customer", docId, "delete", existing ? `Customer removed: ${existing.name}` : "Customer removed");
     },
 
     addEmployee: async (e) => {

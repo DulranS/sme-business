@@ -16,6 +16,7 @@ const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGEle
   { href: "/purchase-orders", label: "Orders", icon: ClipboardIcon, roles: ["owner", "manager"], group: "Buy & sell" },
   { href: "/purchases", label: "Buying", icon: DownIcon, roles: ["owner", "manager"], group: "Buy & sell" },
   { href: "/sales", label: "Selling", icon: UpIcon, roles: ["owner", "manager", "staff"], group: "Buy & sell" },
+  { href: "/customers", label: "Customers", icon: PeopleIcon, roles: ["owner", "manager", "staff"], group: "Buy & sell" },
   { href: "/projects", label: "Projects", icon: ProjectIcon, roles: ["owner", "manager"], group: "Buy & sell" },
 
   { href: "/cash-count", label: "Cash count", icon: WalletIcon, roles: ["owner", "manager", "staff"], group: "Money" },

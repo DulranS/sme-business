@@ -142,6 +142,25 @@ export interface Sale {
   createdAt: number;
 }
 
+// A customer directory entry. Deliberately lightweight — this is a
+// name/contact lookup, not a CRM: `Sale.customer` stays the free-text field
+// it always was (so nothing about existing sales or the receivables/aging
+// math changes), and this collection exists purely to (a) give the sale
+// form a consistent list of names to pick from instead of retyping a
+// slightly different spelling each time, and (b) anchor a per-customer
+// view — total sales, outstanding balance, last visit — computed by
+// matching this `name` against the existing sales/receivables data on the
+// Customers page. No customerId foreign key anywhere; matching is by name.
+export interface Customer {
+  id: string;
+  name: string;
+  contact?: string; // phone or email
+  notes?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt: number;
+}
+
 // A payment collected against a credit sale. Deliberately its own
 // append-only record rather than an `amountPaid` field mutated on the Sale:
 // that means collecting a payment never requires "edit" permission on

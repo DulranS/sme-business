@@ -42,6 +42,9 @@ export type Permission =
   | "view:allTimeEntries" // see everyone's hours, not just your own
   | "manage:fixedAssets" // create/edit/delete fixed assets
   | "manage:projects" // create/edit/delete projects and their cost segments; tag purchases/expenses/sales to a project
+  | "view:customers"
+  | "create:customer" // add a new customer directory entry — every role can do this, same as create:sale
+  | "manage:customers" // edit an existing customer's contact info/notes
   | "correct:ledgerEntries"; // owner-only: edit/delete a saved cash count or receivable/payable payment to fix a data-entry mistake
 
 const OWNER_MANAGER_SHARED: Permission[] = [
@@ -63,6 +66,9 @@ const OWNER_MANAGER_SHARED: Permission[] = [
   "view:allTimeEntries",
   "manage:fixedAssets",
   "manage:projects",
+  "view:customers",
+  "create:customer",
+  "manage:customers",
 ];
 
 const MATRIX: Record<Role, Permission[]> = {
@@ -86,6 +92,8 @@ const MATRIX: Record<Role, Permission[]> = {
     "create:cashCount",
     "create:receivablePayment",
     "create:timeEntry",
+    "view:customers",
+    "create:customer",
   ],
 };
 

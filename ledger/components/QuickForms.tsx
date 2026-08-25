@@ -85,7 +85,7 @@ export function QuickSaleForm({
   existingSale?: Sale;
   onDone: () => void;
 }) {
-  const { products, catalog, ledgers, addSale, updateSale, settings, projects } = useData();
+  const { products, catalog, ledgers, addSale, updateSale, settings, projects, customers, addCustomer } = useData();
   const { role } = useAuth();
   const toast = useToast();
   const currency = settings.currency;
@@ -184,6 +184,15 @@ export function QuickSaleForm({
                 : `${product.name}: ${formatMoney(revenue, currency)} revenue, ${formatMoney(profit, currency)} profit${marginPct !== null ? ` (${marginPct.toFixed(0)}%)` : ""}`
             );
           }
+          // Quietly grow the customer directory: if the name typed here
+          // doesn't match anyone already in it, add them — so next time
+          // they're one tap in the autocomplete instead of a retyped (and
+          // possibly differently-spelled) name. Best-effort and silent: a
+          // failed directory write should never block or surface an error
+          // for a sale that already saved successfully.
+          if (customer.trim() && !customers.some((c) => c.name.trim().toLowerCase() === customer.trim().toLowerCase())) {
+            addCustomer({ name: customer.trim(), contact: customerContact || undefined }).catch(() => {});
+          }
           onDone();
         } catch (err) {
           toast.error("Couldn't save that sale", toastableErrorMessage(err));
@@ -245,7 +254,24 @@ export function QuickSaleForm({
       <div className="grid grid-cols-2 gap-3">
         <Field>
           <Label>Customer {paymentMethod === "credit" ? "" : "(optional)"}</Label>
-          <Input required={paymentMethod === "credit"} value={customer} onChange={(e) => setCustomer(e.target.value)} />
+          <Input
+            required={paymentMethod === "credit"}
+            value={customer}
+            list="customer-directory"
+            onChange={(e) => {
+              const v = e.target.value;
+              setCustomer(v);
+              // Picked (or typed exactly) a name already in the directory —
+              // carry over their saved contact so it doesn't need retyping.
+              const match = customers.find((c) => c.name.trim().toLowerCase() === v.trim().toLowerCase());
+              if (match?.contact && !customerContact) setCustomerContact(match.contact);
+            }}
+          />
+          <datalist id="customer-directory">
+            {customers.map((c) => (
+              <option key={c.id} value={c.name} />
+            ))}
+          </datalist>
         </Field>
         {paymentMethod === "credit" ? (
           <Field>
