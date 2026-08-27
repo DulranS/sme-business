@@ -10,6 +10,7 @@
 // reinventing its own.
 // ---------------------------------------------------------------------------
 import type { Settings } from "./types";
+import { formatMoney, todayIso } from "./format";
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
@@ -73,4 +74,125 @@ export function buildLetterheadHtml(settings: Settings, docType: string): string
       <div class="doc-type">${docType}</div>
     </div>
   `;
+}
+
+// A safe, universal WhatsApp share link: it deliberately never targets a
+// specific number. customerContact is free text (phone OR email — see
+// Sale.customerContact in lib/types.ts) with no enforced format, so
+// guessing at country codes to build a wa.me/<number> deep link risks
+// silently pointing at the wrong person. wa.me/?text=... instead just
+// opens WhatsApp with the message pre-filled and lets the owner pick the
+// contact themselves — one tap slower, zero chance of misfiring.
+export function buildWhatsAppShareUrl(text: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+export function buildReceivableReminderText(params: {
+  businessName?: string;
+  customer: string;
+  itemName: string;
+  amountOutstanding: number;
+  dueDate: string;
+  daysOverdue: number;
+  currency: string;
+}): string {
+  const { businessName, customer, itemName, amountOutstanding, dueDate, daysOverdue, currency } = params;
+  const from = businessName?.trim() ? businessName.trim() : "us";
+  const amount = formatMoney(amountOutstanding, currency);
+  const status =
+    daysOverdue > 0
+      ? `is now ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue (was due ${dueDate})`
+      : `is due ${dueDate}`;
+  return `Hi ${customer}, this is a friendly reminder from ${from}: ${amount} for ${itemName} ${status}. Let us know if you'd like to arrange payment — thank you!`;
+}
+
+// ---------------------------------------------------------------------------
+// A proper Invoice for a credit sale — distinct from the "Receipt" a cash
+// sale prints (see Sales page). A receipt says "here's what you were
+// charged"; a customer chasing an invoice needs to see what's still owed
+// after whatever they've already paid you, which a receipt alone can't show
+// once partial payments start coming in against a credit sale. Shared here
+// (rather than duplicated per-page, the way buildSaleReceiptHtml/the
+// project buildInvoiceHtml are page-local) because both the Sales page
+// (send it the moment you make the credit sale) and the Receivables page
+// (re-send it while chasing an outstanding balance) need the exact same
+// document — same layout, same payments-received breakdown, same balance
+// math — and drifting into two near-identical copies would be its own bug
+// waiting to happen. Deliberately kept to a single line item + a payments
+// table: Sale is one line per record (see Sale in lib/types.ts), so there's
+// nothing to batch, and no new field, collection, or invoice-numbering
+// scheme is introduced — the invoice reference is just the existing sale
+// id, which is already unique and already what a payment is filed against.
+export interface InvoicePaymentRow {
+  date: string;
+  method: string;
+  amount: number;
+}
+
+export function buildSaleInvoiceHtml(params: {
+  saleId: string;
+  itemName: string;
+  amount: number; // full sale value, base currency
+  customer?: string;
+  customerContact?: string;
+  issueDate: string;
+  dueDate?: string;
+  payments: InvoicePaymentRow[];
+  settings: Settings;
+}): string {
+  const { saleId, itemName, amount, customer, customerContact, issueDate, dueDate, payments, settings } = params;
+  const currency = settings.currency;
+  const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const balanceDue = Math.max(amount - amountPaid, 0);
+  const isOverdue = balanceDue > 0.005 && !!dueDate && dueDate < todayIso();
+  const invoiceRef = `INV-${saleId.slice(-6).toUpperCase()}`;
+
+  const paymentsRows =
+    payments.length > 0
+      ? `
+        <div class="muted" style="margin-top:20px;font-size:11px;text-transform:uppercase;letter-spacing:0.03em;">Payments received</div>
+        <table>
+          <thead><tr><th>Date</th><th>Method</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            ${payments
+              .map(
+                (p) =>
+                  `<tr><td>${escapeHtml(p.date)}</td><td>${escapeHtml(p.method.replace("_", " "))}</td><td class="num">${formatMoney(p.amount, currency)}</td></tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `
+      : "";
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Invoice ${invoiceRef}</title>${printBaseStyles()}</head>
+    <body>
+      ${buildLetterheadHtml(settings, "Invoice")}
+      <div class="meta">
+        <div>
+          ${customer ? `<strong>Bill to:</strong> ${escapeHtml(customer)}${customerContact ? `<br/>${escapeHtml(customerContact)}` : ""}` : ""}
+        </div>
+        <div style="text-align:right;">
+          <div><strong>Invoice:</strong> ${invoiceRef}</div>
+          <div><strong>Date:</strong> ${issueDate}</div>
+          ${dueDate ? `<div><strong>Due:</strong> ${dueDate}${isOverdue ? " (overdue)" : ""}</div>` : ""}
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          <tr><td>${escapeHtml(itemName)}</td><td class="num">${formatMoney(amount, currency)}</td></tr>
+        </tbody>
+      </table>
+      ${paymentsRows}
+      <table style="margin-top:8px;">
+        <tfoot>
+          <tr><td>Amount due</td><td class="num">${formatMoney(amount, currency)}</td></tr>
+          ${amountPaid > 0 ? `<tr><td>Less payments received</td><td class="num">−${formatMoney(amountPaid, currency)}</td></tr>` : ""}
+          <tr class="total-row"><td>Balance due</td><td class="num">${formatMoney(balanceDue, currency)}</td></tr>
+        </tfoot>
+      </table>
+      <div class="footer">${balanceDue <= 0.005 ? "Paid in full — thank you." : isOverdue ? "This invoice is past its due date." : "Thank you for your business."}</div>
+      <div class="footer">Printed ${todayIso()}.</div>
+    </body></html>`;
 }

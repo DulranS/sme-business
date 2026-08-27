@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney } from "@/lib/format";
 import type { ReceivableLine } from "@/lib/calculations";
 import { RecordPaymentForm } from "@/components/RecordPaymentForm";
 import { Badge, Card, Modal, PageHeader, Stat, Table, EmptyState } from "@/components/ui";
+import { openPrintWindow, buildSaleInvoiceHtml, buildWhatsAppShareUrl, buildReceivableReminderText, type InvoicePaymentRow } from "@/lib/print";
 
 const BUCKET_LABEL: Record<string, string> = {
   current: "Not yet due",
@@ -18,9 +19,19 @@ const BUCKET_LABEL: Record<string, string> = {
 
 export default function ReceivablesPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { receivablesAging, settings, loading } = useData();
+  const { receivablesAging, settings, loading, receivablePayments } = useData();
   const [payingFor, setPayingFor] = useState<ReceivableLine | null>(null);
   const currency = settings.currency;
+
+  const paymentsBySaleId = useMemo(() => {
+    const map = new Map<string, InvoicePaymentRow[]>();
+    for (const p of receivablePayments) {
+      const rows = map.get(p.saleId) ?? [];
+      rows.push({ date: p.date, method: p.method, amount: p.amount });
+      map.set(p.saleId, rows);
+    }
+    return map;
+  }, [receivablePayments]);
 
   if (guardLoading || !allowed) return null;
 
@@ -84,9 +95,47 @@ export default function ReceivablesPage() {
                     <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(l.amountPaid, currency)}</td>
                     <td className="py-2.5 px-3 num text-right font-medium">{formatMoney(l.amountOutstanding, currency)}</td>
                     <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                      <button
+                        onClick={() =>
+                          openPrintWindow(
+                            buildSaleInvoiceHtml({
+                              saleId: l.saleId,
+                              itemName: l.productName,
+                              amount: l.amountDue,
+                              customer: l.customer,
+                              customerContact: l.customerContact,
+                              issueDate: l.date,
+                              dueDate: l.dueDate,
+                              payments: paymentsBySaleId.get(l.saleId) ?? [],
+                              settings,
+                            })
+                          )
+                        }
+                        className="text-xs text-muted hover:text-fg mr-3"
+                      >
+                        Print invoice
+                      </button>
                       <button onClick={() => setPayingFor(l)} className="text-xs text-amber-soft hover:underline">
                         Record payment
                       </button>
+                      <a
+                        href={buildWhatsAppShareUrl(
+                          buildReceivableReminderText({
+                            businessName: settings.businessName,
+                            customer: l.customer,
+                            itemName: l.productName,
+                            amountOutstanding: l.amountOutstanding,
+                            dueDate: l.dueDate,
+                            daysOverdue: l.daysOverdue,
+                            currency,
+                          })
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-good hover:underline ml-3"
+                      >
+                        Remind on WhatsApp
+                      </a>
                     </td>
                   </tr>
                 );

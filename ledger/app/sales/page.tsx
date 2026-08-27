@@ -10,7 +10,7 @@ import type { Sale, Settings } from "@/lib/types";
 import { QuickSaleForm } from "@/components/QuickForms";
 import { RecordPaymentForm } from "@/components/RecordPaymentForm";
 import { Badge, Button, Card, Modal, PageHeader, Table, EmptyState } from "@/components/ui";
-import { escapeHtml, openPrintWindow, printBaseStyles, buildLetterheadHtml } from "@/lib/print";
+import { escapeHtml, openPrintWindow, printBaseStyles, buildLetterheadHtml, buildSaleInvoiceHtml, type InvoicePaymentRow } from "@/lib/print";
 
 export default function SalesPage() {
   const { role } = useAuth();
@@ -20,7 +20,7 @@ export default function SalesPage() {
 
 // Owner/Manager: the complete record, with edit/delete and full economics.
 function FullSalesView() {
-  const { products, sales, saleEconomics, deleteSale, settings, loading, receivablesAging } = useData();
+  const { products, sales, saleEconomics, deleteSale, settings, loading, receivablesAging, receivablePayments } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Sale | null>(null);
@@ -29,6 +29,15 @@ function FullSalesView() {
 
   const econById = useMemo(() => new Map(saleEconomics.map((e) => [e.saleId, e])), [saleEconomics]);
   const receivableBySaleId = useMemo(() => new Map(receivablesAging.lines.map((l) => [l.saleId, l])), [receivablesAging]);
+  const paymentsBySaleId = useMemo(() => {
+    const map = new Map<string, InvoicePaymentRow[]>();
+    for (const p of receivablePayments) {
+      const rows = map.get(p.saleId) ?? [];
+      rows.push({ date: p.date, method: p.method, amount: p.amount });
+      map.set(p.saleId, rows);
+    }
+    return map;
+  }, [receivablePayments]);
 
   function openNew() {
     setEditing(null);
@@ -133,6 +142,28 @@ function FullSalesView() {
                       >
                         Print receipt
                       </button>
+                      {isCredit && (
+                        <button
+                          onClick={() =>
+                            openPrintWindow(
+                              buildSaleInvoiceHtml({
+                                saleId: s.id,
+                                itemName: product?.name ?? "Item",
+                                amount: econ?.revenue ?? s.qty * s.unitPrice,
+                                customer: s.customer,
+                                customerContact: s.customerContact,
+                                issueDate: s.date,
+                                dueDate: s.dueDate,
+                                payments: paymentsBySaleId.get(s.id) ?? [],
+                                settings,
+                              })
+                            )
+                          }
+                          className="text-xs text-muted hover:text-fg mr-3"
+                        >
+                          Print invoice
+                        </button>
+                      )}
                       <button onClick={() => openEdit(s)} className="text-xs text-muted hover:text-fg mr-3">
                         Edit
                       </button>
@@ -166,12 +197,21 @@ function FullSalesView() {
 // pocket the difference" not work: there's nothing to quietly correct
 // afterward.
 function StaffSalesView() {
-  const { catalog, sales, settings, loading, receivablesAging } = useData();
+  const { catalog, sales, settings, loading, receivablesAging, receivablePayments } = useData();
   const [modalOpen, setModalOpen] = useState(false);
   const [payingFor, setPayingFor] = useState<ReceivableLine | null>(null);
   const currency = settings.currency;
 
   const receivableBySaleId = useMemo(() => new Map(receivablesAging.lines.map((l) => [l.saleId, l])), [receivablesAging]);
+  const paymentsBySaleId = useMemo(() => {
+    const map = new Map<string, InvoicePaymentRow[]>();
+    for (const p of receivablePayments) {
+      const rows = map.get(p.saleId) ?? [];
+      rows.push({ date: p.date, method: p.method, amount: p.amount });
+      map.set(p.saleId, rows);
+    }
+    return map;
+  }, [receivablePayments]);
 
   return (
     <>
@@ -234,6 +274,28 @@ function StaffSalesView() {
                       >
                         Print receipt
                       </button>
+                      {isCredit && (
+                        <button
+                          onClick={() =>
+                            openPrintWindow(
+                              buildSaleInvoiceHtml({
+                                saleId: s.id,
+                                itemName: item?.name ?? "Item",
+                                amount: s.qty * s.unitPrice,
+                                customer: s.customer,
+                                customerContact: s.customerContact,
+                                issueDate: s.date,
+                                dueDate: s.dueDate,
+                                payments: paymentsBySaleId.get(s.id) ?? [],
+                                settings,
+                              })
+                            )
+                          }
+                          className="text-xs text-muted hover:text-fg ml-3"
+                        >
+                          Print invoice
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
