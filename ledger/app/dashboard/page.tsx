@@ -197,8 +197,9 @@ export default function DashboardPage() {
         />
         <Stat
           label="Profit this month"
-          value={formatMoney(latest?.grossProfit ?? 0, currency)}
-          tone={latest && latest.grossProfit >= 0 ? "good" : "bad"}
+          value={formatMoney(latest?.contributionMargin ?? 0, currency)}
+          tone={latest && latest.contributionMargin >= 0 ? "good" : "bad"}
+          sub="after cost of goods and variable costs"
         />
         <Stat
           label="What's really left (after tax)"
@@ -338,7 +339,7 @@ export default function DashboardPage() {
                   <td className="py-2.5 pr-3 text-fg">{formatMonth(m.month)}</td>
                   <td className="py-2.5 px-3 num text-right">{formatMoney(m.totalRevenue, currency)}</td>
                   <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(m.cogs, currency)}</td>
-                  <td className="py-2.5 px-3 num text-right">{formatMoney(m.grossProfit, currency)}</td>
+                  <td className="py-2.5 px-3 num text-right">{formatMoney(m.contributionMargin, currency)}</td>
                   <td className="py-2.5 px-3 num text-right text-muted">{formatMoney(m.operatingExpenses, currency)}</td>
                   <td className="py-2.5 pl-3 num text-right">
                     <Badge tone={m.netProfitAfterTax >= 0 ? "good" : "bad"}>

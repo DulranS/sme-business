@@ -135,8 +135,15 @@ function IncomeStatement({
 
       <div className="mt-4">
         <Line label="Cost of goods sold" value={m.cogs} currency={currency} negative muted />
-        <Line label="Variable costs" value={m.variableCosts} currency={currency} negative muted />
+        {m.cogsVariableCosts > 0 && (
+          <Line label="Variable costs (COGS-tagged, e.g. shipping)" value={m.cogsVariableCosts} currency={currency} negative muted />
+        )}
         <Line label="Gross profit" value={m.grossProfit} currency={currency} bold />
+      </div>
+
+      <div className="mt-4">
+        <Line label="Other variable costs" value={m.variableCosts - m.cogsVariableCosts} currency={currency} negative muted />
+        <Line label="Contribution margin" value={m.contributionMargin} currency={currency} bold />
       </div>
 
       <div className="mt-4">
@@ -159,8 +166,16 @@ function IncomeStatement({
         <Line label="Net profit after tax" value={m.netProfitAfterTax} currency={currency} bold />
       </div>
 
-      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2">
-        <span className="text-xs text-muted">Net margin:</span>
+      <div className="mt-5 pt-4 border-t border-line flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-muted">Gross margin:</span>
+        <Badge tone={m.grossProfit >= 0 ? "good" : "bad"}>
+          {m.totalRevenue > 0 ? ((m.grossProfit / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
+        </Badge>
+        <span className="text-xs text-muted ml-3">Contribution margin:</span>
+        <Badge tone={m.contributionMargin >= 0 ? "good" : "bad"}>
+          {m.totalRevenue > 0 ? ((m.contributionMargin / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
+        </Badge>
+        <span className="text-xs text-muted ml-3">Net margin:</span>
         <Badge tone={m.netProfitAfterTax >= 0 ? "good" : "bad"}>
           {m.totalRevenue > 0 ? ((m.netProfitAfterTax / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
         </Badge>

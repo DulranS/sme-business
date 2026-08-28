@@ -95,6 +95,7 @@ export function exportVariableCosts(variableCosts: VariableCost[], products: Pro
     amount: v.amount,
     product: v.productId ? nameById.get(v.productId) ?? v.productId : "(all products)",
     productId: v.productId ?? "",
+    includeInCogs: v.includeInCogs ? "yes" : "no",
   }));
   downloadCsv("variable_costs.csv", toCsv(rows));
 }

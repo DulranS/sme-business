@@ -455,6 +455,7 @@ function VariableCostsSection() {
   const [type, setType] = useState<VariableCost["type"]>("per_unit");
   const [amount, setAmount] = useState("");
   const [productId, setProductId] = useState("");
+  const [includeInCogs, setIncludeInCogs] = useState(false);
   const currency = settings.currency;
 
   function resetForm() {
@@ -463,6 +464,7 @@ function VariableCostsSection() {
     setType("per_unit");
     setAmount("");
     setProductId("");
+    setIncludeInCogs(false);
   }
 
   function openAdd() {
@@ -476,12 +478,13 @@ function VariableCostsSection() {
     setType(v.type);
     setAmount(v.amount.toString());
     setProductId(v.productId ?? "");
+    setIncludeInCogs(v.includeInCogs ?? false);
     setOpen(true);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const values = { name, type, amount: Number(amount), productId: productId || undefined };
+    const values = { name, type, amount: Number(amount), productId: productId || undefined, includeInCogs };
     try {
       if (editingId) {
         await updateVariableCost(editingId, values);
@@ -503,8 +506,8 @@ function VariableCostsSection() {
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Variable costs per unit</div>
           <div className="text-xs text-muted mt-0.5">
-            Packaging, payment fees, delivery, subcontractor cuts — applied automatically to gross profit for
-            contribution margin. Works for products and services alike.
+            Packaging, payment fees, delivery, subcontractor cuts — applied automatically against Gross Profit for
+            Contribution Margin. Works for products and services alike.
           </div>
         </div>
         <button
@@ -543,6 +546,15 @@ function VariableCostsSection() {
               ))}
             </Select>
           </Field>
+          <label className="flex items-center gap-2 text-sm text-muted col-span-2 sm:col-span-1">
+            <input
+              type="checkbox"
+              checked={includeInCogs}
+              onChange={(e) => setIncludeInCogs(e.target.checked)}
+              className="accent-amber"
+            />
+            Counts toward COGS (e.g. shipping)
+          </label>
           <div className="flex gap-2">
             <Button type="submit">{editingId ? "Save changes" : "Add"}</Button>
             {editingId && (
@@ -564,7 +576,8 @@ function VariableCostsSection() {
                   <span className="font-medium">{v.name}</span>{" "}
                   <span className="text-muted text-xs">
                     ({v.type === "per_unit" ? formatMoney(v.amount, currency) : `${v.amount}%`} ·{" "}
-                    {product ? product.name : "all offerings"})
+                    {product ? product.name : "all offerings"}
+                    {v.includeInCogs ? " · counts toward COGS" : ""})
                   </span>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">

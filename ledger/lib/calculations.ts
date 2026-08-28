@@ -132,15 +132,9 @@ export function computeAllLedgers(
 // Unit economics for a single sale.
 // ---------------------------------------------------------------------------
 
-export function variableCostForSale(
-  sale: Sale,
-  variableCosts: VariableCost[]
-): number {
-  const applicable = variableCosts.filter(
-    (vc) => !vc.productId || vc.productId === sale.productId
-  );
+function sumVariableCosts(sale: Sale, costs: VariableCost[]): number {
   let total = 0;
-  for (const vc of applicable) {
+  for (const vc of costs) {
     if (vc.type === "per_unit") {
       total += vc.amount * sale.qty;
     } else {
@@ -150,13 +144,28 @@ export function variableCostForSale(
   return total;
 }
 
+export function variableCostForSale(
+  sale: Sale,
+  variableCosts: VariableCost[]
+): number {
+  const applicable = variableCosts.filter(
+    (vc) => !vc.productId || vc.productId === sale.productId
+  );
+  return sumVariableCosts(sale, applicable);
+}
+
 export interface SaleEconomics {
   saleId: string;
   revenue: number;
-  cogs: number;
-  variableCost: number;
-  grossProfit: number; // revenue - cogs
-  contributionMargin: number; // revenue - cogs - variableCost
+  cogs: number; // WAC-based inventory cost only
+  // The slice of variableCost tagged VariableCost.includeInCogs=true (e.g.
+  // outbound shipping) — counted toward Gross Profit, not just Contribution
+  // Margin. Zero for every sale as long as no variable cost is tagged that
+  // way, which is exactly today's behavior for all pre-existing data.
+  cogsVariableCost: number;
+  variableCost: number; // ALL applicable variable costs, tagged or not
+  grossProfit: number; // revenue - cogs - cogsVariableCost (true Gross Margin)
+  contributionMargin: number; // grossProfit - (variableCost - cogsVariableCost) === revenue - cogs - variableCost
   contributionMarginPerUnit: number;
   oversold: boolean;
 }
@@ -171,13 +180,18 @@ export function computeSaleEconomics(
     const cogsResult = ledger?.saleCogs.get(sale.id);
     const cogs = cogsResult?.cogsTotal ?? 0;
     const revenue = sale.unitPrice * sale.qty;
-    const varCost = variableCostForSale(sale, variableCosts);
-    const grossProfit = revenue - cogs;
-    const contributionMargin = grossProfit - varCost;
+    const applicable = variableCosts.filter(
+      (vc) => !vc.productId || vc.productId === sale.productId
+    );
+    const varCost = sumVariableCosts(sale, applicable);
+    const cogsVarCost = sumVariableCosts(sale, applicable.filter((vc) => vc.includeInCogs));
+    const grossProfit = revenue - cogs - cogsVarCost;
+    const contributionMargin = grossProfit - (varCost - cogsVarCost);
     return {
       saleId: sale.id,
       revenue,
       cogs,
+      cogsVariableCost: cogsVarCost,
       variableCost: varCost,
       grossProfit,
       contributionMargin,
@@ -265,12 +279,25 @@ export interface MonthlyPnL {
   recurringRevenue: number;
   totalRevenue: number;
   cogs: number;
+  // Portion of variableCosts tagged VariableCost.includeInCogs=true (e.g.
+  // outbound shipping) — counted toward Gross Profit below, not just
+  // Contribution Margin. Zero unless a variable cost is explicitly tagged
+  // that way.
+  cogsVariableCosts: number;
   variableCosts: number;
-  grossProfit: number;
+  grossProfit: number; // totalRevenue - cogs - cogsVariableCosts — true Gross Margin
   grossMarginPct: number | null; // grossProfit / totalRevenue, null when no revenue
+  // grossProfit minus whatever variableCosts weren't already counted toward
+  // COGS above (selling fees, fulfillment, variable marketing, etc) — i.e.
+  // totalRevenue - cogs - variableCosts. This is the number this app used
+  // to call "grossProfit" before Gross Margin and Contribution Margin were
+  // split into two distinct figures; the bottom line (netProfitPreTax and
+  // everything after) is unaffected by the split.
+  contributionMargin: number;
+  contributionMarginPct: number | null; // contributionMargin / totalRevenue, null when no revenue
   operatingExpenses: number; // rent, payroll, subscriptions, etc — excludes loan interest
   interestExpense: number; // loan interest for the month
-  netProfitPreTax: number; // grossProfit - operatingExpenses - interestExpense
+  netProfitPreTax: number; // contributionMargin - operatingExpenses - interestExpense - depreciationExpense + disposalGainLoss
   tax: number;
   netProfitAfterTax: number;
   netMarginPct: number | null; // netProfitAfterTax / totalRevenue, null when no revenue
@@ -380,18 +407,21 @@ export function computeMonthlyPnL(
     let salesRevenue = 0;
     let cogs = 0;
     let variableCosts = 0;
+    let cogsVariableCosts = 0;
     let unitsSold = 0;
     for (const s of monthSales) {
       const econ = economicsBySaleId.get(s.id);
       salesRevenue += econ?.revenue ?? 0;
       cogs += econ?.cogs ?? 0;
       variableCosts += econ?.variableCost ?? 0;
+      cogsVariableCosts += econ?.cogsVariableCost ?? 0;
       unitsSold += s.qty;
     }
 
     const { expenseTotal, recurringRevenueTotal } = expenseTotalsForMonth(expenses, month);
     const totalRevenue = salesRevenue + recurringRevenueTotal;
-    const grossProfit = salesRevenue - cogs - variableCosts + recurringRevenueTotal;
+    const grossProfit = totalRevenue - cogs - cogsVariableCosts;
+    const contributionMargin = grossProfit - (variableCosts - cogsVariableCosts);
 
     const loanTotals = loanMonthlyTotals.get(month);
     const interestExpense = loanTotals?.interest ?? 0;
@@ -405,7 +435,7 @@ export function computeMonthlyPnL(
     const fixedAssetDisposalProceeds = faTotals?.disposalProceeds ?? 0;
 
     const netProfitPreTax =
-      grossProfit - expenseTotal - interestExpense - depreciationExpense + disposalGainLoss;
+      contributionMargin - expenseTotal - interestExpense - depreciationExpense + disposalGainLoss;
     const tax = Math.max(netProfitPreTax, 0) * (taxRatePct / 100);
     const netProfitAfterTax = netProfitPreTax - tax;
     const economicProfit = netProfitAfterTax - monthlyOwnerDraw;
@@ -458,9 +488,12 @@ export function computeMonthlyPnL(
       recurringRevenue: recurringRevenueTotal,
       totalRevenue,
       cogs,
+      cogsVariableCosts,
       variableCosts,
       grossProfit,
       grossMarginPct: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : null,
+      contributionMargin,
+      contributionMarginPct: totalRevenue > 0 ? (contributionMargin / totalRevenue) * 100 : null,
       operatingExpenses: expenseTotal,
       interestExpense,
       netProfitPreTax,

@@ -260,6 +260,16 @@ export interface VariableCost {
   amount: number;
   productId?: string; // if absent, applies globally to all products
   createdAt: number;
+  // If true, this cost is treated as part of Cost of Goods Sold and reduces
+  // Gross Profit — the right setting for something like outbound shipping,
+  // which most SME accounting treats as COGS, not a below-the-line cost.
+  // If false/unset (the default — every VariableCost created before this
+  // field existed behaves exactly as it did before), it only reduces
+  // Contribution Margin, sitting below Gross Profit — the right setting for
+  // payment processing fees, marketplace commissions, variable marketing
+  // spend, and similar costs that aren't part of "what it cost to make/
+  // acquire the thing you sold".
+  includeInCogs?: boolean;
 }
 
 // Capital in/out of the business — separate from operating P&L. Tracks the
