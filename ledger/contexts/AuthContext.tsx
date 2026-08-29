@@ -142,7 +142,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       sendPasswordReset: async (email) => {
         const { auth } = getFirebase();
-        await sendPasswordResetEmail(auth, email);
+        // Same reasoning as lib/provisioning.ts — without a continueUrl,
+        // Firebase's hosted reset page has no link back into the app.
+        await sendPasswordResetEmail(auth, email, {
+          url: `${window.location.origin}/login`,
+          handleCodeInApp: false,
+        });
       },
       signOut: async () => {
         const { auth } = getFirebase();

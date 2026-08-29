@@ -81,7 +81,16 @@ export async function provisionBusinessOwner({
     }
     await batch.commit();
 
-    await sendPasswordResetEmail(secondaryAuth, normalizedEmail);
+    await sendPasswordResetEmail(secondaryAuth, normalizedEmail, {
+      // Without this, Firebase's default hosted reset-password page has no
+      // way back into the app — the brand-new owner would set their
+      // password and then be stranded on a generic Firebase page with
+      // nothing to click. This is their very first interaction with the
+      // product; landing them back on /login to actually sign in matters
+      // more here than anywhere else it's used.
+      url: `${window.location.origin}/login`,
+      handleCodeInApp: false,
+    });
     await fbSignOut(secondaryAuth);
 
     return { uid, email: normalizedEmail };
