@@ -126,7 +126,42 @@ export default function PurchasesPage() {
       )}
 
       {purchases.length > 0 && (
-        <Card>
+        <>
+          <div className="sm:hidden space-y-2.5">
+            {purchases.map((p) => {
+              const product = products.find((pr) => pr.id === p.productId);
+              return (
+                <Card key={p.id} className="!p-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{product?.name ?? "—"}</div>
+                      <div className="text-xs text-muted num mt-0.5">
+                        {p.date} · {p.qty} × {formatMoney(p.unitCost, currency)}
+                      </div>
+                    </div>
+                    <div className="num font-medium shrink-0">{formatMoney(p.qty * p.unitCost, currency)}</div>
+                  </div>
+                  {(product?.type === "service" || p.purchaseOrderId || p.supplier) && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs text-muted">
+                      {p.supplier && <span>From {p.supplier}</span>}
+                      {product?.type === "service" && <Badge tone="amber">service</Badge>}
+                      {p.purchaseOrderId && <Badge tone="good">from order</Badge>}
+                    </div>
+                  )}
+                  <div className="flex gap-3 mt-2.5 pt-2.5 border-t border-line">
+                    <button onClick={() => openEdit(p)} className="text-xs text-muted hover:text-fg min-h-[32px]">
+                      Edit
+                    </button>
+                    <button onClick={() => handleDelete(p.id)} className="text-xs text-muted hover:text-bad min-h-[32px]">
+                      Delete
+                    </button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          <Card className="hidden sm:block">
           <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -180,7 +215,8 @@ export default function PurchasesPage() {
               })}
             </tbody>
           </Table>
-        </Card>
+          </Card>
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this" : "I bought something"}>

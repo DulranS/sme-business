@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import clsx from "clsx";
 import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -39,6 +40,21 @@ function FullSalesView() {
     return map;
   }, [receivablePayments]);
 
+  // One shared row-view computed per sale, consumed by both the desktop
+  // table and the mobile card list below — so the two layouts can never
+  // drift out of sync with each other.
+  const rows = useMemo(
+    () =>
+      sales.map((s) => {
+        const product = products.find((p) => p.id === s.productId);
+        const econ = econById.get(s.id);
+        const receivable = receivableBySaleId.get(s.id);
+        const isCredit = (s.paymentMethod ?? "cash") === "credit";
+        return { sale: s, product, econ, receivable, isCredit };
+      }),
+    [sales, products, econById, receivableBySaleId]
+  );
+
   function openNew() {
     setEditing(null);
     setModalOpen(true);
@@ -75,7 +91,85 @@ function FullSalesView() {
       )}
 
       {sales.length > 0 && (
-        <Card>
+        <>
+          {/* Mobile: one card per sale, most important number first. Same
+              data as the table below — never rendered at the same time. */}
+          <div className="sm:hidden space-y-2.5">
+            {rows.map(({ sale: s, product, econ, receivable, isCredit }) => (
+              <Card key={s.id} className="!p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm truncate">{product?.name ?? "—"}</div>
+                    <div className="text-xs text-muted num mt-0.5">
+                      {s.date} · {s.qty} × {formatMoney(s.unitPrice, currency)}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="num font-medium">{formatMoney(econ?.revenue ?? 0, currency)}</div>
+                    <div className={clsx("num text-xs mt-0.5", econ && econ.grossProfit >= 0 ? "text-good" : "text-bad")}>
+                      {formatMoney(econ?.grossProfit ?? 0, currency)} profit
+                    </div>
+                  </div>
+                </div>
+                {(product?.type === "service" || econ?.oversold || isCredit) && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {product?.type === "service" && <Badge tone="amber">service</Badge>}
+                    {econ?.oversold && <Badge tone="bad">oversold</Badge>}
+                    {isCredit && (
+                      <Badge tone={receivable ? "bad" : "good"}>
+                        {receivable ? `owed · due ${s.dueDate}` : "paid off"}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                <div className="text-[11px] text-muted mt-2">Rung up by {s.createdByName ?? "—"}</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2.5 pt-2.5 border-t border-line">
+                  {receivable && (
+                    <button onClick={() => setPayingFor(receivable)} className="text-xs text-amber-soft hover:underline min-h-[32px]">
+                      Record payment
+                    </button>
+                  )}
+                  <button
+                    onClick={() => openPrintWindow(buildSaleReceiptHtml(s, product?.name ?? "Item", settings))}
+                    className="text-xs text-muted hover:text-fg min-h-[32px]"
+                  >
+                    Print receipt
+                  </button>
+                  {isCredit && (
+                    <button
+                      onClick={() =>
+                        openPrintWindow(
+                          buildSaleInvoiceHtml({
+                            saleId: s.id,
+                            itemName: product?.name ?? "Item",
+                            amount: econ?.revenue ?? s.qty * s.unitPrice,
+                            customer: s.customer,
+                            customerContact: s.customerContact,
+                            issueDate: s.date,
+                            dueDate: s.dueDate,
+                            payments: paymentsBySaleId.get(s.id) ?? [],
+                            settings,
+                          })
+                        )
+                      }
+                      className="text-xs text-muted hover:text-fg min-h-[32px]"
+                    >
+                      Print invoice
+                    </button>
+                  )}
+                  <button onClick={() => openEdit(s)} className="text-xs text-muted hover:text-fg min-h-[32px]">
+                    Edit
+                  </button>
+                  <button onClick={() => handleDelete(s.id)} className="text-xs text-muted hover:text-bad min-h-[32px]">
+                    Delete
+                  </button>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Desktop: the full table, unchanged. */}
+          <Card className="hidden sm:block">
           <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -90,11 +184,7 @@ function FullSalesView() {
               </tr>
             </thead>
             <tbody>
-              {sales.map((s) => {
-                const product = products.find((p) => p.id === s.productId);
-                const econ = econById.get(s.id);
-                const receivable = receivableBySaleId.get(s.id);
-                const isCredit = (s.paymentMethod ?? "cash") === "credit";
+              {rows.map(({ sale: s, product, econ, receivable, isCredit }) => {
                 return (
                   <tr key={s.id} className="border-b border-line last:border-0">
                     <td className="py-2.5 pr-3 text-muted num">{s.date}</td>
@@ -176,7 +266,8 @@ function FullSalesView() {
               })}
             </tbody>
           </Table>
-        </Card>
+          </Card>
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit this sale" : "I sold something"}>
@@ -233,7 +324,67 @@ function StaffSalesView() {
       )}
 
       {sales.length > 0 && (
-        <Card>
+        <>
+          <div className="sm:hidden space-y-2.5">
+            {sales.map((s) => {
+              const item = catalog.find((c) => c.id === s.productId);
+              const receivable = receivableBySaleId.get(s.id);
+              const isCredit = (s.paymentMethod ?? "cash") === "credit";
+              return (
+                <Card key={s.id} className="!p-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{item?.name ?? "—"}</div>
+                      <div className="text-xs text-muted num mt-0.5">{s.date} · {s.qty}</div>
+                    </div>
+                    <div className="num font-medium shrink-0">{formatMoney(s.qty * s.unitPrice, currency)}</div>
+                  </div>
+                  {isCredit && (
+                    <div className="mt-2">
+                      <Badge tone={receivable ? "bad" : "good"}>{receivable ? `owed · due ${s.dueDate}` : "paid off"}</Badge>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2.5 pt-2.5 border-t border-line">
+                    {receivable && (
+                      <button onClick={() => setPayingFor(receivable)} className="text-xs text-amber-soft hover:underline min-h-[32px]">
+                        Record payment
+                      </button>
+                    )}
+                    <button
+                      onClick={() => openPrintWindow(buildSaleReceiptHtml(s, item?.name ?? "Item", settings))}
+                      className="text-xs text-muted hover:text-fg min-h-[32px]"
+                    >
+                      Print receipt
+                    </button>
+                    {isCredit && (
+                      <button
+                        onClick={() =>
+                          openPrintWindow(
+                            buildSaleInvoiceHtml({
+                              saleId: s.id,
+                              itemName: item?.name ?? "Item",
+                              amount: s.qty * s.unitPrice,
+                              customer: s.customer,
+                              customerContact: s.customerContact,
+                              issueDate: s.date,
+                              dueDate: s.dueDate,
+                              payments: paymentsBySaleId.get(s.id) ?? [],
+                              settings,
+                            })
+                          )
+                        }
+                        className="text-xs text-muted hover:text-fg min-h-[32px]"
+                      >
+                        Print invoice
+                      </button>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          <Card className="hidden sm:block">
           <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -302,7 +453,8 @@ function StaffSalesView() {
               })}
             </tbody>
           </Table>
-        </Card>
+          </Card>
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="I sold something">
