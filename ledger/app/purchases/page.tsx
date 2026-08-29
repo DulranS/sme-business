@@ -24,7 +24,7 @@ import {
 
 export default function PurchasesPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { products, purchases, addPurchase, updatePurchase, deletePurchase, settings, loading, projects } = useData();
+  const { products, purchases, addPurchase, updatePurchase, deletePurchase, settings, loading, projects, supplierConcentration } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Purchase | null>(null);
@@ -71,6 +71,48 @@ export default function PurchasesPage() {
           </Link>
         </div>
       </Card>
+
+      {supplierConcentration.suppliers.length > 0 && (
+        <Card className="mb-5">
+          <div className="text-sm font-medium mb-0.5">Supplier concentration</div>
+          <div className="text-xs text-muted mb-3">
+            Share of your buying (last {supplierConcentration.trailingMonths} months) riding on one supplier. High
+            concentration isn&apos;t automatically bad — just worth knowing on purpose.
+          </div>
+          <div className="flex items-center gap-4 mb-3 flex-wrap">
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-muted font-medium">Top supplier</div>
+              <div className="num text-xl font-medium mt-1 flex items-center gap-2">
+                {supplierConcentration.topSupplierSharePct?.toFixed(0)}%
+                <Badge
+                  tone={
+                    (supplierConcentration.topSupplierSharePct ?? 0) >= 60
+                      ? "bad"
+                      : (supplierConcentration.topSupplierSharePct ?? 0) >= 35
+                      ? "amber"
+                      : "good"
+                  }
+                >
+                  {supplierConcentration.suppliers[0].supplier}
+                </Badge>
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-muted font-medium">Top 3 combined</div>
+              <div className="num text-xl font-medium mt-1">{supplierConcentration.top3SharePct?.toFixed(0)}%</div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {supplierConcentration.suppliers.slice(0, 5).map((s) => (
+              <div key={s.supplier} className="flex items-center justify-between text-xs border-b border-line last:border-0 py-1.5 gap-3">
+                <div className="min-w-0 flex-1 truncate">{s.supplier}</div>
+                <div className="num text-muted shrink-0">{formatMoney(s.spend, currency)}</div>
+                <div className="num font-medium shrink-0 w-14 text-right">{s.sharePct.toFixed(0)}%</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {!loading && products.length === 0 && (
         <EmptyState title="Add something first" body="Add a product or service before you log what it cost you." />

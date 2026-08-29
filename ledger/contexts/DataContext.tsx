@@ -85,6 +85,10 @@ import {
   computeAllProjectFinancials,
   computeProjectPortfolioSummary,
   computeProjectBudgetAlerts,
+  computeMarketingMetrics,
+  computeSupplierConcentration,
+  type MarketingMetrics,
+  type SupplierConcentration,
   type ProductLedgerResult,
   type SaleEconomics,
   type MonthlyPnL,
@@ -146,6 +150,8 @@ interface DataContextValue {
   loanPortfolio: LoanPortfolioSummary;
   balanceSheet: BalanceSheet;
   financialHealth: FinancialHealthRatios;
+  marketingMetrics: MarketingMetrics;
+  supplierConcentration: SupplierConcentration;
   receivablesAging: ReceivablesAging;
   payablesAging: PayablesAging;
   avgDailyCashSales: number; // trailing 30-day average of cash/card/bank-transfer sales, for cash-runway projections
@@ -628,6 +634,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     () => computeFinancialHealthRatios(monthlyPnL, balanceSheet, 12),
     [monthlyPnL, balanceSheet]
   );
+  const marketingMetrics = useMemo(
+    () => computeMarketingMetrics(sales, expenses, 12),
+    [sales, expenses]
+  );
+  const supplierConcentration = useMemo(
+    () => computeSupplierConcentration(purchases, 12),
+    [purchases]
+  );
   const avgDailyCashSales = useMemo(() => {
     const since = todayIso();
     const from = new Date(since);
@@ -745,6 +759,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     loanPortfolio,
     balanceSheet,
     financialHealth,
+    marketingMetrics,
+    supplierConcentration,
     receivablesAging,
     payablesAging,
     avgDailyCashSales,

@@ -34,7 +34,7 @@ function toneForRatio(n: number | null, good: number, bad: number, higherIsBette
 
 export default function FinancialHealthPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { financialHealth, balanceSheet, monthlyPnL, settings } = useData();
+  const { financialHealth, balanceSheet, monthlyPnL, marketingMetrics, settings } = useData();
   const currency = settings.currency;
 
   if (guardLoading || !allowed) return null;
@@ -86,12 +86,18 @@ export default function FinancialHealthPage() {
       </div>
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Profitability</div>
-      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid sm:grid-cols-4 gap-4 mb-6">
         <Stat
           label="Gross margin"
           value={pct(h.grossMarginPct)}
           tone={h.grossMarginPct === null ? "default" : h.grossMarginPct >= 30 ? "good" : h.grossMarginPct >= 10 ? "amber" : "bad"}
           sub="Revenue left after direct costs"
+        />
+        <Stat
+          label="Operating margin"
+          value={pct(h.operatingMarginPct)}
+          tone={h.operatingMarginPct === null ? "default" : h.operatingMarginPct >= 15 ? "good" : h.operatingMarginPct >= 0 ? "amber" : "bad"}
+          sub="Revenue minus COGS and running costs, before interest & tax"
         />
         <Stat
           label="Net margin"
@@ -145,6 +151,35 @@ export default function FinancialHealthPage() {
           tone={toneForRatio(h.debtRatio ? h.debtRatio * 100 : null, 40, 70, false)}
           sub="Share of total assets financed by liabilities"
         />
+      </div>
+
+      <div className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Customer acquisition</div>
+      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+        <Stat
+          label="Customer acquisition cost"
+          value={
+            marketingMetrics.customerAcquisitionCost === null
+              ? "—"
+              : formatMoney(marketingMetrics.customerAcquisitionCost, currency)
+          }
+          sub={`Marketing spend ÷ ${marketingMetrics.newCustomers} new customer${marketingMetrics.newCustomers === 1 ? "" : "s"}, trailing ${marketingMetrics.trailingMonths}mo`}
+        />
+        <Stat
+          label="Average customer value"
+          value={formatMoney(marketingMetrics.averageCustomerValue, currency)}
+          sub={`Revenue per buying customer, trailing ${marketingMetrics.trailingMonths}mo`}
+        />
+        <Stat
+          label="New vs. returning"
+          value={`${marketingMetrics.newCustomers} / ${marketingMetrics.returningCustomers}`}
+          sub="New customers vs. repeat buyers this window"
+        />
+      </div>
+      <div className="text-xs text-muted -mt-4 mb-6">
+        Marketing spend is whatever&apos;s logged under the &quot;Marketing&quot; category on the Expenses page —
+        this only moves if that&apos;s kept up to date. There&apos;s no lead-tracking here: a lead-to-customer
+        conversion rate isn&apos;t shown because nothing in this app records a lead, so it isn&apos;t computed
+        rather than being invented.
       </div>
 
       <Card>

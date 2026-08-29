@@ -77,6 +77,15 @@ export default function ProfitabilityPage() {
     [productProfitability]
   );
 
+  const agingItems = useMemo(
+    () =>
+      [...productProfitability]
+        .filter((p) => p.agingValue > 0)
+        .sort((a, b) => b.agingValue - a.agingValue),
+    [productProfitability]
+  );
+  const agingValueTotal = useMemo(() => agingItems.reduce((s, p) => s + p.agingValue, 0), [agingItems]);
+
   const rankedProjects = useMemo(() => {
     return [...projects]
       .filter((p) => p.status !== "cancelled" && p.quotedPrice > 0)
@@ -90,6 +99,28 @@ export default function ProfitabilityPage() {
   return (
     <>
       <PageHeader title="My Profit" />
+
+      {agingItems.length > 0 && (
+        <Card className="mb-6 border-amber/40">
+          <div className="text-sm font-medium mb-0.5">Slow-moving stock</div>
+          <div className="text-xs text-muted mb-3">
+            Stock on hand that hasn&apos;t sold in 60+ days (or has never sold at all) — cash sitting on a shelf
+            instead of in your pocket.
+          </div>
+          <div className="text-lg font-medium num mb-3">{formatMoney(agingValueTotal, currency)} tied up</div>
+          <div className="space-y-1.5">
+            {agingItems.slice(0, 8).map((p) => (
+              <div key={p.productId} className="flex items-center justify-between text-xs border-b border-line last:border-0 py-1.5 gap-3">
+                <div className="min-w-0 flex-1 truncate">{p.name}</div>
+                <div className="text-muted shrink-0">
+                  {p.lastSaleDate ? `${p.daysSinceLastSale}d since last sale` : "never sold"}
+                </div>
+                <div className="num font-medium shrink-0 w-24 text-right">{formatMoney(p.agingValue, currency)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="mb-6">
         <div className="flex items-start sm:items-center justify-between gap-3 mb-1">
@@ -112,7 +143,7 @@ export default function ProfitabilityPage() {
           <div className="text-xs text-muted py-6 text-center">Nothing set up yet — add something you sell first.</div>
         ) : (
           <div className="overflow-x-auto -mx-4 sm:-mx-5 mt-4">
-            <div className="px-4 sm:px-5 min-w-[1000px]">
+            <div className="px-4 sm:px-5 min-w-[1100px]">
               <Table>
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -129,7 +160,8 @@ export default function ProfitabilityPage() {
                       <div className="text-[9px] normal-case font-normal text-muted/70">after labor</div>
                     </th>
                     <th className="py-2 px-3 font-medium text-right">Left in stock</th>
-                    <th className="py-2 pl-3 font-medium text-right">Stock is worth</th>
+                    <th className="py-2 px-3 font-medium text-right">Stock is worth</th>
+                    <th className="py-2 pl-3 font-medium text-right">Aging</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -166,8 +198,17 @@ export default function ProfitabilityPage() {
                       <td className="py-2.5 px-3 num text-right text-muted">
                         {p.type === "service" ? "—" : formatNumber(p.qtyOnHand)}
                       </td>
-                      <td className="py-2.5 pl-3 num text-right text-muted">
+                      <td className="py-2.5 px-3 num text-right text-muted">
                         {p.type === "service" ? "—" : formatMoney(p.inventoryValue, currency)}
+                      </td>
+                      <td className="py-2.5 pl-3 text-right">
+                        {p.type === "service" || p.qtyOnHand <= 0 ? (
+                          <span className="text-muted">—</span>
+                        ) : p.agingValue > 0 ? (
+                          <Badge tone="amber">{p.lastSaleDate ? `${p.daysSinceLastSale}d` : "never sold"}</Badge>
+                        ) : (
+                          <span className="text-muted num">{p.daysSinceLastSale}d</span>
+                        )}
                       </td>
                     </tr>
                   ))}

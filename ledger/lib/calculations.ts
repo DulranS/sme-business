@@ -1081,6 +1081,15 @@ export interface ProductProfitability {
   fullyLoadedCost: number; // avgUnitCost + laborCostPerUnit
   fullyLoadedGrossProfit: number; // grossProfit - laborCost
   fullyLoadedMarginPct: number | null;
+  // Inventory aging — always computed off the FULL sales history for this
+  // product, regardless of whatever dateFrom/dateTo range the rest of this
+  // row is scoped to. Staleness is about "when did this last move", not
+  // "did it move within whatever period I happen to be looking at" — a
+  // product with zero sales in the selected 30-day window but a sale last
+  // week isn't stale, so this deliberately ignores the range filter.
+  lastSaleDate: string | null; // ISO date, null if never sold
+  daysSinceLastSale: number | null; // null if never sold or no stock on hand
+  agingValue: number; // inventoryValue if daysSinceLastSale >= 60 (or never sold with stock on hand), else 0
 }
 
 export function computeProductProfitability(
@@ -1094,8 +1103,19 @@ export function computeProductProfitability(
   const economicsBySaleId = new Map(saleEconomics.map((e) => [e.saleId, e]));
   const inRange = (d: string) => (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const daysBetween = (from: string, to: string) =>
+    Math.round((new Date(to).getTime() - new Date(from).getTime()) / (24 * 60 * 60 * 1000));
+
   return products.map((p) => {
     const productSales = sales.filter((s) => s.productId === p.id && inRange(s.date));
+
+    // Full history, not range-scoped — see lastSaleDate/daysSinceLastSale comment.
+    let lastSaleDate: string | null = null;
+    for (const s of sales) {
+      if (s.productId === p.id && (lastSaleDate === null || s.date > lastSaleDate)) lastSaleDate = s.date;
+    }
+
     let revenue = 0;
     let cogs = 0;
     let variableCost = 0;
@@ -1125,6 +1145,18 @@ export function computeProductProfitability(
     const fullyLoadedGrossProfit = grossProfit - laborCost;
     const fullyLoadedMarginPct = revenue > 0 ? (fullyLoadedGrossProfit / revenue) * 100 : null;
 
+    const qtyOnHand = ledger?.qtyOnHand ?? 0;
+    const inventoryValue = ledger?.inventoryValue ?? 0;
+    // Only meaningful for physical stock actually sitting on the shelf —
+    // a service or a fully sold-through item has nothing "aging".
+    const daysSinceLastSale =
+      p.type === "product" && qtyOnHand > 0 ? (lastSaleDate ? daysBetween(lastSaleDate, todayIso) : null) : null;
+    // Never sold at all but stock is on hand: treat as maximally stale, not
+    // "no data" — that's the case most worth flagging, not the one to hide.
+    const isStale =
+      p.type === "product" && qtyOnHand > 0 && (lastSaleDate === null || (daysSinceLastSale ?? 0) >= 60);
+    const agingValue = isStale ? inventoryValue : 0;
+
     return {
       productId: p.id,
       name: p.name,
@@ -1140,14 +1172,17 @@ export function computeProductProfitability(
       variableCost,
       contributionMargin,
       contributionMarginPct: revenue > 0 ? (contributionMargin / revenue) * 100 : null,
-      qtyOnHand: ledger?.qtyOnHand ?? 0,
-      inventoryValue: ledger?.inventoryValue ?? 0,
+      qtyOnHand,
+      inventoryValue,
       wac: ledger?.wac ?? 0,
       marginBand,
       laborCost,
       fullyLoadedCost,
       fullyLoadedGrossProfit,
       fullyLoadedMarginPct,
+      lastSaleDate,
+      daysSinceLastSale,
+      agingValue,
     };
   });
 }
@@ -1441,6 +1476,13 @@ export interface FinancialHealthRatios {
 
   // Profitability — trailing-window margins and return on the owner's stake
   grossMarginPct: number | null;
+  // Revenue minus COGS and operating costs (including depreciation) before
+  // interest and tax — i.e. EBIT margin. Distinct from netMarginPct below:
+  // net margin also absorbs interest, tax, and one-off disposal gain/loss,
+  // so a business can have a healthy operating margin while net margin
+  // looks weak because of a big loan or a bad tax quarter. This is the
+  // number that isolates "is the core business itself profitable".
+  operatingMarginPct: number | null;
   netMarginPct: number | null;
   returnOnEquityPct: number | null; // trailing net profit / current total equity
 
@@ -1469,6 +1511,10 @@ export function computeFinancialHealthRatios(
   const cogs = window.reduce((s, m) => s + m.cogs, 0);
   const grossProfit = window.reduce((s, m) => s + m.grossProfit, 0);
   const netProfit = window.reduce((s, m) => s + m.netProfitAfterTax, 0);
+  const operatingProfit = window.reduce(
+    (s, m) => s + (m.contributionMargin - m.operatingExpenses - m.depreciationExpense),
+    0
+  );
 
   const { cash, accountsReceivable, inventoryValue, accountsPayable, totalLiabilities, totalAssets, totalEquity } =
     balanceSheet;
@@ -1478,6 +1524,7 @@ export function computeFinancialHealthRatios(
   const quickRatio = accountsPayable > 0 ? (cash + accountsReceivable) / accountsPayable : null;
 
   const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : null;
+  const operatingMarginPct = revenue > 0 ? (operatingProfit / revenue) * 100 : null;
   const netMarginPct = revenue > 0 ? (netProfit / revenue) * 100 : null;
   const returnOnEquityPct = totalEquity > 0 ? (netProfit / totalEquity) * 100 : null;
 
@@ -1500,6 +1547,7 @@ export function computeFinancialHealthRatios(
     currentRatio,
     quickRatio,
     grossMarginPct,
+    operatingMarginPct,
     netMarginPct,
     returnOnEquityPct,
     daysSalesOutstanding,
@@ -1509,6 +1557,133 @@ export function computeFinancialHealthRatios(
     inventoryTurnoverAnnualized,
     debtToEquity,
     debtRatio,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Customer acquisition cost & average customer value. Deliberately built
+// entirely off data this app already collects — no leads, no ad-platform
+// integration, nothing external:
+//   - marketing spend = Expenses already logged under the existing
+//     "Marketing" category (see EXPENSE_CATEGORIES), using the same
+//     monthly-equivalent normalization the Expenses page already shows for
+//     its "spend by category" card, so this figure always agrees with that
+//     one rather than becoming a second, disagreeing calculation.
+//   - new customers = distinct Sale.customer names whose EARLIEST sale ever
+//     (not just earliest in-window) falls inside the trailing window — a
+//     returning customer buying again this month doesn't count as newly
+//     acquired.
+// A lead-to-customer conversion rate isn't computed here: nothing in this
+// app's data model captures a lead (a pre-sale contact), so a conversion
+// rate would have to be invented rather than derived. Adding that requires
+// a new place to record leads and someone actually keeping it up to date —
+// deliberately left out rather than shipping a number with no real input.
+// ---------------------------------------------------------------------------
+
+export interface MarketingMetrics {
+  trailingMonths: number;
+  marketingSpend: number; // trailing-window total, from the "Marketing" expense category
+  newCustomers: number; // distinct customers whose first-ever sale falls in this window
+  returningCustomers: number; // distinct customers who bought in this window but first bought earlier
+  customerAcquisitionCost: number | null; // marketingSpend / newCustomers, null when newCustomers is 0
+  averageCustomerValue: number; // total revenue in window / distinct customers who bought in window
+}
+
+export function computeMarketingMetrics(
+  sales: Sale[],
+  expenses: Expense[],
+  windowMonths = 12
+): MarketingMetrics {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const windowStart = addDaysIso(todayIso, -windowMonths * 30);
+
+  const marketingSpend = expenses
+    .filter((e) => e.kind === "expense" && e.category === "Marketing")
+    .reduce((sum, e) => {
+      if (e.isRecurring) {
+        // Only count it if it's actually active at some point in the window.
+        const activeInWindow = e.startDate <= todayIso && (!e.endDate || e.endDate >= windowStart);
+        return activeInWindow ? sum + monthlyNormalizedAmount(e.amount, e.recurrence) * windowMonths : sum;
+      }
+      return e.startDate >= windowStart && e.startDate <= todayIso ? sum + e.amount : sum;
+    }, 0);
+
+  const key = (name: string) => name.trim().toLowerCase();
+  const firstSaleByCustomer = new Map<string, string>(); // key -> earliest date, across ALL sales
+  for (const s of sales) {
+    if (!s.customer) continue;
+    const k = key(s.customer);
+    const existing = firstSaleByCustomer.get(k);
+    if (!existing || s.date < existing) firstSaleByCustomer.set(k, s.date);
+  }
+
+  const buyersInWindow = new Map<string, number>(); // key -> revenue in window
+  for (const s of sales) {
+    if (!s.customer || s.date < windowStart || s.date > todayIso) continue;
+    const k = key(s.customer);
+    buyersInWindow.set(k, (buyersInWindow.get(k) ?? 0) + s.unitPrice * s.qty);
+  }
+
+  let newCustomers = 0;
+  let returningCustomers = 0;
+  let revenueInWindow = 0;
+  for (const [k, revenue] of buyersInWindow) {
+    revenueInWindow += revenue;
+    const firstSale = firstSaleByCustomer.get(k);
+    if (firstSale && firstSale >= windowStart) newCustomers += 1;
+    else returningCustomers += 1;
+  }
+
+  return {
+    trailingMonths: windowMonths,
+    marketingSpend,
+    newCustomers,
+    returningCustomers,
+    customerAcquisitionCost: newCustomers > 0 ? marketingSpend / newCustomers : null,
+    averageCustomerValue: buyersInWindow.size > 0 ? revenueInWindow / buyersInWindow.size : 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Supplier concentration — what share of purchasing is riding on your
+// top supplier(s). Built off Purchase.supplier (free text, same field the
+// Purchases page already collects), so no new data entry needed. A pure
+// risk signal: high concentration isn't wrong, it's just worth knowing
+// deliberately rather than discovering it the day that supplier vanishes.
+// ---------------------------------------------------------------------------
+
+export interface SupplierConcentration {
+  trailingMonths: number;
+  totalSpend: number;
+  suppliers: { supplier: string; spend: number; sharePct: number }[]; // sorted, highest spend first
+  topSupplierSharePct: number | null; // suppliers[0].sharePct, null when no purchases
+  top3SharePct: number | null; // sum of top 3 shares, null when no purchases
+}
+
+export function computeSupplierConcentration(purchases: Purchase[], windowMonths = 12): SupplierConcentration {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const windowStart = addDaysIso(todayIso, -windowMonths * 30);
+
+  const bySupplier = new Map<string, number>();
+  let totalSpend = 0;
+  for (const p of purchases) {
+    if (p.date < windowStart || p.date > todayIso) continue;
+    const name = (p.supplier ?? "").trim() || "Unspecified supplier";
+    const spend = p.qty * p.unitCost;
+    bySupplier.set(name, (bySupplier.get(name) ?? 0) + spend);
+    totalSpend += spend;
+  }
+
+  const suppliers = [...bySupplier.entries()]
+    .map(([supplier, spend]) => ({ supplier, spend, sharePct: totalSpend > 0 ? (spend / totalSpend) * 100 : 0 }))
+    .sort((a, b) => b.spend - a.spend);
+
+  return {
+    trailingMonths: windowMonths,
+    totalSpend,
+    suppliers,
+    topSupplierSharePct: suppliers.length > 0 ? suppliers[0].sharePct : null,
+    top3SharePct: suppliers.length > 0 ? suppliers.slice(0, 3).reduce((s, x) => s + x.sharePct, 0) : null,
   };
 }
 
