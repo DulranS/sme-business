@@ -398,7 +398,20 @@ export function computeMonthlyPnL(
 
   if (candidateKeys.length === 0) return [];
   candidateKeys.sort();
-  const months = fullMonthRange(candidateKeys[0], candidateKeys[candidateKeys.length - 1]);
+  // This function reports what actually happened, month by month — never a
+  // projection (that's forecastRevenue's job, entirely separately). But a
+  // loan's amortization schedule and a recurring expense both generate
+  // month keys for their FULL remaining term regardless of whether that
+  // time has passed yet, so without capping here, adding any loan or
+  // recurring expense silently stretches this array with not-yet-real
+  // future months — zero sales, but real-looking interest expense — and
+  // every caller that reads the array's tail (Dashboard's "this month"
+  // stats, break-even, the trailing-12-months financial health ratios)
+  // would silently grab one of those phantom months instead of the actual
+  // most recent one. Capping the end at the current month is what keeps
+  // this an accrual record of the past, not a forecast wearing its clothes.
+  const rangeEnd = candidateKeys[candidateKeys.length - 1] > nowKey ? nowKey : candidateKeys[candidateKeys.length - 1];
+  const months = fullMonthRange(candidateKeys[0], rangeEnd);
   const fixedAssetMonthlyTotals = computeFixedAssetMonthlyTotals(fixedAssets, months);
   const result: MonthlyPnL[] = [];
 
@@ -747,8 +760,14 @@ export function computeBreakEven(
       ? ((actualRevenue - breakEvenRevenue) / actualRevenue) * 100
       : null;
 
+  // Contribution margin, not (the now-distinct) gross profit — "does what's
+  // left after ALL variable costs cover fixed overhead" is the question
+  // this ratio is answering, matching contributionMarginRatio/
+  // breakEvenRevenue above, which also treat COGS + every variable cost as
+  // one blended bucket. Using the narrower gross-profit figure here would
+  // overstate how much room there actually is to cover overhead.
   const overheadCoverageRatio =
-    latestMonth && monthlyFixedCosts > 0 ? latestMonth.grossProfit / monthlyFixedCosts : null;
+    latestMonth && monthlyFixedCosts > 0 ? latestMonth.contributionMargin / monthlyFixedCosts : null;
 
   return {
     contributionMarginRatio,
