@@ -80,7 +80,7 @@ export default function CustomersPage() {
     <>
       <PageHeader title="Customers" action={<Button onClick={openNew}>+ Add customer</Button>} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Customers" value={customers.length.toString()} />
         <Stat label="Owe you" value={formatMoney(totalOutstanding, currency)} tone={totalOutstanding > 0 ? "bad" : "good"} />
       </div>

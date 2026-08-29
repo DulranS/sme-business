@@ -86,7 +86,7 @@ export default function ReceivablesPayablesPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <Stat label="Total outstanding" value={formatMoney(active.totalOutstanding, currency)} tone={tab === "receivables" ? "good" : "bad"} />
         <Stat label="Overdue" value={formatMoney(active.overdueTotal, currency)} tone={active.overdueTotal > 0 ? "bad" : undefined} />
         <Stat label="1-30 days" value={formatMoney(active.byBucket["1-30"], currency)} />
@@ -310,7 +310,7 @@ function EditPaymentForm({
       }}
       className="space-y-4"
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Amount</Label>
           <Input required type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />

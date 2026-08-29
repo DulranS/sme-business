@@ -59,7 +59,7 @@ export default function CashCountPage() {
           }}
           className="space-y-4"
         >
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field>
               <Label>Date</Label>
               <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -210,7 +210,7 @@ function EditCashCountForm({
         {formatMoney(count.expectedCash, currency)} at the time and isn&apos;t recalculated; only the count and
         variance change.
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />

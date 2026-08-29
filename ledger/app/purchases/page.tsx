@@ -293,7 +293,7 @@ function PurchaseForm({
           ))}
         </Select>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>{isService ? "How many hours / jobs?" : "How many did you buy?"}</Label>
           <Input required type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -303,7 +303,7 @@ function PurchaseForm({
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Currency</Label>
           <Select value={txCurrency} onChange={(e) => setTxCurrency(e.target.value)}>

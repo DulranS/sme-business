@@ -49,7 +49,7 @@ export function RecordPaymentForm({ line, onDone }: { line: ReceivableLine; onDo
       <div className="text-sm text-muted">
         {line.customer} owes {formatMoney(line.amountOutstanding, currency)} for {line.productName} (sold {line.date}).
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Amount received</Label>
           <Input

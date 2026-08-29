@@ -232,7 +232,7 @@ function ExpenseForm({
         <Label>Name</Label>
         <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse rent" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Kind</Label>
           <Select value={kind} onChange={(e) => setKind(e.target.value as Expense["kind"])}>
@@ -271,7 +271,7 @@ function ExpenseForm({
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>{isRecurring ? "Starts" : "Date"}</Label>
           <Input required type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />

@@ -130,7 +130,7 @@ export default function TimePage() {
               setBusy(false);
             }
           }}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end"
+          className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end"
         >
           <Field className="sm:col-span-2 lg:col-span-1">
             <Label>Job / customer</Label>
@@ -220,7 +220,7 @@ export default function TimePage() {
             }}
             className="space-y-4"
           >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
                 <Label>Team member</Label>
                 <Select required value={manualMemberUid} onChange={(e) => setManualMemberUid(e.target.value)}>
@@ -251,7 +251,7 @@ export default function TimePage() {
                 <Input required type="time" value={manualEnd} onChange={(e) => setManualEnd(e.target.value)} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
                 <Label>Rate/hr (optional)</Label>
                 <Input type="number" min="0" step="0.01" value={manualRate} onChange={(e) => setManualRate(e.target.value)} />
@@ -307,7 +307,7 @@ export default function TimePage() {
 
       {closedEntries.length > 0 && (
         <>
-          <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
             <Card>
               <div className="text-xs uppercase tracking-wider text-muted font-medium mb-1">Billable hours logged</div>
               <div className="text-xl font-semibold num">{formatDuration(totalBillableMs)}</div>
@@ -492,7 +492,7 @@ function EditTimeEntryForm({
           <Input required type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Rate/hr (optional)</Label>
           <Input type="number" min="0" step="0.01" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} />

@@ -52,7 +52,7 @@ export default function ActivityPage() {
     <>
       <PageHeader title="Activity log" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Total entries" value={auditLog.length.toString()} />
         <Stat label="Today" value={todayCount.toString()} />
         <Stat label="Deletions" value={deleteCount.toString()} tone={deleteCount > 0 ? "bad" : "default"} />

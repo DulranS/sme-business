@@ -53,7 +53,7 @@ export default function LoansPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <Stat label="Outstanding balance" value={formatMoney(loanPortfolio.totalOutstanding, currency)} tone="bad" />
             <Stat label="Debt service / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
             <Stat label="Interest paid to date" value={formatMoney(loanPortfolio.totalInterestPaidToDate, currency)} sub="the true cost of borrowing" />
@@ -246,7 +246,7 @@ function LoanForm({
         <Label>Loan name</Label>
         <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Working capital loan" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Lender (optional)</Label>
           <Input value={lender} onChange={(e) => setLender(e.target.value)} placeholder="e.g. Bank of Ceylon" />

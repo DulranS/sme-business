@@ -37,7 +37,7 @@ function CurrencyRateFields({
 }) {
   const currencyOptions = CURRENCIES.includes(baseCurrency) ? CURRENCIES : [baseCurrency, ...CURRENCIES];
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field>
         <Label>Currency</Label>
         <Select value={currency} onChange={(e) => onCurrencyChange(e.target.value)}>
@@ -122,6 +122,11 @@ export function QuickSaleForm({
   );
   const [projectId, setProjectId] = useState(existingSale?.projectId ?? "");
   const [busy, setBusy] = useState(false);
+  // Notes and Project are both optional and used far less often than the
+  // fields above — pre-existing values (editing a sale that already has
+  // them) start expanded so nothing silently hides data that's already
+  // there; a fresh sale starts collapsed so the common case is a short form.
+  const [showMoreDetails, setShowMoreDetails] = useState(!!(existingSale?.notes || existingSale?.projectId));
 
   const wac = ledgers.get(productId)?.wac ?? 0;
   const qtyOnHand = ledgers.get(productId)?.qtyOnHand ?? 0;
@@ -214,7 +219,7 @@ export function QuickSaleForm({
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>{isProduct ? "How many did you sell?" : "How many hours / jobs?"}</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -236,7 +241,7 @@ export function QuickSaleForm({
           = {formatMoney(basePriceNum, settings.currency)} per unit at this rate
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -251,7 +256,7 @@ export function QuickSaleForm({
           </Select>
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Customer {paymentMethod === "credit" ? "" : "(optional)"}</Label>
           <Input
@@ -292,21 +297,34 @@ export function QuickSaleForm({
         </Field>
       )}
       <Field>
-        <Label>Notes (optional)</Label>
-        <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <button
+          type="button"
+          onClick={() => setShowMoreDetails((v) => !v)}
+          className="text-xs text-amber-soft font-medium -mb-1"
+        >
+          {showMoreDetails ? "− Hide notes & project" : "+ Add notes / project"}
+        </button>
       </Field>
-      {!isStaff && projects.length > 0 && (
-        <Field>
-          <Label>Project (optional)</Label>
-          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">— not part of a project —</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+      {showMoreDetails && (
+        <>
+          <Field>
+            <Label>Notes (optional)</Label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+          {!isStaff && projects.length > 0 && (
+            <Field>
+              <Label>Project (optional)</Label>
+              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                <option value="">— not part of a project —</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+        </>
       )}
 
       {qtyNum > 0 && (
@@ -413,7 +431,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>How many did you buy?</Label>
           <Input required autoFocus={!!fixedProduct} type="number" min="0" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -433,7 +451,7 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
       {txCurrency !== currency && costNum > 0 && rateNum > 0 && (
         <div className="text-xs text-muted -mt-2">= {formatMoney(baseCostNum, currency)} per unit at this rate</div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Date</Label>
           <Input required type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -522,7 +540,7 @@ export function QuickExpenseForm({ onDone }: { onDone: () => void }) {
         <Label>What is it?</Label>
         <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse rent" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Amount</Label>
           <Input required type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />

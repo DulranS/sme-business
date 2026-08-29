@@ -247,7 +247,7 @@ function ProductForm({
           placeholder={type === "service" ? "e.g. Interior detailing" : "e.g. Suzuki Alto GF"}
         />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>SKU / reference</Label>
           <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="optional" />
@@ -263,7 +263,7 @@ function ProductForm({
           Usual prices (optional) — fills these in for you every time you buy or sell this, so you don&apos;t have
           to type them again. You can always change them for a one-off deal.
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field>
             <Label>{type === "service" ? "What it usually costs you" : "What you usually pay for one"}</Label>
             <Input

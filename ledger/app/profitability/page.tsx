@@ -276,7 +276,7 @@ export default function ProfitabilityPage() {
               Based on your last 3 months of sales and this month&apos;s regular costs (rent, salaries, subscriptions,
               and so on).
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <Stat
                 label="Profit per sale"
                 value={`${(breakEven.contributionMarginRatio * 100).toFixed(1)}%`}
@@ -327,7 +327,7 @@ export default function ProfitabilityPage() {
               <Button onClick={() => { setEditingEntry(null); setModalOpen(true); }} className="shrink-0">+ Add money in/out</Button>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-4">
               <Stat label="Put in" value={formatMoney(capitalSummary.totalInvested, currency)} />
               <Stat label="Taken out" value={formatMoney(capitalSummary.totalWithdrawn, currency)} />
               <Stat

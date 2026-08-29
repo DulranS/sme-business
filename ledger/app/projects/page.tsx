@@ -132,7 +132,7 @@ export default function ProjectsPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <Stat label="Active projects" value={String(projectPortfolio.activeCount)} />
             <Stat label="Quoted (active)" value={formatMoney(projectPortfolio.totalQuotedActive, currency)} />
             <Stat
@@ -329,7 +329,7 @@ function ProjectForm({
           placeholder="e.g. Perera residence — kitchen fit-out"
         />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Client (optional)</Label>
           <Input value={client} onChange={(e) => setClient(e.target.value)} />
@@ -339,7 +339,7 @@ function ProjectForm({
           <Input required type="number" min="0" step="0.01" value={quotedPrice} onChange={(e) => setQuotedPrice(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Status</Label>
           <Select value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
@@ -473,7 +473,7 @@ function ProjectDetail({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Stat label="Quoted" value={formatMoney(project.quotedPrice, currency)} />
         <Stat label="Actual cost" value={formatMoney(f?.totalCost ?? 0, currency)} />
         <Stat label="Profit" value={formatMoney(f?.profit ?? 0, currency)} tone={(f?.profit ?? 0) >= 0 ? "good" : "bad"} />
@@ -903,7 +903,7 @@ function MilestoneForm({
         <Label>What&apos;s this payment for?</Label>
         <Input required autoFocus value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Deposit, 50% on delivery" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Amount</Label>
           <Input required type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
@@ -1319,7 +1319,7 @@ function SegmentForm({
         <Label>What was it for?</Label>
         <Input required autoFocus value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Electrician subcontract" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Category</Label>
           <Select value={category} onChange={(e) => setCategory(e.target.value)}>

@@ -94,7 +94,7 @@ export default function PurchaseOrdersPage() {
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Stat label="Open orders" value={formatNumber(openOrders.openOrderCount)} />
         <Stat label="Units on order" value={formatNumber(openOrders.openOrderUnits)} />
         <Stat label="Already committed to spend" value={formatMoney(openOrders.openOrderValue, currency)} tone="amber" />
@@ -301,7 +301,7 @@ function OrderForm({
           ))}
         </Select>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Quantity ordered</Label>
           <Input required type="number" min="0" step="1" value={qtyOrdered} onChange={(e) => setQtyOrdered(e.target.value)} />
@@ -311,7 +311,7 @@ function OrderForm({
           <Input required type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Order date</Label>
           <Input required type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
@@ -373,7 +373,7 @@ function ReceiveForm({
         Confirm what actually arrived — this creates the inventory entry. Quantity or cost can differ from what was
         originally ordered.
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field>
           <Label>Quantity received</Label>
           <Input required type="number" min="0" step="1" value={qtyReceived} onChange={(e) => setQtyReceived(e.target.value)} />
