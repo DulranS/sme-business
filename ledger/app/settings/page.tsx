@@ -53,6 +53,7 @@ export default function SettingsPage() {
   const [defaultOpeningFloat, setDefaultOpeningFloat] = useState(settings.defaultOpeningFloat.toString());
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"general" | "operations" | "account">("general");
 
   // Account — name, email, password. Split into three independent forms
   // since email/password need the current password re-entered and name
@@ -180,70 +181,100 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" />
+
+      <div className="flex gap-1 mb-4 border-b border-line">
+        {(
+          [
+            ["general", "General"],
+            ["operations", "Operations"],
+            ["account", "Account"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={
+              tab === key
+                ? "px-3.5 py-2 text-sm font-medium text-fg border-b-2 border-amber -mb-px"
+                : "px-3.5 py-2 text-sm text-muted hover:text-fg border-b-2 border-transparent -mb-px"
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab !== "account" && (
       <Card className="max-w-md">
         <form onSubmit={handleSave} className="space-y-4">
-          <Field>
-            <Label>Tax rate (%)</Label>
-            <Input
-              type="number"
-              min="0"
-              max="100"
-              step="0.5"
-              value={taxRatePct}
-              onChange={(e) => setTaxRatePct(e.target.value)}
-            />
-            <div className="text-xs text-muted mt-1.5">Applied to positive pre-tax net profit each month.</div>
-          </Field>
-          <Field>
-            <Label>Business name (optional)</Label>
-            <Input
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              placeholder="e.g. Perera Auto Works"
-            />
-            <div className="text-xs text-muted mt-1.5">
-              Shown as the letterhead on printed project quotes and invoices. Leave blank to print without one.
-            </div>
-          </Field>
-          {businessName.trim() && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {tab === "general" && (
+            <>
               <Field>
-                <Label>Business address (optional)</Label>
-                <Input value={businessAddress} onChange={(e) => setBusinessAddress(e.target.value)} />
+                <Label>Tax rate (%)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={taxRatePct}
+                  onChange={(e) => setTaxRatePct(e.target.value)}
+                />
+                <div className="text-xs text-muted mt-1.5">Applied to positive pre-tax net profit each month.</div>
               </Field>
               <Field>
-                <Label>Business phone (optional)</Label>
-                <Input value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
+                <Label>Business name (optional)</Label>
+                <Input
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  placeholder="e.g. Perera Auto Works"
+                />
+                <div className="text-xs text-muted mt-1.5">
+                  Shown as the letterhead on printed project quotes and invoices. Leave blank to print without one.
+                </div>
               </Field>
-            </div>
+              {businessName.trim() && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field>
+                    <Label>Business address (optional)</Label>
+                    <Input value={businessAddress} onChange={(e) => setBusinessAddress(e.target.value)} />
+                  </Field>
+                  <Field>
+                    <Label>Business phone (optional)</Label>
+                    <Input value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
+                  </Field>
+                </div>
+              )}
+              <Field>
+                <Label>Base currency (used for all reports)</Label>
+                <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  {CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </Select>
+                <div className="text-xs text-muted mt-1.5">
+                  Every report and total is shown in this currency. A specific sale or purchase can still be entered
+                  in a different currency with its own exchange rate — it gets converted to this one automatically.
+                </div>
+              </Field>
+              <Field>
+                <Label>Forecast horizon (months)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="12"
+                  value={forecastMonths}
+                  onChange={(e) => setForecastMonths(e.target.value)}
+                />
+                <div className="text-xs text-muted mt-1.5">How far the dashboard trend line projects forward.</div>
+              </Field>
+            </>
           )}
-          <Field>
-            <Label>Base currency (used for all reports)</Label>
-            <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              {CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-            <div className="text-xs text-muted mt-1.5">
-              Every report and total is shown in this currency. A specific sale or purchase can still be entered in a
-              different currency with its own exchange rate — it gets converted to this one automatically.
-            </div>
-          </Field>
-          <Field>
-            <Label>Forecast horizon (months)</Label>
-            <Input
-              type="number"
-              min="1"
-              max="12"
-              value={forecastMonths}
-              onChange={(e) => setForecastMonths(e.target.value)}
-            />
-            <div className="text-xs text-muted mt-1.5">How far the dashboard trend line projects forward.</div>
-          </Field>
 
-          <div className="border-t border-line pt-4">
+          {tab === "operations" && (
+            <>
+          <div className="pt-1">
             <div className="text-xs font-medium text-muted mb-3">
               EOQ / reorder planning defaults — used for any product that doesn&apos;t set its own
             </div>
@@ -365,17 +396,23 @@ export default function SettingsPage() {
               </Field>
             </div>
           </div>
+            </>
+          )}
 
-          <div className="flex items-center gap-3 pt-2">
-            <Button type="submit" disabled={busy}>
-              {busy ? "Saving…" : "Save settings"}
-            </Button>
-            {saved && <span className="text-xs text-good">Saved</span>}
-          </div>
+          {(tab === "general" || tab === "operations") && (
+            <div className="flex items-center gap-3 pt-2">
+              <Button type="submit" disabled={busy}>
+                {busy ? "Saving…" : "Save settings"}
+              </Button>
+              {saved && <span className="text-xs text-good">Saved</span>}
+            </div>
+          )}
         </form>
       </Card>
+      )}
 
-      <Card className="max-w-md mt-6">
+      {tab === "account" && (
+      <Card className="max-w-md">
         <div className="text-sm font-medium mb-4">Account</div>
 
         <form onSubmit={handleNameSave} className="space-y-3 pb-4 border-b border-line">
@@ -443,6 +480,7 @@ export default function SettingsPage() {
           </div>
         </form>
       </Card>
+      )}
     </>
   );
 }

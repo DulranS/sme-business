@@ -130,164 +130,197 @@ export default function DashboardPage() {
 
       <QuickActionBar />
 
-      {oversold.length > 0 && (
-        <Card className="mb-5 border-bad/30">
-          <div className="text-sm font-medium text-bad mb-1">You&apos;ve sold more than you have</div>
-          <div className="text-xs text-muted">
-            {oversold.map((o) => `${o.name} (${o.qty} in stock)`).join(", ")} — you&apos;ve recorded selling more
-            than you&apos;ve recorded buying. Double-check your entries in Buying/Selling.
+      {/* All conditional warnings collapse into one card instead of up to
+          four stacked, separately-bordered ones — same information, a lot
+          less "wall of colored boxes" when several fire at once. */}
+      {(oversold.length > 0 ||
+        reorderAlerts.length > 0 ||
+        (projects.length > 0 && projectBudgetAlerts.length > 0) ||
+        expenseAnomalies.length > 0 ||
+        purchaseAnomalies.length > 0) && (
+        <Card className="mb-5">
+          <div className="text-sm font-medium mb-3">Needs attention</div>
+          <div className="space-y-4">
+            {oversold.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-bad mb-1">You&apos;ve sold more than you have</div>
+                <div className="text-xs text-muted">
+                  {oversold.map((o) => `${o.name} (${o.qty} in stock)`).join(", ")} — you&apos;ve recorded selling
+                  more than you&apos;ve recorded buying. Double-check your entries in Buying/Selling.
+                </div>
+              </div>
+            )}
+
+            {reorderAlerts.length > 0 && (
+              <div className={oversold.length > 0 ? "pt-4 border-t border-line" : ""}>
+                <div className="text-xs font-medium text-amber-soft mb-1">Running low — buy more soon</div>
+                <div className="text-xs text-muted mb-2">
+                  You&apos;re getting close to running out of these — order more now so you don&apos;t sell out
+                  before the new stock arrives.
+                </div>
+                <div className="space-y-1.5">
+                  {reorderAlerts.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between text-xs">
+                      <span className="text-fg font-medium">{r.name}</span>
+                      <span className="text-muted">
+                        {formatNumber(r.qtyOnHand)} left
+                        {r.onOrder > 0 ? ` (+${formatNumber(r.onOrder)} on the way)` : ""} · buy about{" "}
+                        {formatNumber(Math.round(r.eoq))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <Link href="/purchase-orders" className="text-xs text-amber-soft mt-2 inline-block">
+                  Order more stock →
+                </Link>
+              </div>
+            )}
+
+            {projects.length > 0 && projectBudgetAlerts.length > 0 && (
+              <div className={oversold.length > 0 || reorderAlerts.length > 0 ? "pt-4 border-t border-line" : ""}>
+                <div className="text-xs font-medium text-bad mb-1">
+                  {projectBudgetAlerts.filter((a) => a.isOverBudget).length > 0
+                    ? `${projectBudgetAlerts.filter((a) => a.isOverBudget).length} project${
+                        projectBudgetAlerts.filter((a) => a.isOverBudget).length !== 1 ? "s" : ""
+                      } over budget`
+                    : "Projects approaching budget"}
+                </div>
+                <div className="text-xs text-muted mb-2">
+                  Actual cost compared against the quoted price on each job — the earlier you notice this, the more
+                  room there is to renegotiate scope or catch a runaway cost before the job wraps.
+                </div>
+                <div className="space-y-1.5">
+                  {projectBudgetAlerts.slice(0, 5).map((a) => (
+                    <div key={a.projectId} className="flex items-center justify-between text-xs">
+                      <span className="text-fg font-medium">
+                        {a.name}
+                        {a.client ? <span className="text-muted font-normal"> · {a.client}</span> : null}
+                      </span>
+                      <span className={a.isOverBudget ? "text-bad" : "text-amber-soft"}>
+                        {formatMoney(a.totalCost, currency)} / {formatMoney(a.quotedPrice, currency)} (
+                        {a.budgetUsedPct.toFixed(0)}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <Link href="/projects" className="text-xs text-amber-soft mt-2 inline-block">
+                  Review projects →
+                </Link>
+              </div>
+            )}
+
+            {(expenseAnomalies.length > 0 || purchaseAnomalies.length > 0) && (
+              <div
+                className={
+                  oversold.length > 0 || reorderAlerts.length > 0 || (projects.length > 0 && projectBudgetAlerts.length > 0)
+                    ? "pt-4 border-t border-line"
+                    : ""
+                }
+              >
+                <div className="text-xs font-medium text-amber-soft mb-1">Worth a second look</div>
+                <div className="text-xs text-muted mb-2">
+                  These are a fair bit higher than usual compared to your own recent history — probably fine, but
+                  worth a glance in case it&apos;s a typo or a price change worth knowing about.
+                </div>
+                <div className="space-y-1.5">
+                  {expenseAnomalies.slice(0, 4).map((a) => (
+                    <div key={a.expense.id} className="flex items-center justify-between text-xs">
+                      <span className="text-fg font-medium">
+                        {a.expense.name}
+                        <span className="text-muted font-normal"> · {a.expense.category || "Uncategorized"}</span>
+                      </span>
+                      <span className="text-amber-soft">
+                        {formatMoney(a.expense.amount, currency)} vs usual {formatMoney(a.categoryMedian, currency)} (
+                        {a.multiple.toFixed(1)}×)
+                      </span>
+                    </div>
+                  ))}
+                  {purchaseAnomalies.slice(0, 4).map((a) => (
+                    <div key={a.purchase.id} className="flex items-center justify-between text-xs">
+                      <span className="text-fg font-medium">
+                        {a.product.name}
+                        {a.purchase.supplier ? <span className="text-muted font-normal"> · {a.purchase.supplier}</span> : null}
+                      </span>
+                      <span className="text-amber-soft">
+                        {formatMoney(a.purchase.unitCost, currency)}/unit vs usual{" "}
+                        {formatMoney(a.productMedianCost, currency)} ({a.multiple.toFixed(1)}×)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       )}
 
-      {reorderAlerts.length > 0 && (
-        <Card className="mb-5 border-amber-dim/40">
-          <div className="text-sm font-medium text-amber-soft mb-1">Running low — buy more soon</div>
-          <div className="text-xs text-muted mb-3">
-            You&apos;re getting close to running out of these — order more now so you don&apos;t sell out before
-            the new stock arrives.
-          </div>
-          <div className="space-y-2">
-            {reorderAlerts.map((r) => (
-              <div key={r.id} className="flex items-center justify-between text-xs">
-                <span className="text-fg font-medium">{r.name}</span>
-                <span className="text-muted">
-                  {formatNumber(r.qtyOnHand)} left
-                  {r.onOrder > 0 ? ` (+${formatNumber(r.onOrder)} on the way)` : ""} · buy about
-                  {" "}
-                  {formatNumber(Math.round(r.eoq))}
-                </span>
-              </div>
-            ))}
-          </div>
-          <Link href="/purchase-orders" className="text-xs text-amber-soft mt-3 inline-block">
-            Order more stock →
-          </Link>
-        </Card>
-      )}
-
-      {projects.length > 0 && projectBudgetAlerts.length > 0 && (
-        <Card className="mb-5 border-bad/30">
-          <div className="text-sm font-medium text-bad mb-1">
-            {projectBudgetAlerts.filter((a) => a.isOverBudget).length > 0
-              ? `${projectBudgetAlerts.filter((a) => a.isOverBudget).length} project${
-                  projectBudgetAlerts.filter((a) => a.isOverBudget).length !== 1 ? "s" : ""
-                } over budget`
-              : "Projects approaching budget"}
-          </div>
-          <div className="text-xs text-muted mb-3">
-            Actual cost compared against the quoted price on each job — the earlier you notice this, the more
-            room there is to renegotiate scope or catch a runaway cost before the job wraps.
-          </div>
-          <div className="space-y-2">
-            {projectBudgetAlerts.slice(0, 5).map((a) => (
-              <div key={a.projectId} className="flex items-center justify-between text-xs">
-                <span className="text-fg font-medium">
-                  {a.name}
-                  {a.client ? <span className="text-muted font-normal"> · {a.client}</span> : null}
-                </span>
-                <span className={a.isOverBudget ? "text-bad" : "text-amber-soft"}>
-                  {formatMoney(a.totalCost, currency)} / {formatMoney(a.quotedPrice, currency)} (
-                  {a.budgetUsedPct.toFixed(0)}%)
-                </span>
-              </div>
-            ))}
-          </div>
-          <Link href="/projects" className="text-xs text-amber-soft mt-3 inline-block">
-            Review projects →
-          </Link>
-        </Card>
-      )}
-
-      {(expenseAnomalies.length > 0 || purchaseAnomalies.length > 0) && (
-        <Card className="mb-5 border-amber-dim/40">
-          <div className="text-sm font-medium text-amber-soft mb-1">Worth a second look</div>
-          <div className="text-xs text-muted mb-3">
-            These are a fair bit higher than usual compared to your own recent history — probably fine, but worth a
-            glance in case it&apos;s a typo or a price change worth knowing about.
-          </div>
-          <div className="space-y-2">
-            {expenseAnomalies.slice(0, 4).map((a) => (
-              <div key={a.expense.id} className="flex items-center justify-between text-xs">
-                <span className="text-fg font-medium">
-                  {a.expense.name}
-                  <span className="text-muted font-normal"> · {a.expense.category || "Uncategorized"}</span>
-                </span>
-                <span className="text-amber-soft">
-                  {formatMoney(a.expense.amount, currency)} vs usual {formatMoney(a.categoryMedian, currency)} (
-                  {a.multiple.toFixed(1)}×)
-                </span>
-              </div>
-            ))}
-            {purchaseAnomalies.slice(0, 4).map((a) => (
-              <div key={a.purchase.id} className="flex items-center justify-between text-xs">
-                <span className="text-fg font-medium">
-                  {a.product.name}
-                  {a.purchase.supplier ? <span className="text-muted font-normal"> · {a.purchase.supplier}</span> : null}
-                </span>
-                <span className="text-amber-soft">
-                  {formatMoney(a.purchase.unitCost, currency)}/unit vs usual {formatMoney(a.productMedianCost, currency)} (
-                  {a.multiple.toFixed(1)}×)
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-        <Stat
-          label="Money in this month"
-          value={formatMoney(latest?.totalRevenue ?? 0, currency)}
-          sub={latest ? `${formatNumber(latest.unitsSold)} units sold` : undefined}
-        />
-        <Stat
-          label="Profit this month"
-          value={formatMoney(latest?.contributionMargin ?? 0, currency)}
-          tone={latest && latest.contributionMargin >= 0 ? "good" : "bad"}
-          sub="after cost of goods and variable costs"
-        />
-        <Stat
-          label="What's really left (after tax)"
-          value={formatMoney(latest?.netProfitAfterTax ?? 0, currency)}
-          tone={latest && latest.netProfitAfterTax >= 0 ? "good" : "bad"}
-          sub={`tax rate ${settings.taxRatePct}%`}
-        />
-        <Stat
-          label="Regular money in/out"
-          value={formatMoney(mrr.mrrRevenue - mrr.mrrExpense, currency)}
-          sub={`${formatMoney(mrr.mrrRevenue, currency)} in / ${formatMoney(mrr.mrrExpense, currency)} out`}
-        />
-        <Stat label="Stock is worth" value={formatMoney(inventoryValue, currency)} tone="amber" />
-        <Stat label="Items in stock" value={formatNumber(inventoryUnits)} />
-        <Stat
-          label="On the way (ordered)"
-          value={formatMoney(openOrders.openOrderValue, currency)}
-          sub={openOrders.openOrderCount > 0 ? `${openOrders.openOrderCount} open order(s)` : "nothing pending"}
-        />
-        <Stat label="Staff pay / month" value={formatMoney(monthlyPayroll, currency)} tone={monthlyPayroll > 0 ? "bad" : "default"} />
-        <Stat
-          label="You owe"
-          value={formatMoney(loanPortfolio.totalOutstanding, currency)}
-          tone={loanPortfolio.totalOutstanding > 0 ? "bad" : "default"}
-          sub={loanPortfolio.loanCount > 0 ? `${loanPortfolio.loanCount} loan(s)` : undefined}
-        />
-        <Stat label="Loan payments / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
-        {settings.monthlyOwnerDraw ? (
+      <div className="mb-6">
+        <div className="text-[11px] uppercase tracking-wider text-muted font-medium mb-2 px-0.5">This month</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <Stat
-            label="True profit (after paying yourself)"
-            value={formatMoney((latest?.economicProfit ?? 0), currency)}
-            tone={(latest?.economicProfit ?? 0) >= 0 ? "good" : "bad"}
-            sub={`after ${formatMoney(settings.monthlyOwnerDraw, currency)}/mo imputed owner pay`}
+            label="Money in this month"
+            value={formatMoney(latest?.totalRevenue ?? 0, currency)}
+            sub={latest ? `${formatNumber(latest.unitsSold)} units sold` : undefined}
           />
-        ) : (
           <Stat
-            label="True profit (after paying yourself)"
-            value="—"
-            sub="set your monthly pay in Settings"
+            label="Profit this month"
+            value={formatMoney(latest?.contributionMargin ?? 0, currency)}
+            tone={latest && latest.contributionMargin >= 0 ? "good" : "bad"}
+            sub="after cost of goods and variable costs"
           />
-        )}
+          <Stat
+            label="What's really left (after tax)"
+            value={formatMoney(latest?.netProfitAfterTax ?? 0, currency)}
+            tone={latest && latest.netProfitAfterTax >= 0 ? "good" : "bad"}
+            sub={`tax rate ${settings.taxRatePct}%`}
+          />
+          <Stat
+            label="Regular money in/out"
+            value={formatMoney(mrr.mrrRevenue - mrr.mrrExpense, currency)}
+            sub={`${formatMoney(mrr.mrrRevenue, currency)} in / ${formatMoney(mrr.mrrExpense, currency)} out`}
+          />
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="text-[11px] uppercase tracking-wider text-muted font-medium mb-2 px-0.5">Stock &amp; orders</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <Stat label="Stock is worth" value={formatMoney(inventoryValue, currency)} tone="amber" />
+          <Stat label="Items in stock" value={formatNumber(inventoryUnits)} />
+          <Stat
+            label="On the way (ordered)"
+            value={formatMoney(openOrders.openOrderValue, currency)}
+            sub={openOrders.openOrderCount > 0 ? `${openOrders.openOrderCount} open order(s)` : "nothing pending"}
+          />
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="text-[11px] uppercase tracking-wider text-muted font-medium mb-2 px-0.5">Obligations &amp; you</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <Stat label="Staff pay / month" value={formatMoney(monthlyPayroll, currency)} tone={monthlyPayroll > 0 ? "bad" : "default"} />
+          <Stat
+            label="You owe"
+            value={formatMoney(loanPortfolio.totalOutstanding, currency)}
+            tone={loanPortfolio.totalOutstanding > 0 ? "bad" : "default"}
+            sub={loanPortfolio.loanCount > 0 ? `${loanPortfolio.loanCount} loan(s)` : undefined}
+          />
+          <Stat label="Loan payments / month" value={formatMoney(loanPortfolio.totalMonthlyPayment, currency)} />
+          {settings.monthlyOwnerDraw ? (
+            <Stat
+              label="True profit (after paying yourself)"
+              value={formatMoney((latest?.economicProfit ?? 0), currency)}
+              tone={(latest?.economicProfit ?? 0) >= 0 ? "good" : "bad"}
+              sub={`after ${formatMoney(settings.monthlyOwnerDraw, currency)}/mo imputed owner pay`}
+            />
+          ) : (
+            <Stat
+              label="True profit (after paying yourself)"
+              value="—"
+              sub="set your monthly pay in Settings"
+            />
+          )}
+        </div>
       </div>
 
       <Card className="mb-6">
