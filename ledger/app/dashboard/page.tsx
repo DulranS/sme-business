@@ -19,6 +19,7 @@ import { detectExpenseAnomalies, detectPurchaseAnomalies } from "@/lib/anomaly";
 import { formatMoney, formatMonth, formatNumber, todayIso } from "@/lib/format";
 import { Card, PageHeader, Stat, StatGridSkeleton, Table, TableCardSkeleton, Badge, EmptyState } from "@/components/ui";
 import QuickActionBar from "@/components/QuickActionBar";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 
 export default function DashboardPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
@@ -135,6 +136,8 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader title="Dashboard" />
+
+      <OnboardingChecklist />
 
       <QuickActionBar />
 

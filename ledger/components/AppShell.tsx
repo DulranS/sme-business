@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
 import { Skeleton } from "@/components/ui";
+import OfflineBanner from "@/components/OfflineBanner";
 
 const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; roles: Role[]; group: string }[] = [
   { href: "/dashboard", label: "Home", icon: GridIcon, roles: ["owner", "manager"], group: "Overview" },
@@ -212,6 +213,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             Sign out
           </button>
         </header>
+
+        <OfflineBanner />
 
         <main className="flex-1 px-4 py-5 sm:px-8 sm:py-8 pb-24 sm:pb-8 max-w-6xl w-full mx-auto overflow-x-hidden">
           {children}

@@ -23,8 +23,12 @@ export function downloadCsv(filename: string, csv: string) {
   URL.revokeObjectURL(url);
 }
 
-export function exportProducts(products: Product[]) {
-  const rows = products.map((p) => ({
+// Row-builders are exported separately from the exportX() functions below
+// so lib/backup.ts (full-zip backup) can reuse the exact same row shape
+// without a second, driftable copy of this mapping — the per-entity
+// exportX() functions are unchanged, just now a thin wrapper around these.
+export function productsRows(products: Product[]) {
+  return products.map((p) => ({
     id: p.id,
     name: p.name,
     sku: p.sku,
@@ -38,12 +42,15 @@ export function exportProducts(products: Product[]) {
     defaultSellPrice: p.defaultSellPrice ?? "",
     laborCostPerUnit: p.laborCostPerUnit ?? "",
   }));
-  downloadCsv("products.csv", toCsv(rows));
 }
 
-export function exportPurchases(purchases: Purchase[], products: Product[]) {
+export function exportProducts(products: Product[]) {
+  downloadCsv("products.csv", toCsv(productsRows(products)));
+}
+
+export function purchasesRows(purchases: Purchase[], products: Product[]) {
   const nameById = new Map(products.map((p) => [p.id, p.name]));
-  const rows = purchases.map((p) => ({
+  return purchases.map((p) => ({
     id: p.id,
     product: nameById.get(p.productId) ?? p.productId,
     productId: p.productId,
@@ -53,12 +60,15 @@ export function exportPurchases(purchases: Purchase[], products: Product[]) {
     supplier: p.supplier ?? "",
     notes: p.notes ?? "",
   }));
-  downloadCsv("purchases.csv", toCsv(rows));
 }
 
-export function exportSales(sales: Sale[], products: Product[]) {
+export function exportPurchases(purchases: Purchase[], products: Product[]) {
+  downloadCsv("purchases.csv", toCsv(purchasesRows(purchases, products)));
+}
+
+export function salesRows(sales: Sale[], products: Product[]) {
   const nameById = new Map(products.map((p) => [p.id, p.name]));
-  const rows = sales.map((s) => ({
+  return sales.map((s) => ({
     id: s.id,
     product: nameById.get(s.productId) ?? s.productId,
     productId: s.productId,
@@ -68,11 +78,14 @@ export function exportSales(sales: Sale[], products: Product[]) {
     customer: s.customer ?? "",
     notes: s.notes ?? "",
   }));
-  downloadCsv("sales.csv", toCsv(rows));
 }
 
-export function exportExpenses(expenses: Expense[]) {
-  const rows = expenses.map((e) => ({
+export function exportSales(sales: Sale[], products: Product[]) {
+  downloadCsv("sales.csv", toCsv(salesRows(sales, products)));
+}
+
+export function expensesRows(expenses: Expense[]) {
+  return expenses.map((e) => ({
     id: e.id,
     name: e.name,
     amount: e.amount,
@@ -83,12 +96,15 @@ export function exportExpenses(expenses: Expense[]) {
     startDate: e.startDate,
     endDate: e.endDate ?? "",
   }));
-  downloadCsv("expenses.csv", toCsv(rows));
 }
 
-export function exportVariableCosts(variableCosts: VariableCost[], products: Product[]) {
+export function exportExpenses(expenses: Expense[]) {
+  downloadCsv("expenses.csv", toCsv(expensesRows(expenses)));
+}
+
+export function variableCostsRows(variableCosts: VariableCost[], products: Product[]) {
   const nameById = new Map(products.map((p) => [p.id, p.name]));
-  const rows = variableCosts.map((v) => ({
+  return variableCosts.map((v) => ({
     id: v.id,
     name: v.name,
     type: v.type,
@@ -97,23 +113,29 @@ export function exportVariableCosts(variableCosts: VariableCost[], products: Pro
     productId: v.productId ?? "",
     includeInCogs: v.includeInCogs ? "yes" : "no",
   }));
-  downloadCsv("variable_costs.csv", toCsv(rows));
 }
 
-export function exportCapitalEntries(entries: CapitalEntry[]) {
-  const rows = entries.map((c) => ({
+export function exportVariableCosts(variableCosts: VariableCost[], products: Product[]) {
+  downloadCsv("variable_costs.csv", toCsv(variableCostsRows(variableCosts, products)));
+}
+
+export function capitalEntriesRows(entries: CapitalEntry[]) {
+  return entries.map((c) => ({
     id: c.id,
     kind: c.kind,
     amount: c.amount,
     date: c.date,
     notes: c.notes ?? "",
   }));
-  downloadCsv("capital_entries.csv", toCsv(rows));
 }
 
-export function exportPurchaseOrders(purchaseOrders: PurchaseOrder[], products: Product[]) {
+export function exportCapitalEntries(entries: CapitalEntry[]) {
+  downloadCsv("capital_entries.csv", toCsv(capitalEntriesRows(entries)));
+}
+
+export function purchaseOrdersRows(purchaseOrders: PurchaseOrder[], products: Product[]) {
   const nameById = new Map(products.map((p) => [p.id, p.name]));
-  const rows = purchaseOrders.map((po) => ({
+  return purchaseOrders.map((po) => ({
     id: po.id,
     product: nameById.get(po.productId) ?? po.productId,
     productId: po.productId,
@@ -128,11 +150,14 @@ export function exportPurchaseOrders(purchaseOrders: PurchaseOrder[], products: 
     receivedUnitCost: po.receivedUnitCost ?? "",
     notes: po.notes ?? "",
   }));
-  downloadCsv("purchase_orders.csv", toCsv(rows));
 }
 
-export function exportEmployees(employees: Employee[]) {
-  const rows = employees.map((e) => ({
+export function exportPurchaseOrders(purchaseOrders: PurchaseOrder[], products: Product[]) {
+  downloadCsv("purchase_orders.csv", toCsv(purchaseOrdersRows(purchaseOrders, products)));
+}
+
+export function employeesRows(employees: Employee[]) {
+  return employees.map((e) => ({
     id: e.id,
     name: e.name,
     role: e.role,
@@ -144,11 +169,14 @@ export function exportEmployees(employees: Employee[]) {
     active: e.active,
     notes: e.notes ?? "",
   }));
-  downloadCsv("employees.csv", toCsv(rows));
 }
 
-export function exportLoans(loans: Loan[]) {
-  const rows = loans.map((l) => ({
+export function exportEmployees(employees: Employee[]) {
+  downloadCsv("employees.csv", toCsv(employeesRows(employees)));
+}
+
+export function loansRows(loans: Loan[]) {
+  return loans.map((l) => ({
     id: l.id,
     name: l.name,
     lender: l.lender ?? "",
@@ -159,7 +187,10 @@ export function exportLoans(loans: Loan[]) {
     active: l.active,
     notes: l.notes ?? "",
   }));
-  downloadCsv("loans.csv", toCsv(rows));
+}
+
+export function exportLoans(loans: Loan[]) {
+  downloadCsv("loans.csv", toCsv(loansRows(loans)));
 }
 
 // ---------------------------------------------------------------------------

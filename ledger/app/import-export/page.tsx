@@ -23,6 +23,7 @@ import {
   importSales,
   type ImportError,
 } from "@/lib/csv";
+import { downloadFullBackupZip } from "@/lib/backup";
 import { Button, Card, PageHeader } from "@/components/ui";
 
 type Entity = "products" | "purchases" | "sales" | "expenses" | "capitalEntries" | "employees" | "loans" | "purchaseOrders";
@@ -32,6 +33,27 @@ export default function ImportExportPage() {
   const data = useData();
   const [result, setResult] = useState<{ entity: Entity; added: number; errors: ImportError[] } | null>(null);
   const [busy, setBusy] = useState<Entity | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+
+  async function handleFullBackup() {
+    setBackupBusy(true);
+    try {
+      await downloadFullBackupZip({
+        products: data.products,
+        purchases: data.purchases,
+        sales: data.sales,
+        expenses: data.expenses,
+        variableCosts: data.variableCosts,
+        capitalEntries: data.capitalEntries,
+        purchaseOrders: data.purchaseOrders,
+        employees: data.employees,
+        loans: data.loans,
+        settings: data.settings,
+      });
+    } finally {
+      setBackupBusy(false);
+    }
+  }
   const inputRefs = {
     products: useRef<HTMLInputElement>(null),
     purchases: useRef<HTMLInputElement>(null),
@@ -160,6 +182,22 @@ export default function ImportExportPage() {
     <>
       <PageHeader title="Import / export" />
       <div className="space-y-4">
+        <Card className="border-amber-dim/40">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">Full backup</div>
+              <div className="text-xs text-muted mt-0.5">
+                Everything below, zipped into one file — download it and keep a copy somewhere safe (email it to
+                yourself, save it to cloud storage). If this app is ever unreachable, every file inside re-imports
+                the normal way, one at a time, on the Import / export page of a fresh business.
+              </div>
+            </div>
+            <Button variant="ghost" disabled={backupBusy} onClick={handleFullBackup} className="shrink-0">
+              {backupBusy ? "Zipping…" : "Download full backup (.zip)"}
+            </Button>
+          </div>
+        </Card>
+
         {rows.map((row) => (
           <Card key={row.entity}>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

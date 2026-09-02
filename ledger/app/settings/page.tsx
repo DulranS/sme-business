@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { Button, Card, Field, Input, Label, PageHeader, Select, Tabs } from "@/components/ui";
 import { CURRENCIES } from "@/lib/fx";
+import { uploadBusinessLogo, removeBusinessLogo } from "@/lib/logoUpload";
 
 // Firebase Auth error codes are technical (auth/invalid-credential,
 // auth/requires-recent-login) — map the ones a user can actually hit here
@@ -35,7 +36,10 @@ function describeAuthError(message: string): string {
 export default function SettingsPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner"]);
   const { settings, updateSettings, updateOwnProfile } = useData();
-  const { user, memberName, changeEmail, changePassword } = useAuth();
+  const { user, businessId, memberName, changeEmail, changePassword } = useAuth();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const [taxRatePct, setTaxRatePct] = useState(settings.taxRatePct.toString());
   const [currency, setCurrency] = useState(settings.currency);
   const [businessName, setBusinessName] = useState(settings.businessName ?? "");
@@ -176,6 +180,34 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
+  async function handleLogoSelect(file: File) {
+    if (!businessId) return;
+    setLogoBusy(true);
+    setLogoError(null);
+    try {
+      const url = await uploadBusinessLogo(businessId, file);
+      await updateSettings({ logoUrl: url });
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Couldn't upload that image — try a smaller file.");
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  async function handleLogoRemove() {
+    if (!businessId) return;
+    setLogoBusy(true);
+    setLogoError(null);
+    try {
+      await removeBusinessLogo(businessId);
+      await updateSettings({ logoUrl: undefined });
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Couldn't remove the logo — try again.");
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
   if (guardLoading || !allowed) return null;
 
   return (
@@ -231,6 +263,46 @@ export default function SettingsPage() {
                     <Input value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
                   </Field>
                 </div>
+              )}
+              {businessName.trim() && (
+                <Field>
+                  <Label>Logo (optional)</Label>
+                  <div className="flex items-center gap-3">
+                    {settings.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={settings.logoUrl}
+                        alt="Business logo"
+                        className="w-12 h-12 object-contain rounded border border-line bg-panel2"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded border border-dashed border-line shrink-0" />
+                    )}
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoSelect(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button type="button" variant="ghost" disabled={logoBusy} onClick={() => logoInputRef.current?.click()}>
+                      {logoBusy ? "Uploading…" : settings.logoUrl ? "Replace" : "Upload logo"}
+                    </Button>
+                    {settings.logoUrl && (
+                      <Button type="button" variant="ghost" disabled={logoBusy} onClick={handleLogoRemove}>
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  {logoError && <div className="text-xs text-bad mt-1.5">{logoError}</div>}
+                  <div className="text-xs text-muted mt-1.5">
+                    Shown next to the letterhead on printed project quotes and invoices.
+                  </div>
+                </Field>
               )}
               <Field>
                 <Label>Base currency (used for all reports)</Label>

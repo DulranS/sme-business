@@ -17,16 +17,19 @@ there's no shared login, and every permission is enforced server-side in
 1. Create a project at https://console.firebase.google.com
 2. **Build → Authentication → Get started → Email/Password → Enable**
 3. **Build → Firestore Database → Create database** (start in production mode)
-4. Deploy the included security rules (or paste `firestore.rules` into the
-   Firestore "Rules" tab in console and publish):
+4. **Build → Storage → Get started** (needed for the Settings → General logo
+   upload — everything else works without this step).
+5. Deploy the included security rules (or paste `firestore.rules` /
+   `storage.rules` into their respective "Rules" tabs in console and
+   publish):
    ```
    npm install -g firebase-tools
    firebase login
-   firebase init firestore   # point it at this project, keep existing rules file
-   firebase deploy --only firestore:rules
+   firebase init firestore storage   # point it at this project, keep existing rules files
+   firebase deploy --only firestore:rules,storage:rules
    ```
-5. **Project settings → General → Your apps → Add app → Web**, copy the config.
-6. `cp .env.local.example .env.local` and fill in the six `NEXT_PUBLIC_FIREBASE_*` values.
+6. **Project settings → General → Your apps → Add app → Web**, copy the config.
+7. `cp .env.local.example .env.local` and fill in the six `NEXT_PUBLIC_FIREBASE_*` values.
    (Optional: to enable the AI Assistant, also fill in `DEEPSEEK_API_KEY`
    and the `FIREBASE_*` service-account variables in the same file — see
    [§7 AI Assistant](#7-ai-assistant) for where to get them. Everything

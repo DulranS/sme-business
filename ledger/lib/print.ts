@@ -65,11 +65,17 @@ export function buildLetterheadHtml(settings: Settings, docType: string): string
     .filter((v): v is string => Boolean(v))
     .map(escapeHtml)
     .join(" · ");
+  const logo = settings.logoUrl
+    ? `<img src="${escapeHtml(settings.logoUrl)}" alt="" style="width:40px;height:40px;object-fit:contain;border-radius:4px;flex-shrink:0;" />`
+    : "";
   return `
     <div class="letterhead">
-      <div>
-        <div class="biz-name">${escapeHtml(settings.businessName)}</div>
-        ${metaLine ? `<div class="biz-meta">${metaLine}</div>` : ""}
+      <div style="display:flex;align-items:center;gap:10px;">
+        ${logo}
+        <div>
+          <div class="biz-name">${escapeHtml(settings.businessName)}</div>
+          ${metaLine ? `<div class="biz-meta">${metaLine}</div>` : ""}
+        </div>
       </div>
       <div class="doc-type">${docType}</div>
     </div>

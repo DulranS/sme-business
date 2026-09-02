@@ -57,6 +57,7 @@ export async function POST(req: Request) {
       businessName: settings?.businessName,
       businessAddress: settings?.businessAddress,
       businessPhone: settings?.businessPhone,
+      logoUrl: settings?.logoUrl,
     };
     const html = generateInvoiceHtml(invoice, template);
 

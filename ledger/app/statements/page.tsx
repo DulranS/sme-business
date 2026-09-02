@@ -5,6 +5,7 @@ import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, formatMonth, todayIso } from "@/lib/format";
 import { Card, PageHeader, Select, Badge, EmptyState, Tabs, TableCardSkeleton } from "@/components/ui";
+import Term from "@/components/Term";
 
 type Tab = "income" | "balance" | "cashflow";
 
@@ -95,7 +96,7 @@ function Line({
   muted,
   negative,
 }: {
-  label: string;
+  label: React.ReactNode;
   value: number;
   currency: string;
   bold?: boolean;
@@ -127,23 +128,25 @@ function IncomeStatement({
   return (
     <Card>
       <div className="text-sm font-medium mb-0.5">Income statement — {formatMonth(m.month)}</div>
-      <div className="text-xs text-muted mb-4">Revenue, expenses, and net profit — over the period. Accrual basis.</div>
+      <div className="text-xs text-muted mb-4">
+        Revenue, expenses, and net profit — over the period. <Term term="accrual basis">Accrual basis.</Term>
+      </div>
 
       <Line label="Sales revenue" value={m.salesRevenue} currency={currency} />
       <Line label="Recurring revenue" value={m.recurringRevenue} currency={currency} />
       <Line label="Total revenue" value={m.totalRevenue} currency={currency} bold />
 
       <div className="mt-4">
-        <Line label="Cost of goods sold" value={m.cogs} currency={currency} negative muted />
+        <Line label={<Term term="cogs">Cost of goods sold</Term>} value={m.cogs} currency={currency} negative muted />
         {m.cogsVariableCosts > 0 && (
           <Line label="Variable costs (COGS-tagged, e.g. shipping)" value={m.cogsVariableCosts} currency={currency} negative muted />
         )}
-        <Line label="Gross profit" value={m.grossProfit} currency={currency} bold />
+        <Line label={<Term term="gross profit">Gross profit</Term>} value={m.grossProfit} currency={currency} bold />
       </div>
 
       <div className="mt-4">
         <Line label="Other variable costs" value={m.variableCosts - m.cogsVariableCosts} currency={currency} negative muted />
-        <Line label="Contribution margin" value={m.contributionMargin} currency={currency} bold />
+        <Line label={<Term term="contribution margin">Contribution margin</Term>} value={m.contributionMargin} currency={currency} bold />
       </div>
 
       <div className="mt-4">
@@ -158,7 +161,7 @@ function IncomeStatement({
             negative={m.disposalGainLoss < 0}
           />
         )}
-        <Line label="Net profit before tax" value={m.netProfitPreTax} currency={currency} bold />
+        <Line label={<Term term="net profit">Net profit before tax</Term>} value={m.netProfitPreTax} currency={currency} bold />
       </div>
 
       <div className="mt-4">
@@ -167,7 +170,7 @@ function IncomeStatement({
       </div>
 
       <div className="mt-5 pt-4 border-t border-line flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-muted">Gross margin:</span>
+        <span className="text-xs text-muted"><Term term="gross margin">Gross margin</Term>:</span>
         <Badge tone={m.grossProfit >= 0 ? "good" : "bad"}>
           {m.totalRevenue > 0 ? ((m.grossProfit / m.totalRevenue) * 100).toFixed(1) : "0.0"}%
         </Badge>
@@ -207,7 +210,9 @@ function CashFlowStatement({
   return (
     <Card>
       <div className="text-sm font-medium mb-0.5">Cash flow statement — {formatMonth(m.month)}</div>
-      <div className="text-xs text-muted mb-4">Actual cash in and out — over the period. Cash basis.</div>
+      <div className="text-xs text-muted mb-4">
+        Actual cash in and out — over the period. <Term term="cash basis">Cash basis.</Term>
+      </div>
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Operating activities</div>
       <Line label="Cash sales & recurring revenue" value={m.cashSalesRevenue + m.recurringRevenue} currency={currency} />
@@ -253,14 +258,14 @@ function BalanceSheetView({
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-2 mb-1">Assets</div>
       <Line label="Cash" value={b.cash} currency={currency} />
-      <Line label="Accounts receivable" value={b.accountsReceivable} currency={currency} />
+      <Line label={<Term term="accounts receivable">Accounts receivable</Term>} value={b.accountsReceivable} currency={currency} />
       <Line label="Inventory" value={b.inventoryValue} currency={currency} />
       <Line label="Fixed assets (net)" value={b.fixedAssetsNetBookValue} currency={currency} />
       <Line label="Total assets" value={b.totalAssets} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Liabilities</div>
       <Line label="Loans payable" value={b.loansPayable} currency={currency} />
-      <Line label="Accounts payable" value={b.accountsPayable} currency={currency} />
+      <Line label={<Term term="accounts payable">Accounts payable</Term>} value={b.accountsPayable} currency={currency} />
       <Line label="Total liabilities" value={b.totalLiabilities} currency={currency} bold />
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mt-5 mb-1">Equity</div>

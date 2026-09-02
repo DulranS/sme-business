@@ -344,6 +344,11 @@ export interface Settings {
   businessName?: string;
   businessAddress?: string;
   businessPhone?: string;
+  // Download URL for a logo image uploaded via Settings → General (see
+  // lib/logoUpload.ts). Purely cosmetic, same as the fields above — shown
+  // next to the letterhead text on printed quotes/invoices/receipts when
+  // set, omitted entirely when blank.
+  logoUrl?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

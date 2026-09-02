@@ -134,6 +134,7 @@ export function generateInvoiceHtml(
 <body>
   <div class="header">
     <div class="business-info">
+      ${template.logoUrl ? `<img src="${template.logoUrl}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;margin-bottom:8px;" />` : ''}
       ${template.businessName ? `<h1>${template.businessName}</h1>` : ''}
       ${template.businessAddress ? `<p>${template.businessAddress}</p>` : ''}
       ${template.businessPhone ? `<p>${template.businessPhone}</p>` : ''}

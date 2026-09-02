@@ -8,6 +8,7 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 export const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -21,6 +22,7 @@ export const firebaseConfig = {
 let app: FirebaseApp;
 let db: Firestore;
 let auth: Auth;
+let storage: FirebaseStorage;
 
 // Firestore is initialized once with persistent local-cache (IndexedDB) turned on.
 // This is the "memory optimized strategy" for a Firebase-backed SPA: reads for
@@ -80,8 +82,9 @@ function getFirebase() {
     }
 
     auth = getAuth(app);
+    storage = getStorage(app);
   }
-  return { app, db, auth };
+  return { app, db, auth, storage };
 }
 
 export { getFirebase };
