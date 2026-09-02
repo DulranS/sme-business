@@ -14,6 +14,9 @@ export interface Product {
   category: string;
   type: OfferingType;
   active: boolean;
+  // Stock level tracking — product type only
+  currentStock?: number; // current on-hand quantity, computed from purchases - sales
+  minStockLevel?: number; // reorder point: alert when stock falls below this
   // EOQ / reorder-planning inputs — product type only, all optional
   // (falls back to Settings defaults when unset).
   orderingCost?: number; // fixed cost to place one order (S)
