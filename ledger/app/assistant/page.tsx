@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { useRequireRole } from "@/lib/roleGuard";
 import { useAiAssistant } from "@/contexts/AiAssistantContext";
 import { PageHeader, Card, Button, EmptyState, Modal } from "@/components/ui";
 import { ProposedEntryCard } from "@/components/ai/ProposedEntryCard";
-import type { AiChatSession } from "@/lib/aiTypes";
+import type { AiChatMessage, AiChatSession } from "@/lib/aiTypes";
 
 function relativeDay(ts: number): string {
   const d = new Date(ts);
@@ -18,6 +18,183 @@ function relativeDay(ts: number): string {
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
+
+// --- Sidebar -----------------------------------------------------------
+// SessionRow/SessionList used to be declared *inside* AssistantPage's
+// render body. That gave them a brand-new function identity on every
+// render of the page — including every keystroke in the composer, since
+// `draft` lives in the same component. React treats a changed component
+// type as "different component", so it was unmounting and rebuilding the
+// entire sidebar (and losing any in-progress rename input) on every
+// character typed. Hoisting them to module scope plus React.memo means
+// they only re-render when their own props actually change.
+
+interface SessionRowProps {
+  session: AiChatSession;
+  active: boolean;
+  renaming: boolean;
+  renameValue: string;
+  onSelect: () => void;
+  onRenameValueChange: (value: string) => void;
+  onStartRename: () => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onDelete: () => void;
+}
+
+const SessionRow = memo(function SessionRow({
+  session,
+  active,
+  renaming,
+  renameValue,
+  onSelect,
+  onRenameValueChange,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onDelete,
+}: SessionRowProps) {
+  if (renaming) {
+    return (
+      <input
+        autoFocus
+        value={renameValue}
+        onChange={(e) => onRenameValueChange(e.target.value)}
+        onBlur={onCommitRename}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onCommitRename();
+          if (e.key === "Escape") onCancelRename();
+        }}
+        className="w-full bg-panel2 border border-amber-dim rounded-md px-2.5 py-2 text-sm text-fg focus:outline-none"
+      />
+    );
+  }
+  return (
+    <div
+      className={clsx(
+        "group flex items-center gap-1.5 rounded-md px-2.5 py-2 cursor-pointer",
+        active ? "bg-panel2 border border-amber-dim/60" : "hover:bg-panel2 border border-transparent"
+      )}
+      onClick={onSelect}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-sm text-fg truncate">{session.title}</div>
+        <div className="text-[11px] text-muted">{relativeDay(session.updatedAt)}</div>
+      </div>
+      <button
+        className="opacity-0 group-hover:opacity-100 sm:opacity-100 text-muted hover:text-fg text-xs w-7 h-7 flex items-center justify-center shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          onStartRename();
+        }}
+        aria-label="Rename"
+      >
+        ✎
+      </button>
+      <button
+        className="opacity-0 group-hover:opacity-100 sm:opacity-100 text-muted hover:text-bad text-xs w-7 h-7 flex items-center justify-center shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        aria-label="Delete"
+      >
+        🗑
+      </button>
+    </div>
+  );
+});
+
+interface SessionListProps {
+  sessions: AiChatSession[];
+  currentSessionId: string | null;
+  renamingId: string | null;
+  renameValue: string;
+  onNewChat: () => void;
+  onSelect: (id: string) => void;
+  onRenameValueChange: (value: string) => void;
+  onStartRename: (id: string, currentTitle: string) => void;
+  onCommitRename: (id: string) => void;
+  onCancelRename: () => void;
+  onDelete: (session: AiChatSession) => void;
+}
+
+const SessionList = memo(function SessionList({
+  sessions,
+  currentSessionId,
+  renamingId,
+  renameValue,
+  onNewChat,
+  onSelect,
+  onRenameValueChange,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onDelete,
+}: SessionListProps) {
+  return (
+    <div className="space-y-3">
+      <Button variant="ghost" onClick={onNewChat} className="w-full">
+        + New conversation
+      </Button>
+      {sessions.length === 0 ? (
+        <div className="text-xs text-muted px-1">No conversations yet.</div>
+      ) : (
+        <div className="space-y-1">
+          {sessions.map((s) => (
+            <SessionRow
+              key={s.id}
+              session={s}
+              active={s.id === currentSessionId}
+              renaming={renamingId === s.id}
+              renameValue={renameValue}
+              onSelect={() => onSelect(s.id)}
+              onRenameValueChange={onRenameValueChange}
+              onStartRename={() => onStartRename(s.id, s.title)}
+              onCommitRename={() => onCommitRename(s.id)}
+              onCancelRename={onCancelRename}
+              onDelete={() => onDelete(s)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+// --- Transcript ----------------------------------------------------------
+// Each bubble is memoized on its own message object so re-renders caused
+// by unrelated state (typing in the composer, the "Thinking…" indicator
+// toggling) don't re-diff every past message — only ones that actually
+// changed (e.g. a proposal's status) do any work.
+
+const MessageBubble = memo(function MessageBubble({ message }: { message: AiChatMessage }) {
+  return (
+    <div>
+      <div className={clsx("flex", message.role === "user" ? "justify-end" : "justify-start")}>
+        <div
+          className={clsx(
+            "max-w-[88%] sm:max-w-[75%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+            message.role === "user" ? "bg-amber text-ink" : "bg-panel2 text-fg"
+          )}
+        >
+          {message.imageDataUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={message.imageDataUrl} alt="Attached receipt" className="rounded-md mb-2 max-h-48 w-full object-cover" />
+          )}
+          {message.text}
+        </div>
+      </div>
+      {message.proposals && message.proposals.length > 0 && (
+        <div className="mt-2 space-y-2 max-w-[88%] sm:max-w-[75%]">
+          {message.proposals.map((p) => (
+            <ProposedEntryCard key={p.id} entry={p} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
 
 export default function AssistantPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
@@ -54,9 +231,7 @@ export default function AssistantPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, sending]);
 
-  if (guardLoading || !allowed) return null;
-
-  async function handleSend() {
+  const handleSend = useCallback(async () => {
     const text = draft.trim();
     if (!text) return;
     clearError();
@@ -66,103 +241,46 @@ export default function AssistantPage() {
     } catch {
       // surfaced via `error` below
     }
-  }
+  }, [draft, clearError, sendMessage]);
 
-  function handleNewChat() {
+  const handleNewChat = useCallback(() => {
     startNewSession();
     setMobileSessionsOpen(false);
-  }
+  }, [startNewSession]);
 
-  async function commitRename(id: string) {
-    const title = renameValue.trim();
-    setRenamingId(null);
-    if (title) await renameSession(id, title).catch(() => {});
-  }
+  const handleStartRename = useCallback((id: string, currentTitle: string) => {
+    setRenamingId(id);
+    setRenameValue(currentTitle);
+  }, []);
 
-  async function handleDelete(session: AiChatSession) {
-    if (!confirm(`Delete "${session.title}"? This can't be undone.`)) return;
-    await deleteSession(session.id).catch(() => {});
-  }
+  const handleCancelRename = useCallback(() => setRenamingId(null), []);
 
-  function SessionRow({ session, onSelect }: { session: AiChatSession; onSelect: () => void }) {
-    const active = session.id === currentSessionId;
-    if (renamingId === session.id) {
-      return (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(e) => setRenameValue(e.target.value)}
-          onBlur={() => commitRename(session.id)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitRename(session.id);
-            if (e.key === "Escape") setRenamingId(null);
-          }}
-          className="w-full bg-panel2 border border-amber-dim rounded-md px-2.5 py-2 text-sm text-fg focus:outline-none"
-        />
-      );
-    }
-    return (
-      <div
-        className={clsx(
-          "group flex items-center gap-1.5 rounded-md px-2.5 py-2 cursor-pointer",
-          active ? "bg-panel2 border border-amber-dim/60" : "hover:bg-panel2 border border-transparent"
-        )}
-        onClick={onSelect}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="text-sm text-fg truncate">{session.title}</div>
-          <div className="text-[11px] text-muted">{relativeDay(session.updatedAt)}</div>
-        </div>
-        <button
-          className="opacity-0 group-hover:opacity-100 sm:opacity-100 text-muted hover:text-fg text-xs w-7 h-7 flex items-center justify-center shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            setRenamingId(session.id);
-            setRenameValue(session.title);
-          }}
-          aria-label="Rename"
-        >
-          ✎
-        </button>
-        <button
-          className="opacity-0 group-hover:opacity-100 sm:opacity-100 text-muted hover:text-bad text-xs w-7 h-7 flex items-center justify-center shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDelete(session);
-          }}
-          aria-label="Delete"
-        >
-          🗑
-        </button>
-      </div>
-    );
-  }
+  const commitRename = useCallback(
+    async (id: string) => {
+      const title = renameValue.trim();
+      setRenamingId(null);
+      if (title) await renameSession(id, title).catch(() => {});
+    },
+    [renameValue, renameSession]
+  );
 
-  function SessionList({ onPick }: { onPick?: () => void }) {
-    return (
-      <div className="space-y-3">
-        <Button variant="ghost" onClick={handleNewChat} className="w-full">
-          + New conversation
-        </Button>
-        {sessions.length === 0 ? (
-          <div className="text-xs text-muted px-1">No conversations yet.</div>
-        ) : (
-          <div className="space-y-1">
-            {sessions.map((s) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                onSelect={() => {
-                  selectSession(s.id);
-                  onPick?.();
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
+  const handleDelete = useCallback(
+    async (session: AiChatSession) => {
+      if (!confirm(`Delete "${session.title}"? This can't be undone.`)) return;
+      await deleteSession(session.id).catch(() => {});
+    },
+    [deleteSession]
+  );
+
+  const handlePickSession = useCallback(
+    (id: string) => {
+      selectSession(id);
+      setMobileSessionsOpen(false);
+    },
+    [selectSession]
+  );
+
+  if (guardLoading || !allowed) return null;
 
   const currentTitle = sessions.find((s) => s.id === currentSessionId)?.title ?? "New conversation";
 
@@ -192,7 +310,19 @@ export default function AssistantPage() {
       <div className="flex gap-5 items-start">
         <aside className="hidden sm:block w-64 shrink-0">
           <Card>
-            <SessionList />
+            <SessionList
+              sessions={sessions}
+              currentSessionId={currentSessionId}
+              renamingId={renamingId}
+              renameValue={renameValue}
+              onNewChat={handleNewChat}
+              onSelect={selectSession}
+              onRenameValueChange={setRenameValue}
+              onStartRename={handleStartRename}
+              onCommitRename={commitRename}
+              onCancelRename={handleCancelRename}
+              onDelete={handleDelete}
+            />
           </Card>
         </aside>
 
@@ -206,29 +336,7 @@ export default function AssistantPage() {
                 />
               )}
               {messages.map((m) => (
-                <div key={m.id}>
-                  <div className={clsx("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-                    <div
-                      className={clsx(
-                        "max-w-[88%] sm:max-w-[75%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
-                        m.role === "user" ? "bg-amber text-ink" : "bg-panel2 text-fg"
-                      )}
-                    >
-                      {m.imageDataUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={m.imageDataUrl} alt="Attached receipt" className="rounded-md mb-2 max-h-48 w-full object-cover" />
-                      )}
-                      {m.text}
-                    </div>
-                  </div>
-                  {m.proposals && m.proposals.length > 0 && (
-                    <div className="mt-2 space-y-2 max-w-[88%] sm:max-w-[75%]">
-                      {m.proposals.map((p) => (
-                        <ProposedEntryCard key={p.id} entry={p} />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <MessageBubble key={m.id} message={m} />
               ))}
               {sending && <div className="text-xs text-muted px-1">Thinking…</div>}
             </div>
@@ -259,7 +367,19 @@ export default function AssistantPage() {
       </div>
 
       <Modal open={mobileSessionsOpen} onClose={() => setMobileSessionsOpen(false)} title="Conversations">
-        <SessionList onPick={() => setMobileSessionsOpen(false)} />
+        <SessionList
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          renamingId={renamingId}
+          renameValue={renameValue}
+          onNewChat={handleNewChat}
+          onSelect={handlePickSession}
+          onRenameValueChange={setRenameValue}
+          onStartRename={handleStartRename}
+          onCommitRename={commitRename}
+          onCancelRename={handleCancelRename}
+          onDelete={handleDelete}
+        />
       </Modal>
 
       <Modal open={memoryOpen} onClose={() => setMemoryOpen(false)} title="What the assistant remembers">
