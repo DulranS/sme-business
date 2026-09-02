@@ -51,11 +51,16 @@ export interface AnthropicTextBlock {
   cache_control?: { type: "ephemeral" };
 }
 
+export interface AnthropicImageBlock {
+  type: "image";
+  source: { type: "base64"; media_type: string; data: string };
+}
+
 export type AnthropicContentBlock =
   | AnthropicTextBlock
+  | AnthropicImageBlock
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+  | { type: "tool_result"; tool_use_id: string; content: string };
 
 export interface AnthropicMessage {
   role: "user" | "assistant";
