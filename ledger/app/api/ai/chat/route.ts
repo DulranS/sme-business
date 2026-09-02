@@ -187,7 +187,7 @@ export async function POST(req: Request) {
   // server's env vars are missing, and the second/follow-up callClaude
   // call after a tool_use turn, which previously had no try/catch at
   // all — is now covered by one handler so no failure mode reaches the
-  // client as an opaque platform 500/502 with no message.
+  // client as an opaque platform 500/502 with no message
   try {
     const ctx = await requireAiContext(req);
     const body = (await req.json()) as AiChatRequest;
