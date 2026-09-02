@@ -63,7 +63,7 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
     <Modal open={open} onClose={handleClose} title="Tell me what happened">
       <div className="space-y-3">
         <p className="text-sm text-muted">
-          Describe a sale, a purchase, or a bill in your own words — or snap a photo of a receipt — and I'll fill in the entry for you to confirm.
+          Describe a sale, a purchase, or a bill in your own words — or snap a photo of a receipt — and I&apos;ll fill in the entry for you to confirm.
         </p>
 
         <textarea

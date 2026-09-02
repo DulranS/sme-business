@@ -299,7 +299,7 @@ export default function AssistantPage() {
       <Modal open={memoryOpen} onClose={() => setMemoryOpen(false)} title="What the assistant remembers">
         <p className="text-sm text-muted mb-3">
           A short list of durable facts the assistant has picked up — a regular supplier, a category you always use for a
-          certain cost. Delete anything you don't want it remembering.
+          certain cost. Delete anything you don&apos;t want it remembering.
         </p>
         {memoryNotes.length === 0 ? (
           <div className="text-sm text-muted">Nothing yet.</div>

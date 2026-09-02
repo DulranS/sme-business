@@ -204,7 +204,7 @@ export default function DashboardPage() {
           <div className="text-sm font-medium text-amber-soft mb-1">Worth a second look</div>
           <div className="text-xs text-muted mb-3">
             These are a fair bit higher than usual compared to your own recent history — probably fine, but worth a
-            glance in case it's a typo or a price change worth knowing about.
+            glance in case it&apos;s a typo or a price change worth knowing about.
           </div>
           <div className="space-y-2">
             {expenseAnomalies.slice(0, 4).map((a) => (
