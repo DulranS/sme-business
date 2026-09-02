@@ -6,7 +6,7 @@ import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney } from "@/lib/format";
 import type { ReceivableLine } from "@/lib/calculations";
 import { RecordPaymentForm } from "@/components/RecordPaymentForm";
-import { Badge, Card, Modal, PageHeader, Stat, Table, EmptyState } from "@/components/ui";
+import { Badge, Card, Modal, PageHeader, Stat, StatGridSkeleton, Table, TableCardSkeleton, EmptyState } from "@/components/ui";
 import { openPrintWindow, buildSaleInvoiceHtml, buildWhatsAppShareUrl, buildReceivableReminderText, type InvoicePaymentRow } from "@/lib/print";
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -35,6 +35,16 @@ export default function ReceivablesPage() {
 
   if (guardLoading || !allowed) return null;
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Owed to You" />
+        <StatGridSkeleton count={3} className="lg:grid-cols-3" />
+        <TableCardSkeleton rows={6} cols={6} />
+      </>
+    );
+  }
+
   const overdueTotal =
     receivablesAging.byBucket["1-30"] + receivablesAging.byBucket["31-60"] + receivablesAging.byBucket["61-90"] + receivablesAging.byBucket["90+"];
 
@@ -48,7 +58,7 @@ export default function ReceivablesPage() {
         <Stat label="90+ days" value={formatMoney(receivablesAging.byBucket["90+"], currency)} tone={receivablesAging.byBucket["90+"] > 0 ? "bad" : "default"} />
       </div>
 
-      {!loading && receivablesAging.lines.length === 0 && (
+      {receivablesAging.lines.length === 0 && (
         <EmptyState
           title="Nothing owed to you right now"
           body="Credit sales show up here until they're fully paid off. Mark a sale as 'credit' when you log it to start tracking it."

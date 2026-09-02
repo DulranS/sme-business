@@ -33,7 +33,9 @@ import {
   PageHeader,
   Select,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
@@ -121,11 +123,21 @@ export default function ProjectsPage() {
 
   if (guardLoading || !allowed) return null;
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Projects" action={<Button disabled>+ New project</Button>} />
+        <StatGridSkeleton count={4} />
+        <TableCardSkeleton rows={6} cols={5} />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader title="Projects" action={<Button onClick={openNew}>+ New project</Button>} />
 
-      {!loading && projects.length === 0 ? (
+      {projects.length === 0 ? (
         <EmptyState
           title="No projects yet"
           body="Quote a job — a build, a renovation, a client engagement, a custom order — and track every cost against it as it comes in, so you know at a glance whether it actually made money."

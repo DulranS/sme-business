@@ -5,7 +5,7 @@ import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { roleLabel } from "@/lib/permissions";
 import type { AuditAction } from "@/lib/types";
-import { Badge, Card, EmptyState, Field, Input, Label, PageHeader, Select, Stat, Table } from "@/components/ui";
+import { Badge, Card, EmptyState, Field, Input, Label, PageHeader, Select, Stat, StatGridSkeleton, Table, TableCardSkeleton } from "@/components/ui";
 
 const ACTION_TONE: Record<AuditAction, "good" | "amber" | "bad"> = {
   create: "good",
@@ -21,7 +21,7 @@ const ACTION_TONE: Record<AuditAction, "good" | "amber" | "bad"> = {
 // "scroll a short list."
 export default function ActivityPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner"]);
-  const { auditLog } = useData();
+  const { auditLog, loading } = useData();
   const [search, setSearch] = useState("");
   const [entityFilter, setEntityFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState<"all" | AuditAction>("all");
@@ -47,6 +47,16 @@ export default function ActivityPage() {
   }, [auditLog, search, entityFilter, actionFilter]);
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Activity log" />
+        <StatGridSkeleton count={3} className="lg:grid-cols-3" />
+        <TableCardSkeleton rows={8} cols={5} />
+      </>
+    );
+  }
 
   return (
     <>

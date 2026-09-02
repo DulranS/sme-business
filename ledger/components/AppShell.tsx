@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { useAuth } from "@/contexts/AuthContext";
 import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
+import { Skeleton } from "@/components/ui";
 
 const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; roles: Role[]; group: string }[] = [
   { href: "/dashboard", label: "Home", icon: GridIcon, roles: ["owner", "manager"], group: "Overview" },
@@ -109,8 +110,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-muted text-sm">
-        Loading…
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-28 mx-auto" />
+          <Skeleton className="h-2 w-20 mx-auto" />
+        </div>
       </div>
     );
   }

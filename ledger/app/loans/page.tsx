@@ -17,13 +17,15 @@ import {
   Modal,
   PageHeader,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
 export default function LoansPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { loans, loanPortfolio, addLoan, updateLoan, deleteLoan, settings } = useData();
+  const { loans, loanPortfolio, addLoan, updateLoan, deleteLoan, settings, loading } = useData();
   const toast = useToast();
   const currency = settings.currency;
   const [modalOpen, setModalOpen] = useState(false);
@@ -41,6 +43,16 @@ export default function LoansPage() {
   }
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Loans & debt" action={<Button disabled>+ Add loan</Button>} />
+        <StatGridSkeleton count={4} />
+        <TableCardSkeleton rows={4} cols={5} />
+      </>
+    );
+  }
 
   return (
     <>

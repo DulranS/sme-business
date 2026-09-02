@@ -193,6 +193,104 @@ export function Modal({
   );
 }
 
+export function Tabs<T extends string>({
+  tabs,
+  value,
+  onChange,
+  className,
+}: {
+  tabs: { key: T; label: ReactNode }[];
+  value: T;
+  onChange: (key: T) => void;
+  className?: string;
+}) {
+  return (
+    <div role="tablist" className={clsx("flex gap-1 mb-4 border-b border-line overflow-x-auto scroll-touch", className)}>
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          role="tab"
+          aria-selected={value === t.key}
+          onClick={() => onChange(t.key)}
+          className={clsx(
+            "px-3.5 py-2.5 sm:py-2 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap",
+            value === t.key
+              ? "border-amber text-fg font-medium"
+              : "border-transparent text-muted hover:text-fg"
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// A single pulsing placeholder block. Every other Skeleton* component below
+// is built out of these, sized and arranged to match the real component
+// it's standing in for, so the transition from skeleton to real content
+// doesn't cause any layout jump.
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={clsx("animate-pulse rounded-md bg-panel2", className)} aria-hidden />;
+}
+
+// Mirrors the shape of a single <Stat>: a label-height bar plus a
+// value-height bar inside the same Card padding as the real thing.
+export function StatSkeleton() {
+  return (
+    <Card>
+      <Skeleton className="h-[11px] w-20 mb-2.5" />
+      <Skeleton className="h-6 sm:h-7 w-24" />
+    </Card>
+  );
+}
+
+// A row of StatSkeletons, using the same responsive grid every Stat grid
+// in the app already uses, so `count` stat cards placeholder in exactly
+// the space the real ones will occupy.
+export function StatGridSkeleton({ count = 3, className }: { count?: number; className?: string }) {
+  return (
+    <div className={clsx("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-6", className)}>
+      {Array.from({ length: count }).map((_, i) => (
+        <StatSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
+// Mirrors a <Table> — a header row of short bars, then `rows` rows of
+// `cols` value-shaped bars — without needing real column data yet.
+export function TableSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) {
+  return (
+    <div>
+      <div className="flex gap-4 pb-2.5 mb-2.5 border-b border-line">
+        {Array.from({ length: cols }).map((_, i) => (
+          <Skeleton key={i} className="h-2.5 flex-1 max-w-[8rem]" />
+        ))}
+      </div>
+      <div className="space-y-3.5">
+        {Array.from({ length: rows }).map((_, r) => (
+          <div key={r} className="flex gap-4">
+            {Array.from({ length: cols }).map((__, c) => (
+              <Skeleton key={c} className="h-3.5 flex-1" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// The same TableSkeleton, pre-wrapped in a Card — the common case, since
+// almost every table in the app sits inside one.
+export function TableCardSkeleton({ rows = 5, cols = 4, className }: { rows?: number; cols?: number; className?: string }) {
+  return (
+    <Card className={className}>
+      <TableSkeleton rows={rows} cols={cols} />
+    </Card>
+  );
+}
+
 export function Table({ children }: { children: ReactNode }) {
   return (
     <div className="relative">

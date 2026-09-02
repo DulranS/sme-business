@@ -17,7 +17,7 @@ import { useRequireRole } from "@/lib/roleGuard";
 import { forecastRevenue, computeMRR } from "@/lib/calculations";
 import { detectExpenseAnomalies, detectPurchaseAnomalies } from "@/lib/anomaly";
 import { formatMoney, formatMonth, formatNumber, todayIso } from "@/lib/format";
-import { Card, PageHeader, Stat, Table, Badge, EmptyState } from "@/components/ui";
+import { Card, PageHeader, Stat, StatGridSkeleton, Table, TableCardSkeleton, Badge, EmptyState } from "@/components/ui";
 import QuickActionBar from "@/components/QuickActionBar";
 
 export default function DashboardPage() {
@@ -91,7 +91,15 @@ export default function DashboardPage() {
   if (guardLoading || !allowed) return null;
 
   if (loading) {
-    return <div className="text-sm text-muted">Loading your numbers…</div>;
+    return (
+      <>
+        <PageHeader title="Dashboard" />
+        <StatGridSkeleton count={4} />
+        <StatGridSkeleton count={4} />
+        <StatGridSkeleton count={4} />
+        <TableCardSkeleton rows={6} cols={6} />
+      </>
+    );
   }
 
   if (products.length === 0) {

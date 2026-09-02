@@ -3,7 +3,7 @@
 import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney } from "@/lib/format";
-import { Card, PageHeader, Stat, EmptyState, Badge } from "@/components/ui";
+import { Card, PageHeader, Stat, StatGridSkeleton, EmptyState, Badge } from "@/components/ui";
 
 function pct(n: number | null, digits = 1): string {
   return n === null ? "—" : `${n.toFixed(digits)}%`;
@@ -34,10 +34,20 @@ function toneForRatio(n: number | null, good: number, bad: number, higherIsBette
 
 export default function FinancialHealthPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { financialHealth, balanceSheet, monthlyPnL, marketingMetrics, settings } = useData();
+  const { financialHealth, balanceSheet, monthlyPnL, marketingMetrics, settings, loading } = useData();
   const currency = settings.currency;
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Financial health" />
+        <StatGridSkeleton count={4} />
+        <StatGridSkeleton count={4} />
+      </>
+    );
+  }
 
   if (monthlyPnL.length === 0) {
     return (

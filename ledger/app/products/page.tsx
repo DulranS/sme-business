@@ -18,6 +18,7 @@ import {
   PageHeader,
   Select,
   Table,
+  TableCardSkeleton,
   Badge,
   EmptyState,
 } from "@/components/ui";
@@ -44,6 +45,15 @@ export default function ProductsPage() {
 
   if (guardLoading || !allowed) return null;
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="What You Sell" action={<Button disabled>+ Add something new</Button>} />
+        <TableCardSkeleton rows={7} cols={5} />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -51,7 +61,7 @@ export default function ProductsPage() {
         action={<Button onClick={openNew}>+ Add something new</Button>}
       />
 
-      {!loading && products.length === 0 ? (
+      {products.length === 0 ? (
         <EmptyState
           title="Nothing set up yet"
           body="Add something you sell — a physical item you buy and keep in stock, or a service where you sell your time."

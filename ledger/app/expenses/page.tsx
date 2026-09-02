@@ -20,13 +20,15 @@ import {
   PageHeader,
   Select,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
 export default function ExpensesPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { expenses, addExpense, updateExpense, deleteExpense, settings, projects } = useData();
+  const { expenses, addExpense, updateExpense, deleteExpense, settings, projects, loading } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -62,6 +64,16 @@ export default function ExpensesPage() {
   }, [expenses]);
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Expenses" action={<Button disabled>+ Add item</Button>} />
+        <StatGridSkeleton count={3} className="sm:grid-cols-3" />
+        <TableCardSkeleton rows={6} cols={5} />
+      </>
+    );
+  }
 
   return (
     <>

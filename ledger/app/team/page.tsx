@@ -8,24 +8,71 @@ import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { roleLabel, ROLE_DESCRIPTIONS } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
-import { Badge, Button, Card, Field, Input, Label, Modal, PageHeader, Select, Table, EmptyState } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Label,
+  Modal,
+  PageHeader,
+  Select,
+  Table,
+  TableCardSkeleton,
+  Tabs,
+  EmptyState,
+} from "@/components/ui";
 
 const ROLES: Role[] = ["manager", "staff"]; // an invite can only ever offer manager or staff — owner is fixed at signup
+
+type TeamTab = "active" | "invites" | "removed" | "activity";
 
 export default function TeamPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner"]);
   const { businessId } = useAuth();
-  const { members, invites, auditLog, createInvite, revokeInvite, changeMemberRole, setMemberActive } = useData();
+  const { members, invites, auditLog, createInvite, revokeInvite, changeMemberRole, setMemberActive, loading } = useData();
   const toast = useToast();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [linkFor, setLinkFor] = useState<string | null>(null);
+  const [tab, setTab] = useState<TeamTab>("active");
 
   if (guardLoading || !allowed) return null;
 
   const activeMembers = members.filter((m) => m.active);
   const inactiveMembers = members.filter((m) => !m.active);
   const pendingInvites = invites.filter((i) => i.status === "pending");
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Your Team" action={<Button disabled>+ Invite someone</Button>} />
+        <Card className="mb-6">
+          <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">What each role can do</div>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {(["owner", "manager", "staff"] as Role[]).map((r) => (
+              <div key={r}>
+                <div className="text-sm font-medium">{roleLabel(r)}</div>
+                <div className="text-xs text-muted mt-1">{ROLE_DESCRIPTIONS[r]}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Tabs
+          tabs={[
+            { key: "active", label: "Active" },
+            { key: "invites", label: "Pending invites" },
+            { key: "removed", label: "Removed" },
+            { key: "activity", label: "Activity" },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+        <TableCardSkeleton rows={4} cols={tab === "active" ? 4 : 3} />
+      </>
+    );
+  }
 
   function inviteLink(inviteId: string) {
     if (typeof window === "undefined" || !businessId) return "";
@@ -58,11 +105,21 @@ export default function TeamPage() {
         </div>
       </Card>
 
-      {activeMembers.length === 0 ? (
+      <Tabs
+        tabs={[
+          { key: "active", label: `Active (${activeMembers.length})` },
+          { key: "invites", label: `Pending invites (${pendingInvites.length})` },
+          { key: "removed", label: `Removed (${inactiveMembers.length})` },
+          { key: "activity", label: "Activity" },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+
+      {tab === "active" && (activeMembers.length === 0 ? (
         <EmptyState title="Just you so far" body="Invite a manager or staff member to give them their own login." />
       ) : (
-        <Card className="mb-6">
-          <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Active</div>
+        <Card>
           <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -117,11 +174,12 @@ export default function TeamPage() {
             </tbody>
           </Table>
         </Card>
-      )}
+      ))}
 
-      {pendingInvites.length > 0 && (
-        <Card className="mb-6">
-          <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Pending invites</div>
+      {tab === "invites" && (pendingInvites.length === 0 ? (
+        <EmptyState title="No pending invites" body="Invites you send will show up here until the person accepts them." />
+      ) : (
+        <Card>
           <Table>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-line">
@@ -159,11 +217,12 @@ export default function TeamPage() {
             </tbody>
           </Table>
         </Card>
-      )}
+      ))}
 
-      {inactiveMembers.length > 0 && (
-        <Card className="mb-6">
-          <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Removed</div>
+      {tab === "removed" && (inactiveMembers.length === 0 ? (
+        <EmptyState title="No removed members" body="Anyone whose access you remove will show up here, and can be restored later." />
+      ) : (
+        <Card>
           <Table>
             <tbody>
               {inactiveMembers.map((m) => (
@@ -187,9 +246,11 @@ export default function TeamPage() {
             </tbody>
           </Table>
         </Card>
-      )}
+      ))}
 
-      {auditLog.length > 0 && (
+      {tab === "activity" && (auditLog.length === 0 ? (
+        <EmptyState title="No activity yet" body="Actions team members take will show up here as a trail you can review." />
+      ) : (
         <Card>
           <div className="flex items-center justify-between mb-3">
             <div className="text-xs font-medium text-muted uppercase tracking-wider">Recent activity</div>
@@ -213,7 +274,7 @@ export default function TeamPage() {
             questions, not as courtroom-grade proof on its own.
           </div>
         </Card>
-      )}
+      ))}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Invite someone">
         <InviteForm

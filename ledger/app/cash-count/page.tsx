@@ -5,7 +5,7 @@ import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import { formatMoney, todayIso } from "@/lib/format";
-import { Badge, Button, Card, Field, Input, Label, Modal, PageHeader, Table, EmptyState } from "@/components/ui";
+import { Badge, Button, Card, Field, Input, Label, Modal, PageHeader, Table, TableSkeleton, EmptyState } from "@/components/ui";
 import type { CashCount } from "@/lib/types";
 
 const VARIANCE_TOLERANCE = 1; // rounding-level tolerance, in currency units, before a variance is flagged at all
@@ -84,6 +84,12 @@ export default function CashCountPage() {
           </div>
         </form>
       </Card>
+
+      {loading && (
+        <Card>
+          <TableSkeleton rows={5} cols={4} />
+        </Card>
+      )}
 
       {!loading && sorted.length === 0 && <EmptyState title="No counts yet" body="Your first cash count will show up here." />}
 

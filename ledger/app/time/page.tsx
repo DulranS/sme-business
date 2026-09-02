@@ -17,6 +17,7 @@ import {
   PageHeader,
   Select,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 import type { TimeEntry, Project } from "@/lib/types";
@@ -91,6 +92,15 @@ export default function TimePage() {
   const totalBillableValue = closedEntries
     .filter((t) => t.billable && t.hourlyRate)
     .reduce((sum, t) => sum + (((t.clockOut ?? 0) - t.clockIn) / 3600000) * (t.hourlyRate ?? 0), 0);
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Time" />
+        <TableCardSkeleton rows={6} cols={4} />
+      </>
+    );
+  }
 
   return (
     <>

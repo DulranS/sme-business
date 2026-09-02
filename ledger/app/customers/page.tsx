@@ -16,7 +16,9 @@ import {
   Modal,
   PageHeader,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
@@ -29,7 +31,7 @@ import {
 // by this same list) is what keeps names consistent going forward.
 export default function CustomersPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager", "staff"]);
-  const { customers, addCustomer, updateCustomer, deleteCustomer, sales, receivablesAging, settings, role } =
+  const { customers, addCustomer, updateCustomer, deleteCustomer, sales, receivablesAging, settings, role, loading } =
     useData();
   const toast = useToast();
   const currency = settings.currency;
@@ -75,6 +77,16 @@ export default function CustomersPage() {
   }
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Customers" action={<Button disabled>+ Add customer</Button>} />
+        <StatGridSkeleton count={2} className="lg:grid-cols-3" />
+        <TableCardSkeleton rows={6} cols={4} />
+      </>
+    );
+  }
 
   return (
     <>

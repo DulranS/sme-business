@@ -19,6 +19,7 @@ import {
   PageHeader,
   Select,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
@@ -47,6 +48,15 @@ export default function PurchasesPage() {
   }
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Things You Bought" action={<Button disabled>+ I bought something</Button>} />
+        <TableCardSkeleton rows={7} cols={5} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -114,11 +124,11 @@ export default function PurchasesPage() {
         </Card>
       )}
 
-      {!loading && products.length === 0 && (
+      {products.length === 0 && (
         <EmptyState title="Add something first" body="Add a product or service before you log what it cost you." />
       )}
 
-      {!loading && products.length > 0 && purchases.length === 0 && (
+      {products.length > 0 && purchases.length === 0 && (
         <EmptyState
           title="Nothing bought yet"
           body="Buying stock? Log how many and what you paid each. Doing a service? Log what it costs you to deliver it — your time, a contractor, materials."

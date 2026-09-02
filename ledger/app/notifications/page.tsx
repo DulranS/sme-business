@@ -5,7 +5,7 @@ import { useNotifications } from "@/contexts/NotificationsContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { useToast, toastableErrorMessage } from "@/contexts/ToastContext";
 import type { NotificationType, NotificationPriority } from "@/lib/types";
-import { Badge, Card, EmptyState, PageHeader, Stat, Table } from "@/components/ui";
+import { Badge, Card, EmptyState, PageHeader, Stat, StatGridSkeleton, Table, TableCardSkeleton, Tabs } from "@/components/ui";
 
 const PRIORITY_LABEL: Record<NotificationPriority, string> = {
   low: "Low",
@@ -47,28 +47,36 @@ export default function NotificationsPage() {
 
   const highPriorityCount = notifications.filter((n) => n.priority === "high" && !n.isRead).length;
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Notifications & Reminders" />
+        <Tabs
+          tabs={[
+            { key: "all", label: "All" },
+            { key: "unread", label: "Unread" },
+          ]}
+          value={filter}
+          onChange={setFilter}
+        />
+        <StatGridSkeleton count={3} />
+        <TableCardSkeleton rows={6} cols={5} />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader title="Notifications & Reminders" />
 
-      <div className="flex gap-2 mb-5 border-b border-line">
-        <button
-          onClick={() => setFilter("all")}
-          className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-            filter === "all" ? "border-amber-soft text-fg font-medium" : "border-transparent text-muted"
-          }`}
-        >
-          All ({notifications.length})
-        </button>
-        <button
-          onClick={() => setFilter("unread")}
-          className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-            filter === "unread" ? "border-amber-soft text-fg font-medium" : "border-transparent text-muted"
-          }`}
-        >
-          Unread ({unreadCount})
-        </button>
-      </div>
+      <Tabs
+        tabs={[
+          { key: "all", label: `All (${notifications.length})` },
+          { key: "unread", label: `Unread (${unreadCount})` },
+        ]}
+        value={filter}
+        onChange={setFilter}
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <Stat label="Total notifications" value={notifications.length.toString()} />

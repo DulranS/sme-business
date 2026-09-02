@@ -17,7 +17,9 @@ import {
   PageHeader,
   Select,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
@@ -83,6 +85,16 @@ export default function PurchaseOrdersPage() {
 
   if (guardLoading || !allowed) return null;
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Wholesale orders" action={<Button disabled>+ Place order</Button>} />
+        <StatGridSkeleton count={3} className="lg:grid-cols-3" />
+        <TableCardSkeleton rows={5} cols={6} />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -100,14 +112,14 @@ export default function PurchaseOrdersPage() {
         <Stat label="Already committed to spend" value={formatMoney(openOrders.openOrderValue, currency)} tone="amber" />
       </div>
 
-      {!loading && stockProducts.length === 0 && (
+      {stockProducts.length === 0 && (
         <EmptyState
           title="Add a physical product first"
           body="Wholesale orders apply to type: product offerings — services have nothing to reorder. Add one on the Products page."
         />
       )}
 
-      {!loading && stockProducts.length > 0 && purchaseOrders.length === 0 && (
+      {stockProducts.length > 0 && purchaseOrders.length === 0 && (
         <EmptyState
           title="No orders placed yet"
           body="Place a wholesale order to track it from commitment through to delivery. Receiving it automatically logs the stock on the Purchases page."

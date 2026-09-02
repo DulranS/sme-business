@@ -5,11 +5,11 @@ import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney } from "@/lib/format";
 import { computeCashRunway } from "@/lib/calculations";
-import { Badge, Card, Field, Input, Label, PageHeader, Stat } from "@/components/ui";
+import { Badge, Card, Field, Input, Label, PageHeader, Skeleton, Stat } from "@/components/ui";
 
 export default function CashFlowPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { balanceSheet, avgDailyCashSales, loans, employees, expenses, receivablesAging, payablesAging, settings } = useData();
+  const { balanceSheet, avgDailyCashSales, loans, employees, expenses, receivablesAging, payablesAging, settings, loading } = useData();
   const currency = settings.currency;
 
   const [horizonDays, setHorizonDays] = useState(60);
@@ -41,6 +41,28 @@ export default function CashFlowPage() {
   );
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Can You Make Rent?" />
+        <div className="grid sm:grid-cols-2 gap-6 mb-6">
+          <Card>
+            <Skeleton className="h-[11px] w-24 mb-3" />
+            <div className="space-y-3">
+              <Skeleton className="h-[60px] w-full" />
+              <Skeleton className="h-[60px] w-full" />
+              <Skeleton className="h-[60px] w-full" />
+            </div>
+          </Card>
+          <Card>
+            <Skeleton className="h-[11px] w-24 mb-3" />
+            <Skeleton className="h-40 w-full" />
+          </Card>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

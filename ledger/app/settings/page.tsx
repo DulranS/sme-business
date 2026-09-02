@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRequireRole } from "@/lib/roleGuard";
-import { Button, Card, Field, Input, Label, PageHeader, Select } from "@/components/ui";
+import { Button, Card, Field, Input, Label, PageHeader, Select, Tabs } from "@/components/ui";
 import { CURRENCIES } from "@/lib/fx";
 
 // Firebase Auth error codes are technical (auth/invalid-credential,
@@ -182,27 +182,15 @@ export default function SettingsPage() {
     <>
       <PageHeader title="Settings" />
 
-      <div className="flex gap-1 mb-4 border-b border-line">
-        {(
-          [
-            ["general", "General"],
-            ["operations", "Operations"],
-            ["account", "Account"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={
-              tab === key
-                ? "px-3.5 py-2 text-sm font-medium text-fg border-b-2 border-amber -mb-px"
-                : "px-3.5 py-2 text-sm text-muted hover:text-fg border-b-2 border-transparent -mb-px"
-            }
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={[
+          { key: "general", label: "General" },
+          { key: "operations", label: "Operations" },
+          { key: "account", label: "Account" },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
 
       {tab !== "account" && (
       <Card className="max-w-md">

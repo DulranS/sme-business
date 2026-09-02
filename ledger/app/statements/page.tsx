@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { formatMoney, formatMonth, todayIso } from "@/lib/format";
-import { Card, PageHeader, Select, Badge, EmptyState } from "@/components/ui";
+import { Card, PageHeader, Select, Badge, EmptyState, Tabs, TableCardSkeleton } from "@/components/ui";
 
 type Tab = "income" | "balance" | "cashflow";
 
 export default function StatementsPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
-  const { monthlyPnL, balanceSheet, settings } = useData();
+  const { monthlyPnL, balanceSheet, settings, loading } = useData();
   const currency = settings.currency;
   const [tab, setTab] = useState<Tab>("income");
   const [monthKey, setMonthKey] = useState<string>(monthlyPnL[monthlyPnL.length - 1]?.month ?? "");
@@ -21,6 +21,15 @@ export default function StatementsPage() {
   );
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Financial statements" />
+        <TableCardSkeleton rows={7} cols={2} />
+      </>
+    );
+  }
 
   if (monthlyPnL.length === 0) {
     return (
@@ -38,25 +47,16 @@ export default function StatementsPage() {
     <>
       <PageHeader title="Financial statements" />
 
-      <div className="flex gap-1 border-b border-line mb-6 -mt-1 overflow-x-auto">
-        {(
-          [
-            ["income", "Income statement"],
-            ["cashflow", "Cash flow"],
-            ["balance", "Balance sheet"],
-          ] as [Tab, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-3.5 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
-              tab === key ? "border-amber text-fg font-medium" : "border-transparent text-muted hover:text-fg"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={[
+          { key: "income", label: "Income statement" },
+          { key: "cashflow", label: "Cash flow" },
+          { key: "balance", label: "Balance sheet" },
+        ]}
+        value={tab}
+        onChange={setTab}
+        className="mb-6 -mt-1"
+      />
 
       {(tab === "income" || tab === "cashflow") && (
         <div className="flex items-center justify-between mb-4">

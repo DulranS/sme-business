@@ -10,7 +10,7 @@ import type { ReceivableLine } from "@/lib/calculations";
 import type { Sale, Settings } from "@/lib/types";
 import { QuickSaleForm } from "@/components/QuickForms";
 import { RecordPaymentForm } from "@/components/RecordPaymentForm";
-import { Badge, Button, Card, Modal, PageHeader, Table, EmptyState } from "@/components/ui";
+import { Badge, Button, Card, Modal, PageHeader, Table, TableCardSkeleton, EmptyState } from "@/components/ui";
 import { escapeHtml, openPrintWindow, printBaseStyles, buildLetterheadHtml, buildSaleInvoiceHtml, type InvoicePaymentRow } from "@/lib/print";
 
 export default function SalesPage() {
@@ -71,6 +71,15 @@ function FullSalesView() {
       .catch(() => toast.error("Couldn't delete the sale"));
   }
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Things You Sold" action={<Button disabled>+ I sold something</Button>} />
+        <TableCardSkeleton rows={7} cols={5} />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -82,11 +91,11 @@ function FullSalesView() {
         }
       />
 
-      {!loading && products.length === 0 && (
+      {products.length === 0 && (
         <EmptyState title="Add something to sell first" body="Add a product or service before you record a sale." />
       )}
 
-      {!loading && products.length > 0 && sales.length === 0 && (
+      {products.length > 0 && sales.length === 0 && (
         <EmptyState title="Nothing sold yet" body="Record a sale and we'll work out your profit for you, automatically." />
       )}
 
@@ -304,6 +313,15 @@ function StaffSalesView() {
     return map;
   }, [receivablePayments]);
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Your Sales Today" action={<Button disabled>+ I sold something</Button>} />
+        <TableCardSkeleton rows={6} cols={4} />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -315,11 +333,11 @@ function StaffSalesView() {
         }
       />
 
-      {!loading && catalog.length === 0 && (
+      {catalog.length === 0 && (
         <EmptyState title="Nothing set up to sell yet" body="Ask your manager to add products before you can log a sale." />
       )}
 
-      {!loading && catalog.length > 0 && sales.length === 0 && (
+      {catalog.length > 0 && sales.length === 0 && (
         <EmptyState title="Nothing logged yet" body="Every sale you log shows up here — you can't edit or delete once it's saved." />
       )}
 

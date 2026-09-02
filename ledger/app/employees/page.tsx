@@ -18,13 +18,15 @@ import {
   PageHeader,
   Select,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
 export default function EmployeesPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner"]);
-  const { employees, addEmployee, updateEmployee, deleteEmployee, monthlyPayroll, settings } = useData();
+  const { employees, addEmployee, updateEmployee, deleteEmployee, monthlyPayroll, settings, loading } = useData();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -42,6 +44,16 @@ export default function EmployeesPage() {
   }
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Employees &amp; payroll" action={<Button disabled>+ Add employee</Button>} />
+        <StatGridSkeleton count={3} className="lg:grid-cols-3" />
+        <TableCardSkeleton rows={6} cols={4} />
+      </>
+    );
+  }
 
   return (
     <>

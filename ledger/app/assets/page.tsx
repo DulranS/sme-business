@@ -17,7 +17,9 @@ import {
   PageHeader,
   Select,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
@@ -31,7 +33,7 @@ const ASSET_CATEGORIES = [
 ];
 
 export default function AssetsPage() {
-  const { fixedAssets, addFixedAsset, updateFixedAsset, deleteFixedAsset, settings } = useData();
+  const { fixedAssets, addFixedAsset, updateFixedAsset, deleteFixedAsset, settings, loading } = useData();
   const toast = useToast();
   const currency = settings.currency;
   const asOf = todayIso();
@@ -52,6 +54,16 @@ export default function AssetsPage() {
   const totalNetBookValue = held.reduce((sum, s) => sum + s.netBookValue, 0);
   const totalCost = held.reduce((sum, s) => sum + s.asset.cost, 0);
   const monthlyDepreciation = held.reduce((sum, s) => sum + (s.fullyDepreciated ? 0 : s.monthlyDepreciation), 0);
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Fixed assets" action={<Button disabled>+ Add asset</Button>} />
+        <StatGridSkeleton count={4} />
+        <TableCardSkeleton rows={5} cols={5} />
+      </>
+    );
+  }
 
   return (
     <>

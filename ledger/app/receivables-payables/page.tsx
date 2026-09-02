@@ -9,7 +9,7 @@ import type { ReceivableLine, PayableLine } from "@/lib/calculations";
 import type { ReceivablePayment, PayablePayment } from "@/lib/types";
 import { RecordPaymentForm } from "@/components/RecordPaymentForm";
 import { RecordPayablePaymentForm } from "@/components/RecordPayablePaymentForm";
-import { Badge, Button, Card, EmptyState, Field, Input, Label, Modal, PageHeader, Select, Stat, Table } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, Field, Input, Label, Modal, PageHeader, Select, Stat, StatGridSkeleton, Table, TableCardSkeleton, Tabs } from "@/components/ui";
 
 type Tab = "receivables" | "payables";
 
@@ -33,6 +33,7 @@ export default function ReceivablesPayablesPage() {
     updatePayablePayment,
     deletePayablePayment,
     settings,
+    loading,
   } = useData();
   const toast = useToast();
   const currency = settings.currency;
@@ -63,28 +64,38 @@ export default function ReceivablesPayablesPage() {
     (a, b) => b.createdAt - a.createdAt
   );
 
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Money owed" />
+        <Tabs
+          tabs={[
+            { key: "receivables", label: "Owed to you" },
+            { key: "payables", label: "You owe" },
+          ]}
+          value={tab}
+          onChange={setTab}
+          className="mb-5"
+        />
+        <StatGridSkeleton count={5} className="xl:grid-cols-5" />
+        <TableCardSkeleton rows={6} cols={7} />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader title="Money owed" />
 
-      <div className="flex gap-2 mb-5 border-b border-line">
-        <button
-          onClick={() => setTab("receivables")}
-          className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-            tab === "receivables" ? "border-amber-soft text-fg font-medium" : "border-transparent text-muted"
-          }`}
-        >
-          Owed to you ({receivablesData.lines.length})
-        </button>
-        <button
-          onClick={() => setTab("payables")}
-          className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-            tab === "payables" ? "border-amber-soft text-fg font-medium" : "border-transparent text-muted"
-          }`}
-        >
-          You owe ({payablesData.lines.length})
-        </button>
-      </div>
+      <Tabs
+        tabs={[
+          { key: "receivables", label: `Owed to you (${receivablesData.lines.length})` },
+          { key: "payables", label: `You owe (${payablesData.lines.length})` },
+        ]}
+        value={tab}
+        onChange={setTab}
+        className="mb-5"
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <Stat label="Total outstanding" value={formatMoney(active.totalOutstanding, currency)} tone={tab === "receivables" ? "good" : "bad"} />

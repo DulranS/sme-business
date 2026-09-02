@@ -19,7 +19,9 @@ import {
   PageHeader,
   Select,
   Stat,
+  StatGridSkeleton,
   Table,
+  TableCardSkeleton,
   EmptyState,
 } from "@/components/ui";
 
@@ -50,6 +52,7 @@ export default function ProfitabilityPage() {
     ledgers,
     projects,
     projectFinancials,
+    loading,
   } = useData();
   const toast = useToast();
   const currency = settings.currency;
@@ -95,6 +98,16 @@ export default function ProfitabilityPage() {
   }, [projects, projectFinancials]);
 
   if (guardLoading || !allowed) return null;
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="My Profit" />
+        <StatGridSkeleton count={3} className="sm:grid-cols-3" />
+        <TableCardSkeleton rows={6} cols={5} />
+      </>
+    );
+  }
 
   return (
     <>
