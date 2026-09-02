@@ -225,6 +225,10 @@ interface DataContextValue {
   revokeInvite: (id: string) => Promise<void>;
   changeMemberRole: (uid: string, role: Role) => Promise<void>;
   setMemberActive: (uid: string, active: boolean) => Promise<void>;
+  // Owner editing their own Member doc — name and/or the email mirror kept
+  // here for display (Firebase Auth's email is the actual credential; call
+  // useAuth().changeEmail first, then this, to keep the two in sync).
+  updateOwnProfile: (patch: { name?: string; email?: string }) => Promise<void>;
 
   // Cash reconciliation & receivables — the two anti-theft/collections tools
   addCashCount: (c: {
@@ -1200,6 +1204,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { db } = getFirebase();
       await updateDoc(doc(db, "users", bizId, "members", memberUid), { active });
       logAudit("member", memberUid, "update", active ? "Member reactivated" : "Member deactivated");
+    },
+    updateOwnProfile: async (patch) => {
+      const { businessId: bizId, uid: myUid } = requireBusiness();
+      if (role !== "owner") throw new Error("Only the owner can edit this account's profile.");
+      const { db } = getFirebase();
+      const clean: { name?: string; email?: string } = {};
+      if (patch.name !== undefined) clean.name = patch.name.trim();
+      if (patch.email !== undefined) clean.email = patch.email.trim().toLowerCase();
+      if (!Object.keys(clean).length) return;
+      await updateDoc(doc(db, "users", bizId, "members", myUid), clean);
+      logAudit("member", myUid, "update", "Account profile updated");
     },
 
     addCashCount: async ({ date, openingFloat, countedCash, notes }) => {

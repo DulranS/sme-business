@@ -14,6 +14,10 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut as fbSignOut,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updateEmail as fbUpdateEmail,
+  updatePassword as fbUpdatePassword,
   type User,
 } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -41,7 +45,22 @@ interface AuthContextValue {
   // auth/user-not-found, so the UI never confirms/denies which emails have
   // an account (see app/login/page.tsx).
   sendPasswordReset: (email: string) => Promise<void>;
+  // Both of these re-prove identity with the current password before
+  // touching anything (Firebase rejects updateEmail/updatePassword outright
+  // with auth/requires-recent-login once the session is more than a few
+  // minutes old, so this isn't optional hardening — it's what makes the
+  // call succeed at all). Throws straight through on wrong password
+  // (auth/invalid-credential) or a too-weak new password
+  // (auth/weak-password) — callers show err.message as-is.
+  changeEmail: (newEmail: string, currentPassword: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
+}
+
+async function reauthenticate(user: User, currentPassword: string) {
+  if (!user.email) throw new Error("No email on this account to reauthenticate with.");
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -148,6 +167,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           url: `${window.location.origin}/login`,
           handleCodeInApp: false,
         });
+      },
+      changeEmail: async (newEmail, currentPassword) => {
+        const { auth } = getFirebase();
+        if (!auth.currentUser) throw new Error("Not signed in");
+        await reauthenticate(auth.currentUser, currentPassword);
+        await fbUpdateEmail(auth.currentUser, newEmail.trim().toLowerCase());
+      },
+      changePassword: async (currentPassword, newPassword) => {
+        const { auth } = getFirebase();
+        if (!auth.currentUser) throw new Error("Not signed in");
+        await reauthenticate(auth.currentUser, currentPassword);
+        await fbUpdatePassword(auth.currentUser, newPassword);
       },
       signOut: async () => {
         const { auth } = getFirebase();

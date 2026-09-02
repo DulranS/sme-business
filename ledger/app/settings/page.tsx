@@ -7,10 +7,35 @@ import { useRequireRole } from "@/lib/roleGuard";
 import { Button, Card, Field, Input, Label, PageHeader, Select } from "@/components/ui";
 import { CURRENCIES } from "@/lib/fx";
 
+// Firebase Auth error codes are technical (auth/invalid-credential,
+// auth/requires-recent-login) — map the ones a user can actually hit here
+// to plain language instead of surfacing the raw code.
+function describeAuthError(message: string): string {
+  if (message.includes("auth/invalid-credential") || message.includes("auth/wrong-password")) {
+    return "Current password is incorrect.";
+  }
+  if (message.includes("auth/email-already-in-use")) {
+    return "That email is already in use by another account.";
+  }
+  if (message.includes("auth/invalid-email")) {
+    return "That doesn't look like a valid email address.";
+  }
+  if (message.includes("auth/weak-password")) {
+    return "That password is too weak — use at least 6 characters.";
+  }
+  if (message.includes("auth/requires-recent-login")) {
+    return "For security, please sign out and back in, then try again.";
+  }
+  if (message.includes("auth/too-many-requests")) {
+    return "Too many attempts — please wait a moment and try again.";
+  }
+  return message;
+}
+
 export default function SettingsPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner"]);
-  const { settings, updateSettings } = useData();
-  const { user } = useAuth();
+  const { settings, updateSettings, updateOwnProfile } = useData();
+  const { user, memberName, changeEmail, changePassword } = useAuth();
   const [taxRatePct, setTaxRatePct] = useState(settings.taxRatePct.toString());
   const [currency, setCurrency] = useState(settings.currency);
   const [businessName, setBusinessName] = useState(settings.businessName ?? "");
@@ -28,6 +53,102 @@ export default function SettingsPage() {
   const [defaultOpeningFloat, setDefaultOpeningFloat] = useState(settings.defaultOpeningFloat.toString());
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Account — name, email, password. Split into three independent forms
+  // since email/password need the current password re-entered and name
+  // doesn't; bundling them would make an unrelated field block a save.
+  const [accountName, setAccountName] = useState(memberName ?? "");
+  const [nameBusy, setNameBusy] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+  const [nameError, setNameError] = useState("");
+
+  const [newEmail, setNewEmail] = useState(user?.email ?? "");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailSaved, setEmailSaved] = useState(false);
+  const [emailError, setEmailError] = useState("");
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+
+  async function handleNameSave(e: React.FormEvent) {
+    e.preventDefault();
+    setNameError("");
+    if (!accountName.trim()) {
+      setNameError("Name can't be empty.");
+      return;
+    }
+    setNameBusy(true);
+    try {
+      await updateOwnProfile({ name: accountName });
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 2000);
+    } catch (err) {
+      setNameError(err instanceof Error ? err.message : "Couldn't update name.");
+    } finally {
+      setNameBusy(false);
+    }
+  }
+
+  async function handleEmailSave(e: React.FormEvent) {
+    e.preventDefault();
+    setEmailError("");
+    const trimmed = newEmail.trim();
+    if (!trimmed || !trimmed.includes("@")) {
+      setEmailError("Enter a valid email address.");
+      return;
+    }
+    if (!emailPassword) {
+      setEmailError("Enter your current password to confirm this change.");
+      return;
+    }
+    setEmailBusy(true);
+    try {
+      await changeEmail(trimmed, emailPassword);
+      await updateOwnProfile({ email: trimmed });
+      setEmailPassword("");
+      setEmailSaved(true);
+      setTimeout(() => setEmailSaved(false), 2500);
+    } catch (err) {
+      setEmailError(err instanceof Error ? describeAuthError(err.message) : "Couldn't update email.");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function handlePasswordSave(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError("");
+    if (newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirmation don't match.");
+      return;
+    }
+    if (!currentPassword) {
+      setPasswordError("Enter your current password to confirm this change.");
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordSaved(true);
+      setTimeout(() => setPasswordSaved(false), 2500);
+    } catch (err) {
+      setPasswordError(err instanceof Error ? describeAuthError(err.message) : "Couldn't update password.");
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -255,8 +376,72 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="max-w-md mt-6">
-        <div className="text-sm font-medium mb-1">Account</div>
-        <div className="text-xs text-muted">{user?.email}</div>
+        <div className="text-sm font-medium mb-4">Account</div>
+
+        <form onSubmit={handleNameSave} className="space-y-3 pb-4 border-b border-line">
+          <Field>
+            <Label>Your name</Label>
+            <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+          </Field>
+          {nameError && <div className="text-xs text-bad">{nameError}</div>}
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={nameBusy}>
+              {nameBusy ? "Saving…" : "Save name"}
+            </Button>
+            {nameSaved && <span className="text-xs text-good">Saved</span>}
+          </div>
+        </form>
+
+        <form onSubmit={handleEmailSave} className="space-y-3 py-4 border-b border-line">
+          <Field>
+            <Label>Email</Label>
+            <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          </Field>
+          <Field>
+            <Label>Current password</Label>
+            <Input
+              type="password"
+              value={emailPassword}
+              onChange={(e) => setEmailPassword(e.target.value)}
+              placeholder="Confirm it's you"
+            />
+          </Field>
+          {emailError && <div className="text-xs text-bad">{emailError}</div>}
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={emailBusy}>
+              {emailBusy ? "Saving…" : "Save email"}
+            </Button>
+            {emailSaved && <span className="text-xs text-good">Saved</span>}
+          </div>
+        </form>
+
+        <form onSubmit={handlePasswordSave} className="space-y-3 pt-4">
+          <Field>
+            <Label>Current password</Label>
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+            />
+          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field>
+              <Label>New password</Label>
+              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            </Field>
+            <Field>
+              <Label>Confirm new password</Label>
+              <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            </Field>
+          </div>
+          {passwordError && <div className="text-xs text-bad">{passwordError}</div>}
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={passwordBusy}>
+              {passwordBusy ? "Saving…" : "Save password"}
+            </Button>
+            {passwordSaved && <span className="text-xs text-good">Saved</span>}
+          </div>
+        </form>
       </Card>
     </>
   );
