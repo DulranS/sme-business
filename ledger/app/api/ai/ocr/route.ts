@@ -86,7 +86,7 @@ export async function POST(req: Request) {
 
   const toolUse = extractToolUses(response)[0];
   if (!toolUse) {
-    return Response.json({ documentType: "unknown", summary: "Couldn't read that photo — try a clearer, well-lit shot.", proposals: [] } satisfies AiOcrResponse);
+    return Response.json({ documentType: "unknown", date: today, summary: "Couldn't read that photo — try a clearer, well-lit shot.", proposals: [] } satisfies AiOcrResponse);
   }
 
   const input = toolUse.input as {
