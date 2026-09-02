@@ -4,6 +4,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import { NotificationsProvider } from "@/contexts/NotificationsContext";
 import { ToastProvider } from "@/contexts/ToastContext";
+import { AiAssistantProvider } from "@/contexts/AiAssistantContext";
 import AppShell from "@/components/AppShell";
 
 // Font stacks are plain CSS custom properties defined in globals.css
@@ -42,7 +43,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 writes from re-rendering every DataContext consumer. */}
             <NotificationsProvider>
               <ToastProvider>
-                <AppShell>{children}</AppShell>
+                <AiAssistantProvider>
+                  <AppShell>{children}</AppShell>
+                </AiAssistantProvider>
               </ToastProvider>
             </NotificationsProvider>
           </DataProvider>

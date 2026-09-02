@@ -76,13 +76,29 @@ function SummaryRow({ label, value, currency, muted }: { label: string; value: n
   );
 }
 
+// Pre-fill values for a fresh (non-edit) form — used by the AI Assistant to
+// hand off a natural-language or scanned-receipt proposal into the exact
+// same trusted form/validation/write path every other entry point uses, so
+// the model never has a more direct route to the ledger than a human does.
+export interface QuickSaleInitial {
+  productId?: string;
+  qty?: number;
+  unitPrice?: number;
+  date?: string;
+  customer?: string;
+  paymentMethod?: PaymentMethod;
+  notes?: string;
+}
+
 export function QuickSaleForm({
   fixedProduct,
   existingSale,
+  initial,
   onDone,
 }: {
   fixedProduct?: Product;
   existingSale?: Sale;
+  initial?: QuickSaleInitial;
   onDone: () => void;
 }) {
   const { products, catalog, ledgers, addSale, updateSale, settings, projects, customers, addCustomer } = useData();
@@ -103,20 +119,23 @@ export function QuickSaleForm({
     return products.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name, type: p.type, defaultSellPrice: p.defaultSellPrice }));
   }, [isStaff, catalog, products]);
 
-  const lockedProduct = fixedProduct ?? (existingSale ? products.find((p) => p.id === existingSale.productId) : undefined);
-  const [productId, setProductId] = useState(lockedProduct?.id ?? existingSale?.productId ?? sellable[0]?.id ?? "");
+  const lockedProduct =
+    fixedProduct ??
+    (existingSale ? products.find((p) => p.id === existingSale.productId) : undefined) ??
+    (initial?.productId ? products.find((p) => p.id === initial.productId) : undefined);
+  const [productId, setProductId] = useState(lockedProduct?.id ?? existingSale?.productId ?? initial?.productId ?? sellable[0]?.id ?? "");
   const product = lockedProduct ?? sellable.find((p) => p.id === productId);
-  const [qty, setQty] = useState(existingSale?.qty?.toString() ?? "");
+  const [qty, setQty] = useState(existingSale?.qty?.toString() ?? initial?.qty?.toString() ?? "");
   const [unitPrice, setUnitPrice] = useState(
-    (existingSale?.foreignUnitPrice ?? existingSale?.unitPrice)?.toString() ?? product?.defaultSellPrice?.toString() ?? ""
+    (existingSale?.foreignUnitPrice ?? existingSale?.unitPrice)?.toString() ?? initial?.unitPrice?.toString() ?? product?.defaultSellPrice?.toString() ?? ""
   );
   const [txCurrency, setTxCurrency] = useState(existingSale?.currency ?? settings.currency);
   const [exchangeRate, setExchangeRate] = useState((existingSale?.exchangeRate ?? 1).toString());
-  const [date, setDate] = useState(existingSale?.date ?? todayIso());
-  const [customer, setCustomer] = useState(existingSale?.customer ?? "");
+  const [date, setDate] = useState(existingSale?.date ?? initial?.date ?? todayIso());
+  const [customer, setCustomer] = useState(existingSale?.customer ?? initial?.customer ?? "");
   const [customerContact, setCustomerContact] = useState(existingSale?.customerContact ?? "");
-  const [notes, setNotes] = useState(existingSale?.notes ?? "");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(existingSale?.paymentMethod ?? "cash");
+  const [notes, setNotes] = useState(existingSale?.notes ?? initial?.notes ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(existingSale?.paymentMethod ?? initial?.paymentMethod ?? "cash");
   const [creditTermDays, setCreditTermDays] = useState(
     (existingSale?.creditTermDays ?? settings.defaultCreditTermDays).toString()
   );
@@ -126,7 +145,7 @@ export function QuickSaleForm({
   // fields above — pre-existing values (editing a sale that already has
   // them) start expanded so nothing silently hides data that's already
   // there; a fresh sale starts collapsed so the common case is a short form.
-  const [showMoreDetails, setShowMoreDetails] = useState(!!(existingSale?.notes || existingSale?.projectId));
+  const [showMoreDetails, setShowMoreDetails] = useState(!!(existingSale?.notes || existingSale?.projectId || initial?.notes));
 
   const wac = ledgers.get(productId)?.wac ?? 0;
   const qtyOnHand = ledgers.get(productId)?.qtyOnHand ?? 0;
@@ -360,21 +379,38 @@ export function QuickSaleForm({
   );
 }
 
-export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Product; onDone: () => void }) {
+export interface QuickStockInitial {
+  productId?: string;
+  qty?: number;
+  unitCost?: number;
+  date?: string;
+  supplier?: string;
+  notes?: string;
+}
+
+export function QuickStockForm({
+  fixedProduct,
+  initial,
+  onDone,
+}: {
+  fixedProduct?: Product;
+  initial?: QuickStockInitial;
+  onDone: () => void;
+}) {
   const { products, addPurchase, settings, projects } = useData();
   const toast = useToast();
   const currency = settings.currency;
   const restockable = useMemo(() => products.filter((p) => p.active && p.type === "product"), [products]);
 
-  const [productId, setProductId] = useState(fixedProduct?.id ?? restockable[0]?.id ?? "");
+  const [productId, setProductId] = useState(fixedProduct?.id ?? initial?.productId ?? restockable[0]?.id ?? "");
   const product = fixedProduct ?? products.find((p) => p.id === productId);
-  const [qty, setQty] = useState("");
-  const [unitCost, setUnitCost] = useState(product?.defaultCostPrice?.toString() ?? "");
+  const [qty, setQty] = useState(initial?.qty?.toString() ?? "");
+  const [unitCost, setUnitCost] = useState(initial?.unitCost?.toString() ?? product?.defaultCostPrice?.toString() ?? "");
   const [txCurrency, setTxCurrency] = useState(currency);
   const [exchangeRate, setExchangeRate] = useState("1");
-  const [date, setDate] = useState(todayIso());
-  const [supplier, setSupplier] = useState("");
-  const [notes, setNotes] = useState("");
+  const [date, setDate] = useState(initial?.date ?? todayIso());
+  const [supplier, setSupplier] = useState(initial?.supplier ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [projectId, setProjectId] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -499,16 +535,24 @@ export function QuickStockForm({ fixedProduct, onDone }: { fixedProduct?: Produc
 // Fast path for the dashboard: the common case (a recurring monthly cost)
 // in the fewest fields. The Expenses page keeps the full form (one-off vs.
 // recurring, revenue vs. expense, end dates) for anyone who needs it.
-export function QuickExpenseForm({ onDone }: { onDone: () => void }) {
+export interface QuickExpenseInitial {
+  name?: string;
+  amount?: number;
+  category?: string;
+  isRecurring?: boolean;
+  date?: string;
+}
+
+export function QuickExpenseForm({ initial, onDone }: { initial?: QuickExpenseInitial; onDone: () => void }) {
   const { addExpense, settings } = useData();
   const toast = useToast();
   const currency = settings.currency;
 
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
-  const [isRecurring, setIsRecurring] = useState(true);
-  const [date, setDate] = useState(todayIso());
+  const [name, setName] = useState(initial?.name ?? "");
+  const [amount, setAmount] = useState(initial?.amount?.toString() ?? "");
+  const [category, setCategory] = useState(initial?.category ?? "");
+  const [isRecurring, setIsRecurring] = useState(initial?.isRecurring ?? true);
+  const [date, setDate] = useState(initial?.date ?? todayIso());
   const [busy, setBusy] = useState(false);
 
   return (

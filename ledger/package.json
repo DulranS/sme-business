@@ -17,7 +17,8 @@
     "recharts": "^2.12.7",
     "papaparse": "^5.4.1",
     "date-fns": "^3.6.0",
-    "clsx": "^2.1.1"
+    "clsx": "^2.1.1",
+    "firebase-admin": "^12.6.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

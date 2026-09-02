@@ -356,6 +356,43 @@ service cloud.firestore {
       match /projectMilestones/{docId} {
         allow read, write: if isOwnerOrManager(businessId);
       }
+
+      // AI Assistant. Owner/Manager only — same trust boundary as
+      // Reports/Profitability/projects: the assistant answers questions
+      // over cost/margin data Staff never sees elsewhere, so it stays
+      // behind the same line rather than getting its own narrower rule.
+      //
+      // Messages are written server-side only (app/api/ai/chat's use of
+      // the Admin SDK bypasses these rules entirely) — a client can never
+      // write a message doc directly, so nothing fabricated as "from the
+      // assistant" can be injected into a session's history. The client
+      // can still read the transcript (real-time, for the chat UI) and
+      // rename a session's title. Deleting a session goes through
+      // /api/ai/sessions (server-only) instead of a direct client delete,
+      // so its messages subcollection gets cascade-deleted along with it
+      // rather than left orphaned.
+      match /aiChatSessions/{sessionId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow update: if isOwnerOrManager(businessId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title']);
+        allow delete: if false; // server-only, see /api/ai/sessions — cascades to messages
+        allow create: if false; // created by the server (Admin SDK) on first message
+
+        match /messages/{messageId} {
+          allow read: if isOwnerOrManager(businessId);
+          allow write: if false; // server-only
+        }
+      }
+
+      // Long-term memory notes — small, user-visible, user-deletable.
+      // Written by the server when the assistant calls remember_note;
+      // the client can read the list and delete a note it disagrees with,
+      // but can't fabricate one directly.
+      match /aiMemory/{noteId} {
+        allow read: if isOwnerOrManager(businessId);
+        allow delete: if isOwnerOrManager(businessId);
+        allow create, update: if false; // server-only
+      }
     }
   }
 }

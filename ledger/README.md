@@ -27,6 +27,10 @@ there's no shared login, and every permission is enforced server-side in
    ```
 5. **Project settings → General → Your apps → Add app → Web**, copy the config.
 6. `cp .env.local.example .env.local` and fill in the six `NEXT_PUBLIC_FIREBASE_*` values.
+   (Optional: to enable the AI Assistant, also fill in `ANTHROPIC_API_KEY`
+   and the `FIREBASE_*` service-account variables in the same file — see
+   [§7 AI Assistant](#7-ai-assistant) for where to get them. Everything
+   else works fine without them.)
 
 ## 2. Run it
 
@@ -187,7 +191,63 @@ first activity to today — not just months that happen to contain a sale —
 so a recurring rent or loan payment in a quiet month doesn't silently vanish
 from either statement.
 
-## 7. Architecture notes
+## 7. AI Assistant
+
+Owner/Manager only (same trust boundary as Reports/Profitability). Three
+things, all built around one idea: **the model never becomes a second
+source of truth for your numbers or a second way to write to the ledger —
+it's a UI layer over data that's already correct, and every entry it
+proposes still goes through the same human-confirmed form as everything
+else in this app.**
+
+- **Ask questions in plain English** ("how much did I spend on packaging
+  last quarter") — the model only picks *which* question is being asked
+  (metric + date range + filter); the actual arithmetic runs in
+  `lib/aiReport.ts` against your real Firestore data, so a phrased answer
+  can never contain a hallucinated figure.
+- **Log things by describing them** — "sold 3 bags of cement to Kamal for
+  4500 each, cash" becomes a pre-filled `QuickSaleForm`, not a direct
+  write. The AI never has a more direct route to the ledger than a human
+  does — it fills the same form you'd fill by hand, and you still hit Save.
+- **Scan a receipt/invoice photo** — reads vendor, date, line items, and
+  total, and proposes a purchase (one entry per line item, product-matched
+  against your catalog) or an expense, for the same review-then-confirm
+  step.
+- **Anomaly flagging** on the Dashboard (`lib/anomaly.ts`) — a one-off
+  expense or purchase noticeably higher than your own recent median for
+  that category/product. Deliberately plain arithmetic, not a model call:
+  advisory only, nothing here edits or blocks anything.
+
+**Setup**: alongside the Firebase web config, you'll need
+`ANTHROPIC_API_KEY` (platform.claude.com → Settings → API Keys) and a
+Firebase Admin service account (Project settings → Service accounts →
+Generate new private key) for `FIREBASE_PROJECT_ID` /
+`FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` — see the comments in
+`.env.local.example`. All three are server-side only; without them, every
+other page works normally and only `/assistant` (and the "✨ Tell me what
+happened" quick action) shows a clear error instead of a silent failure.
+
+**Model**: Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) — every call this
+feature makes is a bounded, mechanical task (classify a request, read a
+receipt photo, phrase an already-computed number), not open-ended
+reasoning, so Haiku's accuracy is more than sufficient at a fraction of a
+larger model's per-token cost. The system prompt (persona + product
+catalog + categories + memory notes) is marked for Anthropic prompt
+caching, so a multi-turn conversation only pays full price for that block
+once.
+
+**History & memory**: every conversation is a
+`users/{businessId}/aiChatSessions/{sessionId}` doc with a `messages`
+subcollection, written server-side only (a client can never fabricate a
+message from "the assistant") and read live via Firestore listeners, so a
+transcript survives a refresh or a switch to another device. A small,
+capped (`aiMemory`, 40 notes max), fully visible/deletable list of durable
+facts — a regular supplier, a category the owner always uses for a
+certain cost — gets included in the system prompt on future turns; the
+model adds to it sparingly via a `remember_note` tool call, and the owner
+can see and delete anything in it from the Memory panel on `/assistant`.
+
+## 8. Architecture notes
 
 - **Data model**: `users/{uid}/{products|purchases|purchaseOrders|sales|expenses|variableCosts|capitalEntries|employees|loans}`
   subcollections + a `users/{uid}/meta/settings` doc. Firestore security rules
@@ -220,7 +280,7 @@ from either statement.
   and in `lib/permissions.ts` (kept in sync manually — if you add a
   permission, update both).
 
-## 8. CSV formats
+## 9. CSV formats
 
 | File | Columns |
 |---|---|

@@ -15,6 +15,7 @@ import {
 import { useData } from "@/contexts/DataContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { forecastRevenue, computeMRR } from "@/lib/calculations";
+import { detectExpenseAnomalies, detectPurchaseAnomalies } from "@/lib/anomaly";
 import { formatMoney, formatMonth, formatNumber, todayIso } from "@/lib/format";
 import { Card, PageHeader, Stat, Table, Badge, EmptyState } from "@/components/ui";
 import QuickActionBar from "@/components/QuickActionBar";
@@ -38,6 +39,7 @@ export default function DashboardPage() {
     onOrderByProduct,
     projects,
     projectBudgetAlerts,
+    purchases,
   } = useData();
 
   const currency = settings.currency;
@@ -76,6 +78,15 @@ export default function DashboardPage() {
     }
     return items.sort((a, b) => a.qtyOnHand - b.qtyOnHand);
   }, [products, ledgers, eoqByProduct, onOrderByProduct]);
+
+  // Anomaly flagging — deliberately plain arithmetic (see lib/anomaly.ts),
+  // not an AI call: a one-off expense or purchase that's a couple times
+  // your recent usual for that category/product, surfaced so it can be
+  // double-checked rather than silently trusted. Advisory only — nothing
+  // here blocks or edits anything, it's just a "you might want to glance
+  // at this" list.
+  const expenseAnomalies = useMemo(() => detectExpenseAnomalies(expenses, todayIso()), [expenses]);
+  const purchaseAnomalies = useMemo(() => detectPurchaseAnomalies(purchases, products, todayIso()), [purchases, products]);
 
   if (guardLoading || !allowed) return null;
 
@@ -185,6 +196,42 @@ export default function DashboardPage() {
           <Link href="/projects" className="text-xs text-amber-soft mt-3 inline-block">
             Review projects →
           </Link>
+        </Card>
+      )}
+
+      {(expenseAnomalies.length > 0 || purchaseAnomalies.length > 0) && (
+        <Card className="mb-5 border-amber-dim/40">
+          <div className="text-sm font-medium text-amber-soft mb-1">Worth a second look</div>
+          <div className="text-xs text-muted mb-3">
+            These are a fair bit higher than usual compared to your own recent history — probably fine, but worth a
+            glance in case it's a typo or a price change worth knowing about.
+          </div>
+          <div className="space-y-2">
+            {expenseAnomalies.slice(0, 4).map((a) => (
+              <div key={a.expense.id} className="flex items-center justify-between text-xs">
+                <span className="text-fg font-medium">
+                  {a.expense.name}
+                  <span className="text-muted font-normal"> · {a.expense.category || "Uncategorized"}</span>
+                </span>
+                <span className="text-amber-soft">
+                  {formatMoney(a.expense.amount, currency)} vs usual {formatMoney(a.categoryMedian, currency)} (
+                  {a.multiple.toFixed(1)}×)
+                </span>
+              </div>
+            ))}
+            {purchaseAnomalies.slice(0, 4).map((a) => (
+              <div key={a.purchase.id} className="flex items-center justify-between text-xs">
+                <span className="text-fg font-medium">
+                  {a.product.name}
+                  {a.purchase.supplier ? <span className="text-muted font-normal"> · {a.purchase.supplier}</span> : null}
+                </span>
+                <span className="text-amber-soft">
+                  {formatMoney(a.purchase.unitCost, currency)}/unit vs usual {formatMoney(a.productMedianCost, currency)} (
+                  {a.multiple.toFixed(1)}×)
+                </span>
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 

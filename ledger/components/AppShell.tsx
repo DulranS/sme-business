@@ -10,6 +10,7 @@ import type { Role } from "@/lib/types";
 
 const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; roles: Role[]; group: string }[] = [
   { href: "/dashboard", label: "Home", icon: GridIcon, roles: ["owner", "manager"], group: "Overview" },
+  { href: "/assistant", label: "Assistant", icon: SparkleIcon, roles: ["owner", "manager"], group: "Overview" },
   { href: "/notifications", label: "Notifications", icon: BellIcon, roles: ["owner", "manager"], group: "Overview" },
 
   { href: "/products", label: "Items", icon: BoxIcon, roles: ["owner", "manager"], group: "Buy & sell" },
@@ -320,6 +321,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
     </div>
+  );
+}
+
+function SparkleIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" {...props}>
+      <path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8L12 3z" />
+      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
+    </svg>
   );
 }
 
