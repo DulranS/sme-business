@@ -25,17 +25,17 @@ interface AiOcrResponse {
 
 const EXTRACT_TOOL: AnthropicTool = {
   name: "extract_receipt",
-  description: "Report the structured contents of a receipt/invoice photo.",
+  description: "Extract structured data from receipt/invoice photo.",
   input_schema: {
     type: "object",
     properties: {
-      documentType: { type: "string", enum: ["purchase_receipt", "expense_receipt", "invoice", "unknown"], description: "purchase_receipt = stock/materials bought for resale/use in the business. expense_receipt/invoice = a bill/service (utilities, rent, a subscription, professional fees). unknown if illegible or not a receipt." },
+      documentType: { type: "string", enum: ["purchase_receipt", "expense_receipt", "invoice", "unknown"], description: "purchase_receipt = stock/materials. expense_receipt/invoice = bill/service. unknown if illegible." },
       vendor: { type: "string" },
-      date: { type: "string", description: "ISO date yyyy-mm-dd, as printed on the document." },
-      currency: { type: "string", description: "Only if visibly different from the business's own currency." },
+      date: { type: "string", description: "ISO yyyy-mm-dd from document." },
+      currency: { type: "string", description: "Only if different from business currency." },
       lineItems: {
         type: "array",
-        description: "One entry per distinct line item (only meaningful for purchase_receipt — leave empty for a single-line bill).",
+        description: "Line items (purchase_receipt only).",
         items: {
           type: "object",
           properties: {
@@ -46,10 +46,10 @@ const EXTRACT_TOOL: AnthropicTool = {
           required: ["description"],
         },
       },
-      total: { type: "number", description: "The grand total on the document." },
-      suggestedCategory: { type: "string", description: "For expense_receipt/invoice: best-fit category from the list given below." },
+      total: { type: "number", description: "Grand total." },
+      suggestedCategory: { type: "string", description: "For expense/invoice: best-fit category." },
       confidence: { type: "string", enum: ["high", "medium", "low"] },
-      summary: { type: "string", description: "One short sentence describing what this document is." },
+      summary: { type: "string", description: "One-sentence description." },
     },
     required: ["documentType", "total", "summary"],
   },

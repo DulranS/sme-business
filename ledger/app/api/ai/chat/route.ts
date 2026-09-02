@@ -28,21 +28,20 @@ export const runtime = "nodejs";
 
 const REPORT_TOOL: AnthropicTool = {
   name: "run_report",
-  description:
-    "Compute a real number from the business's ledger. ALWAYS use this for any question about totals, spend, revenue, or comparisons — never answer from memory or estimate.",
+  description: "Compute ledger numbers. Use for totals, spend, revenue, comparisons. Never estimate.",
   input_schema: {
     type: "object",
     properties: {
       metric: {
         type: "string",
         enum: ["expense_total", "expense_by_category", "sale_total", "sale_by_product", "purchase_total", "purchase_by_supplier", "net_cashflow"],
-        description: "expense_total/expense_by_category = one-off bills paid. sale_total/sale_by_product = revenue. purchase_total/purchase_by_supplier = stock/materials bought. net_cashflow = revenue minus purchases minus bills, for a date range.",
+        description: "expense_total/expense_by_category = one-off bills. sale_total/sale_by_product = revenue. purchase_total/purchase_by_supplier = stock/materials. net_cashflow = revenue minus purchases minus bills.",
       },
-      startDate: { type: "string", description: "ISO date yyyy-mm-dd, inclusive. Compute this yourself from the user's phrase (e.g. 'last quarter') using today's date given below." },
-      endDate: { type: "string", description: "ISO date yyyy-mm-dd, inclusive." },
-      category: { type: "string", description: "Optional expense category filter, must exactly match one from the category list given below." },
-      productName: { type: "string", description: "Optional product/service name filter (fuzzy-matched)." },
-      supplier: { type: "string", description: "Optional supplier name filter (fuzzy-matched, purchase metrics only)." },
+      startDate: { type: "string", description: "ISO date yyyy-mm-dd. Compute from user's phrase (e.g. 'last quarter')." },
+      endDate: { type: "string", description: "ISO date yyyy-mm-dd." },
+      category: { type: "string", description: "Optional expense category filter." },
+      productName: { type: "string", description: "Optional product name filter (fuzzy)." },
+      supplier: { type: "string", description: "Optional supplier name filter (fuzzy, purchase metrics only)." },
     },
     required: ["metric", "startDate", "endDate"],
   },
@@ -50,7 +49,7 @@ const REPORT_TOOL: AnthropicTool = {
 
 const PROPOSE_ENTRIES_TOOL: AnthropicTool = {
   name: "propose_entries",
-  description: "Propose one or more ledger entries (sale/purchase/expense) for the user to review and confirm, based on something they described having done.",
+  description: "Propose ledger entries (sale/purchase/expense) from user's description.",
   input_schema: {
     type: "object",
     properties: {
@@ -60,21 +59,21 @@ const PROPOSE_ENTRIES_TOOL: AnthropicTool = {
           type: "object",
           properties: {
             kind: { type: "string", enum: ["sale", "purchase", "expense"] },
-            productName: { type: "string", description: "For kind=sale or purchase: the product/service name as best understood, even if unsure." },
-            name: { type: "string", description: "For kind=expense: a short label for the bill (e.g. 'Electricity bill')." },
-            qty: { type: "number", description: "For kind=sale or purchase." },
-            unitPrice: { type: "number", description: "For kind=sale, the price per unit charged." },
-            unitCost: { type: "number", description: "For kind=purchase, the cost per unit paid." },
-            amount: { type: "number", description: "For kind=expense, the total amount." },
-            category: { type: "string", description: "For kind=expense, must exactly match one from the category list below." },
-            isRecurring: { type: "boolean", description: "For kind=expense: true only if the user described a recurring/regular bill, otherwise false." },
-            currency: { type: "string", description: "Only set if the user specified a currency different from the business's own." },
-            customer: { type: "string", description: "For kind=sale, if named." },
-            supplier: { type: "string", description: "For kind=purchase, if named." },
-            date: { type: "string", description: "ISO date yyyy-mm-dd — today's date unless the user said otherwise." },
+            productName: { type: "string", description: "For sale/purchase: product name." },
+            name: { type: "string", description: "For expense: bill label." },
+            qty: { type: "number", description: "For sale/purchase." },
+            unitPrice: { type: "number", description: "For sale: price per unit." },
+            unitCost: { type: "number", description: "For purchase: cost per unit." },
+            amount: { type: "number", description: "For expense: total." },
+            category: { type: "string", description: "For expense: match category list." },
+            isRecurring: { type: "boolean", description: "For expense: true if recurring bill." },
+            currency: { type: "string", description: "Only if different from business currency." },
+            customer: { type: "string", description: "For sale." },
+            supplier: { type: "string", description: "For purchase." },
+            date: { type: "string", description: "ISO yyyy-mm-dd. Today unless specified." },
             paymentMethod: { type: "string", enum: ["cash", "card", "bank_transfer", "credit"] },
             notes: { type: "string" },
-            confidence: { type: "number", description: "0-1, how sure you are about this entry's details." },
+            confidence: { type: "number", description: "0-1 certainty." },
           },
           required: ["kind", "date"],
         },
@@ -86,10 +85,10 @@ const PROPOSE_ENTRIES_TOOL: AnthropicTool = {
 
 const REMEMBER_TOOL: AnthropicTool = {
   name: "remember_note",
-  description: "Save one short durable fact about how this business likes things logged, for future conversations. Use sparingly.",
+  description: "Save a durable fact for future conversations. Use sparingly.",
   input_schema: {
     type: "object",
-    properties: { note: { type: "string", description: "One short sentence, under 240 characters." } },
+    properties: { note: { type: "string", description: "Short sentence, under 240 chars." } },
     required: ["note"],
   },
 };
@@ -202,7 +201,7 @@ export async function POST(req: Request) {
       system: systemBlocks,
       messages,
       tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL],
-      maxTokens: 1200,
+      maxTokens: 800,
     });
 
     let proposals: ProposedEntry[] = [];
@@ -275,7 +274,7 @@ export async function POST(req: Request) {
         system: systemBlocks,
         messages: [...messages, { role: "assistant", content: response.content }, { role: "user", content: toolResults }],
         tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL],
-        maxTokens: 500,
+        maxTokens: 400,
       });
     }
 
