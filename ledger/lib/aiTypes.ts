@@ -1,6 +1,6 @@
 // Shared types for the AI Assistant feature: natural-language Q&A over the
-// ledger, natural-language data entry, and receipt/invoice OCR. Used by
-// both the client (contexts/AiAssistantContext.tsx, app/assistant) and the
+// ledger and natural-language data entry (text-only — no photo/OCR path).
+// Used by both the client (contexts/AiAssistantContext.tsx, app/assistant) and the
 // server routes (app/api/ai/*). Kept dependency-free so it can be imported
 // from either side without pulling in firebase-admin or the Anthropic SDK.
 
@@ -26,13 +26,13 @@ export interface AiChatMessage {
   id: string;
   role: AiMessageRole;
   text: string;
-  // Present on a user message that attached a photo (receipt/invoice) —
-  // stored as a small data URL only long enough to render the bubble; not
-  // re-sent to the model on later turns (the extraction result already is).
+  // Legacy field from the retired photo/OCR path — no longer written by
+  // new messages (the assistant is text-only now), kept only so old
+  // sessions that already have a stored receipt photo still render it.
   imageDataUrl?: string;
   // Present on an assistant message that proposed one or more ledger
-  // entries for the user to review/confirm. Populated by /api/ai/chat or
-  // /api/ai/ocr. Each entry tracks its own confirmed/discarded state so a
+  // entries for the user to review/confirm. Populated by /api/ai/chat.
+  // Each entry tracks its own confirmed/discarded state so a
   // partially-actioned proposal renders correctly on reload.
   proposals?: ProposedEntry[];
   createdAt: number;
@@ -114,14 +114,12 @@ export const AI_MEMORY_MAX_NOTES = 40;
 export const AI_MEMORY_MAX_NOTE_LENGTH = 240;
 
 // ---------------------------------------------------------------------------
-// API request/response shapes for app/api/ai/chat and app/api/ai/ocr.
+// API request/response shapes for app/api/ai/chat.
 // ---------------------------------------------------------------------------
 
 export interface AiChatRequest {
   sessionId: string;
   message: string;
-  imageBase64?: string; // optional receipt/photo attached to this turn
-  imageMediaType?: string;
 }
 
 export interface AiChatResponse {
@@ -129,18 +127,3 @@ export interface AiChatResponse {
   proposals: ProposedEntry[];
   rememberedNote?: string;
 }
-
-export interface AiOcrRequest {
-  imageBase64: string;
-  imageMediaType: string;
-}
-
-export interface AiOcrResponse {
-  documentType: "purchase_receipt" | "expense_receipt" | "invoice" | "unknown";
-  vendor?: string;
-  date?: string;
-  summary: string;
-  proposals: ProposedEntry[];
-}
-
-export const AI_MODEL = "claude-haiku-4-5-20251001";

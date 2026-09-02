@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { useRequireRole } from "@/lib/roleGuard";
 import { useAiAssistant } from "@/contexts/AiAssistantContext";
-import { resizeImageFile, type ResizedImage } from "@/lib/imageResize";
 import { PageHeader, Card, Button, EmptyState, Modal } from "@/components/ui";
 import { ProposedEntryCard } from "@/components/ai/ProposedEntryCard";
 import type { AiChatSession } from "@/lib/aiTypes";
@@ -39,13 +38,11 @@ export default function AssistantPage() {
   } = useAiAssistant();
 
   const [draft, setDraft] = useState("");
-  const [pendingImage, setPendingImage] = useState<ResizedImage | null>(null);
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Land on the most recent conversation by default rather than an empty
   // composer with no context — matches how every chat app opens.
@@ -61,13 +58,11 @@ export default function AssistantPage() {
 
   async function handleSend() {
     const text = draft.trim();
-    if (!text && !pendingImage) return;
+    if (!text) return;
     clearError();
     setDraft("");
-    const image = pendingImage ? { base64: pendingImage.base64, mediaType: pendingImage.mediaType } : undefined;
-    setPendingImage(null);
     try {
-      await sendMessage(text || "", image);
+      await sendMessage(text);
     } catch {
       // surfaced via `error` below
     }
@@ -239,15 +234,6 @@ export default function AssistantPage() {
             </div>
 
             <div className="border-t border-line p-3 shrink-0">
-              {pendingImage && (
-                <div className="mb-2 flex items-center gap-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={pendingImage.dataUrl} alt="Attached" className="w-12 h-12 rounded object-cover border border-line" />
-                  <button type="button" className="text-xs text-muted hover:text-bad" onClick={() => setPendingImage(null)}>
-                    Remove photo
-                  </button>
-                </div>
-              )}
               {error && <div className="text-xs text-bad mb-2">{error}</div>}
               <div className="flex gap-2 items-end">
                 <textarea
@@ -263,27 +249,7 @@ export default function AssistantPage() {
                   rows={1}
                   className="flex-1 resize-none bg-panel2 border border-line rounded-md px-3 py-2.5 text-base sm:text-sm text-fg placeholder:text-muted focus:outline-none focus:border-amber-dim max-h-32 min-h-[44px]"
                 />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="shrink-0 min-h-[44px] min-w-[44px] rounded-md border border-line text-muted hover:text-fg hover:border-muted flex items-center justify-center"
-                  aria-label="Attach photo"
-                >
-                  📷
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (f) setPendingImage(await resizeImageFile(f));
-                    e.target.value = "";
-                  }}
-                />
-                <Button onClick={handleSend} disabled={sending || (!draft.trim() && !pendingImage)}>
+                <Button onClick={handleSend} disabled={sending || !draft.trim()}>
                   Send
                 </Button>
               </div>

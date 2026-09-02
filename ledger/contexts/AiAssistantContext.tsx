@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, limit as fsLimit } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
-import type { AiChatMessage, AiChatResponse, AiChatSession, AiMemoryNote, AiOcrResponse } from "@/lib/aiTypes";
+import type { AiChatMessage, AiChatResponse, AiChatSession, AiMemoryNote } from "@/lib/aiTypes";
 
 interface AiAssistantContextValue {
   sessions: AiChatSession[];
@@ -18,8 +18,7 @@ interface AiAssistantContextValue {
   selectSession: (id: string) => void;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
-  sendMessage: (text: string, image?: { base64: string; mediaType: string }) => Promise<AiChatResponse>;
-  scanReceipt: (image: { base64: string; mediaType: string }) => Promise<AiOcrResponse>;
+  sendMessage: (text: string) => Promise<AiChatResponse>;
   forgetMemoryNote: (id: string) => Promise<void>;
 }
 
@@ -134,7 +133,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
   );
 
   const sendMessage = useCallback(
-    async (text: string, image?: { base64: string; mediaType: string }): Promise<AiChatResponse> => {
+    async (text: string): Promise<AiChatResponse> => {
       if (!user) throw new Error("Not signed in.");
       const sessionId = currentSessionId ?? crypto.randomUUID();
       if (!currentSessionId) setCurrentSessionId(sessionId);
@@ -145,7 +144,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${idToken}` },
-          body: JSON.stringify({ sessionId, message: text, imageBase64: image?.base64, imageMediaType: image?.mediaType }),
+          body: JSON.stringify({ sessionId, message: text }),
         });
         if (!res.ok) {
           const payload = await res.json().catch(() => ({}));
@@ -165,33 +164,6 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
       }
     },
     [user, currentSessionId]
-  );
-
-  const scanReceipt = useCallback(
-    async (image: { base64: string; mediaType: string }): Promise<AiOcrResponse> => {
-      if (!user) throw new Error("Not signed in.");
-      setSending(true);
-      setError(null);
-      try {
-        const idToken = await user.getIdToken();
-        const res = await fetch("/api/ai/ocr", {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${idToken}` },
-          body: JSON.stringify({ imageBase64: image.base64, imageMediaType: image.mediaType }),
-        });
-        if (!res.ok) {
-          const payload = await res.json().catch(() => ({}));
-          throw new Error(payload.error || "Couldn't read that receipt — try again.");
-        }
-        return (await res.json()) as AiOcrResponse;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong.");
-        throw err;
-      } finally {
-        setSending(false);
-      }
-    },
-    [user]
   );
 
   const forgetMemoryNote = useCallback(
@@ -217,10 +189,9 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
       renameSession,
       deleteSession,
       sendMessage,
-      scanReceipt,
       forgetMemoryNote,
     }),
-    [sessions, currentSessionId, messages, memoryNotes, sending, error, clearError, startNewSession, selectSession, renameSession, deleteSession, sendMessage, scanReceipt, forgetMemoryNote]
+    [sessions, currentSessionId, messages, memoryNotes, sending, error, clearError, startNewSession, selectSession, renameSession, deleteSession, sendMessage, forgetMemoryNote]
   );
 
   return <AiAssistantContext.Provider value={value}>{children}</AiAssistantContext.Provider>;

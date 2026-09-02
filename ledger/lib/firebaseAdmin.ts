@@ -123,13 +123,13 @@ export interface CompactProduct {
 }
 
 // Settings and the active product catalog are read on *every* AI Assistant
-// turn (chat and OCR both call this) but change rarely — a currency
-// setting or a new product gets added maybe a few times a week, not every
-// message. A 30s in-process cache means a burst of messages/receipt scans
-// in one conversation costs one Firestore read of each instead of one per
-// turn, while staying short enough that an edit made mid-session shows up
-// well within the same conversation. See lib/serverCache.ts for why this
-// is a plain in-memory cache rather than a hosted one.
+// chat turn but change rarely — a currency setting or a new product gets
+// added maybe a few times a week, not every message. A 30s in-process
+// cache means a burst of messages in one conversation costs one Firestore
+// read of each instead of one per turn, while staying short enough that an
+// edit made mid-session shows up well within the same conversation. See
+// lib/serverCache.ts for why this is a plain in-memory cache rather than a
+// hosted one.
 const BUSINESS_CONTEXT_TTL_MS = 30_000;
 
 export async function loadBusinessContext(

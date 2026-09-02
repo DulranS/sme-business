@@ -1,25 +1,49 @@
 // Server-only. Never imported from a "use client" file — it reads
-// process.env.ANTHROPIC_API_KEY, which must never reach the browser bundle.
+// process.env.DEEPSEEK_API_KEY, which must never reach the browser bundle.
 //
-// Deliberately a thin hand-rolled fetch wrapper rather than the
-// @anthropic-ai/sdk package: the assistant only ever needs one endpoint
-// (Messages, with tool use and an optional image block), and keeping this
-// dependency-free means one less thing to keep updated in a solo-owner's
-// app. If the tool surface grows meaningfully, switching to the official
-// SDK is a contained change limited to this file.
+// Deliberately a thin hand-rolled fetch wrapper rather than an SDK package:
+// the assistant only ever needs one endpoint (Messages, with tool use),
+// and keeping this dependency-free means one less thing to keep updated in
+// a solo-owner's app.
 //
-// Model: Claude Haiku 4.5 (claude-haiku-4-5-20251001) — the right choice
-// for this feature specifically. Every call the AI Assistant makes is
-// bounded and mechanical (classify a request, extract fields from a
-// receipt photo, phrase an already-computed number) rather than open-ended
-// reasoning, so Haiku 4.5's accuracy is more than sufficient and its cost
-// is roughly a fifth of Sonnet's per token — meaningful for a feature that
-// may run on every "I sold something" prompt a solo owner types all day.
+// Model: DeepSeek V4 Flash (deepseek-v4-flash), called through DeepSeek's
+// Anthropic-compatible endpoint (base_url https://api.deepseek.com/anthropic)
+// rather than its native OpenAI-style one. Reasoning, evaluated Sep 2026:
+//
+// - Every call the AI Assistant makes is bounded and mechanical (classify a
+//   request, extract fields from a plain-text description, phrase an
+//   already-computed number via tool use) rather than open-ended reasoning,
+//   so a budget-tier model's accuracy is more than sufficient here.
+// - On cost, it's the cheapest model of any of the majors (Anthropic,
+//   OpenAI, Google, DeepSeek, Mistral, xAI, Alibaba) that still clears the
+//   bar for reliable tool-use/structured-output on a bounded task: DeepSeek
+//   publishes $0.22/$0.66 per million input/output tokens off-peak (peak
+//   hours 01:00-04:00 and 06:00-10:00 UTC run 2x that), against $1/$5 for
+//   the Claude Haiku 4.5 this replaced — roughly a 4-5x cut for this
+//   workload. Cheaper still exist (Qwen/Gemini Flash-Lite variants), but
+//   they don't clear the "trustworthy structured tool-calling for a real
+//   ledger" bar as comfortably; DeepSeek V4 Flash officially supports
+//   function_calling and structured_output and is the field's standard
+//   budget pick for exactly this kind of task.
+// - Practically: DeepSeek's Anthropic-compatible endpoint accepts the same
+//   system/messages/tools shape this file already spoke, so the swap is a
+//   base URL, an API key, and a model name — not a rewrite. Two fields
+//   that mattered here changed meaning: `cache_control` is accepted but
+//   silently ignored (DeepSeek caches repeated prefixes automatically —
+//   cache-hit input is billed near-free — so it costs nothing to leave the
+//   hint in place, it's just inert), and `anthropic-version`/`anthropic-beta`
+//   headers are ignored, so they're dropped below rather than sent for show.
+//
+// Worth knowing if this ever needs revisiting: DeepSeek is a Chinese lab,
+// so ledger data (sales, customers, suppliers, expense notes) sent to the
+// assistant now transits DeepSeek's infrastructure rather than Anthropic's
+// — a data-residency tradeoff for the owner to be comfortable with, not
+// just a price one. Swapping back is symmetric: restore the Anthropic
+// base_url/key and set AI_MODEL to a claude-haiku-* id.
 
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION = "2023-06-01";
+const DEEPSEEK_API_URL = "https://api.deepseek.com/anthropic/v1/messages";
 
-export const AI_MODEL = "claude-haiku-4-5-20251001";
+export const AI_MODEL = "deepseek-v4-flash";
 
 export interface AnthropicTextBlock {
   type: "text";
@@ -27,14 +51,8 @@ export interface AnthropicTextBlock {
   cache_control?: { type: "ephemeral" };
 }
 
-export interface AnthropicImageBlock {
-  type: "image";
-  source: { type: "base64"; media_type: string; data: string };
-}
-
 export type AnthropicContentBlock =
   | AnthropicTextBlock
-  | AnthropicImageBlock
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; tool_use_id: string; content: string };
 
@@ -64,31 +82,29 @@ export class AnthropicApiError extends Error {
 }
 
 // One call to /v1/messages. `system` is passed as a content-block array
-// (not a plain string) so the largest, most-repeated part of it — the
-// business context block callers build with cache_control set — is
-// eligible for Anthropic's prompt caching: the product catalog, category
-// list, and tool definitions are identical on every turn of a session, so
-// after the first call in a session only the new user message and the
-// small "recent memory" tail cost full input-token price.
+// (not a plain string) so callers can keep marking the large, repeated
+// part of it (product catalog, category list) with cache_control — a
+// no-op on DeepSeek's endpoint today, but free to leave in place, and it
+// keeps this function's shape unchanged if the backing model ever moves
+// back to Anthropic's own API.
 export async function callClaude(params: {
   system: AnthropicTextBlock[];
   messages: AnthropicMessage[];
   tools?: AnthropicTool[];
   maxTokens?: number;
 }): Promise<AnthropicResponse> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new AnthropicApiError(
-      "ANTHROPIC_API_KEY isn't set on the server. Add it to your deployment's environment variables to enable the AI Assistant."
+      "DEEPSEEK_API_KEY isn't set on the server. Add it to your deployment's environment variables to enable the AI Assistant."
     );
   }
 
-  const res = await fetch(ANTHROPIC_API_URL, {
+  const res = await fetch(DEEPSEEK_API_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-api-key": apiKey,
-      "anthropic-version": ANTHROPIC_VERSION,
     },
     body: JSON.stringify({
       model: AI_MODEL,
@@ -107,7 +123,7 @@ export async function callClaude(params: {
     } catch {
       detail = await res.text().catch(() => "");
     }
-    throw new AnthropicApiError(`Anthropic API error (${res.status}): ${detail}`, res.status);
+    throw new AnthropicApiError(`AI Assistant API error (${res.status}): ${detail}`, res.status);
   }
 
   return (await res.json()) as AnthropicResponse;

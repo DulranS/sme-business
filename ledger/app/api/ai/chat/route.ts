@@ -18,7 +18,6 @@ import {
   type AnthropicMessage,
   type AnthropicTool,
   type AnthropicTextBlock,
-  type AnthropicContentBlock,
 } from "@/lib/anthropic";
 import { ASSISTANT_PERSONA, formatProductCatalogBlock, formatExpenseCategoriesBlock, formatMemoryBlock } from "@/lib/aiPrompts";
 import { runReport, type ReportMetric } from "@/lib/aiReport";
@@ -175,7 +174,7 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as AiChatRequest;
   const message = (body.message ?? "").trim();
-  if (!message && !body.imageBase64) return Response.json({ error: "Message is empty." }, { status: 400 });
+  if (!message) return Response.json({ error: "Message is empty." }, { status: 400 });
   if (!body.sessionId) return Response.json({ error: "sessionId is required." }, { status: 400 });
 
   const { db, businessId, uid, memberName } = ctx;
@@ -186,7 +185,7 @@ export async function POST(req: Request) {
     loadRecentMessages(db, businessId, body.sessionId),
   ]);
 
-  await ensureSession(db, businessId, body.sessionId, uid, memberName, message || "Photo received");
+  await ensureSession(db, businessId, body.sessionId, uid, memberName, message);
 
   const today = new Date().toISOString().slice(0, 10);
   const systemBlocks: AnthropicTextBlock[] = [
@@ -198,13 +197,7 @@ export async function POST(req: Request) {
     },
   ];
 
-  const userContent: AnthropicContentBlock[] = [];
-  if (body.imageBase64 && body.imageMediaType) {
-    userContent.push({ type: "image", source: { type: "base64", media_type: body.imageMediaType, data: body.imageBase64 } });
-  }
-  userContent.push({ type: "text", text: message || "Here's a photo of a receipt/invoice — please read it and propose the entry." });
-
-  const messages: AnthropicMessage[] = [...toAnthropicMessages(recentMessages), { role: "user", content: userContent }];
+  const messages: AnthropicMessage[] = [...toAnthropicMessages(recentMessages), { role: "user", content: message }];
 
   let response;
   try {
@@ -300,7 +293,6 @@ export async function POST(req: Request) {
     id: randomUUID(),
     role: "user",
     text: message,
-    imageDataUrl: body.imageBase64 ? `data:${body.imageMediaType};base64,${body.imageBase64}` : undefined,
     createdAt: Date.now(),
   };
   const assistantMessage: AiChatMessage = {

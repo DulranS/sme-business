@@ -27,7 +27,7 @@ there's no shared login, and every permission is enforced server-side in
    ```
 5. **Project settings → General → Your apps → Add app → Web**, copy the config.
 6. `cp .env.local.example .env.local` and fill in the six `NEXT_PUBLIC_FIREBASE_*` values.
-   (Optional: to enable the AI Assistant, also fill in `ANTHROPIC_API_KEY`
+   (Optional: to enable the AI Assistant, also fill in `DEEPSEEK_API_KEY`
    and the `FIREBASE_*` service-account variables in the same file — see
    [§7 AI Assistant](#7-ai-assistant) for where to get them. Everything
    else works fine without them.)
@@ -209,32 +209,33 @@ else in this app.**
   4500 each, cash" becomes a pre-filled `QuickSaleForm`, not a direct
   write. The AI never has a more direct route to the ledger than a human
   does — it fills the same form you'd fill by hand, and you still hit Save.
-- **Scan a receipt/invoice photo** — reads vendor, date, line items, and
-  total, and proposes a purchase (one entry per line item, product-matched
-  against your catalog) or an expense, for the same review-then-confirm
-  step.
 - **Anomaly flagging** on the Dashboard (`lib/anomaly.ts`) — a one-off
   expense or purchase noticeably higher than your own recent median for
   that category/product. Deliberately plain arithmetic, not a model call:
   advisory only, nothing here edits or blocks anything.
 
 **Setup**: alongside the Firebase web config, you'll need
-`ANTHROPIC_API_KEY` (platform.claude.com → Settings → API Keys) and a
-Firebase Admin service account (Project settings → Service accounts →
-Generate new private key) for `FIREBASE_PROJECT_ID` /
-`FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` — see the comments in
-`.env.local.example`. All three are server-side only; without them, every
-other page works normally and only `/assistant` (and the "✨ Tell me what
-happened" quick action) shows a clear error instead of a silent failure.
+`DEEPSEEK_API_KEY` (platform.deepseek.com → API Keys) and a Firebase Admin
+service account (Project settings → Service accounts → Generate new
+private key) for `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` /
+`FIREBASE_PRIVATE_KEY` — see the comments in `.env.local.example`. All
+three are server-side only; without them, every other page works normally
+and only `/assistant` (and the "✨ Tell me what happened" quick action)
+shows a clear error instead of a silent failure.
 
-**Model**: Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) — every call this
-feature makes is a bounded, mechanical task (classify a request, read a
-receipt photo, phrase an already-computed number), not open-ended
-reasoning, so Haiku's accuracy is more than sufficient at a fraction of a
-larger model's per-token cost. The system prompt (persona + product
-catalog + categories + memory notes) is marked for Anthropic prompt
-caching, so a multi-turn conversation only pays full price for that block
-once.
+**Model**: DeepSeek V4 Flash (`deepseek-v4-flash`), called through
+DeepSeek's Anthropic-compatible endpoint — every call this feature makes
+is a bounded, mechanical task (classify a request, phrase an
+already-computed number), not open-ended reasoning, so a budget-tier
+model's accuracy is more than sufficient at a fraction of a larger model's
+per-token cost (DeepSeek publishes $0.22/$0.66 per million input/output
+tokens off-peak, against $1/$5 for the Claude Haiku 4.5 this replaced).
+The system prompt (persona + product catalog + categories + memory notes)
+still carries Anthropic-style prompt-caching hints for portability, though
+DeepSeek's endpoint ignores them in favor of its own automatic prefix
+caching — a multi-turn conversation still only pays full price for that
+block once, it's just DeepSeek's cache doing the work now. Text-only: no
+receipt/photo scanning.
 
 **History & memory**: every conversation is a
 `users/{businessId}/aiChatSessions/{sessionId}` doc with a `messages`
