@@ -3,6 +3,10 @@ import { computeAllStockLevels, generateLowStockAlerts } from "@/lib/stockTracki
 import type { Product, Purchase, Sale } from "@/lib/types";
 
 export const runtime = "nodejs";
+// Same reason as app/api/aging/report/route.ts: requireAiContext reads the
+// Authorization header, which doesn't exist at build time, so this GET
+// route needs to opt out of Next's static-rendering attempt explicitly.
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
