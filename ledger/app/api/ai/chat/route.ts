@@ -1,28 +1,15 @@
 import { randomUUID } from "crypto";
-import {
-  requireAiContext,
-  loadBusinessContext,
-  loadMemoryNotes,
-  loadRecentMessages,
-  ensureSession,
-  appendMessage,
-  addMemoryNote,
-  type CompactProduct,
-} from "@/lib/firebaseAdmin";
-import {
-  callClaude,
-  extractToolUses,
-  extractText,
-  type AnthropicMessage,
-  type AnthropicTool,
-  type AnthropicTextBlock,
-} from "@/lib/anthropic";
-import { ASSISTANT_PERSONA, formatProductCatalogBlock, formatExpenseCategoriesBlock, formatMemoryBlock } from "@/lib/aiPrompts";
+import { requireAiContext, loadBusinessContext, loadMemoryNotes, loadRecentMessages, ensureSession, addMemoryNote, appendMessage, AiAuthError, type CompactProduct } from "@/lib/firebaseAdmin";
+import { callClaude, extractToolUses, extractText, AnthropicApiError, type AnthropicTool, type AnthropicTextBlock, type AnthropicMessage } from "@/lib/anthropic";
+import { formatProductCatalogBlock, formatExpenseCategoriesBlock, formatMemoryBlock, ASSISTANT_PERSONA } from "@/lib/aiPrompts";
 import { runReport, type ReportMetric } from "@/lib/aiReport";
 import { bestMatch } from "@/lib/aiMatch";
+import { generateAnomalyReport } from "@/lib/aiAnomalyDetection";
+import { generateCashFlowForecast } from "@/lib/aiCashFlowPrediction";
+import { generateSmartReminders } from "@/lib/aiSmartReminders";
 import { aiErrorResponse } from "@/lib/apiError";
 import type { AiChatMessage, AiChatRequest, AiChatResponse, ProposedEntry } from "@/lib/aiTypes";
-import type { Expense, Purchase, Sale } from "@/lib/types";
+import type { Expense, Purchase, Sale, Settings, ReceivablePayment, PayablePayment } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -90,6 +77,38 @@ const REMEMBER_TOOL: AnthropicTool = {
     type: "object",
     properties: { note: { type: "string", description: "Short sentence, under 240 chars." } },
     required: ["note"],
+  },
+};
+
+const ANOMALY_DETECTION_TOOL: AnthropicTool = {
+  name: "detect_anomalies",
+  description: "Detect unusual spending patterns in expenses and purchases. Use when user asks about unusual costs, anomalies, or spending patterns.",
+  input_schema: {
+    type: "object",
+    properties: {},
+    required: [],
+  },
+};
+
+const CASH_FLOW_FORECAST_TOOL: AnthropicTool = {
+  name: "forecast_cash_flow",
+  description: "Generate cash flow predictions for future months. Use when user asks about cash flow, future projections, or financial forecasts.",
+  input_schema: {
+    type: "object",
+    properties: {
+      months: { type: "number", description: "Number of months to forecast (default: 3)." },
+    },
+    required: [],
+  },
+};
+
+const SMART_REMINDERS_TOOL: AnthropicTool = {
+  name: "get_reminders",
+  description: "Get smart reminders for overdue payments and important business events. Use when user asks about reminders, overdue items, or things to follow up on.",
+  input_schema: {
+    type: "object",
+    properties: {},
+    required: [],
   },
 };
 
@@ -200,7 +219,7 @@ export async function POST(req: Request) {
     let response = await callClaude({
       system: systemBlocks,
       messages,
-      tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL],
+      tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
       maxTokens: 800,
     });
 
@@ -216,6 +235,57 @@ export async function POST(req: Request) {
       // prompt) never touch these three collections at all.
       let ledgerData: { startDate: string; endDate: string; expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
       const productNameById = new Map(products.map((p) => [p.id, p.name]));
+
+      // Backing data for detect_anomalies / forecast_cash_flow — both are
+      // statistical over recent history rather than a single date range the
+      // model supplies, so (unlike run_report) there's no caller-given
+      // window to push down into the query. A fixed 12-month lookback keeps
+      // the read bounded as the ledger grows, the same cost concern
+      // run_report's range query exists for, while still giving both
+      // functions enough months to establish a real baseline/trend. Shared
+      // across both tools if a single turn calls both.
+      let recentOperationalData: { expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
+      async function loadRecentOperationalData() {
+        if (recentOperationalData) return recentOperationalData;
+        const twelveMonthsAgo = new Date();
+        twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+        const since = twelveMonthsAgo.toISOString().slice(0, 10);
+        const [expensesSnap, purchasesSnap, salesSnap] = await Promise.all([
+          db.collection(`users/${businessId}/expenses`).where("startDate", ">=", since).get(),
+          db.collection(`users/${businessId}/purchases`).where("date", ">=", since).get(),
+          db.collection(`users/${businessId}/sales`).where("date", ">=", since).get(),
+        ]);
+        recentOperationalData = {
+          expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense),
+          purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
+          sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
+        };
+        return recentOperationalData;
+      }
+
+      // Backing data for get_reminders — overdue receivables/payables can
+      // originate from any point in the ledger's history (an invoice from
+      // eight months ago is still overdue today), so unlike the two loaders
+      // above this deliberately isn't date-bounded. Mirrors the same
+      // full-collection read app/api/aging/report/route.ts already does for
+      // the same reminder-relevant data.
+      let overdueData: { sales: Sale[]; purchases: Purchase[]; receivablePayments: ReceivablePayment[]; payablePayments: PayablePayment[] } | null = null;
+      async function loadOverdueData() {
+        if (overdueData) return overdueData;
+        const [salesSnap, purchasesSnap, receivablePaymentsSnap, payablePaymentsSnap] = await Promise.all([
+          db.collection(`users/${businessId}/sales`).get(),
+          db.collection(`users/${businessId}/purchases`).get(),
+          db.collection(`users/${businessId}/receivablePayments`).get(),
+          db.collection(`users/${businessId}/payablePayments`).get(),
+        ]);
+        overdueData = {
+          sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
+          purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
+          receivablePayments: receivablePaymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReceivablePayment),
+          payablePayments: payablePaymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayablePayment),
+        };
+        return overdueData;
+      }
 
       for (const use of toolUses) {
         if (use.name === "run_report") {
@@ -267,13 +337,26 @@ export async function POST(req: Request) {
           rememberedNote = input.note;
           await addMemoryNote(db, businessId, input.note);
           toolResults.push({ type: "tool_result", tool_use_id: use.id, content: "Saved." });
+        } else if (use.name === "detect_anomalies") {
+          const { expenses, purchases } = await loadRecentOperationalData();
+          const report = generateAnomalyReport(expenses, purchases);
+          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(report) });
+        } else if (use.name === "forecast_cash_flow") {
+          const input = use.input as { months?: number };
+          const { sales, expenses, purchases } = await loadRecentOperationalData();
+          const forecast = generateCashFlowForecast(sales, expenses, purchases, settings, input.months || 3);
+          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(forecast) });
+        } else if (use.name === "get_reminders") {
+          const { sales, purchases, receivablePayments, payablePayments } = await loadOverdueData();
+          const reminders = generateSmartReminders(sales, purchases, receivablePayments, payablePayments);
+          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(reminders) });
         }
       }
 
       response = await callClaude({
         system: systemBlocks,
         messages: [...messages, { role: "assistant", content: response.content }, { role: "user", content: toolResults }],
-        tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL],
+        tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
         maxTokens: 400,
       });
     }

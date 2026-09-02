@@ -193,12 +193,15 @@ from either statement.
 
 ## 7. AI Assistant
 
-Owner/Manager only (same trust boundary as Reports/Profitability). Three
+Owner/Manager only (same trust boundary as Reports/Profitability). Five
 things, all built around one idea: **the model never becomes a second
 source of truth for your numbers or a second way to write to the ledger —
 it's a UI layer over data that's already correct, and every entry it
 proposes still goes through the same human-confirmed form as everything
-else in this app.**
+else in this app.** In every case below, the model only ever picks *which*
+tool answers the question — the actual numbers come from plain
+TypeScript run server-side against your real Firestore data, never from
+the model itself.
 
 - **Ask questions in plain English** ("how much did I spend on packaging
   last quarter") — the model only picks *which* question is being asked
@@ -209,10 +212,25 @@ else in this app.**
   4500 each, cash" becomes a pre-filled `QuickSaleForm`, not a direct
   write. The AI never has a more direct route to the ledger than a human
   does — it fills the same form you'd fill by hand, and you still hit Save.
+- **Ask about unusual spending** ("anything look off this month?") — calls
+  `lib/aiAnomalyDetection.ts` over the last 12 months of expenses/purchases
+  (category/supplier average + standard deviation), same
+  plain-arithmetic-not-a-model-call approach as the Dashboard's anomaly
+  flagging below, just reachable conversationally and phrased by the model.
+- **Ask about cash flow** ("what's my cash flow looking like the next few
+  months?") — calls `lib/aiCashFlowPrediction.ts`, which projects forward
+  from your trailing 12-month average revenue/expenses; a real trend
+  extrapolation, not a model guess.
+- **Ask what needs following up** ("what's overdue?") — calls
+  `lib/aiSmartReminders.ts` against every open receivable/payable
+  (unbounded on purpose — an invoice from eight months ago is still
+  overdue today), the same data `/api/aging/report` already reads in full.
 - **Anomaly flagging** on the Dashboard (`lib/anomaly.ts`) — a one-off
   expense or purchase noticeably higher than your own recent median for
   that category/product. Deliberately plain arithmetic, not a model call:
-  advisory only, nothing here edits or blocks anything.
+  advisory only, nothing here edits or blocks anything. (A separate,
+  simpler check from the conversational one above — this one runs
+  unconditionally on every Dashboard load, no chat turn needed.)
 
 **Setup**: alongside the Firebase web config, you'll need
 `DEEPSEEK_API_KEY` (platform.deepseek.com → API Keys) and a Firebase Admin
