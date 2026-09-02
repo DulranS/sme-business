@@ -289,8 +289,20 @@ export async function POST(req: Request) {
 
       for (const use of toolUses) {
         if (use.name === "run_report") {
-          const input = use.input as { metric: ReportMetric; startDate: string; endDate: string; category?: string; productName?: string; supplier?: string };
-          if (!ledgerData || ledgerData.startDate !== input.startDate || ledgerData.endDate !== input.endDate) {
+          const input = use.input as { metric: ReportMetric; startDate?: string; endDate?: string; category?: string; productName?: string; supplier?: string };
+          // startDate/endDate are marked "required" in the tool schema, but
+          // that's only a hint to the model — DeepSeek (or any model) can
+          // still omit one, and an undefined value passed straight into
+          // .where() throws a hard Firestore error ("Value for argument
+          // \"value\" is not a valid query constraint") before the request
+          // ever reaches runReport. Fall back to a sensible bounded window
+          // instead of crashing the whole turn over a malformed tool call.
+          const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+          const oneYearAgo = new Date();
+          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+          const safeStartDate = input.startDate && dateRe.test(input.startDate) ? input.startDate : oneYearAgo.toISOString().slice(0, 10);
+          const safeEndDate = input.endDate && dateRe.test(input.endDate) ? input.endDate : today;
+          if (!ledgerData || ledgerData.startDate !== safeStartDate || ledgerData.endDate !== safeEndDate) {
             // Pushed down as Firestore range queries on the date field instead
             // of `.get()`-ing the whole collection: expenses/purchases/sales
             // grow without bound over a business's lifetime, but a report
@@ -303,29 +315,29 @@ export async function POST(req: Request) {
             const [expensesSnap, purchasesSnap, salesSnap] = await Promise.all([
               db
                 .collection(`users/${businessId}/expenses`)
-                .where("startDate", ">=", input.startDate)
-                .where("startDate", "<=", input.endDate)
+                .where("startDate", ">=", safeStartDate)
+                .where("startDate", "<=", safeEndDate)
                 .get(),
               db
                 .collection(`users/${businessId}/purchases`)
-                .where("date", ">=", input.startDate)
-                .where("date", "<=", input.endDate)
+                .where("date", ">=", safeStartDate)
+                .where("date", "<=", safeEndDate)
                 .get(),
               db
                 .collection(`users/${businessId}/sales`)
-                .where("date", ">=", input.startDate)
-                .where("date", "<=", input.endDate)
+                .where("date", ">=", safeStartDate)
+                .where("date", "<=", safeEndDate)
                 .get(),
             ]);
             ledgerData = {
-              startDate: input.startDate,
-              endDate: input.endDate,
+              startDate: safeStartDate,
+              endDate: safeEndDate,
               expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense),
               purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
               sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
             };
           }
-          const result = runReport({ ...input, productNameById }, ledgerData, settings.currency);
+          const result = runReport({ ...input, startDate: safeStartDate, endDate: safeEndDate, productNameById }, ledgerData, settings.currency);
           toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(result) });
         } else if (use.name === "propose_entries") {
           const input = use.input as { entries: Record<string, unknown>[] };
