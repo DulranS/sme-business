@@ -291,7 +291,7 @@ export async function POST(req: Request) {
       id: randomUUID(),
       role: "assistant",
       text: reply,
-      proposals: proposals.length ? proposals : undefined,
+      ...(proposals.length ? { proposals } : {}),
       createdAt: Date.now() + 1,
     };
     await appendMessage(db, businessId, body.sessionId, userMessage);
