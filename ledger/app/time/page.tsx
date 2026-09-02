@@ -130,7 +130,7 @@ export default function TimePage() {
               setBusy(false);
             }
           }}
-          className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end"
         >
           <Field className="sm:col-span-2 lg:col-span-1">
             <Label>Job / customer</Label>

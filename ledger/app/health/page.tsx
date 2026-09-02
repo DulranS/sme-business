@@ -114,7 +114,7 @@ export default function FinancialHealthPage() {
       </div>
 
       <div className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Efficiency — cash conversion cycle</div>
-      <div className="grid sm:grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat label="Days sales outstanding" value={daysStr(h.daysSalesOutstanding)} sub="Avg. time to collect a sale" />
         <Stat label="Days inventory outstanding" value={daysStr(h.daysInventoryOutstanding)} sub="Avg. time stock sits before selling" />
         <Stat label="Days payable outstanding" value={daysStr(h.daysPayableOutstanding)} sub="Avg. time taken to pay suppliers" />

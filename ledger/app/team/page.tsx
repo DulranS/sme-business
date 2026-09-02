@@ -46,14 +46,17 @@ export default function TeamPage() {
     <>
       <PageHeader title="Your Team" action={<Button onClick={() => setModalOpen(true)}>+ Invite someone</Button>} />
 
-      <div className="grid sm:grid-cols-3 gap-3 mb-6">
-        {(["owner", "manager", "staff"] as Role[]).map((r) => (
-          <Card key={r}>
-            <div className="text-sm font-medium">{roleLabel(r)}</div>
-            <div className="text-xs text-muted mt-1">{ROLE_DESCRIPTIONS[r]}</div>
-          </Card>
-        ))}
-      </div>
+      <Card className="mb-6">
+        <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">What each role can do</div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {(["owner", "manager", "staff"] as Role[]).map((r) => (
+            <div key={r}>
+              <div className="text-sm font-medium">{roleLabel(r)}</div>
+              <div className="text-xs text-muted mt-1">{ROLE_DESCRIPTIONS[r]}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       {activeMembers.length === 0 ? (
         <EmptyState title="Just you so far" body="Invite a manager or staff member to give them their own login." />
