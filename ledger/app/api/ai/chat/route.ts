@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { requireAiContext, loadBusinessContext, loadMemoryNotes, loadRecentMessages, ensureSession, addMemoryNote, appendMessage, AiAuthError, type CompactProduct } from "@/lib/firebaseAdmin";
+import type { QuerySnapshot } from "firebase-admin/firestore";
 import { callClaude, extractToolUses, extractText, AnthropicApiError, type AnthropicTool, type AnthropicTextBlock, type AnthropicMessage } from "@/lib/anthropic";
 import { formatProductCatalogBlock, formatExpenseCategoriesBlock, formatMemoryBlock, ASSISTANT_PERSONA } from "@/lib/aiPrompts";
 import { runReport, type ReportMetric } from "@/lib/aiReport";
@@ -250,7 +251,18 @@ export async function POST(req: Request) {
         const twelveMonthsAgo = new Date();
         twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
         const since = twelveMonthsAgo.toISOString().slice(0, 10);
-        const [expensesSnap, purchasesSnap, salesSnap] = await Promise.all([
+        // The explicit tuple annotation here (and on the two other
+        // Promise.all destructures below) isn't decorative — without it,
+        // TypeScript's control-flow analysis of the `let ledgerData` /
+        // `let recentOperationalData` / `let overdueData` variables across
+        // this `for` loop's iterations gets tangled up with inferring
+        // these destructured elements' types from Promise.all, and it
+        // gives up with "'expensesSnap' implicitly has type 'any' because
+        // it does not have a type annotation and is referenced directly
+        // or indirectly in its own initializer" (TS7022), which then
+        // cascades into "Parameter 'd' implicitly has an 'any' type"
+        // (TS7006) everywhere `.docs.map((d) => ...)` is used below.
+        const [expensesSnap, purchasesSnap, salesSnap]: [QuerySnapshot, QuerySnapshot, QuerySnapshot] = await Promise.all([
           db.collection(`users/${businessId}/expenses`).where("startDate", ">=", since).get(),
           db.collection(`users/${businessId}/purchases`).where("date", ">=", since).get(),
           db.collection(`users/${businessId}/sales`).where("date", ">=", since).get(),
@@ -272,7 +284,7 @@ export async function POST(req: Request) {
       let overdueData: { sales: Sale[]; purchases: Purchase[]; receivablePayments: ReceivablePayment[]; payablePayments: PayablePayment[] } | null = null;
       async function loadOverdueData() {
         if (overdueData) return overdueData;
-        const [salesSnap, purchasesSnap, receivablePaymentsSnap, payablePaymentsSnap] = await Promise.all([
+        const [salesSnap, purchasesSnap, receivablePaymentsSnap, payablePaymentsSnap]: [QuerySnapshot, QuerySnapshot, QuerySnapshot, QuerySnapshot] = await Promise.all([
           db.collection(`users/${businessId}/sales`).get(),
           db.collection(`users/${businessId}/purchases`).get(),
           db.collection(`users/${businessId}/receivablePayments`).get(),
@@ -312,7 +324,7 @@ export async function POST(req: Request) {
             // means a "sales this month" question costs a month of reads, not
             // the business's entire sales history, no matter how many years
             // of data have piled up.
-            const [expensesSnap, purchasesSnap, salesSnap] = await Promise.all([
+            const [expensesSnap, purchasesSnap, salesSnap]: [QuerySnapshot, QuerySnapshot, QuerySnapshot] = await Promise.all([
               db
                 .collection(`users/${businessId}/expenses`)
                 .where("startDate", ">=", safeStartDate)
