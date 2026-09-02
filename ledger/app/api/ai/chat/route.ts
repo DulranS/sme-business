@@ -7,14 +7,12 @@ import {
   ensureSession,
   appendMessage,
   addMemoryNote,
-  AiAuthError,
   type CompactProduct,
 } from "@/lib/firebaseAdmin";
 import {
   callClaude,
   extractToolUses,
   extractText,
-  AnthropicApiError,
   type AnthropicMessage,
   type AnthropicTool,
   type AnthropicTextBlock,
@@ -22,6 +20,7 @@ import {
 import { ASSISTANT_PERSONA, formatProductCatalogBlock, formatExpenseCategoriesBlock, formatMemoryBlock } from "@/lib/aiPrompts";
 import { runReport, type ReportMetric } from "@/lib/aiReport";
 import { bestMatch } from "@/lib/aiMatch";
+import { aiErrorResponse } from "@/lib/apiError";
 import type { AiChatMessage, AiChatRequest, AiChatResponse, ProposedEntry } from "@/lib/aiTypes";
 import type { Expense, Purchase, Sale } from "@/lib/types";
 
@@ -164,147 +163,143 @@ function normalizeProposedEntry(raw: Record<string, unknown>, products: CompactP
 }
 
 export async function POST(req: Request) {
-  let ctx;
+  // Everything below — including the Firebase Admin init inside
+  // requireAiContext, which throws a plain Error (not AiAuthError) if the
+  // server's env vars are missing, and the second/follow-up callClaude
+  // call after a tool_use turn, which previously had no try/catch at
+  // all — is now covered by one handler so no failure mode reaches the
+  // client as an opaque platform 500/502 with no message.
   try {
-    ctx = await requireAiContext(req);
-  } catch (err) {
-    if (err instanceof AiAuthError) return Response.json({ error: err.message }, { status: err.status });
-    throw err;
-  }
+    const ctx = await requireAiContext(req);
+    const body = (await req.json()) as AiChatRequest;
+    const message = (body.message ?? "").trim();
+    if (!message) return Response.json({ error: "Message is empty." }, { status: 400 });
+    if (!body.sessionId) return Response.json({ error: "sessionId is required." }, { status: 400 });
 
-  const body = (await req.json()) as AiChatRequest;
-  const message = (body.message ?? "").trim();
-  if (!message) return Response.json({ error: "Message is empty." }, { status: 400 });
-  if (!body.sessionId) return Response.json({ error: "sessionId is required." }, { status: 400 });
+    const { db, businessId, uid, memberName } = ctx;
 
-  const { db, businessId, uid, memberName } = ctx;
+    const [{ settings, products }, memoryNotes, recentMessages] = await Promise.all([
+      loadBusinessContext(db, businessId),
+      loadMemoryNotes(db, businessId),
+      loadRecentMessages(db, businessId, body.sessionId),
+    ]);
 
-  const [{ settings, products }, memoryNotes, recentMessages] = await Promise.all([
-    loadBusinessContext(db, businessId),
-    loadMemoryNotes(db, businessId),
-    loadRecentMessages(db, businessId, body.sessionId),
-  ]);
+    await ensureSession(db, businessId, body.sessionId, uid, memberName, message);
 
-  await ensureSession(db, businessId, body.sessionId, uid, memberName, message);
+    const today = new Date().toISOString().slice(0, 10);
+    const systemBlocks: AnthropicTextBlock[] = [
+      { type: "text", text: ASSISTANT_PERSONA },
+      {
+        type: "text",
+        text: `Today's date: ${today}\nBusiness currency: ${settings.currency}\n\nProduct/service catalog:\n${formatProductCatalogBlock(products)}\n\nExpense categories: ${formatExpenseCategoriesBlock()}\n\nThings you've learned about this business:\n${formatMemoryBlock(memoryNotes)}`,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
 
-  const today = new Date().toISOString().slice(0, 10);
-  const systemBlocks: AnthropicTextBlock[] = [
-    { type: "text", text: ASSISTANT_PERSONA },
-    {
-      type: "text",
-      text: `Today's date: ${today}\nBusiness currency: ${settings.currency}\n\nProduct/service catalog:\n${formatProductCatalogBlock(products)}\n\nExpense categories: ${formatExpenseCategoriesBlock()}\n\nThings you've learned about this business:\n${formatMemoryBlock(memoryNotes)}`,
-      cache_control: { type: "ephemeral" },
-    },
-  ];
+    const messages: AnthropicMessage[] = [...toAnthropicMessages(recentMessages), { role: "user", content: message }];
 
-  const messages: AnthropicMessage[] = [...toAnthropicMessages(recentMessages), { role: "user", content: message }];
-
-  let response;
-  try {
-    response = await callClaude({
+    let response = await callClaude({
       system: systemBlocks,
       messages,
       tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL],
       maxTokens: 1200,
     });
-  } catch (err) {
-    if (err instanceof AnthropicApiError) return Response.json({ error: err.message }, { status: 502 });
-    throw err;
-  }
 
-  let proposals: ProposedEntry[] = [];
-  let rememberedNote: string | undefined;
+    let proposals: ProposedEntry[] = [];
+    let rememberedNote: string | undefined;
 
-  if (response.stop_reason === "tool_use") {
-    const toolUses = extractToolUses(response);
-    const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
+    if (response.stop_reason === "tool_use") {
+      const toolUses = extractToolUses(response);
+      const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
 
-    // Ledger data for run_report is only fetched when actually needed —
-    // most turns (a question that doesn't need a number, or a data-entry
-    // prompt) never touch these three collections at all.
-    let ledgerData: { startDate: string; endDate: string; expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
-    const productNameById = new Map(products.map((p) => [p.id, p.name]));
+      // Ledger data for run_report is only fetched when actually needed —
+      // most turns (a question that doesn't need a number, or a data-entry
+      // prompt) never touch these three collections at all.
+      let ledgerData: { startDate: string; endDate: string; expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
+      const productNameById = new Map(products.map((p) => [p.id, p.name]));
 
-    for (const use of toolUses) {
-      if (use.name === "run_report") {
-        const input = use.input as { metric: ReportMetric; startDate: string; endDate: string; category?: string; productName?: string; supplier?: string };
-        if (!ledgerData || ledgerData.startDate !== input.startDate || ledgerData.endDate !== input.endDate) {
-          // Pushed down as Firestore range queries on the date field instead
-          // of `.get()`-ing the whole collection: expenses/purchases/sales
-          // grow without bound over a business's lifetime, but a report
-          // question only ever needs rows inside [startDate, endDate]. This
-          // is the same window aiReport.ts would filter down to anyway — the
-          // model already gives us the range — so pushing it into the query
-          // means a "sales this month" question costs a month of reads, not
-          // the business's entire sales history, no matter how many years
-          // of data have piled up.
-          const [expensesSnap, purchasesSnap, salesSnap] = await Promise.all([
-            db
-              .collection(`users/${businessId}/expenses`)
-              .where("startDate", ">=", input.startDate)
-              .where("startDate", "<=", input.endDate)
-              .get(),
-            db
-              .collection(`users/${businessId}/purchases`)
-              .where("date", ">=", input.startDate)
-              .where("date", "<=", input.endDate)
-              .get(),
-            db
-              .collection(`users/${businessId}/sales`)
-              .where("date", ">=", input.startDate)
-              .where("date", "<=", input.endDate)
-              .get(),
-          ]);
-          ledgerData = {
-            startDate: input.startDate,
-            endDate: input.endDate,
-            expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense),
-            purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
-            sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
-          };
+      for (const use of toolUses) {
+        if (use.name === "run_report") {
+          const input = use.input as { metric: ReportMetric; startDate: string; endDate: string; category?: string; productName?: string; supplier?: string };
+          if (!ledgerData || ledgerData.startDate !== input.startDate || ledgerData.endDate !== input.endDate) {
+            // Pushed down as Firestore range queries on the date field instead
+            // of `.get()`-ing the whole collection: expenses/purchases/sales
+            // grow without bound over a business's lifetime, but a report
+            // question only ever needs rows inside [startDate, endDate]. This
+            // is the same window aiReport.ts would filter down to anyway — the
+            // model already gives us the range — so pushing it into the query
+            // means a "sales this month" question costs a month of reads, not
+            // the business's entire sales history, no matter how many years
+            // of data have piled up.
+            const [expensesSnap, purchasesSnap, salesSnap] = await Promise.all([
+              db
+                .collection(`users/${businessId}/expenses`)
+                .where("startDate", ">=", input.startDate)
+                .where("startDate", "<=", input.endDate)
+                .get(),
+              db
+                .collection(`users/${businessId}/purchases`)
+                .where("date", ">=", input.startDate)
+                .where("date", "<=", input.endDate)
+                .get(),
+              db
+                .collection(`users/${businessId}/sales`)
+                .where("date", ">=", input.startDate)
+                .where("date", "<=", input.endDate)
+                .get(),
+            ]);
+            ledgerData = {
+              startDate: input.startDate,
+              endDate: input.endDate,
+              expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense),
+              purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
+              sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
+            };
+          }
+          const result = runReport({ ...input, productNameById }, ledgerData, settings.currency);
+          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(result) });
+        } else if (use.name === "propose_entries") {
+          const input = use.input as { entries: Record<string, unknown>[] };
+          const normalized = (input.entries ?? []).map((e) => normalizeProposedEntry(e, products)).filter((e): e is ProposedEntry => e !== null);
+          proposals = proposals.concat(normalized);
+          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: `Proposed ${normalized.length} entr${normalized.length === 1 ? "y" : "ies"} for the user to review.` });
+        } else if (use.name === "remember_note") {
+          const input = use.input as { note: string };
+          rememberedNote = input.note;
+          await addMemoryNote(db, businessId, input.note);
+          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: "Saved." });
         }
-        const result = runReport({ ...input, productNameById }, ledgerData, settings.currency);
-        toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(result) });
-      } else if (use.name === "propose_entries") {
-        const input = use.input as { entries: Record<string, unknown>[] };
-        const normalized = (input.entries ?? []).map((e) => normalizeProposedEntry(e, products)).filter((e): e is ProposedEntry => e !== null);
-        proposals = proposals.concat(normalized);
-        toolResults.push({ type: "tool_result", tool_use_id: use.id, content: `Proposed ${normalized.length} entr${normalized.length === 1 ? "y" : "ies"} for the user to review.` });
-      } else if (use.name === "remember_note") {
-        const input = use.input as { note: string };
-        rememberedNote = input.note;
-        await addMemoryNote(db, businessId, input.note);
-        toolResults.push({ type: "tool_result", tool_use_id: use.id, content: "Saved." });
       }
+
+      response = await callClaude({
+        system: systemBlocks,
+        messages: [...messages, { role: "assistant", content: response.content }, { role: "user", content: toolResults }],
+        tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL],
+        maxTokens: 500,
+      });
     }
 
-    const followUp = await callClaude({
-      system: systemBlocks,
-      messages: [...messages, { role: "assistant", content: response.content }, { role: "user", content: toolResults }],
-      tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL],
-      maxTokens: 500,
-    });
-    response = followUp;
+    const reply = extractText(response) || (proposals.length ? "Here's what I've got — take a look below." : "Done.");
+
+    const userMessage: AiChatMessage = {
+      id: randomUUID(),
+      role: "user",
+      text: message,
+      createdAt: Date.now(),
+    };
+    const assistantMessage: AiChatMessage = {
+      id: randomUUID(),
+      role: "assistant",
+      text: reply,
+      proposals: proposals.length ? proposals : undefined,
+      createdAt: Date.now() + 1,
+    };
+    await appendMessage(db, businessId, body.sessionId, userMessage);
+    await appendMessage(db, businessId, body.sessionId, assistantMessage);
+
+    const payload: AiChatResponse = { reply, proposals, rememberedNote };
+    return Response.json(payload);
+  } catch (err) {
+    return aiErrorResponse(err, "api/ai/chat");
   }
-
-  const reply = extractText(response) || (proposals.length ? "Here's what I've got — take a look below." : "Done.");
-
-  const userMessage: AiChatMessage = {
-    id: randomUUID(),
-    role: "user",
-    text: message,
-    createdAt: Date.now(),
-  };
-  const assistantMessage: AiChatMessage = {
-    id: randomUUID(),
-    role: "assistant",
-    text: reply,
-    proposals: proposals.length ? proposals : undefined,
-    createdAt: Date.now() + 1,
-  };
-  await appendMessage(db, businessId, body.sessionId, userMessage);
-  await appendMessage(db, businessId, body.sessionId, assistantMessage);
-
-  const payload: AiChatResponse = { reply, proposals, rememberedNote };
-  return Response.json(payload);
 }

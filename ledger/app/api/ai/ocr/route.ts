@@ -3,9 +3,25 @@ import { requireAiContext, loadBusinessContext, AiAuthError } from "@/lib/fireba
 import { callClaude, extractToolUses, AnthropicApiError, type AnthropicTool, type AnthropicTextBlock } from "@/lib/anthropic";
 import { formatProductCatalogBlock, formatExpenseCategoriesBlock } from "@/lib/aiPrompts";
 import { bestMatch } from "@/lib/aiMatch";
-import type { AiOcrRequest, AiOcrResponse, ProposedEntry } from "@/lib/aiTypes";
+import type { ProposedEntry } from "@/lib/aiTypes";
 
 export const runtime = "nodejs";
+
+// Local types for OCR route - not exported globally since OCR is deprecated
+interface AiOcrRequest {
+  imageBase64: string;
+  imageMediaType: string;
+}
+
+type AiOcrDocumentType = "purchase_receipt" | "expense_receipt" | "invoice" | "unknown";
+
+interface AiOcrResponse {
+  documentType: AiOcrDocumentType;
+  vendor?: string;
+  date: string;
+  summary: string;
+  proposals: ProposedEntry[];
+}
 
 const EXTRACT_TOOL: AnthropicTool = {
   name: "extract_receipt",

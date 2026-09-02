@@ -1,4 +1,5 @@
-import { requireAiContext, AiAuthError } from "@/lib/firebaseAdmin";
+import { requireAiContext } from "@/lib/firebaseAdmin";
+import { aiErrorResponse } from "@/lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,6 @@ export async function DELETE(req: Request) {
 
     return Response.json({ ok: true });
   } catch (err) {
-    if (err instanceof AiAuthError) return Response.json({ error: err.message }, { status: err.status });
-    throw err;
+    return aiErrorResponse(err, "api/ai/sessions");
   }
 }
