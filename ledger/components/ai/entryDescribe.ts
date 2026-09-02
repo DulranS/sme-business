@@ -5,7 +5,8 @@ import { formatMoney } from "@/lib/format";
 import type { ProposedEntry } from "@/lib/aiTypes";
 
 export function describeEntry(entry: ProposedEntry, currency: string): string {
-  const money = (n: number) => formatMoney(n, entry.currency ?? currency);
+  const txCurrency = entry.kind === "expense" ? currency : entry.currency ?? currency;
+  const money = (n: number) => formatMoney(n, txCurrency);
   if (entry.kind === "sale") {
     const who = entry.customer ? ` to ${entry.customer}` : "";
     return `${entry.qty} × ${entry.productName} @ ${money(entry.unitPrice)}${who} — ${entry.date}`;
