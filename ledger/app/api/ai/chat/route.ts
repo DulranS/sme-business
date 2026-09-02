@@ -22,14 +22,15 @@ const REPORT_TOOL: AnthropicTool = {
     properties: {
       metric: {
         type: "string",
-        enum: ["expense_total", "expense_by_category", "sale_total", "sale_by_product", "purchase_total", "purchase_by_supplier", "net_cashflow"],
-        description: "expense_total/expense_by_category = one-off bills. sale_total/sale_by_product = revenue. purchase_total/purchase_by_supplier = stock/materials. net_cashflow = revenue minus purchases minus bills.",
+        enum: ["expense_total", "expense_by_category", "sale_total", "sale_by_product", "sale_by_customer", "purchase_total", "purchase_by_supplier", "net_cashflow"],
+        description: "expense_total/expense_by_category = one-off bills. sale_total/sale_by_product/sale_by_customer = revenue. purchase_total/purchase_by_supplier = stock/materials. net_cashflow = revenue minus purchases minus bills.",
       },
       startDate: { type: "string", description: "ISO date yyyy-mm-dd. Compute from user's phrase (e.g. 'last quarter')." },
       endDate: { type: "string", description: "ISO date yyyy-mm-dd." },
       category: { type: "string", description: "Optional expense category filter." },
       productName: { type: "string", description: "Optional product name filter (fuzzy)." },
       supplier: { type: "string", description: "Optional supplier name filter (fuzzy, purchase metrics only)." },
+      customer: { type: "string", description: "Optional customer name filter (fuzzy, sale metrics only)." },
     },
     required: ["metric", "startDate", "endDate"],
   },
@@ -187,7 +188,7 @@ export async function POST(req: Request) {
   // server's env vars are missing, and the second/follow-up callClaude
   // call after a tool_use turn, which previously had no try/catch at
   // all — is now covered by one handler so no failure mode reaches the
-  // client as an opaque platform 500/502 with no message
+  // client as an opaque platform 500/502 with no message.
   try {
     const ctx = await requireAiContext(req);
     const body = (await req.json()) as AiChatRequest;
@@ -301,7 +302,7 @@ export async function POST(req: Request) {
 
       for (const use of toolUses) {
         if (use.name === "run_report") {
-          const input = use.input as { metric: ReportMetric; startDate?: string; endDate?: string; category?: string; productName?: string; supplier?: string };
+          const input = use.input as { metric: ReportMetric; startDate?: string; endDate?: string; category?: string; productName?: string; supplier?: string; customer?: string };
           // startDate/endDate are marked "required" in the tool schema, but
           // that's only a hint to the model — DeepSeek (or any model) can
           // still omit one, and an undefined value passed straight into

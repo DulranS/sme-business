@@ -18,6 +18,7 @@ export type ReportMetric =
   | "expense_by_category"
   | "sale_total"
   | "sale_by_product"
+  | "sale_by_customer"
   | "purchase_total"
   | "purchase_by_supplier"
   | "net_cashflow";
@@ -29,6 +30,7 @@ export interface ReportQuery {
   category?: string;
   productName?: string; // matched case-insensitively/substring against Sale.productId's product name (resolved by caller) or Purchase.supplier
   supplier?: string;
+  customer?: string; // matched case-insensitively/substring against Sale.customer (sale_total/sale_by_customer only)
   productNameById?: Map<string, string>; // productId -> name, so sale/purchase rows can be filtered/labeled by product name
 }
 
@@ -79,13 +81,21 @@ export function runReport(
     }
 
     case "sale_total":
-    case "sale_by_product": {
+    case "sale_by_product":
+    case "sale_by_customer": {
       const rows = data.sales.filter((s) => inRange(s.date, startDate, endDate));
-      const filtered = query.productName
-        ? rows.filter((s) => (query.productNameById?.get(s.productId) ?? "").toLowerCase().includes(query.productName!.toLowerCase()))
-        : rows;
+      const filtered = rows.filter(
+        (s) =>
+          (!query.productName || (query.productNameById?.get(s.productId) ?? "").toLowerCase().includes(query.productName!.toLowerCase())) &&
+          (!query.customer || (s.customer ?? "").toLowerCase().includes(query.customer!.toLowerCase()))
+      );
       const total = filtered.reduce((sum, s) => sum + s.qty * s.unitPrice, 0);
       if (query.metric === "sale_total") return { ...base, total, count: filtered.length };
+      if (query.metric === "sale_by_customer") {
+        const byCustomer = new Map<string, number>();
+        for (const s of filtered) byCustomer.set(s.customer || "Walk-in / unspecified", (byCustomer.get(s.customer || "Walk-in / unspecified") ?? 0) + s.qty * s.unitPrice);
+        return { ...base, total, count: filtered.length, breakdown: topBreakdown(byCustomer) };
+      }
       const byProduct = new Map<string, number>();
       for (const s of filtered) {
         const name = query.productNameById?.get(s.productId) ?? s.productId;
