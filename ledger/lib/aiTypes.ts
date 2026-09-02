@@ -127,3 +127,22 @@ export interface AiChatResponse {
   proposals: ProposedEntry[];
   rememberedNote?: string;
 }
+
+// ---------------------------------------------------------------------------
+// API request/response shapes for app/api/ai/ocr (receipt photo extraction).
+// ---------------------------------------------------------------------------
+
+export interface AiOcrRequest {
+  imageBase64: string;
+  imageMediaType: string;
+}
+
+export type AiOcrDocumentType = "purchase_receipt" | "expense_receipt" | "invoice" | "unknown";
+
+export interface AiOcrResponse {
+  documentType: AiOcrDocumentType;
+  vendor?: string;
+  date: string;
+  summary: string;
+  proposals: ProposedEntry[];
+}
