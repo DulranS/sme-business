@@ -13,6 +13,7 @@ import {
   Legend,
 } from "recharts";
 import { useData } from "@/contexts/DataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useRequireRole } from "@/lib/roleGuard";
 import { forecastRevenue, computeMRR } from "@/lib/calculations";
 import { detectExpenseAnomalies, detectPurchaseAnomalies } from "@/lib/anomaly";
@@ -20,9 +21,11 @@ import { formatMoney, formatMonth, formatNumber, todayIso } from "@/lib/format";
 import { Card, PageHeader, Stat, StatGridSkeleton, Table, TableCardSkeleton, Badge, EmptyState } from "@/components/ui";
 import QuickActionBar from "@/components/QuickActionBar";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
+import BackupNudge from "@/components/BackupNudge";
 
 export default function DashboardPage() {
   const { allowed, loading: guardLoading } = useRequireRole(["owner", "manager"]);
+  const { role } = useAuth();
   const {
     loading,
     products,
@@ -138,6 +141,8 @@ export default function DashboardPage() {
       <PageHeader title="Dashboard" />
 
       <OnboardingChecklist />
+
+      {role === "owner" && <BackupNudge />}
 
       <QuickActionBar />
 

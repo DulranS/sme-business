@@ -50,6 +50,15 @@ export default function ImportExportPage() {
         loans: data.loans,
         settings: data.settings,
       });
+      // Best-effort — if this write fails (e.g. a manager without
+      // manage:settings somehow reaches this owner-only page), the
+      // backup file has already downloaded either way, so don't block
+      // or surface an error over the timestamp itself.
+      try {
+        await data.updateSettings({ lastBackupAt: Date.now() });
+      } catch {
+        // ignore
+      }
     } finally {
       setBackupBusy(false);
     }

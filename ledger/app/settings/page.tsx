@@ -541,6 +541,17 @@ export default function SettingsPage() {
         </form>
       </Card>
       )}
+
+      <Card className="max-w-md">
+        <div className="text-sm font-medium mb-1">Legal</div>
+        <div className="text-xs text-muted mb-3">
+          Privacy policy and terms of service for this business, shown to your team and any
+          invited members.
+        </div>
+        <a href="/legal" target="_blank" rel="noreferrer" className="text-sm text-info hover:underline">
+          View / edit privacy policy &amp; terms →
+        </a>
+      </Card>
     </>
   );
 }

@@ -30,13 +30,22 @@
 // App Check plus a Cloud Function that performs the actual account
 // creation server-side, and have this page call that function instead of
 // touching Firebase Auth directly.
+//
+// The passcode itself is read from NEXT_PUBLIC_ADMIN_PASSCODE (see
+// .env.local.example), not hardcoded here. It still ends up in the
+// client bundle either way — see the paragraph above — so this is about
+// not shipping the same literal string in source control to every
+// customer/reseller of this codebase, and letting each deployment set
+// its own value without touching code. Rotate it by changing the env var
+// and redeploying; it does not need to be, and should not be, the same
+// value across different customers' deployments.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Input, Label } from "@/components/ui";
 import { provisionBusinessOwner } from "@/lib/provisioning";
 
-const PASSCODE = "zigthezag123#";
+const PASSCODE = process.env.NEXT_PUBLIC_ADMIN_PASSCODE ?? "";
 const LOCK_KEY = "admin-provision-lock";
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -86,7 +95,7 @@ export default function NewBusinessAdminPage() {
   function handlePasscodeSubmit(e: FormEvent) {
     e.preventDefault();
     if (isLocked) return;
-    if (passcodeInput === PASSCODE) {
+    if (PASSCODE && passcodeInput === PASSCODE) {
       writeLock({ attempts: 0, lockedUntil: null });
       setLock({ attempts: 0, lockedUntil: null });
       setUnlocked(true);

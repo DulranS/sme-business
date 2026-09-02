@@ -69,7 +69,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // same browser. It must never bounce a signed-out visitor to /login
   // (that's the whole point — it's how accounts get created before anyone
   // can log in) and never bounce a signed-in owner away from it either.
-  const isStandalonePage = isAuthPage || pathname.startsWith("/admin/");
+  const isStandalonePage = isAuthPage || pathname.startsWith("/admin/") || pathname === "/legal";
   const homeForRole = role === "staff" ? "/sales" : "/dashboard";
 
   useEffect(() => {

@@ -349,6 +349,12 @@ export interface Settings {
   // next to the letterhead text on printed quotes/invoices/receipts when
   // set, omitted entirely when blank.
   logoUrl?: string;
+  // Timestamp (Date.now()) of the last time an owner clicked "Download
+  // full backup" on Import/Export. Backup is manual/on-demand — there is
+  // no scheduled export — so this is purely so the Dashboard can show
+  // "last backed up X days ago" (or "never") instead of an owner assuming
+  // a backup exists that was never taken.
+  lastBackupAt?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
