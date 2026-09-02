@@ -15,6 +15,7 @@ import type { Role, Settings, Product } from "./types";
 import type { AiChatMessage, AiChatSession, AiMemoryNote } from "./aiTypes";
 import { AI_MEMORY_MAX_NOTES } from "./aiTypes";
 import { DEFAULT_SETTINGS } from "./types";
+import { cacheGet, cacheSet, cacheDelete, maybeSweep } from "./serverCache";
 
 let app: App | undefined;
 
@@ -121,10 +122,24 @@ export interface CompactProduct {
   type: Product["type"];
 }
 
+// Settings and the active product catalog are read on *every* AI Assistant
+// turn (chat and OCR both call this) but change rarely — a currency
+// setting or a new product gets added maybe a few times a week, not every
+// message. A 30s in-process cache means a burst of messages/receipt scans
+// in one conversation costs one Firestore read of each instead of one per
+// turn, while staying short enough that an edit made mid-session shows up
+// well within the same conversation. See lib/serverCache.ts for why this
+// is a plain in-memory cache rather than a hosted one.
+const BUSINESS_CONTEXT_TTL_MS = 30_000;
+
 export async function loadBusinessContext(
   db: Firestore,
   businessId: string
 ): Promise<{ settings: Settings; products: CompactProduct[] }> {
+  const cacheKey = `businessContext:${businessId}`;
+  const cached = cacheGet<{ settings: Settings; products: CompactProduct[] }>(cacheKey);
+  if (cached) return cached;
+
   const [settingsSnap, productsSnap] = await Promise.all([
     db.doc(`users/${businessId}/meta/settings`).get(),
     db.collection(`users/${businessId}/products`).where("active", "==", true).get(),
@@ -136,7 +151,10 @@ export async function loadBusinessContext(
     return { id: d.id, name: data.name, sku: data.sku, type: data.type };
   });
 
-  return { settings, products };
+  const result = { settings, products };
+  cacheSet(cacheKey, result, BUSINESS_CONTEXT_TTL_MS);
+  maybeSweep();
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,9 +164,24 @@ export async function loadBusinessContext(
 // context block.
 // ---------------------------------------------------------------------------
 
+// Same in-process TTL cache as loadBusinessContext, for the same reason:
+// memory notes are read every chat turn but only ever written by the
+// remember_note tool, which is used sparingly (see aiChat's REMEMBER_TOOL
+// description). Explicitly invalidated in addMemoryNote below rather than
+// left to expire, so a note saved mid-conversation is visible to the very
+// next turn instead of waiting out the TTL.
+const MEMORY_NOTES_TTL_MS = 30_000;
+
 export async function loadMemoryNotes(db: Firestore, businessId: string): Promise<AiMemoryNote[]> {
+  const cacheKey = `memoryNotes:${businessId}`;
+  const cached = cacheGet<AiMemoryNote[]>(cacheKey);
+  if (cached) return cached;
+
   const snap = await db.collection(`users/${businessId}/aiMemory`).orderBy("createdAt", "asc").get();
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AiMemoryNote, "id">) }));
+  const notes = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AiMemoryNote, "id">) }));
+  cacheSet(cacheKey, notes, MEMORY_NOTES_TTL_MS);
+  maybeSweep();
+  return notes;
 }
 
 export async function addMemoryNote(db: Firestore, businessId: string, text: string): Promise<void> {
@@ -162,6 +195,7 @@ export async function addMemoryNote(db: Firestore, businessId: string, text: str
     const excess = snap.docs.slice(0, snap.size - AI_MEMORY_MAX_NOTES);
     await Promise.all(excess.map((d) => d.ref.delete()));
   }
+  cacheDelete(`memoryNotes:${businessId}`);
 }
 
 // ---------------------------------------------------------------------------

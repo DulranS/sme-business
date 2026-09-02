@@ -229,24 +229,47 @@ export async function POST(req: Request) {
     // Ledger data for run_report is only fetched when actually needed —
     // most turns (a question that doesn't need a number, or a data-entry
     // prompt) never touch these three collections at all.
-    let ledgerData: { expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
+    let ledgerData: { startDate: string; endDate: string; expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
     const productNameById = new Map(products.map((p) => [p.id, p.name]));
 
     for (const use of toolUses) {
       if (use.name === "run_report") {
-        if (!ledgerData) {
+        const input = use.input as { metric: ReportMetric; startDate: string; endDate: string; category?: string; productName?: string; supplier?: string };
+        if (!ledgerData || ledgerData.startDate !== input.startDate || ledgerData.endDate !== input.endDate) {
+          // Pushed down as Firestore range queries on the date field instead
+          // of `.get()`-ing the whole collection: expenses/purchases/sales
+          // grow without bound over a business's lifetime, but a report
+          // question only ever needs rows inside [startDate, endDate]. This
+          // is the same window aiReport.ts would filter down to anyway — the
+          // model already gives us the range — so pushing it into the query
+          // means a "sales this month" question costs a month of reads, not
+          // the business's entire sales history, no matter how many years
+          // of data have piled up.
           const [expensesSnap, purchasesSnap, salesSnap] = await Promise.all([
-            db.collection(`users/${businessId}/expenses`).get(),
-            db.collection(`users/${businessId}/purchases`).get(),
-            db.collection(`users/${businessId}/sales`).get(),
+            db
+              .collection(`users/${businessId}/expenses`)
+              .where("startDate", ">=", input.startDate)
+              .where("startDate", "<=", input.endDate)
+              .get(),
+            db
+              .collection(`users/${businessId}/purchases`)
+              .where("date", ">=", input.startDate)
+              .where("date", "<=", input.endDate)
+              .get(),
+            db
+              .collection(`users/${businessId}/sales`)
+              .where("date", ">=", input.startDate)
+              .where("date", "<=", input.endDate)
+              .get(),
           ]);
           ledgerData = {
+            startDate: input.startDate,
+            endDate: input.endDate,
             expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense),
             purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
             sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
           };
         }
-        const input = use.input as { metric: ReportMetric; startDate: string; endDate: string; category?: string; productName?: string; supplier?: string };
         const result = runReport({ ...input, productNameById }, ledgerData, settings.currency);
         toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(result) });
       } else if (use.name === "propose_entries") {
