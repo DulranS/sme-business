@@ -142,21 +142,35 @@ export function Modal({
 
   // Lock background scroll while a modal is open (otherwise the page behind
   // a bottom-sheet keeps scrolling on touch devices — a common source of
-  // "the app feels janky" reports) and close on Escape for keyboard/desktop
-  // users, matching how every native dialog behaves.
+  // "the app feels janky" reports) and move focus into the dialog once,
+  // when it opens.
+  //
+  // Deliberately keyed on `open` alone, not `onClose`. onClose is usually
+  // an inline arrow function from the parent, so it gets a new reference
+  // on every parent re-render — including every keystroke in a form
+  // inside this modal. If this effect (and its dialogRef.current.focus()
+  // call) depended on onClose too, it would re-run on every keystroke and
+  // steal focus back from whatever input the user was typing into after
+  // each character. Splitting the Escape-key listener into its own effect
+  // below keeps that handler correctly wired to the latest onClose
+  // without the focus effect re-firing on every render.
   useEffect(() => {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKeyDown);
-    // Move focus into the dialog so screen readers and keyboard users land
-    // somewhere sensible instead of staying on whatever triggered it.
-    dialogRef.current?.focus();
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
