@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Modal, Button } from "@/components/ui";
 import { useAiAssistant } from "@/contexts/AiAssistantContext";
 import { ProposedEntryCard } from "./ProposedEntryCard";
@@ -55,6 +56,15 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            // Same Enter-to-send / Shift+Enter-for-newline behavior as the
+            // full /assistant page's composer — the assistant should feel
+            // like the same assistant no matter which door you came in.
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
           placeholder="e.g. Sold 3 bags of cement to Kamal for 4500 each, cash"
           rows={3}
           className="w-full bg-panel2 border border-line rounded-md px-3 py-2 text-base sm:text-sm text-fg placeholder:text-muted focus:outline-none focus:border-amber-dim resize-none"
@@ -73,6 +83,21 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
               <ProposedEntryCard key={p.id} entry={p} />
             ))}
           </div>
+        )}
+
+        {currentSessionId && (
+          // The modal is a fast entry point, not a separate conversation —
+          // this hands off to /assistant on the *same* session (currentSessionId
+          // lives in AiAssistantContext, above this modal, so the full page
+          // picks it straight up) instead of the exchange just vanishing
+          // when the modal closes.
+          <Link
+            href="/assistant"
+            onClick={handleClose}
+            className="block text-center text-xs text-muted hover:text-fg pt-1"
+          >
+            Continue this conversation in the full assistant →
+          </Link>
         )}
       </div>
     </Modal>
