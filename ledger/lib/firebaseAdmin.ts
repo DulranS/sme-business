@@ -46,8 +46,27 @@ function getAdminApp(): App {
   return app;
 }
 
+let adminDb: Firestore | undefined;
+
+// Mirrors lib/firebase.ts's client-side `ignoreUndefinedProperties: true` —
+// see the comment there for why. Every optional field on a ProposedEntry
+// (matchedProductId, customer, supplier, paymentMethod, notes...) is a
+// literal `undefined` whenever the model doesn't fill it in — routine, not
+// an edge case: a proposed sale/purchase for a product name that didn't
+// match anything in the catalog always comes through with
+// matchedProductId undefined. The Admin SDK rejects that outright by
+// default ("Cannot use \"undefined\" as a Firestore value"), which crashed
+// the whole chat turn on the appendMessage write in app/api/ai/chat/route.ts
+// instead of just... not writing that one field. The client SDK's init
+// already had this covered; the Admin SDK instance the AI routes use never
+// did. `settings()` can only be called once per Firestore instance and
+// before any other method runs on it, hence the module-level cache below
+// instead of calling it fresh on every getAdminDb() invocation.
 export function getAdminDb(): Firestore {
-  return getFirestore(getAdminApp());
+  if (adminDb) return adminDb;
+  adminDb = getFirestore(getAdminApp());
+  adminDb.settings({ ignoreUndefinedProperties: true });
+  return adminDb;
 }
 
 // ---------------------------------------------------------------------------
