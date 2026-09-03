@@ -60,7 +60,14 @@ export type AnthropicContentBlock =
   | AnthropicTextBlock
   | AnthropicImageBlock
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string };
+  | { type: "tool_result"; tool_use_id: string; content: string }
+  // DeepSeek's Anthropic-compatible endpoint returns chain-of-thought as a
+  // content[type=thinking] block when thinking mode is on. We always send
+  // thinking: { type: "disabled" } below, so this shouldn't appear in
+  // practice — kept in the union (and deliberately ignored by extractText/
+  // extractToolUses, which only match "text"/"tool_use") purely so a block
+  // of this shape can't silently widen into something it isn't.
+  | { type: "thinking"; thinking: string };
 
 export interface AnthropicMessage {
   role: "user" | "assistant";
@@ -117,6 +124,25 @@ export async function callClaude(params: {
       max_tokens: params.maxTokens ?? 1024,
       system: params.system,
       messages: params.messages,
+      // DeepSeek's Anthropic-compatible endpoint defaults V4 models to
+      // thinking mode ON — undocumented in the shape of this request, but
+      // confirmed by DeepSeek's own docs (chain-of-thought is returned as a
+      // content[type=thinking] block, and `max_tokens` caps *that plus* the
+      // final answer/tool_use as one shared budget). At maxTokens 400-800
+      // for this assistant's short, bounded turns, the model was burning
+      // the entire budget on hidden reasoning before it ever emitted the
+      // tool_use call or reply text — response.content came back with no
+      // "text" or "tool_use" block at all, which read to the rest of this
+      // file as an empty turn and fell through to the "Done." fallback in
+      // app/api/ai/chat/route.ts. No error, no proposal, nothing logged.
+      // Every call this assistant makes is exactly the bounded/mechanical
+      // kind DeepSeek's own guidance says V4's tool-calling works fine
+      // without thinking for, so disable it outright rather than just
+      // raising max_tokens and hoping the budget is enough. This field is
+      // part of the standard Anthropic Messages request shape (not a
+      // DeepSeek-only extension), so it stays correct if this ever swaps
+      // back to Anthropic's own API per the note above AI_MODEL.
+      thinking: { type: "disabled" },
       ...(params.tools ? { tools: params.tools } : {}),
     }),
   });
