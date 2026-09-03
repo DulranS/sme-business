@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 // request — a value that can never exist at build time. Without this, Next
 // tries to statically pre-render the GET handler and throws
 // DYNAMIC_SERVER_USAGE ("couldn't be rendered statically because it used
-// `request.headers`") instead of just treating it as dynamic.
+// `request.headers`") instead of just treating it as dynamic
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
