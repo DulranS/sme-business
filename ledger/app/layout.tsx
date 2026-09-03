@@ -5,6 +5,7 @@ import { DataProvider } from "@/contexts/DataContext";
 import { NotificationsProvider } from "@/contexts/NotificationsContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { AiAssistantProvider } from "@/contexts/AiAssistantContext";
+import { AssistantModalProvider } from "@/contexts/AssistantModalContext";
 import AppShell from "@/components/AppShell";
 
 // Font stacks are plain CSS custom properties defined in globals.css
@@ -44,7 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <NotificationsProvider>
               <ToastProvider>
                 <AiAssistantProvider>
-                  <AppShell>{children}</AppShell>
+                  <AssistantModalProvider>
+                    <AppShell>{children}</AppShell>
+                  </AssistantModalProvider>
                 </AiAssistantProvider>
               </ToastProvider>
             </NotificationsProvider>

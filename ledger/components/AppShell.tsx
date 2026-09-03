@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAssistantModal } from "@/contexts/AssistantModalContext";
 import { roleLabel } from "@/lib/permissions";
 import type { Role } from "@/lib/types";
 import { Skeleton } from "@/components/ui";
 import OfflineBanner from "@/components/OfflineBanner";
+import QuickAiEntryModal from "@/components/ai/QuickAiEntryModal";
 
 const NAV: { href: string; label: string; icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; roles: Role[]; group: string }[] = [
   { href: "/dashboard", label: "Home", icon: GridIcon, roles: ["owner", "manager"], group: "Overview" },
@@ -60,6 +62,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, role, memberName, memberActive, loading, signOut } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
+  const { open: assistantOpen, openAssistant, closeAssistant } = useAssistantModal();
 
   const isAuthPage = pathname === "/login" || pathname === "/join";
   // The admin-only account-provisioning tool is deliberately outside the
@@ -142,7 +145,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const restNav = visibleNav.filter((item) => !primaryHrefs.includes(item.href));
   const restHasActive = restNav.some((item) => pathname.startsWith(item.href));
 
+  const showAssistantFab = (role === "owner" || role === "manager") && pathname !== "/assistant";
+
   return (
+    <>
     <div className="min-h-screen flex">
       {/* Desktop sidebar */}
       <aside className="hidden sm:flex w-56 shrink-0 border-r border-line flex-col justify-between h-screen sticky top-0">
@@ -163,6 +169,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <div className="space-y-0.5">
                     {items.map((item) => {
                       const active = pathname.startsWith(item.href);
+                      const isAssistant = item.href === "/assistant";
                       const Icon = item.icon;
                       return (
                         <Link
@@ -172,10 +179,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                             "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors border-l-2",
                             active
                               ? "bg-panel2 text-fg border-amber font-medium"
+                              : isAssistant
+                              ? "text-amber-soft font-medium border-transparent hover:bg-panel2"
                               : "text-muted border-transparent hover:text-fg hover:bg-panel2"
                           )}
                         >
-                          <Icon className="w-4 h-4 shrink-0" />
+                          <Icon className={clsx("w-4 h-4 shrink-0", isAssistant && !active && "text-amber-soft")} />
                           {item.label}
                         </Link>
                       );
@@ -288,6 +297,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <div className="grid grid-cols-3 gap-3">
                       {items.map((item) => {
                         const active = pathname.startsWith(item.href);
+                        const isAssistant = item.href === "/assistant";
                         const Icon = item.icon;
                         return (
                           <Link
@@ -297,6 +307,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                               "flex flex-col items-center justify-center gap-1.5 rounded-lg border py-4 px-2 text-xs text-center min-h-[76px]",
                               active
                                 ? "border-amber-dim bg-panel2 text-fg font-medium"
+                                : isAssistant
+                                ? "border-amber-soft/60 text-amber-soft font-medium hover:bg-panel2"
                                 : "border-line text-muted hover:bg-panel2 hover:text-fg"
                             )}
                           >
@@ -328,6 +340,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
     </div>
+
+    {/* One floating way to reach the assistant from anywhere in the app —
+        not a different door on every page. Same shared modal that
+        QuickActionBar's "Tell me what happened" button opens (see
+        AssistantModalContext), so there's exactly one AI entry
+        experience, just multiple ways to reach it. Hidden on the
+        dedicated /assistant page itself, since that page already is the
+        assistant. */}
+    {showAssistantFab && (
+      <button
+        onClick={openAssistant}
+        aria-label="Open assistant"
+        className="fixed z-40 right-4 bottom-20 sm:bottom-6 w-14 h-14 rounded-full bg-amber-soft text-ink shadow-lg flex items-center justify-center hover:brightness-105 active:scale-95 transition-transform"
+      >
+        <SparkleIcon className="w-6 h-6" />
+      </button>
+    )}
+    <QuickAiEntryModal open={assistantOpen} onClose={closeAssistant} />
+    </>
   );
 }
 
