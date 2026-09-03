@@ -78,13 +78,13 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
             Describe any transaction in plain English:
           </p>
           <ul className="text-xs text-muted space-y-1 mb-2">
-            <li>• "Sold 5 cement bags to John for 2000 each"</li>
-            <li>• "Bought 10 widgets from Supplier ABC for 500"</li>
-            <li>• "Paid 1500 for electricity bill"</li>
-            <li>• "Customer Mary bought 3 services for 3000"</li>
+            <li>• &ldquo;Sold 5 cement bags to John for 2000 each&rdquo;</li>
+            <li>• &ldquo;Bought 10 widgets from Supplier ABC for 500&rdquo;</li>
+            <li>• &ldquo;Paid 1500 for electricity bill&rdquo;</li>
+            <li>• &ldquo;Customer Mary bought 3 services for 3000&rdquo;</li>
           </ul>
           <p className="text-xs text-muted">
-            💡 New products are created automatically if they don't exist
+            💡 New products are created automatically if they don&apos;t exist
           </p>
         </div>
 
