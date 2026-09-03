@@ -18,7 +18,7 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
   const [text, setText] = useState("");
   const [replyText, setReplyText] = useState<string | null>(null);
   const [proposals, setProposals] = useState<ProposedEntry[]>([]);
-  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [autoConfirm, setAutoConfirm] = useState(true);
   const [autoConfirming, setAutoConfirming] = useState(false);
 
   function reset() {
@@ -46,12 +46,14 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
       // Auto-confirm if enabled and we have proposals
       if (autoConfirm && result.proposals.length > 0) {
         setAutoConfirming(true);
+        setReplyText("⚡ Logging entries automatically...");
         try {
           const confirmResults = await autoConfirmEntries(result.proposals);
           const allSuccess = confirmResults.every(r => r.success);
           if (allSuccess) {
-            setReplyText("✓ All entries logged automatically!");
+            setReplyText(`✓ ${result.proposals.length} entr${result.proposals.length === 1 ? 'y' : 'ies'} logged automatically!`);
             setProposals([]);
+            setText("");
           } else {
             const failed = confirmResults.filter(r => !r.success);
             setReplyText(`⚠ ${failed.length} entr${failed.length === 1 ? 'y' : 'ies'} failed to auto-confirm. Please review below.`);
@@ -92,14 +94,14 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
           className="w-full bg-panel2 border border-line rounded-md px-3 py-2 text-base sm:text-sm text-fg placeholder:text-muted focus:outline-none focus:border-amber-dim resize-none"
         />
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 bg-panel2 border border-line rounded-md px-3 py-2">
           <Checkbox
             id="auto-confirm"
             checked={autoConfirm}
             onCheckedChange={(checked: boolean) => setAutoConfirm(checked)}
           />
-          <label htmlFor="auto-confirm" className="text-sm text-fg cursor-pointer">
-            Auto-confirm entries (skip manual review)
+          <label htmlFor="auto-confirm" className="text-sm text-fg cursor-pointer flex-1">
+            Auto-confirm entries (faster logging)
           </label>
         </div>
 
