@@ -216,11 +216,11 @@ export async function POST(req: Request) {
       },
     ];
 
-    const messages: AnthropicMessage[] = [...toAnthropicMessages(recentMessages), { role: "user", content: message }];
+    let runningMessages: AnthropicMessage[] = [...toAnthropicMessages(recentMessages), { role: "user", content: message }];
 
     let response = await callClaude({
       system: systemBlocks,
-      messages,
+      messages: runningMessages,
       tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
       maxTokens: 800,
     });
@@ -228,77 +228,96 @@ export async function POST(req: Request) {
     let proposals: ProposedEntry[] = [];
     let rememberedNote: string | undefined;
 
-    if (response.stop_reason === "tool_use") {
+    // Ledger data for run_report is only fetched when actually needed —
+    // most turns (a question that doesn't need a number, or a data-entry
+    // prompt) never touch these three collections at all. Declared outside
+    // the round loop below so a compound request that calls run_report in
+    // two different rounds still only pays for a matching date range once.
+    let ledgerData: { startDate: string; endDate: string; expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
+    const productNameById = new Map(products.map((p) => [p.id, p.name]));
+
+    // Backing data for detect_anomalies / forecast_cash_flow — both are
+    // statistical over recent history rather than a single date range the
+    // model supplies, so (unlike run_report) there's no caller-given
+    // window to push down into the query. A fixed 12-month lookback keeps
+    // the read bounded as the ledger grows, the same cost concern
+    // run_report's range query exists for, while still giving both
+    // functions enough months to establish a real baseline/trend. Shared
+    // across both tools if a single turn calls both.
+    let recentOperationalData: { expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
+    async function loadRecentOperationalData() {
+      if (recentOperationalData) return recentOperationalData;
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      const since = twelveMonthsAgo.toISOString().slice(0, 10);
+      // The explicit tuple annotation here (and on the two other
+      // Promise.all destructures below) isn't decorative — without it,
+      // TypeScript's control-flow analysis of the `let ledgerData` /
+      // `let recentOperationalData` / `let overdueData` variables across
+      // this `for` loop's iterations gets tangled up with inferring
+      // these destructured elements' types from Promise.all, and it
+      // gives up with "'expensesSnap' implicitly has type 'any' because
+      // it does not have a type annotation and is referenced directly
+      // or indirectly in its own initializer" (TS7022), which then
+      // cascades into "Parameter 'd' implicitly has an 'any' type"
+      // (TS7006) everywhere `.docs.map((d) => ...)` is used below.
+      const [expensesSnap, purchasesSnap, salesSnap]: [QuerySnapshot, QuerySnapshot, QuerySnapshot] = await Promise.all([
+        db.collection(`users/${businessId}/expenses`).where("startDate", ">=", since).get(),
+        db.collection(`users/${businessId}/purchases`).where("date", ">=", since).get(),
+        db.collection(`users/${businessId}/sales`).where("date", ">=", since).get(),
+      ]);
+      recentOperationalData = {
+        expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense),
+        purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
+        sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
+      };
+      return recentOperationalData;
+    }
+
+    // Backing data for get_reminders — overdue receivables/payables can
+    // originate from any point in the ledger's history (an invoice from
+    // eight months ago is still overdue today), so unlike the two loaders
+    // above this deliberately isn't date-bounded. Mirrors the same
+    // full-collection read app/api/aging/report/route.ts already does for
+    // the same reminder-relevant data.
+    let overdueData: { sales: Sale[]; purchases: Purchase[]; receivablePayments: ReceivablePayment[]; payablePayments: PayablePayment[] } | null = null;
+    async function loadOverdueData() {
+      if (overdueData) return overdueData;
+      const [salesSnap, purchasesSnap, receivablePaymentsSnap, payablePaymentsSnap]: [QuerySnapshot, QuerySnapshot, QuerySnapshot, QuerySnapshot] = await Promise.all([
+        db.collection(`users/${businessId}/sales`).get(),
+        db.collection(`users/${businessId}/purchases`).get(),
+        db.collection(`users/${businessId}/receivablePayments`).get(),
+        db.collection(`users/${businessId}/payablePayments`).get(),
+      ]);
+      overdueData = {
+        sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
+        purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
+        receivablePayments: receivablePaymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReceivablePayment),
+        payablePayments: payablePaymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayablePayment),
+      };
+      return overdueData;
+    }
+
+    // Bounded loop, not a single `if` — a compound request ("what did I
+    // spend on packaging last month, and log this delivery bill too") needs
+    // the model to see one tool's result before it can decide to call a
+    // second tool. The previous shape here was exactly one round: initial
+    // call, then (if tool_use) exactly one follow-up call, whose own result
+    // was read for text only. Any tool_use in *that* follow-up — a second
+    // run_report after the first, a propose_entries called only once the
+    // model had the numbers in hand — was silently discarded: no error, no
+    // proposal, nothing logged, same failure shape as the thinking-mode bug
+    // above but with a different cause. MAX_TOOL_ROUNDS bounds the retry
+    // cost if a model ever got stuck calling tools indefinitely; hitting it
+    // still returns whatever text/proposals/note were already collected
+    // rather than erroring the whole turn out.
+    const MAX_TOOL_ROUNDS = 4;
+    let round = 0;
+
+    while (response.stop_reason === "tool_use" && round < MAX_TOOL_ROUNDS) {
+      round++;
       const toolUses = extractToolUses(response);
       const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
-
-      // Ledger data for run_report is only fetched when actually needed —
-      // most turns (a question that doesn't need a number, or a data-entry
-      // prompt) never touch these three collections at all.
-      let ledgerData: { startDate: string; endDate: string; expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
-      const productNameById = new Map(products.map((p) => [p.id, p.name]));
-
-      // Backing data for detect_anomalies / forecast_cash_flow — both are
-      // statistical over recent history rather than a single date range the
-      // model supplies, so (unlike run_report) there's no caller-given
-      // window to push down into the query. A fixed 12-month lookback keeps
-      // the read bounded as the ledger grows, the same cost concern
-      // run_report's range query exists for, while still giving both
-      // functions enough months to establish a real baseline/trend. Shared
-      // across both tools if a single turn calls both.
-      let recentOperationalData: { expenses: Expense[]; purchases: Purchase[]; sales: Sale[] } | null = null;
-      async function loadRecentOperationalData() {
-        if (recentOperationalData) return recentOperationalData;
-        const twelveMonthsAgo = new Date();
-        twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-        const since = twelveMonthsAgo.toISOString().slice(0, 10);
-        // The explicit tuple annotation here (and on the two other
-        // Promise.all destructures below) isn't decorative — without it,
-        // TypeScript's control-flow analysis of the `let ledgerData` /
-        // `let recentOperationalData` / `let overdueData` variables across
-        // this `for` loop's iterations gets tangled up with inferring
-        // these destructured elements' types from Promise.all, and it
-        // gives up with "'expensesSnap' implicitly has type 'any' because
-        // it does not have a type annotation and is referenced directly
-        // or indirectly in its own initializer" (TS7022), which then
-        // cascades into "Parameter 'd' implicitly has an 'any' type"
-        // (TS7006) everywhere `.docs.map((d) => ...)` is used below.
-        const [expensesSnap, purchasesSnap, salesSnap]: [QuerySnapshot, QuerySnapshot, QuerySnapshot] = await Promise.all([
-          db.collection(`users/${businessId}/expenses`).where("startDate", ">=", since).get(),
-          db.collection(`users/${businessId}/purchases`).where("date", ">=", since).get(),
-          db.collection(`users/${businessId}/sales`).where("date", ">=", since).get(),
-        ]);
-        recentOperationalData = {
-          expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense),
-          purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
-          sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
-        };
-        return recentOperationalData;
-      }
-
-      // Backing data for get_reminders — overdue receivables/payables can
-      // originate from any point in the ledger's history (an invoice from
-      // eight months ago is still overdue today), so unlike the two loaders
-      // above this deliberately isn't date-bounded. Mirrors the same
-      // full-collection read app/api/aging/report/route.ts already does for
-      // the same reminder-relevant data.
-      let overdueData: { sales: Sale[]; purchases: Purchase[]; receivablePayments: ReceivablePayment[]; payablePayments: PayablePayment[] } | null = null;
-      async function loadOverdueData() {
-        if (overdueData) return overdueData;
-        const [salesSnap, purchasesSnap, receivablePaymentsSnap, payablePaymentsSnap]: [QuerySnapshot, QuerySnapshot, QuerySnapshot, QuerySnapshot] = await Promise.all([
-          db.collection(`users/${businessId}/sales`).get(),
-          db.collection(`users/${businessId}/purchases`).get(),
-          db.collection(`users/${businessId}/receivablePayments`).get(),
-          db.collection(`users/${businessId}/payablePayments`).get(),
-        ]);
-        overdueData = {
-          sales: salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Sale),
-          purchases: purchasesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Purchase),
-          receivablePayments: receivablePaymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReceivablePayment),
-          payablePayments: payablePaymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayablePayment),
-        };
-        return overdueData;
-      }
 
       for (const use of toolUses) {
         if (use.name === "run_report") {
@@ -378,9 +397,10 @@ export async function POST(req: Request) {
         }
       }
 
+      runningMessages = [...runningMessages, { role: "assistant", content: response.content }, { role: "user", content: toolResults }];
       response = await callClaude({
         system: systemBlocks,
-        messages: [...messages, { role: "assistant", content: response.content }, { role: "user", content: toolResults }],
+        messages: runningMessages,
         tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
         maxTokens: 400,
       });
