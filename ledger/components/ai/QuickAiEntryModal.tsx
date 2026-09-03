@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Modal, Button } from "@/components/ui";
+import { Modal, Button, Checkbox } from "@/components/ui";
 import { useAiAssistant } from "@/contexts/AiAssistantContext";
 import { ProposedEntryCard } from "./ProposedEntryCard";
 import type { ProposedEntry } from "@/lib/aiTypes";
@@ -14,10 +14,12 @@ import type { ProposedEntry } from "@/lib/aiTypes";
 // entry, for the moment-to-moment data entry friction a solo owner
 // actually feels.
 export default function QuickAiEntryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { sendMessage, currentSessionId, startNewSession, sending, error, clearError } = useAiAssistant();
+  const { sendMessage, currentSessionId, startNewSession, sending, error, clearError, autoConfirmEntries } = useAiAssistant();
   const [text, setText] = useState("");
   const [replyText, setReplyText] = useState<string | null>(null);
   const [proposals, setProposals] = useState<ProposedEntry[]>([]);
+  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [autoConfirming, setAutoConfirming] = useState(false);
 
   function reset() {
     setText("");
@@ -40,6 +42,26 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
       const result = await sendMessage(trimmed);
       setReplyText(result.reply);
       setProposals(result.proposals);
+
+      // Auto-confirm if enabled and we have proposals
+      if (autoConfirm && result.proposals.length > 0) {
+        setAutoConfirming(true);
+        try {
+          const confirmResults = await autoConfirmEntries(result.proposals);
+          const allSuccess = confirmResults.every(r => r.success);
+          if (allSuccess) {
+            setReplyText("✓ All entries logged automatically!");
+            setProposals([]);
+          } else {
+            const failed = confirmResults.filter(r => !r.success);
+            setReplyText(`⚠ ${failed.length} entr${failed.length === 1 ? 'y' : 'ies'} failed to auto-confirm. Please review below.`);
+          }
+        } catch (err) {
+          setReplyText("⚠ Auto-confirmation failed. Please review and confirm manually.");
+        } finally {
+          setAutoConfirming(false);
+        }
+      }
     } catch {
       // error surfaced via context.error below
     }
@@ -70,8 +92,19 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
           className="w-full bg-panel2 border border-line rounded-md px-3 py-2 text-base sm:text-sm text-fg placeholder:text-muted focus:outline-none focus:border-amber-dim resize-none"
         />
 
-        <Button onClick={handleSend} disabled={!text.trim() || sending} className="w-full">
-          {sending ? "Working…" : "Send"}
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="auto-confirm"
+            checked={autoConfirm}
+            onCheckedChange={(checked: boolean) => setAutoConfirm(checked)}
+          />
+          <label htmlFor="auto-confirm" className="text-sm text-fg cursor-pointer">
+            Auto-confirm entries (skip manual review)
+          </label>
+        </div>
+
+        <Button onClick={handleSend} disabled={!text.trim() || sending || autoConfirming} className="w-full">
+          {sending || autoConfirming ? "Working…" : "Send"}
         </Button>
 
         {error && <div className="text-sm text-bad">{error}</div>}

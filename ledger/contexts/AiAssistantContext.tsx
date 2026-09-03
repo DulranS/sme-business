@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, limit as fsLimit } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { useAuth } from "./AuthContext";
-import type { AiChatMessage, AiChatResponse, AiChatSession, AiMemoryNote } from "@/lib/aiTypes";
+import type { AiChatMessage, AiChatResponse, AiChatSession, AiMemoryNote, ProposedEntry } from "@/lib/aiTypes";
 
 interface AiAssistantContextValue {
   sessions: AiChatSession[];
@@ -20,6 +20,7 @@ interface AiAssistantContextValue {
   deleteSession: (id: string) => Promise<void>;
   sendMessage: (text: string) => Promise<AiChatResponse>;
   forgetMemoryNote: (id: string) => Promise<void>;
+  autoConfirmEntries: (entries: ProposedEntry[]) => Promise<{ id: string; success: boolean; error?: string }[]>;
 }
 
 const AiAssistantContext = createContext<AiAssistantContextValue | undefined>(undefined);
@@ -175,6 +176,24 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
     [businessId]
   );
 
+  const autoConfirmEntries = useCallback(
+    async (entries: ProposedEntry[]): Promise<{ id: string; success: boolean; error?: string }[]> => {
+      if (!user) throw new Error("Not signed in.");
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/ai/auto-confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ entries }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || "Auto-confirmation failed.");
+      }
+      return (await res.json()) as { id: string; success: boolean; error?: string }[];
+    },
+    [user]
+  );
+
   const value = useMemo(
     () => ({
       sessions,
@@ -190,8 +209,9 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
       deleteSession,
       sendMessage,
       forgetMemoryNote,
+      autoConfirmEntries,
     }),
-    [sessions, currentSessionId, messages, memoryNotes, sending, error, clearError, startNewSession, selectSession, renameSession, deleteSession, sendMessage, forgetMemoryNote]
+    [sessions, currentSessionId, messages, memoryNotes, sending, error, clearError, startNewSession, selectSession, renameSession, deleteSession, sendMessage, forgetMemoryNote, autoConfirmEntries]
   );
 
   return <AiAssistantContext.Provider value={value}>{children}</AiAssistantContext.Provider>;

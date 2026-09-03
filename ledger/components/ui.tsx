@@ -323,3 +323,28 @@ export function Table({ children }: { children: ReactNode }) {
   );
 }
 
+export function Checkbox({ 
+  id, 
+  checked, 
+  onCheckedChange, 
+  className 
+}: { 
+  id?: string; 
+  checked: boolean; 
+  onCheckedChange: (checked: boolean) => void; 
+  className?: string;
+}) {
+  return (
+    <input
+      id={id}
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onCheckedChange(e.target.checked)}
+      className={clsx(
+        "w-4 h-4 rounded border border-line bg-panel2 text-amber focus:outline-none focus:ring-2 focus:ring-amber/50 cursor-pointer",
+        className
+      )}
+    />
+  );
+}
+
