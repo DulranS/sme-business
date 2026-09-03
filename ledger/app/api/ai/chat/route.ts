@@ -114,6 +114,22 @@ const SMART_REMINDERS_TOOL: AnthropicTool = {
   },
 };
 
+const CREATE_PRODUCT_TOOL: AnthropicTool = {
+  name: "create_product",
+  description: "Create a new product when the user mentions a product name that doesn't exist in the catalog. Use this BEFORE propose_entries when you encounter a new product.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Product name as mentioned by the user." },
+      type: { type: "string", enum: ["product", "service"], description: "Whether this is a physical product or a service. Default to 'product' unless clearly a service." },
+      category: { type: "string", description: "Product category. Use 'General' if not specified." },
+      defaultSellPrice: { type: "number", description: "Default selling price per unit if mentioned." },
+      defaultCostPrice: { type: "number", description: "Default cost price per unit if mentioned." },
+    },
+    required: ["name"],
+  },
+};
+
 function toAnthropicMessages(history: AiChatMessage[]): AnthropicMessage[] {
   return history.map((m) => ({ role: m.role, content: m.text || "(empty)" }));
 }
@@ -221,7 +237,7 @@ export async function POST(req: Request) {
     let response = await callClaude({
       system: systemBlocks,
       messages: runningMessages,
-      tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
+      tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, CREATE_PRODUCT_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
       maxTokens: 800,
     });
 
@@ -371,6 +387,22 @@ export async function POST(req: Request) {
           }
           const result = runReport({ ...input, startDate: safeStartDate, endDate: safeEndDate, productNameById }, ledgerData, settings.currency);
           toolResults.push({ type: "tool_result", tool_use_id: use.id, content: JSON.stringify(result) });
+        } else if (use.name === "create_product") {
+          const input = use.input as { name: string; type?: string; category?: string; defaultSellPrice?: number; defaultCostPrice?: number };
+          const newProduct = {
+            name: input.name,
+            type: (input.type as "product" | "service") || "product",
+            category: input.category || "General",
+            sku: "",
+            active: true,
+            defaultSellPrice: input.defaultSellPrice,
+            defaultCostPrice: input.defaultCostPrice,
+            createdAt: Date.now(),
+          };
+          const docRef = await db.collection(`users/${businessId}/products`).add(newProduct);
+          // Add to products list for subsequent propose_entries calls
+          products.push({ id: docRef.id, name: input.name, type: newProduct.type, sku: "" });
+          toolResults.push({ type: "tool_result", tool_use_id: use.id, content: `Created product "${input.name}" with ID ${docRef.id}.` });
         } else if (use.name === "propose_entries") {
           const input = use.input as { entries: Record<string, unknown>[] };
           const normalized = (input.entries ?? []).map((e) => normalizeProposedEntry(e, products)).filter((e): e is ProposedEntry => e !== null);
@@ -401,7 +433,7 @@ export async function POST(req: Request) {
       response = await callClaude({
         system: systemBlocks,
         messages: runningMessages,
-        tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
+        tools: [REPORT_TOOL, PROPOSE_ENTRIES_TOOL, CREATE_PRODUCT_TOOL, REMEMBER_TOOL, ANOMALY_DETECTION_TOOL, CASH_FLOW_FORECAST_TOOL, SMART_REMINDERS_TOOL],
         maxTokens: 400,
       });
     }
