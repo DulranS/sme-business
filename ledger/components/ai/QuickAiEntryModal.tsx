@@ -71,27 +71,36 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Tell me what happened">
-      <div className="space-y-3">
-        <p className="text-sm text-muted">
-          Describe a sale, a purchase, or a bill in your own words and I&apos;ll fill in the entry for you to confirm.
-        </p>
+    <Modal open={open} onClose={handleClose} title="Quick Entry with AI">
+      <div className="space-y-4">
+        <div className="bg-panel2 border border-line rounded-md p-3">
+          <p className="text-sm text-fg mb-2 font-medium">
+            Describe any transaction in plain English:
+          </p>
+          <ul className="text-xs text-muted space-y-1 mb-2">
+            <li>• "Sold 5 cement bags to John for 2000 each"</li>
+            <li>• "Bought 10 widgets from Supplier ABC for 500"</li>
+            <li>• "Paid 1500 for electricity bill"</li>
+            <li>• "Customer Mary bought 3 services for 3000"</li>
+          </ul>
+          <p className="text-xs text-muted">
+            💡 New products are created automatically if they don't exist
+          </p>
+        </div>
 
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            // Same Enter-to-send / Shift+Enter-for-newline behavior as the
-            // full /assistant page's composer — the assistant should feel
-            // like the same assistant no matter which door you came in.
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               handleSend();
             }
           }}
-          placeholder="e.g. Sold 3 bags of cement to Kamal for 4500 each, cash"
-          rows={3}
+          placeholder="Type your transaction here... (Press Enter to send)"
+          rows={4}
           className="w-full bg-panel2 border border-line rounded-md px-3 py-2 text-base sm:text-sm text-fg placeholder:text-muted focus:outline-none focus:border-amber-dim resize-none"
+          autoFocus
         />
 
         <div className="flex items-center gap-2 bg-panel2 border border-line rounded-md px-3 py-2">
@@ -101,19 +110,33 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
             onCheckedChange={(checked: boolean) => setAutoConfirm(checked)}
           />
           <label htmlFor="auto-confirm" className="text-sm text-fg cursor-pointer flex-1">
-            Auto-confirm entries (faster logging)
+            Auto-confirm entries (skip manual review)
           </label>
         </div>
 
         <Button onClick={handleSend} disabled={!text.trim() || sending || autoConfirming} className="w-full">
-          {sending || autoConfirming ? "Working…" : "Send"}
+          {sending ? "Thinking..." : autoConfirming ? "Logging..." : "Log Entry"}
         </Button>
 
-        {error && <div className="text-sm text-bad">{error}</div>}
-        {replyText && <div className="text-sm text-fg bg-panel2 border border-line rounded-md px-3 py-2">{replyText}</div>}
+        {error && (
+          <div className="text-sm text-bad bg-bad/10 border border-bad/30 rounded-md px-3 py-2">
+            ⚠ {error}
+          </div>
+        )}
+        
+        {replyText && (
+          <div className={`text-sm rounded-md px-3 py-2 ${
+            replyText.includes("✓") ? "bg-good/10 border border-good/30 text-good" :
+            replyText.includes("⚠") ? "bg-amber/10 border border-amber/30 text-amber-soft" :
+            "bg-panel2 border border-line text-fg"
+          }`}>
+            {replyText}
+          </div>
+        )}
 
         {proposals.length > 0 && (
-          <div className="space-y-3 pt-1">
+          <div className="space-y-3 pt-2 border-t border-line">
+            <p className="text-sm text-muted">Review and confirm entries:</p>
             {proposals.map((p) => (
               <ProposedEntryCard key={p.id} entry={p} />
             ))}
@@ -121,17 +144,12 @@ export default function QuickAiEntryModal({ open, onClose }: { open: boolean; on
         )}
 
         {currentSessionId && (
-          // The modal is a fast entry point, not a separate conversation —
-          // this hands off to /assistant on the *same* session (currentSessionId
-          // lives in AiAssistantContext, above this modal, so the full page
-          // picks it straight up) instead of the exchange just vanishing
-          // when the modal closes.
           <Link
             href="/assistant"
             onClick={handleClose}
-            className="block text-center text-xs text-muted hover:text-fg pt-1"
+            className="block text-center text-xs text-muted hover:text-fg pt-2"
           >
-            Continue this conversation in the full assistant →
+            Continue conversation in full assistant →
           </Link>
         )}
       </div>
